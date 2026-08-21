@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Test anonyme — widget vs REST direct</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 16px; max-width: 640px; }
+  h1 { font-size: 16px; }
+  h2 { font-size: 14px; margin-top: 24px; }
+  fieldset { margin-bottom: 16px; }
+  label { display: block; margin-top: 8px; font-size: 13px; }
+  input { width: 100%; padding: 6px; box-sizing: border-box; }
+  button { margin-top: 12px; padding: 8px 14px; cursor: pointer; }
+  #modeInfo { font-size: 12px; color: #666; margin-bottom: 12px; }
+  .result { margin-top: 10px; padding: 8px; border-radius: 4px; font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+  .ok { background: #e6f4ea; color: #1e4620; }
+  .err { background: #fdecea; color: #611a15; }
+</style>
+</head>
+<body>
+  <h1>Test d'écriture anonyme dans Grist</h1>
+  <p id="modeInfo">Détection du mode…</p>
+
+  <fieldset id="fieldsetWidget">
+    <legend>Test A — via le pont grist.docApi (mode Custom Widget)</legend>
+    <p style="font-size:12px;color:#666">Actif seulement si cette page est chargée <em>dans un widget personnalisé Grist</em> (donc dans une iframe sur une page Grist). Sinon la section reste grisée.</p>
+    <label>Nom<input id="wNom" value="Test Widget"></label>
+    <label>Prénom<input id="wPrenom" value="Anonyme"></label>
+    <label>Email<input id="wEmail" value="test.widget@example.org"></label>
+    <button id="btnWidget" disabled>Envoyer via grist.docApi</button>
+    <div id="resWidget"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Test B — via l'API REST Grist en direct (sans passer par le pont widget)</legend>
+    <p style="font-size:12px;color:#666">Fonctionne dans n'importe quel onglet, même hors Grist. Renseignez l'hôte et l'identifiant du document (visibles dans l'URL du document Grist).</p>
+    <label>Hôte Grist (ex. https://docs.getgrist.com ou l'URL de votre instance)<input id="rHost" value="https://docs.getgrist.com"></label>
+    <label>Identifiant du document (docId, dans l'URL après /doc/... ou visible via Partager)<input id="rDocId" placeholder="ex. abcXYZ123"></label>
+    <label>Nom de la table cible<input id="rTable" value="Test_Anonyme"></label>
+    <label>Nom<input id="rNom" value="Test REST"></label>
+    <label>Prénom<input id="rPrenom" value="Anonyme"></label>
+    <label>Email<input id="rEmail" value="test.rest@example.org"></label>
+    <button id="btnRest">Envoyer via l'API REST</button>
+    <div id="resRest"></div>
+  </fieldset>
+
+  <h2>À observer</h2>
+  <p style="font-size:12px;color:#666">
+    Ouvrez cette page une première fois <strong>en tant que widget personnalisé</strong> dans le document Grist de test (Test A), puis une seconde fois <strong>dans un onglet de navigation privée</strong> (donc déconnecté de Grist) en visitant l'URL où vous l'avez hébergée (Test B). Le vrai test d'anonymat, c'est la navigation privée — un onglet normal où vous êtes déjà connecté à Grist ne prouve rien.
+  </p>
+
+<script>
+(function () {
+  const isInIframe = window.self !== window.top;
+  const modeInfo = document.getElementById('modeInfo');
+  const btnWidget = document.getElementById('btnWidget');
+  const btnRest = document.getElementById('btnRest');
+  const resWidget = document.getElementById('resWidget');
+  const resRest = document.getElementById('resRest');
+
+  function showResult(el, ok, text) {
+    el.className = 'result ' + (ok ? 'ok' : 'err');
+    el.textContent = (ok ? '✓ ' : '✗ ') + text;
+  }
+
+  modeInfo.textContent = isInIframe
+    ? 'Chargée dans une iframe — tentative d\'initialisation du pont grist.docApi pour le Test A.'
+    : 'Chargée hors iframe (onglet normal) — seul le Test B (REST direct) est utilisable ici.';
+
+  if (isInIframe) {
+    // Ajuste ce chemin si votre instance Grist est auto-hébergée (remplacez
+    // docs.getgrist.com par l'hôte de votre instance : <votre-hote>/grist-plugin-api.js)
+    const script = document.createElement('script');
+    script.src = 'https://docs.getgrist.com/grist-plugin-api.js';
+    script.onload = function () {
+      try {
+        grist.ready({ requiredAccess: 'full' });
+        btnWidget.disabled = false;
+        showResult(resWidget, true, 'Pont grist.docApi initialisé — prêt à tester.');
+      } catch (e) {
+        showResult(resWidget, false, 'grist.ready() a échoué : ' + e.message);
+      }
+    };
+    script.onerror = function () {
+      showResult(resWidget, false, 'Impossible de charger grist-plugin-api.js depuis docs.getgrist.com — si votre Grist est auto-hébergé, modifiez l\'URL du script dans le code source de cette page.');
+    };
+    document.head.appendChild(script);
+
+    btnWidget.addEventListener('click', async function () {
+      try {
+        await grist.docApi.applyUserActions([[
+          'AddRecord', 'Test_Anonyme', null,
+          {
+            Nom: document.getElementById('wNom').value,
+            Prenom: document.getElementById('wPrenom').value,
+            Email: document.getElementById('wEmail').value
+          }
+        ]]);
+        showResult(resWidget, true, 'Ligne ajoutée avec succès via grist.docApi.applyUserActions.');
+      } catch (e) {
+        showResult(resWidget, false, 'Échec : ' + (e && e.message ? e.message : JSON.stringify(e)));
+      }
+    });
+  }
+
+  btnRest.addEventListener('click', async function () {
+    const host = document.getElementById('rHost').value.trim().replace(/\/$/, '');
+    const docId = document.getElementById('rDocId').value.trim();
+    const table = document.getElementById('rTable').value.trim();
+    if (!docId) { showResult(resRest, false, 'Renseignez le docId.'); return; }
+    const url = host + '/api/docs/' + encodeURIComponent(docId) + '/tables/' + encodeURIComponent(table) + '/records';
+    try {
+      const resp = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          records: [{
+            fields: {
+              Nom: document.getElementById('rNom').value,
+              Prenom: document.getElementById('rPrenom').value,
+              Email: document.getElementById('rEmail').value
+            }
+          }]
+        })
+      });
+      const text = await resp.text();
+      if (resp.ok) {
+        showResult(resRest, true, 'HTTP ' + resp.status + ' — ' + text);
+      } else {
+        showResult(resRest, false, 'HTTP ' + resp.status + ' — ' + text);
+      }
+    } catch (e) {
+      showResult(resRest, false, 'Erreur réseau/CORS : ' + e.message);
+    }
+  });
+})();
+</script>
+</body>
+</html>
