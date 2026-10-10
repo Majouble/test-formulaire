@@ -1573,17 +1573,25 @@ function reconnaitreColonnesSignalement(meta, tid = tableId) {
 
 
 // ⚙ : ce que le widget utilise réellement (utile pour comprendre un affichage inattendu)
-const VERSION_WIDGET = "10/10/2026 17 h";
+const VERSION_WIDGET = "10/10/2026 18 h 45";
 function remplirDiagnostic() {
   const LIB = { Etablissement: "Établissement", Dossier: "Dossier", Date_faits: "Date des faits", Date: "Date de saisie", Qualification: "Qualification",
     Description: "Description", Nature: "Nature", Commentaire: "Commentaire", Auteur: "Auteur", Site: "Site / bâtiment", Clos: "Clos" };
+  const rempli = v => v != null && v !== "" && v !== 0 && !(Array.isArray(v) && (v[0] === "L" ? v.length <= 1 : !v.length));
   const ligne = k => {
     const c = col(k), m = c && metaSig[c], origine = mappings && typeof mappings[k] === "string" ? "associée dans le panneau" : "reconnue";
-    return `<li>${LIB[k]} : ${c ? `<b>${esc(c)}</b>${m ? ` <span class="note">(${esc(String(m.type).replace(/^Ref:/, "référence vers "))}, ${origine})</span>` : ""}` : `<span style="color:var(--erreur)">non trouvée</span>`}</li>`;
+    // lignes renseignées et exemple de valeur reçue (une référence invalide arrive sous forme de texte, par exemple)
+    const vals = c ? enregistrements.map(l => l[c]).filter(rempli) : [];
+    const ex = vals.length ? JSON.stringify(vals[vals.length - 1]).slice(0, 60) : "";
+    const refsInvalides = k === "Etablissement" && vals.length ? vals.filter(v => refId(v) == null).length : 0;
+    return `<li>${LIB[k]} : ${c ? `<b>${esc(c)}</b>${m ? ` <span class="note">(${esc(String(m.type).replace(/^Ref:/, "référence vers "))}, ${origine})</span>` : ""}`
+      + ` — renseignée sur ${vals.length} ligne${vals.length > 1 ? "s" : ""} sur ${enregistrements.length}${ex ? `, par exemple ${esc(ex)}` : ""}`
+      + (refsInvalides ? ` <span style="color:var(--erreur)">· ${refsInvalides} valeur(s) qui ne sont pas des références valides (cellules en rouge dans Grist)</span>` : "")
+      : `<span style="color:var(--erreur)">non trouvée</span>`}</li>`;
   };
   const avec = enregistrements.filter(l => refId(val(l, "Etablissement"))), perdus = avec.filter(l => !etabDe(refId(val(l, "Etablissement"))));
   $("cfg-diagnostic").innerHTML = `<p style="margin:0 0 4px">Widget : version du ${esc(VERSION_WIDGET)} · table des réponses <b>${esc(tableId || "?")}</b> · formulaire ${formulaireActif ? `« ${esc(formulaireActif.nom)} » (publié)` : "<b>aucun formulaire publié</b> pour cette table"}.</p>
-    <p style="margin:0 0 4px">Référentiel : <b>${esc(ETAB.table)}</b> (${esc(ETAB.origineTable || "table par défaut")}), ${etabs.length} établissement(s) lus${avec.length ? ` ; ${avec.length - perdus.length} signalement(s) sur ${avec.length} y retrouvent leur établissement` : ""}.</p>
+    <p style="margin:0 0 4px">Référentiel : <b>${esc(ETAB.table)}</b> (${esc(ETAB.origineTable || "table par défaut")}), ${etabs.length} établissement(s) lus${avec.length ? ` ; ${avec.length - perdus.length} signalement(s) sur ${avec.length} y retrouvent leur établissement` : ` ; <span style="color:var(--erreur)">aucune des ${enregistrements.length} ligne(s) reçues par le widget ne porte un établissement valide</span>`}.</p>
     <ul style="margin:0;padding-left:18px">${Object.keys(LIB).map(ligne).join("")}</ul>`;
 }
 
