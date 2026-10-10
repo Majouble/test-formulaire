@@ -225,6 +225,21 @@
   .etat-desc-actions { display: inline-flex; gap: 12px; margin-left: 8px; flex-wrap: wrap; }
   .apercu-generee { margin-top: 6px; padding: 8px; background: #f6f6f6; border: 1px dashed #bbb; font-size: .85rem; white-space: pre-wrap; }
   .alerte-faits { color: #b34000; font-weight: 600; }
+  .plusieurs-jours { margin-top: 8px; }
+  .plusieurs-jours > .case { margin: 0; }
+  .jusquau { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 6px 0 0 26px; }
+  .jusquau > label { margin: 0; font-weight: 600; }
+  .jusquau input[type=date] { max-width: 200px; }
+  .jusquau .case { margin: 0; font-weight: 400; }
+  #aide-jours, #suggestion-jours { margin: 6px 0 0 26px; }
+  #aide-jours.err { color: var(--erreur); font-weight: 600; }
+  #suggestion-jours { font-size: .86rem; color: #b34000; }
+  dialog#dlg-reporter { border: 1px solid var(--trait); border-radius: 10px; padding: 18px 20px; width: min(520px, 94vw); box-shadow: 0 14px 40px rgba(0,0,0,.2); }
+  dialog#dlg-reporter::backdrop { background: rgba(0,0,30,.25); }
+  dialog#dlg-reporter h3 { margin: 0 0 8px; }
+  dialog#dlg-reporter .jusquau { margin: 10px 0 6px; }
+  dialog#dlg-reporter .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  #rep-aide.err { color: var(--erreur); font-weight: 600; }
   #bloc-site { margin: 14px 0 0; }
   .titre-section { font-size: 1.02rem; font-weight: 700; color: var(--bleu); border-bottom: 2px solid var(--bleu-clair); padding-bottom: 4px; margin: 22px 0 14px; }
   .info-formulaire { font-size: .88rem; background: var(--fond-suivi); border-left: 3px solid var(--bleu); padding: 8px 12px; margin: 0 0 16px; }
@@ -719,8 +734,17 @@
       <div class="alerte-doublon" id="alerte-doublon" aria-live="polite" hidden></div>
       <div class="champ" id="bloc-date-faits" hidden>
         <label for="date-faits"><span data-libelle="Date_faits">Date des faits</span> <span class="req">*</span>
-          <span class="aide" id="aide-date-faits">Aujourd'hui par défaut. Modifiez-la si les faits signalés sont antérieurs.</span></label>
+          <span class="aide" id="aide-date-faits">Aujourd'hui par défaut.</span></label>
         <input type="date" id="date-faits" style="max-width:220px">
+        <div class="plusieurs-jours" id="bloc-plusieurs-jours" hidden>
+          <label class="case"><input type="checkbox" id="plusieurs-jours"> Les faits s'étendent sur plusieurs jours (un signalement par jour)</label>
+          <div class="jusquau" id="bloc-jusquau" hidden>
+            <label for="date-fin">Jusqu'au</label><input type="date" id="date-fin">
+            <label class="case"><input type="checkbox" id="jours-ouvres"> Jours ouvrés seulement (du lundi au vendredi)</label>
+          </div>
+          <p class="aide" id="aide-jours" aria-live="polite" hidden></p>
+          <p id="suggestion-jours" hidden></p>
+        </div>
       </div>
       <fieldset>
         <legend><span data-libelle="Qualification">Qualification</span> <span class="req">*</span></legend>
@@ -759,6 +783,7 @@
           <button type="button" class="secondaire" id="btn-autres" aria-haspopup="true" aria-expanded="false" aria-controls="liste-actions">Autres actions ▾</button>
           <div class="liste-actions" id="liste-actions" role="menu" hidden>
             <button type="button" role="menuitem" id="act-corriger"><strong>Corriger une erreur de saisie</strong><span>Modifie la dernière étape, sans en créer de nouvelle (pas de message Tchap)</span></button>
+            <button type="button" role="menuitem" id="act-reporter" hidden><strong>Reporter sur d'autres jours</strong><span>Crée un signalement par jour choisi, reprenant celui-ci</span></button>
             <button type="button" role="menuitem" id="act-annuler"><strong>Annuler mes modifications</strong><span>Revient à l'état enregistré</span></button>
             <button type="button" role="menuitem" id="act-clore" hidden><strong id="act-clore-titre">Clore le signalement</strong><span id="act-clore-texte">La situation est terminée</span></button>
           </div>
@@ -769,6 +794,17 @@
         « Corriger » rectifie la dernière version (faute, précision, réponse erronée) sans créer de nouvelle version.</p>
     </form>
   </section>
+
+  <dialog id="dlg-reporter" aria-labelledby="dlg-reporter-titre">
+    <h3 id="dlg-reporter-titre">Reporter sur d'autres jours</h3>
+    <p class="note" style="margin:0">Un signalement (un dossier) est créé pour chaque jour choisi, avec la qualification, les réponses et la description de celui-ci.
+      Un jour qui a déjà un signalement pour cet établissement en reçoit la mise à jour. Ce dossier-ci n'est pas modifié.</p>
+    <div class="jusquau"><label for="rep-debut">Du</label><input type="date" id="rep-debut"><label for="rep-fin">au</label><input type="date" id="rep-fin"></div>
+    <label class="case"><input type="checkbox" id="rep-ouvres"> Jours ouvrés seulement (du lundi au vendredi)</label>
+    <p class="aide" id="rep-aide" aria-live="polite"></p>
+    <p class="statut" id="rep-statut" role="status"></p>
+    <div class="actions"><button type="button" class="secondaire" id="rep-annuler">Annuler</button><button type="button" class="primaire" id="rep-ok">Créer les signalements</button></div>
+  </dialog>
 
   <!-- ===== Historique ===== -->
   <section id="panneau-historique" role="tabpanel" aria-labelledby="onglet-historique" hidden>
@@ -940,10 +976,10 @@ async function reconnaitreColonnesEtab(t) {
 const FICHE_DEFAUT = [["@nom", "Établissement"], ["@uai", "UAI"], ["@type", "Type"], ["@commune", "Commune"], ["@academie", "Académie"], ["@departement", "Département"]];
 const PRESETS = {
   en: { libelle: "Établissements scolaires", marque: "Établissements scolaires", annuaires: ["en", "esr"], entete: "**{nom}**, **{commune}**",
-        pastilles: "auto", commentaire: false, fiche: FICHE_DEFAUT.map(([col, lib]) => ({ col, lib })), recherche: [], colonnes: {} },
+        pastilles: "auto", commentaire: false, fiche: FICHE_DEFAUT.map(([col, lib]) => ({ col, lib })), recherche: [], colonnes: {}, faitsFuturs: true, plusieursJours: true },
   esr: { libelle: "Enseignement supérieur et recherche", marque: "Enseignement supérieur et recherche", annuaires: [], entete: "**{nom}** ({site})",
         pastilles: "toujours", commentaire: false, fiche: [...FICHE_DEFAUT.slice(0, 5), ["@region", "Région académique"], FICHE_DEFAUT[5]].map(([col, lib]) => ({ col, lib })),
-        recherche: [], colonnes: {} },
+        recherche: [], colonnes: {}, faitsFuturs: true, plusieursJours: true },
 };
 let versionPage = null;   // option « version » de la page (⚙), utilisée quand le formulaire publié ne fixe pas la version
 const confSaisie = () => (typeof formulaireActif !== "undefined" && formulaireActif && formulaireActif.conf && formulaireActif.conf.saisie) || {};
@@ -963,6 +999,8 @@ function S() {
   if (typeof c.entete === "string" && c.entete.trim()) r.entete = c.entete;
   if (c.pastilles === "toujours" || c.pastilles === "auto") r.pastilles = c.pastilles;
   if (typeof c.commentaire === "boolean") r.commentaire = c.commentaire;
+  if (typeof c.faitsFuturs === "boolean") r.faitsFuturs = c.faitsFuturs;
+  if (typeof c.plusieursJours === "boolean") r.plusieursJours = c.plusieursJours;
   if (Array.isArray(c.fiche) && c.fiche.length) r.fiche = c.fiche.filter(x => x && x.col);
   if (Array.isArray(c.recherche)) r.recherche = c.recherche.filter(Boolean);
   if (c.colonnes && typeof c.colonnes === "object") r.colonnes = c.colonnes;
@@ -1544,6 +1582,8 @@ async function chargerConfiguration() {
   $("bloc-site").hidden = !col("Site");
   appliquerVersion();
   $("date-faits").type = metaFaits && (metaFaits.type || "").startsWith("DateTime") ? "datetime-local" : "date";
+  $("bloc-plusieurs-jours").hidden = !(col("Date_faits") && S().plusieursJours && !faitsAvecHeure());
+  if (!$("aide-date-faits").dataset.base) $("aide-date-faits").textContent = aideFaitsDefaut();
   const q = metaSig[col("Qualification")];
   choix = (q && q.opts.choices) || [];
   couleurs = (q && q.opts.choiceOptions) || {};
@@ -2506,7 +2546,8 @@ async function passerEnCreation() {
   cocherQualif("");
   initialiserDateFaits(null);
   delete $("aide-date-faits").dataset.base; $("aide-date-faits").classList.remove("alerte-faits");
-  $("aide-date-faits").textContent = "Aujourd'hui par défaut. Modifiez-la si les faits signalés sont antérieurs.";
+  $("aide-date-faits").textContent = aideFaitsDefaut();
+  reinitialiserJours();
   await remplirChamps("q", defsQuestions, () => null);
   appliquerConditions("q", defsQuestions);
   descriptionManuelle = false;
@@ -2583,16 +2624,31 @@ $("btn-effacer").addEventListener("click", () => enFile(async () => {
 ["nom", ...CHAMPS_NOUVEL_ETAB, "description", "site"].forEach(k => $(k).addEventListener("input", () => { modifie = true; }));
 $("site").addEventListener("input", () => { verifierDoublons(); });
 let dateFaitsTouchee = false;   // la date a-t-elle été changée à la main depuis l'ouverture du formulaire ?
-$("date-faits").addEventListener("change", () => { dateFaitsTouchee = true; modifie = true; majDescriptionAuto(); avertirFaitsAnterieurs(); verifierDoublons(); });
+$("date-faits").addEventListener("change", () => { dateFaitsTouchee = true; modifie = true; majDescriptionAuto(); avertirFaitsAnterieurs(); verifierDoublons(); majProposition(); });
+$("plusieurs-jours").addEventListener("change", () => {
+  modifie = true;
+  if ($("plusieurs-jours").checked && !$("date-fin").value && lireDateFaits() != null) $("date-fin").value = jourCle(lireDateFaits() + UN_JOUR);
+  avertirFaitsAnterieurs();
+  if ($("plusieurs-jours").checked) $("date-fin").focus();
+});
+["date-fin", "jours-ouvres"].forEach(id => $(id).addEventListener("change", () => { modifie = true; avertirFaitsAnterieurs(); }));
 function avertirFaitsAnterieurs() {
   const aide = $("aide-date-faits");
   if (!aide.dataset.base) aide.dataset.base = aide.textContent;
   const nouvelle = lireDateFaits(), ref = derniere && jourDesFaits(derniere);
-  const anterieur = dossierId && derniere && nouvelle != null && ref != null && jourFaits(nouvelle) < jourFaits(ref);
-  aide.textContent = anterieur
-    ? `Faits antérieurs à ceux de la version la plus récente (${dateFr(ref, { ...(metaFaits || {}), type: (metaFaits && metaFaits.type) || "Date" })}) : cette version sera rangée à sa date dans l'historique, mais ne deviendra pas la dernière version du dossier.`
-    : aide.dataset.base;
-  aide.classList.toggle("alerte-faits", !!anterieur);
+  // une série « plusieurs jours » qui va jusqu'à l'étape la plus récente (ou au-delà) la remplace : pas d'avertissement
+  const finSerie = joursSuivants().slice(-1)[0];
+  const anterieur = dossierId && derniere && nouvelle != null && ref != null && jourFaits(nouvelle) < jourFaits(ref)
+    && !(finSerie != null && jourCle(finSerie) >= jourCle(ref));
+  const autreJourDossier = dossierId && derniere && nouvelle != null && ref != null && jourFaits(nouvelle) !== jourFaits(ref) && !anterieur;
+  const futur = !anterieur && !autreJourDossier && dateFaitsFuture();
+  aide.textContent = autreJourDossier
+    ? `Ce signalement concerne le ${jourCourt(ref)}. Pour un autre jour, créez plutôt un nouveau signalement (« Autres actions › Reporter sur d'autres jours ») : un dossier par jour.`
+    : anterieur
+    ? `Faits antérieurs à ceux de l'étape la plus récente (${dateFr(ref, { ...(metaFaits || {}), type: (metaFaits && metaFaits.type) || "Date" })}) : cette étape sera rangée à sa date dans l'historique, mais ne deviendra pas la dernière étape du dossier.`
+    : futur ? `Faits à venir : l'étape sera datée du ${jourCourt(lireDateFaits())}, postérieur à aujourd'hui.` : aide.dataset.base;
+  aide.classList.toggle("alerte-faits", !!anterieur || futur || !!autreJourDossier);
+  majAideJours();
 }
 $("description").addEventListener("input", () => appliquerConditions("q", defsQuestions));
 $("qualifs-initiales").addEventListener("change", () => appliquerConditions("q", defsQuestions));
@@ -2865,11 +2921,11 @@ $("alerte-doublon").addEventListener("click", ev => {
   else if (b.id === "btn-annuler-doublon") { doublonConfirme = null; verifierDoublons(); }
 });
 
-function jourDeMobilisation() {
+function jourDeMobilisation(cible, serie) {   // cible : jour (secondes) d'une étape reprise ; serie : jours repris en même temps
   const etabId = etablissementDuFormulaire();
   const avecFaits = !!col("Date_faits");
   // jour du signalement en cours : la date des faits saisie, sinon aujourd'hui
-  const courant = avecFaits && lireDateFaits() != null ? jourFaits(lireDateFaits()) : jourCalendaire(Date.now() / 1000);
+  const courant = cible != null ? jourFaits(cible) : avecFaits && lireDateFaits() != null ? jourFaits(lireDateFaits()) : jourCalendaire(Date.now() / 1000);
   // Seuls comptent les jours antérieurs ou égaux à celui du signalement en cours : des faits saisis
   // après coup pour une date passée ne sont pas numérotés d'après les jours qui les ont suivis.
   const cle = j => String(j).split(/\D+/).filter(Boolean).reverse().join("-");   // « 25/09/2026 » -> « 2026-09-25 »
@@ -2884,6 +2940,7 @@ function jourDeMobilisation() {
     const sec = secondes(val(l, "Date"));   // versions antérieures sans date des faits
     if (sec != null) ajouter(jourCalendaire(sec));
   }
+  if (serie && !signalementEnCoursRas()) for (const t of [lireDateFaits(), ...serie]) if (t != null) ajouter(jourFaits(t));
   return jours.size;
 }
 const mentionMobilisation = n => `(${ordinal(n)} jour de mobilisation)`;
@@ -4499,6 +4556,222 @@ document.addEventListener("keydown", ev => {
   if (ev.key === "Escape" && menuOuvert()) { ev.preventDefault(); fermerMenuDossiers(true); }
 });
 
+
+/* =========================================================
+   Faits sur plusieurs jours (fermeture d'un campus du lundi au vendredi…) — un dossier par jour
+   ---------------------------------------------------------
+   Comme pour le reste du suivi, chaque jour a son propre signalement (dossier) ; ses mises à jour ne portent que sur
+   les nouveautés de ce jour. « Plusieurs jours » crée donc, en plus de l'enregistrement habituel, un signalement par
+   jour suivant (jusqu'au jour indiqué, jours ouvrés seulement si demandé). Un jour qui a déjà un signalement pour
+   l'établissement (même site) en reçoit une mise à jour, si quelque chose change. Le jour de mobilisation de la
+   description est recalculé pour chaque jour. Colonnes Date seulement (pas Date et heure).
+   « Autres actions › Reporter sur d'autres jours » fait de même à partir d'un dossier ouvert, sans le modifier.
+   ========================================================= */
+const UN_JOUR = 86400, MAX_JOURS = 31, LIMITE_FUTUR_JOURS = 366;
+const jourCle = t => new Date(t * 1000).toISOString().slice(0, 10);   // colonne Date : minuit UTC
+const jourCourt = t => new Date(t * 1000).toLocaleDateString("fr-FR", { weekday: "short", day: "2-digit", month: "2-digit", timeZone: "UTC" });
+const aideFaitsDefaut = () => S().faitsFuturs ? "Aujourd'hui par défaut. Modifiez-la si les faits sont antérieurs, ou à venir (fermeture annoncée…)."
+  : "Aujourd'hui par défaut. Modifiez-la si les faits signalés sont antérieurs.";
+const plusieursJoursActif = () => !!col("Date_faits") && S().plusieursJours && !faitsAvecHeure() && $("plusieurs-jours").checked;
+const estWeekEnd = t => [0, 6].includes(new Date(t * 1000).getUTCDay());
+// Jours du « du » au « au » inclus (dates AAAA-MM-JJ), en secondes au format Grist
+function joursEntre(debut, fin, ouvres) {
+  if (!debut || !fin || fin < debut) return [];
+  const res = [];
+  for (let t = Date.parse(debut + "T00:00:00Z") / 1000, n = 0; jourCle(t) <= fin && n < 400; t += UN_JOUR, n++) if (!(ouvres && estWeekEnd(t))) res.push(t);
+  return res;
+}
+// « Plusieurs jours » du formulaire : jours suivant la date des faits, jusqu'à « Jusqu'au »
+function joursSuivants() {
+  if (!plusieursJoursActif()) return [];
+  const debut = lireDateFaits(), fin = $("date-fin").value;
+  return debut == null ? [] : joursEntre(jourCle(debut + UN_JOUR), fin, $("jours-ouvres").checked);
+}
+function erreurJours(l, total, fin, debutCle) {
+  if (!fin) return "Indiquez le dernier jour.";
+  if (fin <= debutCle) return "Le dernier jour doit suivre le premier.";
+  if (total > MAX_JOURS) return `${total} jours : ${MAX_JOURS} au plus en une fois.`;
+  if (!l.length) return "Aucun jour ouvré dans cette période.";
+  if (!S().faitsFuturs && l.some(t => jourCle(t) > valeurLocale(new Date(), false))) return "Les jours postérieurs à aujourd'hui ne sont pas admis pour ce formulaire.";
+  return "";
+}
+function erreurPlusieursJours() {
+  if (!plusieursJoursActif()) return "";
+  const debut = lireDateFaits(); if (debut == null) return "";
+  const e = erreurJours(joursSuivants(), joursSuivants().length + 1, $("date-fin").value, jourCle(debut));
+  return e ? `Plusieurs jours : ${e.charAt(0).toLowerCase()}${e.slice(1)}` : "";
+}
+// Lignes d'un dossier ; signalement d'un établissement pour un jour donné (hors dossier ouvert)
+const versionsDe = d => { const cD = col("Dossier"); return enregistrements.filter(l => (refId(cD && l[cD]) || l.id) === d); };
+function dossierDuJour(etabId, t) {
+  if (!etabId) return null;
+  const k = jourFaits(t), cD = col("Dossier"), par = new Map();
+  for (const l of enregistrements) {
+    if (refId(val(l, "Etablissement")) !== etabId) continue;
+    const d = refId(cD && l[cD]) || l.id;
+    if (d === dossierId) continue;
+    if (!par.has(d)) par.set(d, []);
+    par.get(d).push(l);
+  }
+  for (const [d, ls] of par) {
+    if (!ls.some(l => jourDeLaVersion(l) === k)) continue;
+    const der = [...ls].sort(comparerVersions).pop();
+    if (col("Site") && !memeSite($("site").value, val(der, "Site"))) continue;   // autre site du même établissement
+    return { d, derniere: der };
+  }
+  return null;
+}
+function majAideJours() {
+  if ($("bloc-plusieurs-jours").hidden) return;
+  const actif = $("plusieurs-jours").checked, a = $("aide-jours"), sug = $("suggestion-jours");
+  $("bloc-jusquau").hidden = !actif;
+  const etabId = etablissementDuFormulaire(), choisi = lireDateFaits();
+  // mise à jour d'un dossier alors que l'établissement a des signalements les jours suivants : proposer de les mettre à jour aussi
+  sug.hidden = true;
+  if (!actif && dossierId && etabId && choisi != null) {
+    let fin = null;
+    for (let t = choisi + UN_JOUR, n = 0; n < MAX_JOURS; t += UN_JOUR, n++) {
+      if (dossierDuJour(etabId, t)) fin = t; else if (!estWeekEnd(t)) break;
+    }
+    if (fin) {
+      sug.hidden = false;
+      sug.innerHTML = `Cet établissement a aussi des signalements les jours suivants, jusqu'au ${esc(jourCourt(fin))}. <button type="button" class="lien-texte" id="btn-jusqu-derniere">Leur appliquer aussi cette mise à jour</button>`;
+      $("btn-jusqu-derniere").addEventListener("click", () => { $("plusieurs-jours").checked = true; $("date-fin").value = jourCle(fin); modifie = true; avertirFaitsAnterieurs(); });
+    }
+  }
+  if (!actif) { a.hidden = true; return; }
+  const err = erreurPlusieursJours(), l = joursSuivants();
+  a.hidden = false; a.classList.toggle("err", !!err);
+  if (err) { a.textContent = err; return; }
+  const deja = l.filter(t => dossierDuJour(etabId, t));
+  a.textContent = `${l.length + 1} signalements, un par jour : ${[choisi, ...l].map(jourCourt).join(", ")}${dossierId ? " (le premier est cette mise à jour)" : ""}.` +
+    (deja.length ? ` Déjà signalé${deja.length > 1 ? "s" : ""} ces jours-là, mis à jour : ${deja.map(jourCourt).join(", ")}.` : "");
+}
+function reinitialiserJours() {
+  $("plusieurs-jours").checked = false; $("date-fin").value = ""; $("jours-ouvres").checked = false;
+  $("bloc-jusquau").hidden = true; $("aide-jours").hidden = true; $("suggestion-jours").hidden = true;
+}
+// Réponses du formulaire, au format enregistré (sans établissement, dossier ni date)
+function valeursSaisies(manquants = []) {
+  const valeurs = { ...lireChamps("q", defsQuestions, manquants) }, qualif = lireQualificationInitiale();
+  if (col("Description")) valeurs[col("Description")] = $("description").value.trim();
+  if (col("Site")) valeurs[col("Site")] = $("site").value.trim();
+  if (col("Qualification")) valeurs[col("Qualification")] = Array.isArray(qualif) ? (qualif.length ? ["L", ...qualif] : null) : qualif;
+  return valeurs;
+}
+// Un signalement par jour : nouveau dossier, ou mise à jour du signalement que l'établissement a déjà ce jour-là
+async function reprendreSurJours(etabId, valeurs, jours, origine) {
+  const table = grist.getTable(), cD = col("Description"), cF = col("Date_faits"), cDos = col("Dossier");
+  const creer = [], completer = [], inchanges = [];
+  for (const t of jours) {
+    const v = { ...valeurs, [cF]: t };
+    if (cD && typeof v[cD] === "string" && optionsAuto.mobilisation && MOTIF_MOBILISATION.test(v[cD]))
+      v[cD] = ajouterMobilisation(v[cD], optionsAuto, jourDeMobilisation(t, jours));
+    const f = { ...v, [col("Etablissement")]: etabId };
+    if (col("Date") && !dateParGrist()) f[col("Date")] = Date.now() / 1000;
+    const ex = dossierDuJour(etabId, t);
+    if (ex) {
+      const { [cF]: _, ...sansDate } = v;
+      if (!Object.keys(seulementModifies(champsVersion, sansDate, ex.derniere)).length) { inchanges.push(t); continue; }
+      if (cDos) f[cDos] = ex.d;
+      if (col("Nature")) f[col("Nature")] = NATURE.suivi;
+      if (col("Commentaire")) f[col("Commentaire")] = origine != null ? `Reprise du signalement du ${jourCourt(origine)}.` : "";
+      completer.push({ t, d: ex.d, fields: f });
+    } else {
+      if (col("Nature")) f[col("Nature")] = NATURE.initial;
+      creer.push({ t, fields: f });
+    }
+  }
+  const ids = r => (Array.isArray(r) ? r : [r]).map(x => x && typeof x === "object" ? x.id : x).filter(x => typeof x === "number");
+  let nouveaux = [];
+  if (creer.length) {
+    nouveaux = ids(await etape("Création des signalements des jours suivants", tableId || "réponses", () => table.create(creer.map(x => ({ fields: x.fields })))));
+    nouveaux.forEach(id => idsCreesIci.add(id));
+    if (cDos && nouveaux.length) await etape("Rattachement de chaque signalement à son propre dossier", tableId || "réponses",
+      () => table.update(nouveaux.map(id => ({ id, fields: { [cDos]: id } }))));
+  }
+  if (completer.length) ids(await etape("Mise à jour des signalements des jours suivants", tableId || "réponses",
+    () => table.create(completer.map(x => ({ fields: x.fields }))))).forEach(id => idsCreesIci.add(id));
+  // questions « tableau » : chaque dossier reçoit ses lignes dans la table dédiée
+  const errT = [];
+  for (const d of [...nouveaux, ...completer.map(x => x.d)]) errT.push(...await synchroniserTableaux(d, true));
+  return { jours, crees: nouveaux.length, joursCrees: creer.map(x => x.t), completes: completer.map(x => x.t), inchanges, errT };
+}
+const pluriel = (n, s, p) => `${n} ${n > 1 ? p : s}`;
+const texteSerie = r => !r ? "" : " " + [
+  r.crees ? `${pluriel(r.crees, "signalement créé", "signalements créés")} (${r.joursCrees.map(jourCourt).join(", ")})` : "",
+  r.completes.length ? `${pluriel(r.completes.length, "signalement existant mis à jour", "signalements existants mis à jour")} (${r.completes.map(jourCourt).join(", ")})` : "",
+  r.inchanges.length ? `déjà à jour : ${r.inchanges.map(jourCourt).join(", ")}` : "",
+].filter(Boolean).join(" ; ") + "." + texteErreursTableaux(r.errT || []);
+
+/* ---------- « Reporter sur d'autres jours » ---------- */
+const joursReport = () => joursEntre($("rep-debut").value, $("rep-fin").value, $("rep-ouvres").checked);
+function erreurReport() {
+  const debut = $("rep-debut").value, fin = $("rep-fin").value;
+  if (!debut) return "Indiquez le premier jour.";
+  const jourDossier = derniere && jourDesFaits(derniere) != null ? jourCle(jourDesFaits(derniere)) : null;
+  const l = joursReport().filter(t => jourCle(t) !== jourDossier);
+  if (fin < debut) return "Le dernier jour doit suivre le premier.";
+  return erreurJours(l, l.length, fin, jourCle(Date.parse(debut + "T00:00:00Z") / 1000 - UN_JOUR));
+}
+function majAideReport() {
+  const a = $("rep-aide"), err = erreurReport();
+  a.classList.toggle("err", !!err);
+  if (err) { a.textContent = err; return; }
+  const jourDossier = derniere && jourDesFaits(derniere) != null ? jourCle(jourDesFaits(derniere)) : null;
+  const l = joursReport().filter(t => jourCle(t) !== jourDossier), etabId = refId(val(initiale, "Etablissement"));
+  const deja = l.filter(t => dossierDuJour(etabId, t));
+  a.textContent = `${pluriel(l.length, "jour", "jours")} : ${l.map(jourCourt).join(", ")}.` +
+    (deja.length ? ` Déjà signalé${deja.length > 1 ? "s" : ""} ces jours-là, mis à jour : ${deja.map(jourCourt).join(", ")}.` : "") +
+    (modifie ? " Vos modifications non enregistrées sont reprises dans ces signalements (ce dossier-ci reste inchangé)." : "");
+}
+function ouvrirReport() {
+  if (!dossierId || !derniere || !initiale) return;
+  const ref = jourDesFaits(derniere) ?? Date.parse(valeurLocale(new Date(), false) + "T00:00:00Z") / 1000;
+  $("rep-debut").value = $("rep-fin").value = jourCle(ref + UN_JOUR);
+  $("rep-ouvres").checked = false;
+  statut("rep-statut", "");
+  majAideReport();
+  $("dlg-reporter").showModal(); $("rep-fin").focus();
+}
+["rep-debut", "rep-fin", "rep-ouvres"].forEach(id => $(id).addEventListener("change", () => {
+  if (id === "rep-debut" && $("rep-fin").value < $("rep-debut").value) $("rep-fin").value = $("rep-debut").value;
+  majAideReport();
+}));
+$("rep-annuler").addEventListener("click", () => $("dlg-reporter").close());
+$("rep-ok").addEventListener("click", () => enFile(async () => {
+  const err = erreurReport(); if (err) { statut("rep-statut", err, "err"); return; }
+  const jourDossier = jourDesFaits(derniere) != null ? jourCle(jourDesFaits(derniere)) : null;
+  const jours = joursReport().filter(t => jourCle(t) !== jourDossier);
+  $("rep-ok").disabled = true;
+  try {
+    const r = await reprendreSurJours(refId(val(initiale, "Etablissement")), valeursSaisies([]), jours, jourDesFaits(derniere));
+    $("dlg-reporter").close();
+    const t = texteSerie(r).trim();
+    statut("statut-signalement", t, r.errT.length ? "err" : "ok");
+    confirmer("Signalement reporté", `${t.charAt(0).toUpperCase()}${t.slice(1)}`);
+  } catch (e) { statut("rep-statut", `Échec : ${e.message || e}`, "err"); }
+  finally { $("rep-ok").disabled = false; }
+}));
+
+/* ---------- nouveau signalement : reprendre les réponses du signalement d'un jour précédent ---------- */
+async function reprendreReponses(d) {
+  const der = [...versionsDe(d)].sort(comparerVersions).pop();
+  if (!der) return;
+  cocherQualif(val(der, "Qualification"));
+  if (col("Site") && val(der, "Site")) $("site").value = val(der, "Site");
+  await remplirChamps("q", defsQuestions, def => der[def.colId]);
+  appliquerConditions("q", defsQuestions);
+  descriptionManuelle = false;
+  majDescriptionAuto();
+  if (typeof majCouleur === "function") majCouleur();
+  modifie = true;
+  propositionMasquee = etabCourant ? etabCourant.id : null;
+  majProposition();
+  statut("statut-signalement", `Réponses reprises du dossier n° ${d} (${jourCourt(jourDesFaits(der))}) : modifiez ce qui a changé, puis enregistrez ce nouveau signalement.`, "ok");
+  focusPremiereQuestion();
+}
+
 /* =========================================================
    Signalement : création, puis mise à jour par nouvelle version
    ========================================================= */
@@ -4508,13 +4781,15 @@ async function remplirFormulaire() {
   $("description").value = (ref ? val(ref, "Description") : "") ?? "";
   $("site").value = (ref && col("Site") ? val(ref, "Site") : "") ?? "";
   cocherQualif(ref ? val(ref, "Qualification") : "");
-  // Mise à jour : les nouveaux faits sont datés d'aujourd'hui par défaut ; la date de la version précédente est rappelée
-  initialiserDateFaits(null);
+  // Mise à jour : un dossier par jour ; les nouveautés sont datées par défaut du jour du dossier
   const precedente = ref && col("Date_faits") ? val(ref, "Date_faits") : null;
+  initialiserDateFaits(secondes(precedente) != null ? precedente : null);
   delete $("aide-date-faits").dataset.base; $("aide-date-faits").classList.remove("alerte-faits");
   $("aide-date-faits").textContent = secondes(precedente) != null
-    ? `Date des faits de l'étape précédente : ${dateFr(precedente, { ...(metaFaits || {}), type: (metaFaits && metaFaits.type) || "Date" })}. Aujourd'hui par défaut pour cette mise à jour.`
-    : "Aujourd'hui par défaut. Modifiez-la si les faits signalés sont antérieurs.";
+    ? `Jour de ce signalement. Pour un autre jour, créez un nouveau signalement (« Autres actions › Reporter sur d'autres jours »).`
+    : aideFaitsDefaut();
+  reinitialiserJours();
+  majAideJours();
   await remplirChamps("q", defsQuestions, d => ref ? ref[d.colId] : null);
   $("commentaire").value = "";
   appliquerConditions("q", defsQuestions);
@@ -4586,11 +4861,19 @@ async function enregistrerSignalement(correction = false) {
   if (!dossierId && !modeEtab && !etabCourant && !$("nom").value.trim()) manquants.push("l'établissement");
   if (!$("description").value.trim()) manquants.push("la description");
   if (col("Date_faits") && !$("date-faits").value) manquants.push("la date des faits");
-  if (col("Date_faits") && dateFaitsFuture()) {
+  if (col("Date_faits") && dateFaitsFuture() && !S().faitsFuturs) {
     statut("statut-signalement", "La date des faits ne peut pas être postérieure à aujourd'hui.", "err");
     $("date-faits").setAttribute("aria-invalid", "true"); $("date-faits").focus();
     return;
   }
+  if (col("Date_faits") && lireDateFaits() != null && lireDateFaits() > Date.now() / 1000 + LIMITE_FUTUR_JOURS * UN_JOUR) {
+    statut("statut-signalement", "La date des faits est à plus d'un an : vérifiez-la.", "err");
+    $("date-faits").setAttribute("aria-invalid", "true"); $("date-faits").focus();
+    return;
+  }
+  const erreurJours = !correction ? erreurPlusieursJours() : "";
+  if (erreurJours) { statut("statut-signalement", erreurJours, "err"); $("date-fin").focus(); return; }
+  const jours = correction ? [] : joursSuivants();
   const reponses = lireChamps("q", defsQuestions, manquants);
   const qualif = lireQualificationInitiale();
   if (!qualif || (Array.isArray(qualif) && !qualif.length)) manquants.push("la qualification");
@@ -4673,7 +4956,7 @@ async function enregistrerSignalement(correction = false) {
       // La nouvelle version devient-elle la dernière (faits les plus récents) ? Sinon la table dédiée garde ses lignes.
       const faitsNouveaux = col("Date_faits") ? lireDateFaits() : null, faitsDerniere = derniere ? jourDesFaits(derniere) : null;
       const devientDerniere = faitsNouveaux == null || faitsDerniere == null || faitsNouveaux >= faitsDerniere;
-      if (!change && !(afficherCommentaire() && $("commentaire").value.trim())) {
+      if (!change && !jours.length && !(afficherCommentaire() && $("commentaire").value.trim())) {
         statut("statut-signalement", afficherCommentaire() ? "Modifiez au moins une réponse ou ajoutez un commentaire." : "Modifiez au moins une réponse avant de mettre à jour.", "err");
         return;
       }
@@ -4685,11 +4968,12 @@ async function enregistrerSignalement(correction = false) {
       if (col("Commentaire")) fields[col("Commentaire")] = com;
       const id = idDe(await etape("Création de la nouvelle version", tableId || "réponses", () => table.create({ fields })));
       if (id) idsCreesIci.add(id);
+      const serie = id && jours.length ? await reprendreSurJours(refId(val(initiale, "Etablissement")), valeurs, jours, faitsNouveaux) : null;
       modifie = false;
       $("commentaire").value = "";
       const errT = id ? await synchroniserTableaux(dossierId, devientDerniere) : []; finConfidentiels();
-      statut("statut-signalement", "Mise à jour enregistrée : une nouvelle étape a été ajoutée." + texteErreursTableaux(errT), errT.length ? "err" : "ok");
-      confirmer("Mise à jour enregistrée", `Étape ${versions.length + 1} du dossier n° ${dossierId}${etabCourant ? " (" + etabCourant[E.nom] + ")" : ""}.` + texteErreursTableaux(errT));
+      statut("statut-signalement", "Mise à jour enregistrée : une nouvelle étape a été ajoutée." + texteSerie(serie) + texteErreursTableaux(errT), errT.length ? "err" : "ok");
+      confirmer("Mise à jour enregistrée", `Étape ${versions.length + 1} du dossier n° ${dossierId}${etabCourant ? " (" + etabCourant[E.nom] + ")" : ""}.` + texteSerie(serie) + texteErreursTableaux(errT));
       if (id) { try { await grist.setCursorPos({ rowId: id }); } catch (_) {} }
     } else {
       const etabId = await etablissementPourCreation();
@@ -4701,12 +4985,13 @@ async function enregistrerSignalement(correction = false) {
       if (id) idsCreesIci.add(id);
       if (id && col("Dossier")) await etape("Rattachement du signalement à son propre dossier", tableId || "réponses",
         () => table.update({ id, fields: { [col("Dossier")]: id } }));
+      const serie = id && jours.length ? await reprendreSurJours(etabId, valeurs, jours, lireDateFaits()) : null;
       modifie = false;
       selectionAttendue = id;
       const errT = id ? await synchroniserTableaux(id, true) : []; finConfidentiels();
       statut("statut-signalement", (modeEtab ? "Signalement enregistré." :
-        "Signalement enregistré. Vous pouvez transmettre le lien à l'établissement.") + texteErreursTableaux(errT), errT.length ? "err" : "ok");
-      confirmer("Signalement enregistré", `Dossier n° ${id} créé${etabCourant ? " pour " + etabCourant[E.nom] : ""}.` +
+        "Signalement enregistré. Vous pouvez transmettre le lien à l'établissement.") + texteSerie(serie) + texteErreursTableaux(errT), errT.length ? "err" : "ok");
+      confirmer("Signalement enregistré", `Dossier n° ${id} créé${etabCourant ? " pour " + etabCourant[E.nom] : ""}.` + texteSerie(serie) +
         (modeEtab ? "" : " Vous pouvez transmettre le lien d'accès à l'établissement.") + texteErreursTableaux(errT), !modeEtab);
       try { await grist.setCursorPos({ rowId: id }); } catch (_) {}
       afficherEtablissement();
@@ -5376,6 +5661,7 @@ function majModeSaisie() {
     : (modeEtab ? "Décrivez les faits, puis enregistrez." : "Trois étapes : l'établissement, les faits, puis la description. Un dossier sera créé à l'enregistrement.");
   $("libelle-etape-etab").textContent = maj || modeEtab ? "Établissement" : "Quel établissement est concerné ?";
   $("act-clore").hidden = !(maj && col("Clos"));
+  $("act-reporter").hidden = !(maj && col("Date_faits") && S().plusieursJours && !faitsAvecHeure());
   $("act-clore-titre").textContent = clos ? "Rouvrir le signalement" : "Clore le signalement";
   $("act-clore-texte").textContent = clos ? "La situation reprend" : "La situation est terminée";
   majMarquesModif();
@@ -5399,6 +5685,7 @@ $("liste-actions").addEventListener("keydown", ev => {
 document.addEventListener("click", ev => { if (!$("menu-actions").contains(ev.target)) fermerMenuActions(false); });
 $("act-corriger").addEventListener("click", () => { fermerMenuActions(false); $("btn-corriger").click(); });
 $("act-annuler").addEventListener("click", () => { fermerMenuActions(false); $("btn-effacer").click(); });
+$("act-reporter").addEventListener("click", () => { fermerMenuActions(false); ouvrirReport(); });
 $("act-clore").addEventListener("click", () => { fermerMenuActions(false); enFile(basculerClos); });
 async function basculerClos() {
   if (!col("Clos") || !derniere) return;
@@ -5493,17 +5780,26 @@ function majProposition() {
   if (!liste.length) { bloc.innerHTML = ""; return; }
   const ligne = x => {
     const debut = jourDesFaits(x.initiale), q = listeQualif(val(x.l, "Qualification")).join(", ");
-    return `Dossier n° ${x.d}${q ? " · " + q : ""}${debut != null ? " · depuis le " + jourFaits(debut) : ""} · ${x.n > 1 ? `${x.n - 1} mise${x.n > 2 ? "s" : ""} à jour` : "aucune mise à jour"}`;
+    return `Dossier n° ${x.d}${q ? " · " + q : ""}${debut != null ? " · du " + jourFaits(debut) : ""} · ${x.n > 1 ? `${x.n - 1} mise${x.n > 2 ? "s" : ""} à jour` : "aucune mise à jour"}`;
   };
-  bloc.innerHTML = `<p class="prop-titre">${liste.length > 1 ? `${liste.length} signalements sont` : "Un signalement est"} déjà en cours pour cet établissement</p>
-    <ul>${liste.slice(0, 3).map(x => `<li><span>${esc(ligne(x))}</span>
-      <button type="button" class="maj-plein petit" data-actualiser="${x.d}">Actualiser ce signalement</button></li>`).join("")}</ul>
-    <p class="note">S'il s'agit des mêmes faits, actualisez-le plutôt que d'en créer un nouveau.</p>
-    <button type="button" class="maj-contour petit" data-autre-evenement="1">Non, c'est un autre événement</button>`;
+  // Un dossier par jour : celui du même jour s'actualise ; celui d'un jour précédent sert de point de départ
+  const jour = jourDuFormulaire(), memeJour = liste.filter(x => versionsDe(x.d).some(l => jourDeLaVersion(l) === jour)), avant = liste.filter(x => !memeJour.includes(x));
+  bloc.innerHTML = memeJour.length
+    ? `<p class="prop-titre">${memeJour.length > 1 ? `${memeJour.length} signalements existent` : "Un signalement existe"} déjà pour cet établissement ce jour-là</p>
+      <ul>${memeJour.slice(0, 3).map(x => `<li><span>${esc(ligne(x))}</span>
+        <button type="button" class="maj-plein petit" data-actualiser="${x.d}">Actualiser ce signalement</button></li>`).join("")}</ul>
+      <p class="note">S'il s'agit des mêmes faits, actualisez-le plutôt que d'en créer un nouveau.</p>
+      <button type="button" class="maj-contour petit" data-autre-evenement="1">Non, c'est un autre événement</button>`
+    : `<p class="prop-titre">${avant.length > 1 ? `${avant.length} signalements récents` : "Un signalement récent"} pour cet établissement</p>
+      <ul>${avant.slice(0, 3).map(x => `<li><span>${esc(ligne(x))}</span>
+        <button type="button" class="maj-plein petit" data-reprendre="${x.d}">Reprendre ses réponses</button></li>`).join("")}</ul>
+      <p class="note">Un signalement par jour : celui du ${esc(jour)} sera un nouveau dossier. Si la situation continue, reprenez les réponses du précédent, puis modifiez ce qui a changé.</p>
+      <button type="button" class="maj-contour petit" data-autre-evenement="1">Partir d'un formulaire vide</button>`;
 }
 $("proposition-encours").addEventListener("click", ev => {
   const b = ev.target.closest("button"); if (!b) return;
   if (b.dataset.actualiser) { modifie = modifieVisa = false; ouvrirDepuisListe(+b.dataset.actualiser); }
+  else if (b.dataset.reprendre) enFile(() => reprendreReponses(+b.dataset.reprendre));
   else if (b.dataset.autreEvenement) {
     propositionMasquee = etabCourant ? etabCourant.id : null;
     // vaut confirmation qu'il s'agit de faits distincts : l'alerte « même jour » ne redemande pas
