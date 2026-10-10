@@ -1570,30 +1570,41 @@ const ROLES_SIGNALEMENT = [
   ["Site", [/^site/, /batiment|campus/], c => /^(Text|Choice)/.test(c.type) && !c.formule],
   ["Clos", [/^clos/, /cloture|termine/], c => c.type === "Bool" && !c.formule],
 ];
-function reconnaitreColonnesSignalement(meta, tid = tableId) {
+// Cellule renseignée (une référence vide arrive sous la forme ["R", table, 0])
+const celluleRemplie = v => v != null && v !== "" && v !== 0 && v !== false
+  && !(Array.isArray(v) && (v[0] === "L" ? v.length <= 1 : v[0] === "R" ? !v[2] : !v.length));
+function reconnaitreColonnesSignalement(meta, tid = tableId, lignes = enregistrements) {
   const res = {}, pris = new Set(), cols = Object.values(meta || {}).filter(c => c && c.colId && c.colId !== "id" && c.colId !== "manualSort" && !c.colId.startsWith("gristHelper"));
   const noms = c => [normColonne(c.colId), normColonne(c.libelle)].filter(Boolean);
-  // 1) identifiant exact et type compatible ; 2) identifiant ou libellé approchant
+  const remplie = colId => (lignes || []).some(l => celluleRemplie(l[colId]));
+  // 1) identifiant exact et type compatible ; 2) identifiant ou libellé approchant.
+  // Une colonne d'identifiant exact mais entièrement vide (ajoutée après coup, alors que les signalements sont
+  // saisis dans une autre colonne : « Etablissement » vide à côté de « Etablissement_ESR ») cède la place à une
+  // colonne approchante remplie.
   for (const [role, , ok] of ROLES_SIGNALEMENT) { const c = (meta || {})[role]; if (c && ok(c, tid)) { res[role] = role; pris.add(role); } }
   for (const [role, motifs, ok] of ROLES_SIGNALEMENT) {
-    if (res[role]) continue;
+    if (res[role] && (!lignes || !lignes.length || remplie(res[role]))) continue;
+    let choix = null;
     for (const m of motifs) {
       const cands = cols.filter(c => !pris.has(c.colId) && ok(c, tid) && noms(c).some(n => m.test(n)));
       // date de saisie : la colonne remplie par Grist (NOW()) d'abord
       if (role === "Date") cands.sort((a, b) => (/NOW\(\)/.test(b.texteFormule) ? 1 : 0) - (/NOW\(\)/.test(a.texteFormule) ? 1 : 0));
-      if (cands.length) { res[role] = cands[0].colId; pris.add(cands[0].colId); break; }
+      const pleine = cands.find(c => remplie(c.colId));
+      if (pleine) { choix = pleine; break; }
+      if (!choix && !res[role] && cands.length) choix = cands[0];
     }
+    if (choix) { if (res[role]) pris.delete(res[role]); res[role] = choix.colId; pris.add(choix.colId); }
   }
   return res;
 }
 
 
 // ⚙ : ce que le widget utilise réellement (utile pour comprendre un affichage inattendu)
-const VERSION_WIDGET = "10/10/2026 19 h 30";
+const VERSION_WIDGET = "10/10/2026 20 h";
 function remplirDiagnostic() {
   const LIB = { Etablissement: "Établissement", Dossier: "Dossier", Date_faits: "Date des faits", Date: "Date de saisie", Qualification: "Qualification",
     Description: "Description", Nature: "Nature", Commentaire: "Commentaire", Auteur: "Auteur", Site: "Site / bâtiment", Clos: "Clos" };
-  const rempli = v => v != null && v !== "" && v !== 0 && !(Array.isArray(v) && (v[0] === "L" ? v.length <= 1 : !v.length));
+  const rempli = celluleRemplie;
   const ligne = k => {
     const c = col(k), m = c && metaSig[c], origine = mappings && typeof mappings[k] === "string" ? "associée dans le panneau" : "reconnue";
     // lignes renseignées et exemple de valeur reçue (une référence invalide arrive sous forme de texte, par exemple)
@@ -1606,12 +1617,14 @@ function remplirDiagnostic() {
       : `<span style="color:var(--erreur)">non trouvée</span>`}</li>`;
   };
   const avec = enregistrements.filter(l => refId(val(l, "Etablissement")) || texteEtabBrut(l)), perdus = avec.filter(l => !etabDeLigne(l));
+  const ecartees = Object.keys(LIB).filter(k => col(k) && col(k) !== k && metaSig[k] && !(mappings && typeof mappings[k] === "string") && !enregistrements.some(l => celluleRemplie(l[k])));
   const cE = col("Etablissement"), refOk = cE && metaSig[cE] && metaSig[cE].type === `Ref:${ETAB.table}`;
   const aRattacher = refOk ? enregistrements.filter(l => texteEtabBrut(l) && etabDeLigne(l)) : [];
   const textes = enregistrements.filter(l => texteEtabBrut(l)).length;
   $("cfg-diagnostic").innerHTML = `<p style="margin:0 0 4px">Widget : version du ${esc(VERSION_WIDGET)} · table des réponses <b>${esc(tableId || "?")}</b> · formulaire ${formulaireActif ? `« ${esc(formulaireActif.nom)} » (publié)` : "<b>aucun formulaire publié</b> pour cette table"}.</p>
     <p style="margin:0 0 4px">Référentiel : <b>${esc(ETAB.table)}</b> (${esc(ETAB.origineTable || "table par défaut")}), ${etabs.length} établissement(s) lus${avec.length ? ` ; ${avec.length - perdus.length} signalement(s) sur ${avec.length} y retrouvent leur établissement` : ` ; <span style="color:var(--erreur)">aucune des ${enregistrements.length} ligne(s) reçues par le widget ne porte un établissement valide</span>`}.</p>
     <ul style="margin:0;padding-left:18px">${Object.keys(LIB).map(ligne).join("")}</ul>
+    ${ecartees.length ? `<p style="margin:8px 0 4px">Colonne${ecartees.length > 1 ? "s" : ""} ${ecartees.map(k => `« ${esc(k)} »`).join(", ")} de la table « ${esc(tableId)} » ignorée${ecartees.length > 1 ? "s" : ""} car vide${ecartees.length > 1 ? "s" : ""} : les signalements sont lus dans ${ecartees.map(k => `« ${esc(col(k))} »`).join(", ")}. Vous pouvez ${ecartees.length > 1 ? "les" : "la"} supprimer dans Grist si personne ne s'en sert.</p>` : ""}
     ${textes ? `<p style="margin:8px 0 4px">${textes} signalement(s) portent l'établissement sous forme de texte (cellules en rouge dans Grist) : le widget affiche ce texte, mais ces signalements ne sont pas reliés à la fiche de l'établissement (point de situation, filtres).
       ${aRattacher.length ? `${aRattacher.length} d'entre eux correspondent à un établissement de « ${esc(ETAB.table)} » par leur nom ou leur UAI.</p>
       <button type="button" class="secondaire" id="btn-rattacher-etabs">Rattacher ${aRattacher.length} signalement(s) à leur établissement</button>` : refOk ? "Aucun ne correspond exactement à un nom ou un UAI du référentiel : corrigez-les dans Grist.</p>" : `La colonne « ${esc(cE || "?")} » doit être une référence vers « ${esc(ETAB.table)} » pour les rattacher.</p>`}` : ""}`;
@@ -5734,7 +5747,8 @@ function afficherCartes() {
     const n = nb.get(x.l.id) || 1, clos = !!(col("Clos") && val(x.der, "Clos"));
     const site = col("Site") ? String(val(x.der, "Site") || "").trim() : "";
     const d = secondes(val(x.der, "Date")) != null ? dateFr(val(x.der, "Date"), { ...(metaDate || {}), type: "Date" }) : "";
-    const meta = [!modeEtab && x.e[E.commune], `n° ${x.l.id}`, site && `site « ${site} »`, d && `dernière saisie le ${d}`,
+    const jf = !d && secondes(val(x.der, "Date_faits")) != null ? dateFr(val(x.der, "Date_faits"), { type: "Date" }) : "";
+    const meta = [!modeEtab && x.e[E.commune], `n° ${x.l.id}`, site && `site « ${site} »`, d ? `dernière saisie le ${d}` : jf && `faits du ${jf}`,
       n > 1 ? `${n - 1} mise${n > 2 ? "s" : ""} à jour` : "aucune mise à jour"].filter(v => v && typeof v !== "object");
     const extrait = String(val(x.der, "Description") || "").replace(/\*\*|==/g, "").replace(/\s+/g, " ").slice(0, 140);
     const qualifs = listeQualif(val(x.der, "Qualification")).map(v => `<span class="pastille"${styleQ(v)}>${esc(v)}</span>`).join("");
