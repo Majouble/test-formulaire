@@ -475,6 +475,8 @@
       <p class="note" id="cfg-table-etab-info"></p></div>
     <p class="bandeau" id="cfg-desc-formulaire" hidden></p>
     <div id="cfg-bloc-description">
+    <h2>Colonnes et référentiel utilisés</h2>
+    <div class="note" id="cfg-diagnostic" style="margin:0 0 6px"></div>
     <h2>Pré-remplissage de la description</h2>
     <p class="note">La description est rédigée à partir des réponses saisies plus haut dans le formulaire. Ces réglages sont enregistrés dans la table Parametres et s'appliquent à tous les utilisateurs du document.</p>
     <label class="case"><input type="checkbox" id="cfg-actif"> Pré-remplir la description</label>
@@ -1569,6 +1571,22 @@ function reconnaitreColonnesSignalement(meta, tid = tableId) {
   return res;
 }
 
+
+// ⚙ : ce que le widget utilise réellement (utile pour comprendre un affichage inattendu)
+const VERSION_WIDGET = "10/10/2026 17 h";
+function remplirDiagnostic() {
+  const LIB = { Etablissement: "Établissement", Dossier: "Dossier", Date_faits: "Date des faits", Date: "Date de saisie", Qualification: "Qualification",
+    Description: "Description", Nature: "Nature", Commentaire: "Commentaire", Auteur: "Auteur", Site: "Site / bâtiment", Clos: "Clos" };
+  const ligne = k => {
+    const c = col(k), m = c && metaSig[c], origine = mappings && typeof mappings[k] === "string" ? "associée dans le panneau" : "reconnue";
+    return `<li>${LIB[k]} : ${c ? `<b>${esc(c)}</b>${m ? ` <span class="note">(${esc(String(m.type).replace(/^Ref:/, "référence vers "))}, ${origine})</span>` : ""}` : `<span style="color:var(--erreur)">non trouvée</span>`}</li>`;
+  };
+  const avec = enregistrements.filter(l => refId(val(l, "Etablissement"))), perdus = avec.filter(l => !etabDe(refId(val(l, "Etablissement"))));
+  $("cfg-diagnostic").innerHTML = `<p style="margin:0 0 4px">Widget : version du ${esc(VERSION_WIDGET)} · table des réponses <b>${esc(tableId || "?")}</b> · formulaire ${formulaireActif ? `« ${esc(formulaireActif.nom)} » (publié)` : "<b>aucun formulaire publié</b> pour cette table"}.</p>
+    <p style="margin:0 0 4px">Référentiel : <b>${esc(ETAB.table)}</b> (${esc(ETAB.origineTable || "table par défaut")}), ${etabs.length} établissement(s) lus${avec.length ? ` ; ${avec.length - perdus.length} signalement(s) sur ${avec.length} y retrouvent leur établissement` : ""}.</p>
+    <ul style="margin:0;padding-left:18px">${Object.keys(LIB).map(ligne).join("")}</ul>`;
+}
+
 async function chargerConfiguration() {
   const alertes = [];
   metaSig = {};
@@ -1600,7 +1618,12 @@ async function chargerConfiguration() {
       if (brouillons.length) { const i = alertes.findIndex(a => a.startsWith("Ce widget est relié à la table")); if (i >= 0) alertes.splice(i, 1); }
       if (brouillons.length) alertes.unshift(`Le formulaire « ${brouillons[0].nom} » de la table « ${tableId} » n'est pas encore publié : publiez-le dans l'administration des formulaires pour qu'il s'affiche ici.`);
     }
-    const essentiels = [["Etablissement", "l'établissement (référence vers le référentiel)"], ["Description", "la description"], ["Qualification", "la qualification"]].filter(([k]) => !col(k));
+    let essentiels = [["Etablissement", "l'établissement (référence vers le référentiel)"], ["Description", "la description"], ["Qualification", "la qualification"]].filter(([k]) => !col(k));
+    if (!col("Etablissement")) {
+      const proche = Object.values(metaSig).find(c => /etablissement|(^|_)etab(_|$)|uai/.test(normColonne(`${c.colId} ${c.libelle}`)) && !/^Ref:/.test(c.type));
+      if (proche) essentiels = essentiels.filter(([k]) => k !== "Etablissement");
+      if (proche) alertes.push(`La colonne « ${proche.libelle || proche.colId} » (${proche.colId}) est de type ${String(proche.type).split(":")[0]} : pour relier chaque signalement à son établissement, elle doit être de type Référence vers le référentiel (par exemple Etablissement_ESR). Dans Grist : en-tête de la colonne › Options de la colonne › Type : Référence.`);
+    }
     if (essentiels.length && mappings) alertes.push(`Colonne${essentiels.length > 1 ? "s" : ""} introuvable${essentiels.length > 1 ? "s" : ""} dans la table « ${tableId} » : ${essentiels.map(x => x[1]).join(", ")}. `
       + `Nommez-la${essentiels.length > 1 ? "s" : ""} « ${essentiels.map(x => x[0]).join(" », « ")} », ou associez-la${essentiels.length > 1 ? "s" : ""} dans le panneau de droite (« Données de la vue »).`);
   } catch (e) { console.warn("Métadonnées illisibles", e); }
@@ -1702,8 +1725,16 @@ async function determinerTableEtab() {
 }
 
 let alerteHorloge = "";   // conseil technique, affiché aux agents seulement
+// Signalements dont la référence ne correspond à aucune ligne du référentiel lu (autre table visée, réglage ⚙ forcé…)
+function alerteLiensEtab() {
+  if (!col("Etablissement") || !etabs.length || !enregistrements.length) return "";
+  const avec = enregistrements.filter(l => refId(val(l, "Etablissement")));
+  const perdus = avec.filter(l => !etabDe(refId(val(l, "Etablissement"))));
+  return perdus.length > avec.length / 2 ? `${perdus.length} signalement(s) sur ${avec.length} renvoient à des établissements absents de la table « ${ETAB.table} » : la colonne « ${col("Etablissement")} » vise sans doute une autre table. Vérifiez ⚙ Réglages › « Colonnes et référentiel utilisés ».` : "";
+}
 function finaliserReferentiel(err, alertes) {
   const liste = [...alertes];
+  const liens = alerteLiensEtab(); if (liens && !modeEtab) liste.push(liens);
   if (alerteTableRef && !modeEtab) liste.push(alerteTableRef);
   if (err) liste.push(`Table « ${ETAB.table} » inaccessible (${err.message || err}).`);
   $("alerte").textContent = liste.join(" ");
@@ -3244,6 +3275,7 @@ function ouvrirConfig() {
   $("cfg-positifs").checked = !!o.nombresPositifs;
   remplirChoixFormulaire();
   remplirVersionConfig();
+  remplirDiagnostic();
   remplirBornesConfig();
   const descForm = !!descriptionDuFormulaire();
   $("cfg-bloc-description").hidden = descForm;
