@@ -1214,6 +1214,7 @@ let colsParDefaut = {};
 const col = cle => (mappings && typeof mappings[cle] === "string") ? mappings[cle] : (colsParDefaut[cle] || null);
 const val = (ligne, cle) => (ligne && col(cle)) ? ligne[col(cle)] : null;
 let indexEtabs = new Map();
+let rolesAdmin = {};   // rôle -> colonne associée dans l'administration (formulaire publié)
 const etabDe = id => indexEtabs.get(id) || null;
 /* Établissement d'un signalement. Une cellule en rouge dans Grist (texte qui ne correspond à aucune ligne du référentiel,
    par exemple après conversion d'une colonne texte en référence) arrive sous forme de texte : l'établissement est alors
@@ -1289,7 +1290,7 @@ grist.onRecords((recs, m) => enFile(async () => {
 let dernierCurseur = null;   // identifiant de la dernière ligne reçue, ou "new" pour la ligne d'ajout
 
 grist.onRecord(rec => enFile(async () => {
-  if (!rec || !mappings) return;
+  if (!rec || (!mappings && !Object.keys(colsParDefaut).length)) return;
   const premiereSelection = !curseurInitialVu; curseurInitialVu = true;
   const r = enregistrements.find(x => x.id === rec.id) || rec;
   const d = refId(col("Dossier") && r[col("Dossier")]) || r.id;
@@ -1577,21 +1578,25 @@ function reconnaitreColonnesSignalement(meta, tid = tableId, lignes = enregistre
   const res = {}, pris = new Set(), cols = Object.values(meta || {}).filter(c => c && c.colId && c.colId !== "id" && c.colId !== "manualSort" && !c.colId.startsWith("gristHelper"));
   const noms = c => [normColonne(c.colId), normColonne(c.libelle)].filter(Boolean);
   const remplie = colId => (lignes || []).some(l => celluleRemplie(l[colId]));
-  // 1) identifiant exact et type compatible ; 2) identifiant ou libellé approchant.
-  // Une colonne d'identifiant exact mais entièrement vide (ajoutée après coup, alors que les signalements sont
-  // saisis dans une autre colonne : « Etablissement » vide à côté de « Etablissement_ESR ») cède la place à une
-  // colonne approchante remplie.
-  for (const [role, , ok] of ROLES_SIGNALEMENT) { const c = (meta || {})[role]; if (c && ok(c, tid)) { res[role] = role; pris.add(role); } }
+  // colonnes des questions du formulaire publié (tableau « Détail des sites »…) : jamais prises pour un rôle par approximation
+  const questions = new Set(formulaireActif && tid === tableId ? (formulaireActif.conf.blocs || []).map(b => b.colonne).filter(Boolean) : []);
+  // 1) identifiant exact et type compatible ; 2) identifiant ou libellé approchant (premier motif qui trouve une colonne,
+  //    la colonne remplie d'abord). Une colonne d'identifiant exact mais entièrement vide, ajoutée après coup alors que
+  //    les signalements sont saisis ailleurs (« Etablissement » vide à côté de « Etablissement_ESR »), cède la place à
+  //    une colonne approchante remplie.
+  const exacts = new Set();
+  for (const [role, , ok] of ROLES_SIGNALEMENT) { const c = (meta || {})[role]; if (c && ok(c, tid)) { res[role] = role; pris.add(role); exacts.add(role); } }
   for (const [role, motifs, ok] of ROLES_SIGNALEMENT) {
     if (res[role] && (!lignes || !lignes.length || remplie(res[role]))) continue;
     let choix = null;
     for (const m of motifs) {
-      const cands = cols.filter(c => !pris.has(c.colId) && ok(c, tid) && noms(c).some(n => m.test(n)));
+      const cands = cols.filter(c => !pris.has(c.colId) && !questions.has(c.colId) && ok(c, tid) && noms(c).some(n => m.test(n)));
+      if (!cands.length) continue;
       // date de saisie : la colonne remplie par Grist (NOW()) d'abord
       if (role === "Date") cands.sort((a, b) => (/NOW\(\)/.test(b.texteFormule) ? 1 : 0) - (/NOW\(\)/.test(a.texteFormule) ? 1 : 0));
       const pleine = cands.find(c => remplie(c.colId));
-      if (pleine) { choix = pleine; break; }
-      if (!choix && !res[role] && cands.length) choix = cands[0];
+      if (exacts.has(role)) { if (pleine) { choix = pleine; break; } continue; }   // n'écarter l'identifiant exact que pour une colonne remplie
+      choix = pleine || cands[0]; break;
     }
     if (choix) { if (res[role]) pris.delete(res[role]); res[role] = choix.colId; pris.add(choix.colId); }
   }
@@ -1600,13 +1605,13 @@ function reconnaitreColonnesSignalement(meta, tid = tableId, lignes = enregistre
 
 
 // ⚙ : ce que le widget utilise réellement (utile pour comprendre un affichage inattendu)
-const VERSION_WIDGET = "10/10/2026 20 h";
+const VERSION_WIDGET = "10/10/2026 22 h";
 function remplirDiagnostic() {
   const LIB = { Etablissement: "Établissement", Dossier: "Dossier", Date_faits: "Date des faits", Date: "Date de saisie", Qualification: "Qualification",
     Description: "Description", Nature: "Nature", Commentaire: "Commentaire", Auteur: "Auteur", Site: "Site / bâtiment", Clos: "Clos" };
   const rempli = celluleRemplie;
   const ligne = k => {
-    const c = col(k), m = c && metaSig[c], origine = mappings && typeof mappings[k] === "string" ? "associée dans le panneau" : "reconnue";
+    const c = col(k), m = c && metaSig[c], origine = mappings && typeof mappings[k] === "string" ? "associée dans le panneau de Grist" : rolesAdmin[k] ? "associée dans l'administration" : "reconnue d'après son nom";
     // lignes renseignées et exemple de valeur reçue (une référence invalide arrive sous forme de texte, par exemple)
     const vals = c ? enregistrements.map(l => l[c]).filter(rempli) : [];
     const ex = vals.length ? JSON.stringify(vals[vals.length - 1]).slice(0, 60) : "";
@@ -1647,8 +1652,6 @@ async function chargerConfiguration() {
   // et non plus leur somme. Le référentiel, le plus lourd, est attendu à part (voir plus bas).
   promesseMeta = null;
   lireMeta().catch(() => {});
-  await determinerTableEtab();
-  const pEtabs = chargerEtabs().then(() => null, e => e);
   const pProfil = chargerProfil();
   const pReglages = chargerReglages();
   try {
@@ -1664,6 +1667,19 @@ async function chargerConfiguration() {
     }
     // Colonnes non associées dans le panneau de Grist : reconnues d'après leur identifiant, leur libellé et leur type
     colsParDefaut = reconnaitreColonnesSignalement(metaSig);
+    // Colonnes associées dans l'administration (« Colonnes de la table des réponses ») : elles priment sur la reconnaissance
+    rolesAdmin = {};
+    const rc = formulaireActif && formulaireActif.conf.roles;
+    if (rc && typeof rc === "object") {
+      for (const [r, c] of Object.entries(rc)) {
+        if (c === "") { rolesAdmin[r] = ""; delete colsParDefaut[r]; }
+        else if (typeof c === "string" && metaSig[c]) { rolesAdmin[r] = c; colsParDefaut[r] = c; }
+        else if (typeof c === "string") alertes.push(`La colonne « ${c} » associée dans l'administration des formulaires n'existe plus dans la table « ${tableId} » : choisissez-en une autre (panneau « Formulaire » › « Colonnes de la table des réponses »), puis publiez.`);
+      }
+      // une colonne associée à un rôle n'en joue pas un autre par reconnaissance
+      const imposees = new Set(Object.values(rolesAdmin).filter(Boolean));
+      for (const r of Object.keys(colsParDefaut)) if (!(r in rolesAdmin) && imposees.has(colsParDefaut[r])) delete colsParDefaut[r];
+    }
     // Formulaire de cette table encore jamais publié : le dire plutôt que d'afficher l'ancien fonctionnement sans explication
     if (!formulaireActif) {
       const brouillons = formulairesDispo.filter(f => !(typeof f.publie === "string" && f.publie.trim()));
@@ -1677,8 +1693,10 @@ async function chargerConfiguration() {
       if (proche) alertes.push(`La colonne « ${proche.libelle || proche.colId} » (${proche.colId}) est de type ${String(proche.type).split(":")[0]} : pour relier chaque signalement à son établissement, elle doit être de type Référence vers le référentiel (par exemple Etablissement_ESR). Dans Grist : en-tête de la colonne › Options de la colonne › Type : Référence.`);
     }
     if (essentiels.length) alertes.push(`Colonne${essentiels.length > 1 ? "s" : ""} introuvable${essentiels.length > 1 ? "s" : ""} dans la table « ${tableId} » : ${essentiels.map(x => x[1]).join(", ")}. `
-      + `Nommez-la${essentiels.length > 1 ? "s" : ""} « ${essentiels.map(x => x[0]).join(" », « ")} », ou associez-la${essentiels.length > 1 ? "s" : ""} dans le panneau de droite (« Données de la vue »).`);
+      + `Associez-la${essentiels.length > 1 ? "s" : ""} dans l'administration des formulaires (panneau « Formulaire » › « Colonnes de la table des réponses »), puis publiez.`);
   } catch (e) { console.warn("Métadonnées illisibles", e); }
+  await determinerTableEtab();   // après les rôles : la colonne de l'établissement désigne le référentiel
+  const pEtabs = chargerEtabs().then(() => null, e => e);
 
   document.querySelectorAll("[data-libelle]").forEach(el => {
     if (!el.dataset.defaut) el.dataset.defaut = el.textContent;
@@ -4407,7 +4425,7 @@ function valeursDisponibles(f) {
 function majFiltre() {
   listeChampsFiltre = champsFiltrables();
   // Filtre sur une colonne disparue (associations modifiées) : retiré
-  if (mappings && Object.keys(metaSig).length) filtres = filtres.filter(f => champDe(f) || (f.colonne.startsWith("e:") && !etabsCharges));
+  if (Object.keys(metaSig).length) filtres = filtres.filter(f => champDe(f) || (f.colonne.startsWith("e:") && !etabsCharges));
   // Pastilles des filtres
   $("filtres-actifs").innerHTML = filtres.map((f, i) => `<span class="puce-filtre${filtreEffectif(f) ? "" : " inactive"}">` +
     `<button type="button" class="puce-libelle" data-i="${i}" aria-expanded="${filtreOuvert === f}" aria-controls="panneau-filtre" title="${esc(resumeFiltre(f))}">${esc(resumeFiltre(f, true))} ▾</button>` +
@@ -4979,7 +4997,7 @@ async function enregistrerSignalement(correction = false) {
     const d = val(derniere, "Date_faits");
     if (secondes(d) != null) { initialiserDateFaits(d); majDescriptionAuto(); }
   }
-  if (!mappings || !col("Etablissement")) { statut("statut-signalement", "Associez d'abord les colonnes du widget.", "err"); return; }
+  if (!col("Etablissement")) { statut("statut-signalement", `Colonne de l'établissement introuvable dans la table « ${tableId || "?"} » : voir ⚙ Réglages › « Colonnes et référentiel utilisés ».`, "err"); return; }
   const manquants = [];
   if (!dossierId && !modeEtab && !etabCourant && !$("nom").value.trim()) manquants.push("l'établissement");
   if (!$("description").value.trim()) manquants.push("la description");
