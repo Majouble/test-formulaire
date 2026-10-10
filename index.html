@@ -1534,10 +1534,45 @@ async function verifierFormulairePublie() {
 setInterval(() => { if (!document.hidden) verifierFormulairePublie().catch(() => {}); }, 31000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) verifierFormulairePublie().catch(() => {}); });
 
+
+/* ---------- Rôles des colonnes de la table des réponses ----------
+   Sans association dans le panneau de Grist, chaque rôle (établissement, dossier, date des faits…) prend la colonne
+   du même identifiant, sinon une colonne d'identifiant ou de libellé approchant et de type compatible :
+   « Etablissement_ESR » (référence), « Date des faits », « Qualification du signalement »… */
+const ROLES_SIGNALEMENT = [
+  ["Dossier", [/(^|_)dossier(_|$)/, /signalement_?initial/], (c, t) => c.type === `Ref:${t}`],
+  ["Etablissement", [/etablissement/, /(^|_)etab(_|$)/, /structure|universite|ecole|college|lycee/], (c, t) => /^Ref:/.test(c.type) && c.type !== `Ref:${t}`],
+  ["Date_faits", [/faits?(_|$)/, /date_?(de_?l_?)?evenement/], c => /^(Date|DateTime)/.test(c.type) && !c.formule],
+  ["Date", [/^date_?(de_?)?(saisie|creation|version)/, /cree_?le|horodat|creation/, /^date$/], c => /^(DateTime|Date)/.test(c.type)],
+  ["Qualification", [/qualif/, /categorie_?(du_?)?(signalement|evenement)/, /type_?(d_?)?evenement/], c => /^(Choice|ChoiceList|Text)/.test(c.type) && !c.formule],
+  ["Description", [/^description/, /description/, /recit|resume_?des_?faits/], c => /^Text/.test(c.type) && !c.formule],
+  ["Nature", [/^nature$/, /nature_?(du_?)?(signalement|version|saisie)/], c => /^(Choice|Text)/.test(c.type) && !c.formule],
+  ["Commentaire", [/^commentaire/, /commentaire/], c => /^Text/.test(c.type) && !c.formule],
+  ["Auteur", [/^auteur/, /saisi_?par|redacteur|createur/], () => true],
+  ["Site", [/^site/, /batiment|campus/], c => /^(Text|Choice)/.test(c.type) && !c.formule],
+  ["Clos", [/^clos/, /cloture|termine/], c => c.type === "Bool" && !c.formule],
+];
+function reconnaitreColonnesSignalement(meta, tid = tableId) {
+  const res = {}, pris = new Set(), cols = Object.values(meta || {}).filter(c => c && c.colId && c.colId !== "id" && c.colId !== "manualSort" && !c.colId.startsWith("gristHelper"));
+  const noms = c => [normColonne(c.colId), normColonne(c.libelle)].filter(Boolean);
+  // 1) identifiant exact et type compatible ; 2) identifiant ou libellé approchant
+  for (const [role, , ok] of ROLES_SIGNALEMENT) { const c = (meta || {})[role]; if (c && ok(c, tid)) { res[role] = role; pris.add(role); } }
+  for (const [role, motifs, ok] of ROLES_SIGNALEMENT) {
+    if (res[role]) continue;
+    for (const m of motifs) {
+      const cands = cols.filter(c => !pris.has(c.colId) && ok(c, tid) && noms(c).some(n => m.test(n)));
+      // date de saisie : la colonne remplie par Grist (NOW()) d'abord
+      if (role === "Date") cands.sort((a, b) => (/NOW\(\)/.test(b.texteFormule) ? 1 : 0) - (/NOW\(\)/.test(a.texteFormule) ? 1 : 0));
+      if (cands.length) { res[role] = cands[0].colId; pris.add(cands[0].colId); break; }
+    }
+  }
+  return res;
+}
+
 async function chargerConfiguration() {
   const alertes = [];
   metaSig = {};
-  if (!mappings) alertes.push("Associez les colonnes du widget à celles de la table (panneau de droite, « Données de la vue »).");
+  if (!mappings) alertes.push("Le widget n'a pas encore reçu les colonnes de la table (panneau de droite, « Données de la vue ») : rechargez la page si ce message reste affiché.");
   // Toutes les lectures partent en même temps : le temps d'attente est celui de la plus longue,
   // et non plus leur somme. Le référentiel, le plus lourd, est attendu à part (voir plus bas).
   promesseMeta = null;
@@ -1557,13 +1592,17 @@ async function chargerConfiguration() {
         + `Formulaire${autres.length > 1 ? "s" : ""} publié${autres.length > 1 ? "s" : ""} : ${autres.map(f => `« ${f.nom} » (table ${f.table})`).join(", ")}. `
         + `Dans le panneau de droite de Grist, onglet « Données source », choisissez la table du formulaire voulu.`);
     }
-    colsParDefaut = {};
-    if (formulaireActif) for (const c of ["Etablissement", "Description", "Qualification", "Date", "Date_faits", "Dossier", "Nature", "Commentaire", "Auteur", "Site", "Clos"])
-      if (metaSig[c]) colsParDefaut[c] = c;
-    // Versions : sans colonne Dossier associée, une mise à jour ne peut pas être rattachée à son signalement.
-    // Une colonne « Dossier » (référence vers cette table) ou « Nature » existante est donc reprise d'office.
-    if (metaSig.Dossier && metaSig.Dossier.type === `Ref:${tableId}`) colsParDefaut.Dossier = "Dossier";
-    if (metaSig.Nature) colsParDefaut.Nature = "Nature";
+    // Colonnes non associées dans le panneau de Grist : reconnues d'après leur identifiant, leur libellé et leur type
+    colsParDefaut = reconnaitreColonnesSignalement(metaSig);
+    // Formulaire de cette table encore jamais publié : le dire plutôt que d'afficher l'ancien fonctionnement sans explication
+    if (!formulaireActif) {
+      const brouillons = formulairesDispo.filter(f => !(typeof f.publie === "string" && f.publie.trim()));
+      if (brouillons.length) { const i = alertes.findIndex(a => a.startsWith("Ce widget est relié à la table")); if (i >= 0) alertes.splice(i, 1); }
+      if (brouillons.length) alertes.unshift(`Le formulaire « ${brouillons[0].nom} » de la table « ${tableId} » n'est pas encore publié : publiez-le dans l'administration des formulaires pour qu'il s'affiche ici.`);
+    }
+    const essentiels = [["Etablissement", "l'établissement (référence vers le référentiel)"], ["Description", "la description"], ["Qualification", "la qualification"]].filter(([k]) => !col(k));
+    if (essentiels.length && mappings) alertes.push(`Colonne${essentiels.length > 1 ? "s" : ""} introuvable${essentiels.length > 1 ? "s" : ""} dans la table « ${tableId} » : ${essentiels.map(x => x[1]).join(", ")}. `
+      + `Nommez-la${essentiels.length > 1 ? "s" : ""} « ${essentiels.map(x => x[0]).join(" », « ")} », ou associez-la${essentiels.length > 1 ? "s" : ""} dans le panneau de droite (« Données de la vue »).`);
   } catch (e) { console.warn("Métadonnées illisibles", e); }
 
   document.querySelectorAll("[data-libelle]").forEach(el => {
@@ -1643,8 +1682,8 @@ async function determinerTableEtab() {
   alerteTableRef = "";
   let choisie = null, cible = null, c = null;
   try {
-    const m = await metaColonnes(await grist.getTable().getTableId());
-    c = col("Etablissement") || (m && m.Etablissement ? "Etablissement" : null);   // sans association : colonne « Etablissement » de la table
+    const tid = await grist.getTable().getTableId(), m = await metaColonnes(tid);
+    c = col("Etablissement") || reconnaitreColonnesSignalement(m, tid).Etablissement || null;   // sans association : colonne reconnue (Etablissement, Etablissement_ESR…)
     cible = (m && c && m[c] && ((m[c].type || "").match(/^Ref:(.+)$/) || [])[1]) || null;
   } catch (_) { /* métadonnées illisibles */ }
   try {
