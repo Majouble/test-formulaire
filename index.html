@@ -1215,6 +1215,22 @@ const col = cle => (mappings && typeof mappings[cle] === "string") ? mappings[cl
 const val = (ligne, cle) => (ligne && col(cle)) ? ligne[col(cle)] : null;
 let indexEtabs = new Map();
 const etabDe = id => indexEtabs.get(id) || null;
+/* Établissement d'un signalement. Une cellule en rouge dans Grist (texte qui ne correspond à aucune ligne du référentiel,
+   par exemple après conversion d'une colonne texte en référence) arrive sous forme de texte : l'établissement est alors
+   retrouvé d'après son nom ou son UAI. */
+let indexTexteEtabs = null, etabsIndexTexte = null;
+const cleTexteEtab = t => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+function etabParTexte(t) {
+  if (etabsIndexTexte !== etabs) {
+    etabsIndexTexte = etabs; indexTexteEtabs = new Map();
+    for (const e of etabs) for (const c of [E.uai, E.nom]) { const k = c && cleTexteEtab(e[c]); if (k && !indexTexteEtabs.has(k)) indexTexteEtabs.set(k, e); }
+  }
+  return indexTexteEtabs.get(cleTexteEtab(t)) || null;
+}
+const texteEtabBrut = l => { const v = val(l, "Etablissement"); return typeof v === "string" && v.trim() ? v.trim() : ""; };
+const etabDeLigne = l => { const v = val(l, "Etablissement"), id = refId(v); return id ? etabDe(id) : (typeof v === "string" ? etabParTexte(v) : null); };
+// nom affiché d'un signalement : établissement du référentiel, sinon le texte saisi dans la cellule
+const nomEtabLigne = l => (etabDeLigne(l) || {})[E.nom] || texteEtabBrut(l);
 
 /* =========================================================
    Grist
@@ -1573,7 +1589,7 @@ function reconnaitreColonnesSignalement(meta, tid = tableId) {
 
 
 // ⚙ : ce que le widget utilise réellement (utile pour comprendre un affichage inattendu)
-const VERSION_WIDGET = "10/10/2026 18 h 45";
+const VERSION_WIDGET = "10/10/2026 19 h 30";
 function remplirDiagnostic() {
   const LIB = { Etablissement: "Établissement", Dossier: "Dossier", Date_faits: "Date des faits", Date: "Date de saisie", Qualification: "Qualification",
     Description: "Description", Nature: "Nature", Commentaire: "Commentaire", Auteur: "Auteur", Site: "Site / bâtiment", Clos: "Clos" };
@@ -1589,16 +1605,31 @@ function remplirDiagnostic() {
       + (refsInvalides ? ` <span style="color:var(--erreur)">· ${refsInvalides} valeur(s) qui ne sont pas des références valides (cellules en rouge dans Grist)</span>` : "")
       : `<span style="color:var(--erreur)">non trouvée</span>`}</li>`;
   };
-  const avec = enregistrements.filter(l => refId(val(l, "Etablissement"))), perdus = avec.filter(l => !etabDe(refId(val(l, "Etablissement"))));
+  const avec = enregistrements.filter(l => refId(val(l, "Etablissement")) || texteEtabBrut(l)), perdus = avec.filter(l => !etabDeLigne(l));
+  const cE = col("Etablissement"), refOk = cE && metaSig[cE] && metaSig[cE].type === `Ref:${ETAB.table}`;
+  const aRattacher = refOk ? enregistrements.filter(l => texteEtabBrut(l) && etabDeLigne(l)) : [];
+  const textes = enregistrements.filter(l => texteEtabBrut(l)).length;
   $("cfg-diagnostic").innerHTML = `<p style="margin:0 0 4px">Widget : version du ${esc(VERSION_WIDGET)} · table des réponses <b>${esc(tableId || "?")}</b> · formulaire ${formulaireActif ? `« ${esc(formulaireActif.nom)} » (publié)` : "<b>aucun formulaire publié</b> pour cette table"}.</p>
     <p style="margin:0 0 4px">Référentiel : <b>${esc(ETAB.table)}</b> (${esc(ETAB.origineTable || "table par défaut")}), ${etabs.length} établissement(s) lus${avec.length ? ` ; ${avec.length - perdus.length} signalement(s) sur ${avec.length} y retrouvent leur établissement` : ` ; <span style="color:var(--erreur)">aucune des ${enregistrements.length} ligne(s) reçues par le widget ne porte un établissement valide</span>`}.</p>
-    <ul style="margin:0;padding-left:18px">${Object.keys(LIB).map(ligne).join("")}</ul>`;
+    <ul style="margin:0;padding-left:18px">${Object.keys(LIB).map(ligne).join("")}</ul>
+    ${textes ? `<p style="margin:8px 0 4px">${textes} signalement(s) portent l'établissement sous forme de texte (cellules en rouge dans Grist) : le widget affiche ce texte, mais ces signalements ne sont pas reliés à la fiche de l'établissement (point de situation, filtres).
+      ${aRattacher.length ? `${aRattacher.length} d'entre eux correspondent à un établissement de « ${esc(ETAB.table)} » par leur nom ou leur UAI.</p>
+      <button type="button" class="secondaire" id="btn-rattacher-etabs">Rattacher ${aRattacher.length} signalement(s) à leur établissement</button>` : refOk ? "Aucun ne correspond exactement à un nom ou un UAI du référentiel : corrigez-les dans Grist.</p>" : `La colonne « ${esc(cE || "?")} » doit être une référence vers « ${esc(ETAB.table)} » pour les rattacher.</p>`}` : ""}`;
+  const b = $("btn-rattacher-etabs");
+  if (b) b.addEventListener("click", async () => {
+    if (!confirm(`Remplacer le texte de ${aRattacher.length} cellule(s) « ${cE} » par la référence vers l'établissement correspondant de « ${ETAB.table} » ?`)) return;
+    b.disabled = true; b.textContent = "Rattachement…";
+    try {
+      const acts = aRattacher.map(l => ["UpdateRecord", tableId, l.id, { [cE]: etabDeLigne(l).id }]);
+      for (let k = 0; k < acts.length; k += 400) await grist.docApi.applyUserActions(acts.slice(k, k + 400));
+      b.textContent = `${aRattacher.length} signalement(s) rattachés`;
+    } catch (e) { b.disabled = false; b.textContent = "Réessayer le rattachement"; alert(`Rattachement impossible : ${e.message || e}`); }
+  });
 }
 
 async function chargerConfiguration() {
   const alertes = [];
   metaSig = {};
-  if (!mappings) alertes.push("Le widget n'a pas encore reçu les colonnes de la table (panneau de droite, « Données de la vue ») : rechargez la page si ce message reste affiché.");
   // Toutes les lectures partent en même temps : le temps d'attente est celui de la plus longue,
   // et non plus leur somme. Le référentiel, le plus lourd, est attendu à part (voir plus bas).
   promesseMeta = null;
@@ -1632,7 +1663,7 @@ async function chargerConfiguration() {
       if (proche) essentiels = essentiels.filter(([k]) => k !== "Etablissement");
       if (proche) alertes.push(`La colonne « ${proche.libelle || proche.colId} » (${proche.colId}) est de type ${String(proche.type).split(":")[0]} : pour relier chaque signalement à son établissement, elle doit être de type Référence vers le référentiel (par exemple Etablissement_ESR). Dans Grist : en-tête de la colonne › Options de la colonne › Type : Référence.`);
     }
-    if (essentiels.length && mappings) alertes.push(`Colonne${essentiels.length > 1 ? "s" : ""} introuvable${essentiels.length > 1 ? "s" : ""} dans la table « ${tableId} » : ${essentiels.map(x => x[1]).join(", ")}. `
+    if (essentiels.length) alertes.push(`Colonne${essentiels.length > 1 ? "s" : ""} introuvable${essentiels.length > 1 ? "s" : ""} dans la table « ${tableId} » : ${essentiels.map(x => x[1]).join(", ")}. `
       + `Nommez-la${essentiels.length > 1 ? "s" : ""} « ${essentiels.map(x => x[0]).join(" », « ")} », ou associez-la${essentiels.length > 1 ? "s" : ""} dans le panneau de droite (« Données de la vue »).`);
   } catch (e) { console.warn("Métadonnées illisibles", e); }
 
@@ -1736,8 +1767,8 @@ let alerteHorloge = "";   // conseil technique, affiché aux agents seulement
 // Signalements dont la référence ne correspond à aucune ligne du référentiel lu (autre table visée, réglage ⚙ forcé…)
 function alerteLiensEtab() {
   if (!col("Etablissement") || !etabs.length || !enregistrements.length) return "";
-  const avec = enregistrements.filter(l => refId(val(l, "Etablissement")));
-  const perdus = avec.filter(l => !etabDe(refId(val(l, "Etablissement"))));
+  const avec = enregistrements.filter(l => refId(val(l, "Etablissement")) || texteEtabBrut(l));
+  const perdus = avec.filter(l => !etabDeLigne(l));
   return perdus.length > avec.length / 2 ? `${perdus.length} signalement(s) sur ${avec.length} renvoient à des établissements absents de la table « ${ETAB.table} » : la colonne « ${col("Etablissement")} » vise sans doute une autre table. Vérifiez ⚙ Réglages › « Colonnes et référentiel utilisés ».` : "";
 }
 function finaliserReferentiel(err, alertes) {
@@ -1759,7 +1790,7 @@ function finaliserReferentiel(err, alertes) {
 // Le référentiel vient d'arriver : on complète ce qui en dépend, sans perdre une saisie en cours
 async function apresChargementEtabs() {
   if (dossierId && initiale) {
-    etabCourant = etabDe(refId(val(initiale, "Etablissement")));
+    etabCourant = etabDeLigne(initiale);
     if (!modifie) await remplirFormulaire();   // réévalue aussi la description (en-tête établissement)
     afficherDossier();
   } else {
@@ -1894,9 +1925,9 @@ async function ouvrirDossier(d, force) {
   }
   // Le référentiel n'est relu que si l'établissement du dossier y est inconnu (sinon, on se contente
   // du cache : un établissement sans mail ni lien est un cas normal, pas une raison de tout recharger).
-  const e0 = etabDe(refId(val(initiale, "Etablissement")));
+  const e0 = etabDeLigne(initiale);
   if (!e0 && etabsCharges) { await rafraichirEtabs(true); if (demande !== demandeAffichage) return; }
-  etabCourant = etabDe(refId(val(initiale, "Etablissement")));
+  etabCourant = etabDeLigne(initiale);
   if (!meme || !modifie) await remplirFormulaire();
   if (demande !== demandeAffichage) return;
   if (!meme || !modifieVisa) await remplirVisas();
@@ -3369,7 +3400,7 @@ let dossiersInit = [];
 function libelleDossier(l) {
   const d = secondes(val(l, "Date")) != null ? dateFr(val(l, "Date"), { ...(metaDate || {}), type: "Date" }) : "";
   const texte = String(val(l, "Description") || "").slice(0, 60);
-  const etab = modeEtab ? "" : ((etabDe(refId(val(l, "Etablissement"))) || {})[E.nom] || "");
+  const etab = modeEtab ? "" : nomEtabLigne(l);
   return { titre: etab || `Signalement n° ${l.id}`, detail: `${d ? "du " + d + " — " : ""}${texte}` };
 }
 function majListeDossiers() {
@@ -3404,8 +3435,8 @@ function construireIndexRecherche() {
     if (!p || comparerVersions(p, l) < 0) dernieres.set(d, l);
   }
   indexRecherche = dossiersInit.map(l => {
-    const e = etabDe(refId(val(l, "Etablissement"))) || {}, der = dernieres.get(l.id) || l;
-    const texte = [e[E.nom], e[E.commune], e[E.uai], e[E.academie], e[E.departement], col("Site") ? val(der, "Site") : "", `n° ${l.id}`, String(l.id),
+    const e = etabDeLigne(l) || {}, der = dernieres.get(l.id) || l;
+    const texte = [e[E.nom] || texteEtabBrut(l), e[E.commune], e[E.uai], e[E.academie], e[E.departement], col("Site") ? val(der, "Site") : "", `n° ${l.id}`, String(l.id),
       val(l, "Description"), der !== l ? val(der, "Description") : "", listeQualif(val(der, "Qualification")).join(" ")]
       .filter(v => v != null && typeof v !== "object").join(" ").replace(/\*\*|==/g, "");
     return { l, der, e, cle: sansAccent(texte) };
@@ -4287,7 +4318,7 @@ function champsFiltrables() {
 const typeChamp = champ => champ.def ? typeBase(champ.def.type) : "Text";
 function valeursDossier(l, champ) {
   if (champ.cle.startsWith("e:")) {
-    const v = (etabDe(refId(val(l, "Etablissement"))) || {})[E[champ.cle.slice(2)]];
+    const v = (etabDeLigne(l) || {})[E[champ.cle.slice(2)]];
     return v == null || v === "" || typeof v === "object" ? [] : [{ cle: normaliser(v), libelle: String(v) }];
   }
   const def = champ.def, v = derniereDe(l)[def.colId], t = typeBase(def.type);
@@ -5699,7 +5730,7 @@ function afficherCartes() {
   $("nb-liste").textContent = !total ? "" : (trouves.length === total ? `${total} signalement${total > 1 ? "s" : ""}` : `${trouves.length} sur ${total}`);
   const styleQ = v => { const c = (couleurs || {})[v] || {}; return c.fillColor ? ` style="--c:${c.textColor || "#161616"};--c-bg:${c.fillColor}"` : ""; };
   ul.innerHTML = tries.slice(0, nbCartes).map(x => {
-    const titre = modeEtab ? `Signalement n° ${x.l.id}` : (x.e[E.nom] || `Signalement n° ${x.l.id}`);
+    const titre = modeEtab ? `Signalement n° ${x.l.id}` : (x.e[E.nom] || texteEtabBrut(x.l) || `Signalement n° ${x.l.id}`);
     const n = nb.get(x.l.id) || 1, clos = !!(col("Clos") && val(x.der, "Clos"));
     const site = col("Site") ? String(val(x.der, "Site") || "").trim() : "";
     const d = secondes(val(x.der, "Date")) != null ? dateFr(val(x.der, "Date"), { ...(metaDate || {}), type: "Date" }) : "";
