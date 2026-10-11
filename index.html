@@ -1605,7 +1605,7 @@ function reconnaitreColonnesSignalement(meta, tid = tableId, lignes = enregistre
 
 
 // ⚙ : ce que le widget utilise réellement (utile pour comprendre un affichage inattendu)
-const VERSION_WIDGET = "10/10/2026 22 h";
+const VERSION_WIDGET = "11/10/2026 14 h";
 function remplirDiagnostic() {
   const LIB = { Etablissement: "Établissement", Dossier: "Dossier", Date_faits: "Date des faits", Date: "Date de saisie", Qualification: "Qualification",
     Description: "Description", Nature: "Nature", Commentaire: "Commentaire", Auteur: "Auteur", Site: "Site / bâtiment", Clos: "Clos" };
@@ -3574,8 +3574,10 @@ function evaluerConditionLigne(cond, sousDefs, valeurs) {
 }
 // Rangement d'un champ dans la ligne : en tête (champs courts), sur sa propre ligne (choix multiples), ou en bas (textes)
 function zoneSousChamp(d) {
-  const t = typeBase(d.type);
+  const t = typeBase(d.type), ch = (d.opts && d.opts.choices) || [];
   if (t === "ChoiceList" || t === "RefList") return "large";
+  // choix unique en pastilles (plus de 5 options) : sur sa propre ligne, comme les choix multiples
+  if (t === "Choice" && ch.length && d.forcer !== "liste" && !(d.forcer === "boutons" || ch.length <= 5) && pastillesPossibles(d)) return "large";
   if (["Choice", "Bool", "Numeric", "Int", "Date", "DateTime", "Ref"].includes(t)) return "tete";
   return "texte";
 }
@@ -3854,6 +3856,9 @@ class Tableau {
       const actuel = t === "Bool" ? (v == null ? null : String(!!v)) : v;
       ctl = `<span class="seg" role="radiogroup" aria-labelledby="${nom}-etiq">${opts.map(([val, lib]) =>
         `<label style="${t === "Bool" ? "--c:#fff;--c-bg:var(--bleu)" : coul(val)}"><input type="radio" name="${nom}" value="${esc(val)}"${val === actuel ? " checked" : ""}><span>${esc(lib)}</span></label>`).join("")}</span>`;
+    } else if (t === "Choice" && ch.length && pastillesPossibles(d)) {
+      // choix unique au-delà de 5 options : pastilles (un clic sur la pastille choisie la décoche) ; [liste] pour un menu déroulant
+      ctl = `<div class="puces unique" role="radiogroup" aria-labelledby="${nom}-etiq">${ch.map(x => `<label class="puce${x === v ? " on" : ""}" style="${coul(x)}"><input type="radio" name="${nom}" value="${esc(x)}"${x === v ? " checked" : ""}>${esc(x)}</label>`).join("")}</div>`;
     } else if (t === "Choice" && ch.length) {
       ctl = `<select aria-labelledby="${nom}-etiq"><option value="">Choisir…</option>${ch.map(x => `<option${x === v ? " selected" : ""}>${esc(x)}</option>`).join("")}</select>`;
     } else if (t === "ChoiceList" && ch.length && pastillesPossibles(d)) {
@@ -3933,7 +3938,7 @@ class Tableau {
   lireControle(sc, d) {
     const t = typeBase(d.type);
     if (t === "Bool") { const r = sc.querySelector("input:checked"); return r ? r.value === "true" : null; }
-    if (sc.querySelector(".seg")) { const r = sc.querySelector("input:checked"); return r ? r.value : null; }
+    if (sc.querySelector(".seg, .puces.unique")) { const r = sc.querySelector("input:checked"); return r ? r.value : null; }
     if (t === "ChoiceList" || t === "RefList") {
       const l = [...sc.querySelectorAll('input[type="checkbox"]:checked')].map(c => t === "RefList" ? +c.value : c.value);
       return l.length ? l : null;
@@ -3990,10 +3995,10 @@ class Tableau {
     const el = this.el;
     // un bouton déjà choisi se désélectionne d'un second clic (champ facultatif)
     el.addEventListener("pointerdown", ev => {
-      const lab = ev.target.closest(".seg label"); if (lab) lab.querySelector("input").dataset.etait = String(lab.querySelector("input").checked);
+      const lab = ev.target.closest(".seg label, .puces.unique label"); if (lab) lab.querySelector("input").dataset.etait = String(lab.querySelector("input").checked);
     });
     el.addEventListener("click", ev => {
-      const inp = ev.target.closest('.seg input[type="radio"]');
+      const inp = ev.target.closest('.seg input[type="radio"], .puces.unique input[type="radio"]');
       if (inp && inp.dataset.etait === "true") { inp.checked = false; inp.dataset.etait = "false"; this.changement(inp.closest(".sous-champ")); return; }
       const b = ev.target.closest("button[data-action]");
       if (!b) return;
