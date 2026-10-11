@@ -1654,7 +1654,7 @@ function reconnaitreColonnesSignalement(meta, tid = tableId, lignes = enregistre
 
 
 // ⚙ : ce que le widget utilise réellement (utile pour comprendre un affichage inattendu)
-const VERSION_WIDGET = "11/10/2026 23 h 30";
+const VERSION_WIDGET = "12/10/2026 0 h";
 function remplirActivite() {
   const A = ACTIVITE, min = Math.max(1, (Date.now() - A.debut) / 60000), fait = A.envois.filter(e => e.ms != null);
   const recents = A.envois.filter(e => Date.now() - e.t < 60000).length, dernier = A.envois[A.envois.length - 1];
@@ -1667,6 +1667,7 @@ function remplirActivite() {
     <li>Traitement de ces envois par le widget : <b>${ms(moy)}</b> en moyenne, au plus ${ms(max)}.</li>
     <li>Ligne sélectionnée renvoyée par Grist : ${A.curseur} fois (${A.curseurIgnores} simples renvois sans effet).</li>
     <li>Tâches longues du widget (plus de 50 ms) : ${A.longues}, ${ms(A.dureeLongues)} au total${A.longues ? ` (${ms(A.dureeLongues / min)} par minute)` : ""}.</li>
+    ${sqlRefuse ? `<li>Lecture rapide (SQL) indisponible : ${esc(sqlRefuse)} ; lecture habituelle utilisée.</li>` : ""}
     ${lectures ? `<li>Lectures dans Grist :<ul style="margin:0;padding-left:16px">${lectures}</ul></li>` : ""}</ul>
     <p style="margin:4px 0 0">Si la page est lente alors que ces temps restent faibles, le temps passe dans Grist (préparation et envoi de la table, calcul des formules) plutôt que dans le widget.</p>`;
 }
@@ -1905,12 +1906,46 @@ async function apresChargementEtabs() {
 /* Tables lues seulement pour des libellés ou des listes de choix (académies, nomenclatures…) : gardées 10 minutes.
    Une grande table peut demander plusieurs secondes au serveur ; plusieurs colonnes qui la visent ne la relisent pas. */
 const cacheTables = new Map();
+/* Lecture rapide d'une table par l'API SQL de Grist : lue directement dans la base du document, sans passer par le
+   moteur de calcul (qui traite les demandes une par une : une grande table y fait attendre toutes les autres).
+   Refusée quand l'utilisateur n'a pas un accès complet (lien d'établissement, règles d'accès) : lecture habituelle. */
+let jetonSQL = null, sqlRefuse = "";
+async function lireTableSQL(tid) {
+  if (sqlRefuse) throw new Error(sqlRefuse);
+  if (!grist.docApi.getAccessToken) { sqlRefuse = "jeton d'accès indisponible"; throw new Error(sqlRefuse); }
+  if (!jetonSQL || Date.now() > jetonSQL.expire) {
+    const j = await grist.docApi.getAccessToken({ readOnly: true });
+    jetonSQL = { ...j, expire: Date.now() + Math.max(30, Math.min(Number(j.ttl) || 300, 600) - 20) * 1000 };
+  }
+  const meta = await metaColonnes(tid);
+  if (!meta) throw new Error("table inconnue");
+  const cols = Object.keys(meta).filter(c => c !== "id" && c !== "manualSort" && !c.startsWith("gristHelper"));
+  const sql = `SELECT id${cols.map(c => `, "${c.replace(/"/g, '""')}"`).join("")} FROM "${tid.replace(/"/g, '""')}"`;
+  const t0 = performance.now();
+  const r = await fetch(`${jetonSQL.baseUrl}/sql?q=${encodeURIComponent(sql)}&auth=${encodeURIComponent(jetonSQL.token)}`);
+  if (r.status === 401 || r.status === 403) { sqlRefuse = `lecture SQL refusée (${r.status})`; throw new Error(sqlRefuse); }
+  if (!r.ok) throw new Error(`lecture SQL : erreur ${r.status}`);
+  const recs = (await r.json()).records || [];
+  // valeurs telles que les donnerait fetchTable : cases à cocher en booléens, listes au format ["L", …]
+  const conv = cols.map(c => {
+    const ty = typeBase(meta[c].type);
+    if (ty === "Bool") return v => v == null ? v : !!v;
+    if (ty === "ChoiceList" || ty === "RefList" || ty === "Attachments") return v => { if (typeof v !== "string" || !v.startsWith("[")) return v; try { return ["L", ...JSON.parse(v)]; } catch (_) { return v; } };
+    return v => v;
+  });
+  const t = { id: recs.map(x => x.fields.id) };
+  cols.forEach((c, k) => { t[c] = recs.map(x => conv[k](x.fields[c])); });
+  const d = performance.now() - t0, l = ACTIVITE.lectures[`${tid} (SQL)`] = ACTIVITE.lectures[`${tid} (SQL)`] || { n: 0, total: 0, max: 0 };
+  l.n++; l.total += d; l.max = Math.max(l.max, d);
+  return t;
+}
+const lireTableRapide = tid => lireTableSQL(tid).catch(e => { if (!sqlRefuse) console.warn(`Lecture SQL de ${tid} impossible`, e); return grist.docApi.fetchTable(tid); });
 function lireTableReference(tid) {
   const c = cacheTables.get(tid);
   if (c && Date.now() - c.t < 600000) return c.p;
   // la table des réponses est déjà reçue du widget : pas de relecture
   const p = tid === tableId && enregistrements.length ? Promise.resolve(tableDepuisEnregistrements())
-    : grist.docApi.fetchTable(tid);
+    : lireTableRapide(tid);
   cacheTables.set(tid, { t: Date.now(), p });
   p.catch(() => cacheTables.delete(tid));
   return p;
@@ -1958,7 +1993,7 @@ async function lireEtabs() {
   dernierChargementEtabs = Date.now();
   // tables visées par les colonnes Référence du référentiel (académies…) : lues en parallèle, pas après lui
   metaColonnes(ETAB.table).then(m => { for (const c of Object.values(m || {})) { const x = String(c.type || "").match(/^Ref:(.+)$/); if (x && x[1] !== ETAB.table) lireTableReference(x[1]).catch(() => {}); } }).catch(() => {});
-  const t = await grist.docApi.fetchTable(ETAB.table);
+  const t = await lireTableRapide(ETAB.table);
   cacheTables.set(ETAB.table, { t: Date.now(), p: Promise.resolve(t) });   // réutilisée par les listes de choix qui visent le référentiel
   const cols = Object.keys(t);
   etabs = t.id.map((id, i) => { const l = {}; cols.forEach(c => l[c] = t[c][i]); return l; });
