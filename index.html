@@ -474,9 +474,12 @@
       <select id="cfg-table-etab"></select>
       <p class="note" id="cfg-table-etab-info"></p></div>
     <p class="bandeau" id="cfg-desc-formulaire" hidden></p>
-    <div id="cfg-bloc-description">
+    <h2>Activité du widget</h2>
+    <div class="note" id="cfg-activite" style="margin:0 0 6px"></div>
+    <button type="button" class="secondaire petit" id="btn-activite" style="margin:0 0 14px">Actualiser la mesure</button>
     <h2>Colonnes et référentiel utilisés</h2>
     <div class="note" id="cfg-diagnostic" style="margin:0 0 6px"></div>
+    <div id="cfg-bloc-description">
     <h2>Pré-remplissage de la description</h2>
     <p class="note">La description est rédigée à partir des réponses saisies plus haut dans le formulaire. Ces réglages sont enregistrés dans la table Parametres et s'appliquent à tous les utilisateurs du document.</p>
     <label class="case"><input type="checkbox" id="cfg-actif"> Pré-remplir la description</label>
@@ -1272,7 +1275,33 @@ const OPTIONS = { keepEncoded: true, expandRefs: false, includeColumns: "normal"
 let idsPrecedents = null;          // lignes connues avant le dernier envoi de Grist
 let idsNouveaux = new Set();       // lignes apparues lors du dernier envoi
 const idsCreesIci = new Set();     // lignes créées par ce widget-ci
-grist.onRecords((recs, m) => enFile(async () => {
+/* Mesure de l'activité (⚙ › « Activité du widget ») : envois de Grist, temps de traitement, lectures.
+   Sert à savoir si une lenteur vient du widget ou de Grist. */
+const ACTIVITE = { debut: Date.now(), envois: [], regroupes: 0, curseur: 0, curseurIgnores: 0, lectures: {}, longues: 0, dureeLongues: 0 };
+(() => {
+  const f = grist.docApi.fetchTable.bind(grist.docApi);
+  grist.docApi.fetchTable = async n => {
+    const t0 = performance.now();
+    try { return await f(n); }
+    finally { const d = performance.now() - t0, l = ACTIVITE.lectures[n] = ACTIVITE.lectures[n] || { n: 0, total: 0, max: 0 }; l.n++; l.total += d; l.max = Math.max(l.max, d); }
+  };
+  try { new PerformanceObserver(liste => { for (const e of liste.getEntries()) { ACTIVITE.longues++; ACTIVITE.dureeLongues += e.duration; } }).observe({ type: "longtask", buffered: true }); } catch (_) {}
+})();
+// Envois rapprochés de Grist (plusieurs enregistrements à la suite) : seul le plus récent est traité
+let envoiEnAttente = null;
+grist.onRecords((recs, m) => {
+  const arrive = { t: Date.now(), lignes: (recs || []).length, colonnes: recs && recs[0] ? Object.keys(recs[0]).length : 0, ms: null };
+  ACTIVITE.envois.push(arrive); if (ACTIVITE.envois.length > 300) ACTIVITE.envois.shift();
+  const dejaPrevu = !!envoiEnAttente;
+  envoiEnAttente = { recs, m, arrive };
+  if (dejaPrevu) { ACTIVITE.regroupes++; return; }
+  return enFile(async () => {
+    const { recs, m, arrive } = envoiEnAttente; envoiEnAttente = null;
+    const t0 = performance.now();
+    try { await traiterEnvoi(recs, m); } finally { arrive.ms = performance.now() - t0; }
+  });
+}, OPTIONS);
+async function traiterEnvoi(recs, m) {
   mappings = m;
   enregistrements = recs || [];
   const ids = new Set(enregistrements.map(r => r.id));
@@ -1281,7 +1310,7 @@ grist.onRecords((recs, m) => enFile(async () => {
   const sig = JSON.stringify(m);
   if (sig !== signatureMappings) { signatureMappings = sig; await chargerConfiguration(); }
   await rafraichir();
-}), OPTIONS);
+}
 
 // Grist renvoie la ligne du curseur à chaque modification de la table, même si le curseur n'a pas bougé
 // (par exemple quand une autre vue enregistre un signalement). Seul un vrai déplacement du curseur doit
@@ -1290,13 +1319,16 @@ grist.onRecords((recs, m) => enFile(async () => {
 let dernierCurseur = null;   // identifiant de la dernière ligne reçue, ou "new" pour la ligne d'ajout
 
 grist.onRecord(rec => enFile(async () => {
+  ACTIVITE.curseur++;
   if (!rec || (!mappings && !Object.keys(colsParDefaut).length)) return;
   const premiereSelection = !curseurInitialVu; curseurInitialVu = true;
   const r = enregistrements.find(x => x.id === rec.id) || rec;
   const d = refId(col("Dossier") && r[col("Dossier")]) || r.id;
   const renvoi = rec.id === dernierCurseur;
   dernierCurseur = rec.id;
-  if (d === dossierId) { await ouvrirDossier(d); return; }   // même signalement : simple rafraîchissement
+  // même signalement : un simple renvoi (après une modification de la table) est déjà traité par onRecords,
+  // qui rafraîchit le dossier ouvert ; seul un clic sur une autre ligne du même dossier le relit
+  if (d === dossierId) { if (renvoi) { ACTIVITE.curseurIgnores++; return; } await ouvrirDossier(d); return; }
   // Ligne tout juste créée par une autre vue : Grist a pu y décaler le curseur lors de l'insertion.
   const creeeAilleurs = (idsNouveaux.has(rec.id) || !enregistrements.some(x => x.id === rec.id)) && !idsCreesIci.has(rec.id);
   if (creeeAilleurs) return;
@@ -1605,8 +1637,25 @@ function reconnaitreColonnesSignalement(meta, tid = tableId, lignes = enregistre
 
 
 // ⚙ : ce que le widget utilise réellement (utile pour comprendre un affichage inattendu)
-const VERSION_WIDGET = "11/10/2026 14 h";
+const VERSION_WIDGET = "11/10/2026 22 h";
+function remplirActivite() {
+  const A = ACTIVITE, min = Math.max(1, (Date.now() - A.debut) / 60000), fait = A.envois.filter(e => e.ms != null);
+  const recents = A.envois.filter(e => Date.now() - e.t < 60000).length, dernier = A.envois[A.envois.length - 1];
+  const moy = fait.length ? fait.reduce((s, e) => s + e.ms, 0) / fait.length : 0, max = fait.reduce((m, e) => Math.max(m, e.ms), 0);
+  const ms = v => `${Math.round(v)} ms`;
+  const lectures = Object.entries(A.lectures).sort((a, b) => b[1].total - a[1].total)
+    .map(([t, l]) => `<li>${esc(t)} : ${l.n} fois, ${ms(l.total / l.n)} en moyenne (au plus ${ms(l.max)})</li>`).join("");
+  $("cfg-activite").innerHTML = `<p style="margin:0 0 4px">Depuis l'ouverture du widget (${Math.round(min)} min) :</p><ul style="margin:0;padding-left:18px">
+    <li>Grist a envoyé la table <b>${A.envois.length}</b> fois (${recents} dans la dernière minute, ${(A.envois.length / min).toFixed(1)} par minute en moyenne)${dernier ? `, la dernière fois <b>${dernier.lignes}</b> lignes × ${dernier.colonnes} colonnes` : ""}${A.regroupes ? ` ; ${A.regroupes} envoi(s) rapprochés regroupés` : ""}.</li>
+    <li>Traitement de ces envois par le widget : <b>${ms(moy)}</b> en moyenne, au plus ${ms(max)}.</li>
+    <li>Ligne sélectionnée renvoyée par Grist : ${A.curseur} fois (${A.curseurIgnores} simples renvois sans effet).</li>
+    <li>Tâches longues du widget (plus de 50 ms) : ${A.longues}, ${ms(A.dureeLongues)} au total${A.longues ? ` (${ms(A.dureeLongues / min)} par minute)` : ""}.</li>
+    ${lectures ? `<li>Lectures dans Grist :<ul style="margin:0;padding-left:16px">${lectures}</ul></li>` : ""}</ul>
+    <p style="margin:4px 0 0">Si la page est lente alors que ces temps restent faibles, le temps passe dans Grist (préparation et envoi de la table, calcul des formules) plutôt que dans le widget.</p>`;
+}
+$("btn-activite").addEventListener("click", remplirActivite);
 function remplirDiagnostic() {
+  remplirActivite();
   const LIB = { Etablissement: "Établissement", Dossier: "Dossier", Date_faits: "Date des faits", Date: "Date de saisie", Qualification: "Qualification",
     Description: "Description", Nature: "Nature", Commentaire: "Commentaire", Auteur: "Auteur", Site: "Site / bâtiment", Clos: "Clos" };
   const rempli = celluleRemplie;
