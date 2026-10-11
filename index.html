@@ -1654,7 +1654,7 @@ function reconnaitreColonnesSignalement(meta, tid = tableId, lignes = enregistre
 
 
 // ⚙ : ce que le widget utilise réellement (utile pour comprendre un affichage inattendu)
-const VERSION_WIDGET = "12/10/2026 0 h";
+const VERSION_WIDGET = "12/10/2026 1 h";
 function remplirActivite() {
   const A = ACTIVITE, min = Math.max(1, (Date.now() - A.debut) / 60000), fait = A.envois.filter(e => e.ms != null);
   const recents = A.envois.filter(e => Date.now() - e.t < 60000).length, dernier = A.envois[A.envois.length - 1];
@@ -1667,11 +1667,20 @@ function remplirActivite() {
     <li>Traitement de ces envois par le widget : <b>${ms(moy)}</b> en moyenne, au plus ${ms(max)}.</li>
     <li>Ligne sélectionnée renvoyée par Grist : ${A.curseur} fois (${A.curseurIgnores} simples renvois sans effet).</li>
     <li>Tâches longues du widget (plus de 50 ms) : ${A.longues}, ${ms(A.dureeLongues)} au total${A.longues ? ` (${ms(A.dureeLongues / min)} par minute)` : ""}.</li>
+    <li>Référentiel : ${referentielDuCache ? `copie conservée dans ce navigateur (lue sur le serveur le ${new Date(referentielDuCache).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}, relue automatiquement après 24 h) <button type="button" class="lien-texte" id="btn-relire-ref">Relire le référentiel maintenant</button>` : "lu sur le serveur à l'ouverture"}.</li>
     ${sqlRefuse ? `<li>Lecture rapide (SQL) indisponible : ${esc(sqlRefuse)} ; lecture habituelle utilisée.</li>` : ""}
     ${lectures ? `<li>Lectures dans Grist :<ul style="margin:0;padding-left:16px">${lectures}</ul></li>` : ""}</ul>
     <p style="margin:4px 0 0">Si la page est lente alors que ces temps restent faibles, le temps passe dans Grist (préparation et envoi de la table, calcul des formules) plutôt que dans le widget.</p>`;
 }
 $("btn-activite").addEventListener("click", remplirActivite);
+$("cfg-activite").addEventListener("click", async ev => {
+  if (ev.target.id !== "btn-relire-ref") return;
+  ev.target.disabled = true; ev.target.textContent = "Lecture en cours…";
+  await oublierCacheReferentiel();
+  await chargerEtabs(false);
+  enFile(async () => { indexRecherche = null; await rafraichir(); });
+  remplirActivite();
+});
 function remplirDiagnostic() {
   remplirActivite();
   const LIB = { Etablissement: "Établissement", Dossier: "Dossier", Date_faits: "Date des faits", Date: "Date de saisie", Qualification: "Qualification",
@@ -1764,7 +1773,7 @@ async function chargerConfiguration() {
       + `Associez-la${essentiels.length > 1 ? "s" : ""} dans l'administration des formulaires (panneau « Formulaire » › « Colonnes de la table des réponses »), puis publiez.`);
   } catch (e) { console.warn("Métadonnées illisibles", e); }
   await determinerTableEtab();   // après les rôles : la colonne de l'établissement désigne le référentiel
-  const pEtabs = chargerEtabs().then(() => null, e => e);
+  const pEtabs = chargerEtabs(true).then(() => null, e => e);
 
   document.querySelectorAll("[data-libelle]").forEach(el => {
     if (!el.dataset.defaut) el.dataset.defaut = el.textContent;
@@ -1979,21 +1988,93 @@ async function resoudreRefsEtab() {
 let dernierChargementEtabs = 0, idEtabMax = 0;
 async function rafraichirEtabs(forcer) {
   if (!forcer && Date.now() - dernierChargementEtabs < 600000) return;   // grand référentiel : lecture coûteuse pour le serveur
+  if (!forcer && referentielDuCache && Date.now() - referentielDuCache < DUREE_CACHE_REFERENTIEL) return;   // copie du navigateur encore valable
   try { await chargerEtabs(); } catch (e) { console.warn("Référentiel illisible", e); }
 }
 
+
+/* ---------- Référentiel conservé dans le navigateur ----------
+   La lecture complète du référentiel peut prendre plusieurs secondes au serveur : chaque navigateur le garde
+   24 heures (IndexedDB) et ne le relit qu'ensuite, ou quand un établissement inconnu apparaît (créé par un
+   collègue), ou avant la création d'un établissement, ou sur demande (⚙ › « Relire le référentiel »).
+   Les colonnes de clé et de lien d'accès ne sont jamais conservées : elles sont lues à la demande, pour
+   l'établissement affiché. Jamais utilisé en accès par lien d'établissement (une seule ligne visible). */
+const DUREE_CACHE_REFERENTIEL = 24 * 3600 * 1000;
+let referentielDuCache = null;   // date de la copie utilisée, ou null (lecture du serveur)
+function ouvrirBaseCache() {
+  return new Promise((ok, ko) => {
+    if (!window.indexedDB) return ko(new Error("IndexedDB indisponible"));
+    const r = indexedDB.open("signalements-grist", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("referentiels");
+    r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error);
+  });
+}
+async function cleCacheReferentiel() {
+  let doc = "";
+  try { if (grist.docApi.getAccessToken) doc = ((await grist.docApi.getAccessToken({ readOnly: true })).baseUrl || "").replace(/^https?:\/\//, ""); } catch (_) {}
+  if (!doc) try { doc = await grist.docApi.getDocName(); } catch (_) {}
+  return doc ? `${doc}|${ETAB.table}` : null;
+}
+async function lireCacheReferentiel() {
+  try {
+    const cle = await cleCacheReferentiel(); if (!cle) return null;
+    const db = await ouvrirBaseCache();
+    const v = await new Promise((ok, ko) => { const r = db.transaction("referentiels").objectStore("referentiels").get(cle); r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); });
+    db.close();
+    return v && v.table && Date.now() - v.t < DUREE_CACHE_REFERENTIEL ? v : null;
+  } catch (_) { return null; }
+}
+async function ecrireCacheReferentiel(t, sensibles) {
+  try {
+    const cle = await cleCacheReferentiel(); if (!cle) return;
+    const copie = {};
+    for (const [c, v] of Object.entries(t)) copie[c] = sensibles.includes(c) ? v.map(() => null) : v;
+    const db = await ouvrirBaseCache();
+    await new Promise((ok, ko) => { const tx = db.transaction("referentiels", "readwrite"); tx.objectStore("referentiels").put({ t: Date.now(), table: copie, sensibles }, cle); tx.oncomplete = ok; tx.onerror = () => ko(tx.error); });
+    db.close();
+  } catch (e) { console.warn("Référentiel non conservé dans le navigateur", e); }
+}
+async function oublierCacheReferentiel() {
+  try { const cle = await cleCacheReferentiel(); const db = await ouvrirBaseCache(); db.transaction("referentiels", "readwrite").objectStore("referentiels").delete(cle); db.close(); } catch (_) {}
+}
+// Clé et lien d'accès de l'établissement affiché, quand le référentiel vient du navigateur (non conservés)
+const liensDemandes = new Set();
+async function completerLienEtab(e) {
+  if (!referentielDuCache || !e || liensDemandes.has(e.id) || !(E.lien in e) || (e[E.lien] != null && e[E.lien] !== "")) return;
+  liensDemandes.add(e.id);
+  try {
+    const j = await grist.docApi.getAccessToken({ readOnly: true });
+    const lire = async filtre => {
+      const r = await fetch(`${j.baseUrl}/tables/${encodeURIComponent(ETAB.table)}/records?filter=${encodeURIComponent(JSON.stringify(filtre))}&auth=${encodeURIComponent(j.token)}`);
+      if (!r.ok) throw new Error(`erreur ${r.status}`);
+      return ((await r.json()).records || []).find(x => x.id === e.id);
+    };
+    // filtre sur le numéro de ligne, sinon sur l'UAI
+    let rec = null;
+    try { rec = await lire({ id: [e.id] }); } catch (_) {}
+    if (!rec && E.uai && e[E.uai]) rec = await lire({ [E.uai]: [e[E.uai]] });
+    const f = (rec && rec.fields) || {};
+    for (const c of [E.cle, E.lien]) if (c && c in f) e[c] = f[c];
+    if (etabCourant && etabCourant.id === e.id) afficherEtablissement();
+  } catch (err) { console.warn("Lien d'accès non lu", err); liensDemandes.delete(e.id); }
+}
+
 let etabsCharges = false, promesseEtabs = null;
-function chargerEtabs() {
+// avecCache : copie du navigateur acceptée (ouverture du widget) ; sinon relecture sur le serveur
+function chargerEtabs(avecCache) {
   // Deux demandes simultanées partagent la même lecture au lieu d'en lancer deux
-  if (!promesseEtabs) promesseEtabs = lireEtabs().then(() => { etabsCharges = true; })
+  if (!promesseEtabs) promesseEtabs = lireEtabs(avecCache).then(() => { etabsCharges = true; })
     .finally(() => { promesseEtabs = null; });
   return promesseEtabs;
 }
-async function lireEtabs() {
+async function lireEtabs(avecCache) {
   dernierChargementEtabs = Date.now();
   // tables visées par les colonnes Référence du référentiel (académies…) : lues en parallèle, pas après lui
   metaColonnes(ETAB.table).then(m => { for (const c of Object.values(m || {})) { const x = String(c.type || "").match(/^Ref:(.+)$/); if (x && x[1] !== ETAB.table) lireTableReference(x[1]).catch(() => {}); } }).catch(() => {});
-  const t = await lireTableRapide(ETAB.table);
+  const copie = avecCache ? await lireCacheReferentiel() : null;
+  referentielDuCache = copie ? copie.t : null;
+  liensDemandes.clear();
+  const t = copie ? copie.table : await lireTableRapide(ETAB.table);
   cacheTables.set(ETAB.table, { t: Date.now(), p: Promise.resolve(t) });   // réutilisée par les listes de choix qui visent le référentiel
   const cols = Object.keys(t);
   etabs = t.id.map((id, i) => { const l = {}; cols.forEach(c => l[c] = t[c][i]); return l; });
@@ -2019,6 +2100,9 @@ async function lireEtabs() {
     (!modeEtab && !cols.includes(E.cle))
       ? `Colonne « ${E.cle} » introuvable dans ${ETAB.table} : les liens d'accès ne pourront pas être générés.${cols.includes(E.nom) ? ` Colonnes trouvées : ${colsLisibles}.` : ""}` : "",
   ].filter(Boolean).join(" ");
+  // copie conservée dans le navigateur (jamais en accès par lien d'établissement), sans clé ni lien d'accès
+  if (!copie && !modeEtab && etabs.length > 1)
+    ecrireCacheReferentiel(t, [E.cle, E.lien].filter(c => c && cols.includes(c)).concat(cols.filter(c => /uuid|lien_?(d_?)?acces|link_?key|cle_?(d_?)?acces|token/i.test(c))));
 }
 
 /* =========================================================
@@ -2683,6 +2767,7 @@ function afficherEtablissement() {
     aide.hidden = false;
   } else aide.hidden = true;
   $("btn-mail").hidden = !connu;
+  if (connu) completerLienEtab(etabCourant);
   const lien = connu && lisible(etabCourant[E.lien]) ? extraireUrl(etabCourant[E.lien]) : "";
   $("lien").value = lien;
   $("lien").placeholder = connu ? `Lien absent : vérifiez les formules des colonnes ${E.cle} et ${E.lien}`
