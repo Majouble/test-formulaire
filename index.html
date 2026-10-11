@@ -1231,7 +1231,24 @@ function etabParTexte(t) {
   }
   return indexTexteEtabs.get(cleTexteEtab(t)) || null;
 }
-const texteEtabBrut = l => { const v = val(l, "Etablissement"); return typeof v === "string" && v.trim() ? v.trim() : ""; };
+// Nom provisoire, avant la lecture du référentiel (qui peut prendre plusieurs secondes) : colonne formule de la table
+// des réponses qui reprend le nom (« Nom » = $Etablissement.Nom), sinon le texte de la cellule (référence invalide)
+let colNomReponses = null;
+function trouverColNomReponses() {
+  const cE = col("Etablissement"); colNomReponses = null;
+  if (!cE) return;
+  const cands = Object.values(metaSig).map(c => ({ c, m: String(c.texteFormule || "").trim().replace(/^return\s+/, "").match(/^\$(\w+)\.(\w+)$/) }))
+    .filter(x => x.c.formule && x.m && x.m[1] === cE && !/^(Ref|RefList|Bool|Int|Numeric|Date)/.test(x.c.type || ""));
+  const score = x => (x.m[2] === E.nom ? 4 : 0) + (/^(nom|appellation|denomination|libelle|etablissement)/.test(normColonne(x.m[2])) ? 2 : 0)
+    + (/^(nom|etablissement)/.test(normColonne(`${x.c.colId}`)) ? 1 : 0) - (/uai|commune|academ|depart|type|mail|lien|uuid|region/.test(normColonne(x.m[2])) ? 5 : 0);
+  const meilleur = cands.sort((a, b) => score(b) - score(a))[0];
+  if (meilleur && score(meilleur) > 0) colNomReponses = meilleur.c.colId;
+}
+const texteEtabBrut = l => {
+  const n = colNomReponses && l ? l[colNomReponses] : null;
+  if (typeof n === "string" && n.trim()) return n.trim();
+  const v = val(l, "Etablissement"); return typeof v === "string" && v.trim() ? v.trim() : "";
+};
 const etabDeLigne = l => { const v = val(l, "Etablissement"), id = refId(v); return id ? etabDe(id) : (typeof v === "string" ? etabParTexte(v) : null); };
 // nom affiché d'un signalement : établissement du référentiel, sinon le texte saisi dans la cellule
 const nomEtabLigne = l => (etabDeLigne(l) || {})[E.nom] || texteEtabBrut(l);
@@ -1637,7 +1654,7 @@ function reconnaitreColonnesSignalement(meta, tid = tableId, lignes = enregistre
 
 
 // ⚙ : ce que le widget utilise réellement (utile pour comprendre un affichage inattendu)
-const VERSION_WIDGET = "11/10/2026 23 h";
+const VERSION_WIDGET = "11/10/2026 23 h 30";
 function remplirActivite() {
   const A = ACTIVITE, min = Math.max(1, (Date.now() - A.debut) / 60000), fait = A.envois.filter(e => e.ms != null);
   const recents = A.envois.filter(e => Date.now() - e.t < 60000).length, dernier = A.envois[A.envois.length - 1];
@@ -1729,6 +1746,7 @@ async function chargerConfiguration() {
       const imposees = new Set(Object.values(rolesAdmin).filter(Boolean));
       for (const r of Object.keys(colsParDefaut)) if (!(r in rolesAdmin) && imposees.has(colsParDefaut[r])) delete colsParDefaut[r];
     }
+    trouverColNomReponses();
     // Formulaire de cette table encore jamais publié : le dire plutôt que d'afficher l'ancien fonctionnement sans explication
     if (!formulaireActif) {
       const brouillons = formulairesDispo.filter(f => !(typeof f.publie === "string" && f.publie.trim()));
@@ -1938,6 +1956,8 @@ function chargerEtabs() {
 }
 async function lireEtabs() {
   dernierChargementEtabs = Date.now();
+  // tables visées par les colonnes Référence du référentiel (académies…) : lues en parallèle, pas après lui
+  metaColonnes(ETAB.table).then(m => { for (const c of Object.values(m || {})) { const x = String(c.type || "").match(/^Ref:(.+)$/); if (x && x[1] !== ETAB.table) lireTableReference(x[1]).catch(() => {}); } }).catch(() => {});
   const t = await grist.docApi.fetchTable(ETAB.table);
   cacheTables.set(ETAB.table, { t: Date.now(), p: Promise.resolve(t) });   // réutilisée par les listes de choix qui visent le référentiel
   const cols = Object.keys(t);
