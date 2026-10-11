@@ -1637,7 +1637,7 @@ function reconnaitreColonnesSignalement(meta, tid = tableId, lignes = enregistre
 
 
 // ⚙ : ce que le widget utilise réellement (utile pour comprendre un affichage inattendu)
-const VERSION_WIDGET = "11/10/2026 22 h";
+const VERSION_WIDGET = "11/10/2026 23 h";
 function remplirActivite() {
   const A = ACTIVITE, min = Math.max(1, (Date.now() - A.debut) / 60000), fait = A.envois.filter(e => e.ms != null);
   const recents = A.envois.filter(e => Date.now() - e.t < 60000).length, dernier = A.envois[A.envois.length - 1];
@@ -1884,8 +1884,26 @@ async function apresChargementEtabs() {
 /* Colonnes Référence du référentiel (ex. Académie → table des académies) : Grist transmet le numéro de ligne.
    Le widget le remplace par le nom lu dans la table visée (colonne Nom / Libellé / Intitulé si elle existe,
    sinon la colonne affichée dans Grist), pour la fiche, la recherche et les filtres. */
+/* Tables lues seulement pour des libellés ou des listes de choix (académies, nomenclatures…) : gardées 10 minutes.
+   Une grande table peut demander plusieurs secondes au serveur ; plusieurs colonnes qui la visent ne la relisent pas. */
+const cacheTables = new Map();
+function lireTableReference(tid) {
+  const c = cacheTables.get(tid);
+  if (c && Date.now() - c.t < 600000) return c.p;
+  // la table des réponses est déjà reçue du widget : pas de relecture
+  const p = tid === tableId && enregistrements.length ? Promise.resolve(tableDepuisEnregistrements())
+    : grist.docApi.fetchTable(tid);
+  cacheTables.set(tid, { t: Date.now(), p });
+  p.catch(() => cacheTables.delete(tid));
+  return p;
+}
+function tableDepuisEnregistrements() {
+  const cols = new Set(["id"]); for (const l of enregistrements.slice(0, 50)) Object.keys(l).forEach(k => cols.add(k));
+  const t = {}; for (const c of cols) t[c] = enregistrements.map(l => l[c]);
+  return t;
+}
 async function libellesTable(tid, colAffichee) {
-  const t = await grist.docApi.fetchTable(tid);
+  const t = await lireTableReference(tid);
   const cols = Object.keys(t).filter(c => c !== "id" && c !== "manualSort" && !c.startsWith("gristHelper"));
   const texte = c => (t[c] || []).some(v => typeof v === "string" && v.trim());
   const c = cols.find(x => /^(nom|libelle|intitule)(_|$)/.test(normaliser(x).replace(/ /g, "_")) && texte(x))
@@ -1905,9 +1923,9 @@ async function resoudreRefsEtab() {
   }
 }
 
-let dernierChargementEtabs = 0;
+let dernierChargementEtabs = 0, idEtabMax = 0;
 async function rafraichirEtabs(forcer) {
-  if (!forcer && Date.now() - dernierChargementEtabs < 30000) return;
+  if (!forcer && Date.now() - dernierChargementEtabs < 600000) return;   // grand référentiel : lecture coûteuse pour le serveur
   try { await chargerEtabs(); } catch (e) { console.warn("Référentiel illisible", e); }
 }
 
@@ -1921,9 +1939,11 @@ function chargerEtabs() {
 async function lireEtabs() {
   dernierChargementEtabs = Date.now();
   const t = await grist.docApi.fetchTable(ETAB.table);
+  cacheTables.set(ETAB.table, { t: Date.now(), p: Promise.resolve(t) });   // réutilisée par les listes de choix qui visent le référentiel
   const cols = Object.keys(t);
   etabs = t.id.map((id, i) => { const l = {}; cols.forEach(c => l[c] = t[c][i]); return l; });
   indexEtabs = new Map(etabs.map(e => [e.id, e]));
+  idEtabMax = etabs.reduce((m, e) => Math.max(m, e.id), 0);
   colsEtab = cols;
   await reconnaitreColonnesEtab(t);
   appliquerColonnesForcees();
@@ -2005,8 +2025,10 @@ async function ouvrirDossier(d, force) {
   }
   // Le référentiel n'est relu que si l'établissement du dossier y est inconnu (sinon, on se contente
   // du cache : un établissement sans mail ni lien est un cas normal, pas une raison de tout recharger).
-  const e0 = etabDeLigne(initiale);
-  if (!e0 && etabsCharges) { await rafraichirEtabs(true); if (demande !== demandeAffichage) return; }
+  const e0 = etabDeLigne(initiale), idE = refId(val(initiale, "Etablissement"));
+  // établissement inconnu : relu seulement s'il a pu être créé depuis la dernière lecture (numéro plus grand que
+  // tous ceux connus), et pas plus d'une fois par minute (une référence invalide ne doit pas relancer la lecture)
+  if (!e0 && etabsCharges && idE && idE > idEtabMax && Date.now() - dernierChargementEtabs > 60000) { await rafraichirEtabs(true); if (demande !== demandeAffichage) return; }
   etabCourant = etabDeLigne(initiale);
   if (!meme || !modifie) await remplirFormulaire();
   if (demande !== demandeAffichage) return;
@@ -2097,7 +2119,7 @@ const egal = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const norm = (def, v) => estVide(def, v) ? null : v;
 
 async function optionsReference(def) {
-  const t = await grist.docApi.fetchTable(def.type.split(":")[1]);
+  const t = await lireTableReference(def.type.split(":")[1]);
   const c = def.colAffichee && t[def.colAffichee] ? def.colAffichee : null;
   const opts = t.id.map((id, i) => ({ id, libelle: String(c ? t[c][i] ?? "" : `Ligne ${id}`) }))
                    .sort((a, b) => a.libelle.localeCompare(b.libelle, "fr"));
