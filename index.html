@@ -1673,7 +1673,7 @@ function reconnaitreColonnesSignalement(meta, tid = tableId, lignes = enregistre
 
 
 // ⚙ : ce que le widget utilise réellement (utile pour comprendre un affichage inattendu)
-const VERSION_WIDGET = "13/10/2026 23 h";
+const VERSION_WIDGET = "13/10/2026 23 h 30";
 function remplirActivite() {
   const A = ACTIVITE, min = Math.max(1, (Date.now() - A.debut) / 60000), fait = A.envois.filter(e => e.ms != null);
   const recents = A.envois.filter(e => Date.now() - e.t < 60000).length, dernier = A.envois[A.envois.length - 1];
@@ -4015,7 +4015,8 @@ async function lireTableSites(table) {
   cacheSites[table] = { temps: Date.now(), promesse };
   return promesse;
 }
-async function sitesDeLEtablissement(ps, etabId) {
+async function sitesDeLEtablissement(ps, etab) {
+  const etabId = etab.id, nomEtab = normaliser(etab[E.nom]);   // colonne texte : rattachement par le nom
   const t = await lireTableSites(ps.table);
   const col = k => (ps[k] && t[ps[k]]) || null;
   const cEtab = col("colEtab"), cNom = col("colNom"), cUsage = col("colUsage"), cAutres = col("colAutres"), cStatut = col("colStatut");
@@ -4023,7 +4024,8 @@ async function sitesDeLEtablissement(ps, etabId) {
   const exclus = String(ps.exclus ?? "Retiré, Refusé, Fusionné").split(",").map(x => normaliser(x)).filter(Boolean);
   const res = [];
   t.id.forEach((id, i) => {
-    if (refId(cEtab[i]) !== etabId && cEtab[i] !== etabId) return;
+    const v = cEtab[i];
+    if (typeof v === "string" ? !(nomEtab && normaliser(v) === nomEtab) : (refId(v) !== etabId && v !== etabId)) return;
     if (cStatut && exclus.includes(normaliser(cStatut[i]))) return;
     const nomBase = String((cNom && cNom[i]) ?? "").trim(), usage = String((cUsage && cUsage[i]) ?? "").trim();
     const nom = usage || nomBase;
@@ -4147,7 +4149,7 @@ class Tableau {
     if (!this.ps || !this.pret) return;
     const e = etabCourant ? etabCourant.id : null;
     if (!depuisChargement && e === this.etabSites) return;
-    const sites = e ? await sitesDeLEtablissement(this.ps, e) : [];
+    const sites = e ? await sitesDeLEtablissement(this.ps, etabCourant) : [];
     if ((etabCourant ? etabCourant.id : null) !== e) return;   // établissement changé pendant la lecture
     this.etabSites = e; this.sites = sites;
     const nom = this.dNom.colId, q = this.dQualif ? this.dQualif.colId : null, defaut = q ? this.ps.qualifDefaut : "";
