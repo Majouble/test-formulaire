@@ -291,24 +291,6 @@
   .puce:has(input:focus-visible) { outline: 2px solid var(--bleu); outline-offset: 2px; }
   .puce.on { background: var(--c-bg, var(--bleu)); border-color: var(--c-bg, var(--bleu)); color: var(--c, #fff); }
   .puce.on::before { content: "✓ "; white-space: pre; }
-  /* tableau prérempli : une ligne par site de l'établissement */
-  .masse-sites { margin: 8px; padding: 10px 12px; border: 1px dashed var(--trait); border-radius: 6px; display: grid; gap: 8px; }
-  .masse-sites .portee { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: .88rem; }
-  .masse-sites .portee label { display: inline-flex; gap: 6px; align-items: center; font-weight: 400; margin: 0; }
-  .masse-sites button.puce { font: inherit; font-size: .82rem; font-weight: 600; background: var(--c-bg, #fff); color: var(--c, var(--encre)); border-color: var(--c-bg, var(--trait)); }
-  .masse-sites .statut-masse { font-size: .82rem; color: var(--gris); min-height: 1em; }
-  .nom-site-base { display: grid; gap: 1px; }
-  .ligne-rep.repliee { padding-top: 6px; padding-bottom: 6px; }
-  .ligne-rep.repliee .tete-ligne { align-items: center; flex-wrap: nowrap; }
-  .ligne-rep.repliee .num, .ligne-rep.repliee .actions-ligne { margin-top: 0; }
-  .ligne-rep.repliee .nom-site-base .etiq { display: none; }
-  .pastille-qualif { font: inherit; font-size: .82rem; font-weight: 600; flex: none; background: var(--c-bg, #fff); color: var(--c, var(--encre)); border-color: var(--c-bg, var(--trait)); }
-  .choix-qualif { margin: 8px 0 0 calc(1.6rem + 10px); }
-  @media (max-width: 480px) { .ligne-rep.repliee .tete-ligne { flex-wrap: wrap; } .ligne-rep.repliee .pastille-qualif { margin-left: calc(1.6rem + 10px); } }
-  @media (prefers-reduced-motion: no-preference) { .ligne-rep { transition: background .3s; } .ligne-rep.flash { background: var(--bleu-clair); } }
-  .ligne-rep .preciser { margin: 2px 0 0 calc(1.6rem + 10px); font-size: .85rem; }
-  .nom-site-base strong { font-size: 1rem; }
-  .nom-site-base small { color: var(--gris); font-size: .78rem; }
   .multi { position: relative; }
   .multi summary { list-style: none; cursor: pointer; min-width: 14rem; max-width: 100%; padding: 6px 30px 6px 10px; background: var(--fond-champ);
     border-bottom: 2px solid var(--encre); border-radius: 4px 4px 0 0; font-size: .9rem; position: relative; }
@@ -1548,7 +1530,6 @@ function defDepuisBloc(b) {
   const r = b.reglages || {};
   const def = avecRegles({ ...meta, libelle: r.libelle || meta.libelle, description: reperesDepuisReglages(r) });
   def.court = !!r.court;
-  if (def.tableau && r.tableau && r.tableau.sites && r.tableau.sites.actif) def.tableau.sites = r.tableau.sites;   // une ligne par site
   if (r.format && r.format !== "defaut") def.formatDescription = r.format;
   def.depuisFormulaire = true;
   return def;
@@ -1673,7 +1654,7 @@ function reconnaitreColonnesSignalement(meta, tid = tableId, lignes = enregistre
 
 
 // ⚙ : ce que le widget utilise réellement (utile pour comprendre un affichage inattendu)
-const VERSION_WIDGET = "13/10/2026 23 h 30";
+const VERSION_WIDGET = "14/10/2026 7 h";
 function remplirActivite() {
   const A = ACTIVITE, min = Math.max(1, (Date.now() - A.debut) / 60000), fait = A.envois.filter(e => e.ms != null);
   const recents = A.envois.filter(e => Date.now() - e.t < 60000).length, dernier = A.envois[A.envois.length - 1];
@@ -2756,7 +2737,6 @@ function formatValeur(def, v) {
 let ligneAnnuaire = null;   // sans objet dans la version ESR (pas de recherche dans les annuaires en ligne)
 
 function afficherEtablissement() {
-  queueMicrotask(() => controleursTableau("q").forEach(c => c.appliquerSites(false)));
   queueMicrotask(majDescriptionAuto);   // le jour de mobilisation dépend de l'établissement
   queueMicrotask(verifierDoublons);
   const creation = !dossierId;
@@ -3164,9 +3144,8 @@ function elementsDescription(o = optionsAuto) {
   if (o.qualification && defQ) {
     const q = lireQualificationInitiale();
     const l = Array.isArray(q) ? q : (q ? [q] : []);
-    // formulaire « une ligne par site » avec flèches : le changement de qualification du signalement est signalé aussi
-    const avecFleches = defsQuestions.some(d => d.tableau && d.tableau.sites && d.tableau.sites.fleches !== false);
-    const avant = avecFleches && versionDuJour() ? listeQualif(val(derniere, "Qualification")) : [];
+    const avecFleche = defsQuestions.some(d => d.tableau && (d._sousDefs || []).some(estQualifSous));
+    const avant = avecFleche && versionDuJour() ? listeQualif(val(derniere, "Qualification")) : [];
     const change = avant.length && l.length && JSON.stringify([...avant].map(String).sort()) !== JSON.stringify([...l].map(String).sort());
     if (l.length) items.push({ libelle: defQ.libelle || "Qualification", valeur: change ? `${avant.join(", ")} → ==${l.join(", ")}==` : l.join(", "), def: defQ });
   }
@@ -3352,7 +3331,7 @@ function elementsTableau(m, fmt, o) {
   // élément de la description, séparé comme les autres questions. « Ne pas inclure » ne retire que l'en-tête.
   const [tete = "", ...lignes] = String(m.valeur ?? "").split(/\s*\n\s*/).filter(Boolean);
   let enTete = "";
-  if (fmt === "exclure") enTete = tete.replace(/^\d+\s*/, "").replace(/^\((.*)\)$/, "$1");   // décomptes seuls
+  if (fmt === "exclure") enTete = tete.replace(/^\d+\s*(—\s*)?/, "").replace(/^\((.*)\)$/, "$1");   // décomptes seuls
   else if (tete) enTete = fmt === "valeur" ? tete : `${m.libelle} : ${tete}`;
   return [enTete, ...lignes].filter(Boolean).map(x => `${o.puce || ""}${x}`);
 }
@@ -3868,8 +3847,11 @@ function modeSous(def, d, o = optionsAuto) {
                     les2: { ligne: "defaut", decompte: true }, exclure: { ligne: "exclure", decompte: false } };   // réglages précédents
   const r = typeof m === "string" ? anciens[m] : (m && typeof m === "object" ? m : null);
   const ligne = r && ["defaut", "libelle", "valeur", "exclure"].includes(r.ligne) ? r.ligne : "defaut";
+  if (!r && estQualifSous(d)) return { ligne, decompte: true };   // qualification : décompte en tête sauf réglage contraire
   return { ligne, decompte: !!(r && r.decompte && decomptable(d)) };
 }
+// Champ « qualification » d'une ligne de tableau (ex. qualification de chaque site) : choix unique nommé Qualification…
+const estQualifSous = d => !!d && typeBase(d.type) === "Choice" && (/qualif/i.test(d.colId) || /qualif/i.test(d.libelle || ""));
 // Valeurs d'une ligne de tableau mises en forme selon les réglages de la description automatique
 function valeursLigneTableau(def, l, o = optionsAuto) {
   const tous = def._sousDefs || [];
@@ -3885,95 +3867,75 @@ function valeursLigneTableau(def, l, o = optionsAuto) {
 }
 // Texte proposé pour un champ [auto] d'une ligne
 const texteAutoLigne = (def, l, o = optionsAuto) => valeursLigneTableau(def, l, o).join(" — ");
+/* Évolution depuis la version précédente du dossier (même jour) : chaque décompte en tête reçoit l'écart entre
+   parenthèses (« RAS 19 (−1) ») ; la qualification d'une ligne qui a changé est écrite « Blocage → ==RAS== »
+   (== : surlignage dans Word, soulignement dans Tchap). Les lignes sont retrouvées d'une version à l'autre par leur
+   identifiant, sinon par le premier champ texte (nom du site…). */
 function texteTableauDescription(def, lignesBrutes, o = optionsAuto, avantBrutes = null) {
   const tous = def._sousDefs || [], sous = tous.filter(d => !d.confidentiel);
-  const nonVide = l => tous.some(d => (!d.condition || evaluerConditionLigne(d.condition, tous, l)) && !videSous(l[d.colId]));
+  const vis = (l, d) => !d.condition || evaluerConditionLigne(d.condition, tous, l);
+  const nonVide = l => tous.some(d => vis(l, d) && !videSous(l[d.colId]));
   const lignes = lignesBrutes.map(l => l.valeurs || l).filter(nonVide);
   if (!lignes.length) return "";
-  const vis = (l, d) => !d.condition || evaluerConditionLigne(d.condition, tous, l);
-  // Une ligne par site : champ du nom et de la qualification
-  const ps = def.tableau && def.tableau.sites;
-  const dNom = ps && sous.find(d => d.colId === ps.roleNom), dQ = ps && sous.find(d => d.colId === ps.roleQualif);
-  const sites = !!(dNom && dQ);
+  const avant = Array.isArray(avantBrutes) ? avantBrutes.map(l => l.valeurs || l).filter(nonVide) : null;
+  const dQ = sous.find(estQualifSous);
+  const ecart = (v, a) => { const e = v - a; return e ? ` (${e > 0 ? "+" : "−"}${Math.abs(e).toLocaleString("fr-FR")})` : ""; };
   const parts = [];
-  for (const d of sous.filter(d => modeSous(def, d, o).decompte && !(sites && d === dQ))) {
+  for (const d of sous.filter(d => modeSous(def, d, o).decompte)) {
     const t = typeBase(d.type), lib = d.libelle || d.colId;
     if (t === "Numeric" || t === "Int") {
-      const vals = lignes.filter(l => vis(l, d) && typeof l[d.colId] === "number").map(l => l[d.colId]);
-      if (vals.length) parts.push(`${lib} : ${vals.reduce((a, b) => a + b, 0).toLocaleString("fr-FR")}`);
+      const somme = ls => ls.filter(l => vis(l, d) && typeof l[d.colId] === "number").map(l => l[d.colId]);
+      const vals = somme(lignes), va = avant ? somme(avant) : [];
+      if (vals.length || va.length) { const s = vals.reduce((a, b) => a + b, 0), sa = va.reduce((a, b) => a + b, 0);
+        parts.push(`${lib} : ${s.toLocaleString("fr-FR")}${avant ? ecart(s, sa) : ""}`); }
       continue;
     }
-    const compte = new Map();
-    for (const l of lignes) {
-      if (!vis(l, d) || videSous(l[d.colId])) continue;
-      const v = l[d.colId];
-      const items = Array.isArray(v) ? v.map(x => t === "RefList" ? texteSousValeur({ ...d, type: "Ref" }, x) : x) : [texteSousValeur(d, v)];
-      for (const x of items) compte.set(x, (compte.get(x) || 0) + 1);
-    }
-    if (!compte.size) continue;
+    const compter = ls => {
+      const compte = new Map();
+      for (const l of ls) {
+        if (!vis(l, d) || videSous(l[d.colId])) continue;
+        const v = l[d.colId];
+        const items = Array.isArray(v) ? v.map(x => t === "RefList" ? texteSousValeur({ ...d, type: "Ref" }, x) : x) : [texteSousValeur(d, v)];
+        for (const x of items) compte.set(x, (compte.get(x) || 0) + 1);
+      }
+      return compte;
+    };
+    const compte = compter(lignes), compteAvant = avant ? compter(avant) : new Map();
+    if (!compte.size && !compteAvant.size) continue;
     const ordre = (d.opts && d.opts.choices) || [];
     const rang = x => { const i = ordre.indexOf(x); return i < 0 ? 1e9 : i; };
-    parts.push(`${lib} : ${[...compte].sort((a, b) => rang(a[0]) - rang(b[0])).map(([x, c]) => `${x} ${c}`).join(", ")}`);
+    const cles = [...new Set([...compte.keys(), ...compteAvant.keys()])].sort((a, b) => rang(a) - rang(b));
+    parts.push(`${lib} : ${cles.map(x => `${x} ${compte.get(x) || 0}${avant ? ecart(compte.get(x) || 0, compteAvant.get(x) || 0) : ""}`).join(", ")}`);
   }
-  let tete = `${lignes.length}${parts.length ? ` (${parts.join(" ; ")})` : ""}`;
+  // tableau avec une qualification : « 22 — Qualification : Blocage 1 (+1), RAS 19 (−1) » (pas de parenthèses imbriquées)
+  const tete = dQ ? `${lignes.length}${parts.length ? ` — ${parts.join(" ; ")}` : ""}` : `${lignes.length}${parts.length ? ` (${parts.join(" ; ")})` : ""}`;
   const det = sous.filter(d => !d.auto && modeSous(def, d, o).ligne !== "exclure");
   // Champ [auto] utilisé : la ligne reprend son texte (éventuellement retouché par l'agent)
   const autos = sous.filter(d => d.auto && modeSous(def, d, o).ligne !== "exclure");
-  if (!sites && !det.length && !autos.length) return tete;
-  const texteLigne = l => {
-    const repris = autos.filter(d => vis(l, d)).map(d => String(l[d.colId] ?? "").trim()).filter(Boolean).join(" — ");
-    return (repris ? [repris] : valeursLigneTableau(def, l, o)).join(" — ");
-  };
-  if (!sites) return [tete, ...lignes.map((l, k) => { const t = texteLigne(l); return t ? `${k + 1}. ${t}` : ""; }).filter(Boolean)].join("\n");
-
-  /* ----- Une ligne par site -----
-     En tête : décompte des sites par qualification, avec l'écart depuis la version précédente du dossier (réglage).
-     Changement de qualification depuis la version précédente : « Blocage → ==RAS== » (== : surlignage dans Word,
-     soulignement dans Tchap). Sites sans autre précision et en attente ou RAS : regroupés par qualification. */
-  const avant = Array.isArray(avantBrutes) ? avantBrutes.map(l => l.valeurs || l).filter(nonVide) : null;
-  const qTxt = l => texteSousValeur(dQ, l[dQ.colId]) || "Sans qualification";
-  const nomTxt = l => String(l[dNom.colId] ?? "").trim();
-  const precedente = l => !avant ? null : (avant.find(a => (l._site && a._site === l._site) || (l._id && a._id === l._id))
-    || avant.find(a => !a._site && !l._site && normaliser(nomTxt(a)) && normaliser(nomTxt(a)) === normaliser(nomTxt(l))) || null);
-  const estDefaut = q => videSous(q) || q === ps.qualifDefaut;
-  const passage = l => {   // qualification précédente quand elle a changé, sinon null
-    if (!avant || ps.fleches === false) return null;
-    const a = precedente(l);
+  if (!det.length && !autos.length) return tete;
+  // qualification précédente d'une ligne, quand elle a changé
+  const dNom = sous.find(d => typeBase(d.type) === "Text" && !d.auto);
+  const nomDe = l => dNom ? normaliser(l[dNom.colId]) : "";
+  const passage = l => {
+    if (!avant || !dQ) return null;
+    const a = avant.find(x => l._id && x._id === l._id) || (nomDe(l) ? avant.find(x => nomDe(x) === nomDe(l)) : null);
     if (!a || String(a[dQ.colId] ?? "") === String(l[dQ.colId] ?? "")) return null;
-    if (ps.flechesAttente === false && estDefaut(a[dQ.colId])) return null;
-    return qTxt(a);
+    return texteSousValeur(dQ, a[dQ.colId]) || "Sans qualification";
   };
-  const qAvecFleche = l => { const a = passage(l); return a ? `${a} → ==${qTxt(l)}==` : qTxt(l); };
-  // décompte
-  const ordre = (dQ.opts && dQ.opts.choices) || [];
-  const rang = q => q === (ps.qualifDefaut || "") || q === "Sans qualification" ? 2e9 : (ordre.indexOf(q) < 0 ? 1e9 : ordre.indexOf(q));
-  const compter = ls => ls.reduce((m, l) => m.set(qTxt(l), (m.get(qTxt(l)) || 0) + 1), new Map());
-  const mode = ps.decompte || "ecarts";
-  if (mode !== "aucun") {
-    const n = compter(lignes), na = mode === "ecarts" && avant ? compter(avant) : null;
-    const cles = [...new Set([...n.keys(), ...(na ? na.keys() : [])])].sort((a, b) => rang(a) - rang(b));
-    const txt = cles.map(q => { const v = n.get(q) || 0, e = na ? v - (na.get(q) || 0) : 0; return `${q} ${v}${e ? ` (${e > 0 ? "+" : "−"}${Math.abs(e)})` : ""}`; }).join(", ");
-    tete = `${lignes.length} — ${txt}${parts.length ? ` (${parts.join(" ; ")})` : ""}`;
-  }
-  // lignes détaillées : la qualification reçoit sa flèche dans le texte de la ligne
   const avecFleche = (t, l) => {
     const a = passage(l); if (!a) return t;
-    const q = qTxt(l), re = new RegExp(`(^|— |: )${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?= —|$)`);
+    const q = texteSousValeur(dQ, l[dQ.colId]) || "Sans qualification";
+    const re = new RegExp(`(^|— |: )${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?= —|$)`);
     return re.test(t) ? t.replace(re, `$1${a} → ==${q}==`) : `${t} — ${a} → ==${q}==`;
   };
-  const qSimple = q => estDefaut(q) || /^r\.?a\.?s\.?$/i.test(String(q).trim());
-  const simple = l => qSimple(l[dQ.colId]) && sous.filter(d => !d.auto && d !== dNom && d !== dQ && vis(l, d)).every(d => videSous(l[d.colId]));
-  const detail = lignes.filter(l => !simple(l)), groupes = new Map();
-  lignes.filter(simple).forEach(l => { const k = qAvecFleche(l); if (!groupes.has(k)) groupes.set(k, []); groupes.get(k).push(nomTxt(l)); });
-  // groupes : changements d'abord, puis dans l'ordre des choix (attente en dernier)
-  const cle = k => (k.includes(" → ") ? 0 : 1e10) + rang(k.includes(" → ") ? k.split(" → ")[1].replace(/==/g, "") : k);
-  const txtGroupes = [...groupes].sort((a, b) => cle(a[0]) - cle(b[0])).map(([k, noms]) =>
-    detail.length && k === "RAS" && noms.length > 1 ? `RAS sur les ${noms.length} autres sites : ${noms.join(", ")}`
-      : `${k} (${noms.length} site${noms.length > 1 ? "s" : ""}) : ${noms.join(", ")}`);
-  return [tete, ...detail.map((l, k) => `${k + 1}. ${avecFleche(texteLigne(l), l)}`), ...txtGroupes].join("\n");
+  const lignesTxt = lignes.map((l, k) => {
+    const repris = autos.filter(d => vis(l, d)).map(d => String(l[d.colId] ?? "").trim()).filter(Boolean).join(" — ");
+    const vals = repris ? [repris] : valeursLigneTableau(def, l, o);
+    return vals.length ? `${k + 1}. ${avecFleche(vals.join(" — "), l)}` : "";
+  }).filter(Boolean);
+  return [tete, ...lignesTxt].join("\n");
 }
-// Lignes de la version précédente du dossier, pour signaler les changements de qualification des sites :
-// seulement en mise à jour, et si cette version est du même jour (un nouveau dossier chaque jour)
+// Version précédente du dossier, si elle est du même jour (un nouveau dossier chaque jour) : base de comparaison
 function versionDuJour() {
   if (!dossierId || !derniere) return false;
   const s = secondes(val(derniere, "Date"));
@@ -3981,10 +3943,7 @@ function versionDuJour() {
   const jour = d => d.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" });
   return jour(new Date(s * 1000)) === jour(new Date());
 }
-function lignesPrecedentes(def) {
-  if (!def.tableau || !def.tableau.sites || !versionDuJour()) return null;
-  return lireTableauJson(derniere[def.colId]);
-}
+const lignesPrecedentes = def => def.tableau && versionDuJour() ? lireTableauJson(derniere[def.colId]) : null;
 function lignesExemple(def) {   // deux lignes fictives pour l'exemple des réglages
   return [0, 1].map(k => {
     const l = {};
@@ -4002,50 +3961,10 @@ function lignesExemple(def) {   // deux lignes fictives pour l'exemple des régl
   });
 }
 
-/* ---------- Une ligne par site de l'établissement (réglage du formulaire : reglages.tableau.sites) ----------
-   Les sites sont lus dans une table qui référence le référentiel des établissements (ex. « Sites », importée de l'export OAD).
-   Chaque ligne du tableau garde le numéro de son site (_site, dans le JSON de la version) : les mises à jour retrouvent
-   les mêmes lignes, et les sites ajoutés à la base depuis la dernière version y sont ajoutés. Les lignes saisies avant
-   le préremplissage sont rattachées à un site quand leur nom correspond à son nom, son nom d'usage ou un autre nom. */
-const cacheSites = {};
-async function lireTableSites(table) {
-  const c = cacheSites[table];
-  if (c && Date.now() - c.temps < 60000) return c.promesse;
-  const promesse = grist.docApi.fetchTable(table).catch(e => { delete cacheSites[table]; throw e; });
-  cacheSites[table] = { temps: Date.now(), promesse };
-  return promesse;
-}
-async function sitesDeLEtablissement(ps, etab) {
-  const etabId = etab.id, nomEtab = normaliser(etab[E.nom]);   // colonne texte : rattachement par le nom
-  const t = await lireTableSites(ps.table);
-  const col = k => (ps[k] && t[ps[k]]) || null;
-  const cEtab = col("colEtab"), cNom = col("colNom"), cUsage = col("colUsage"), cAutres = col("colAutres"), cStatut = col("colStatut");
-  if (!cEtab) throw new Error(`colonne « ${ps.colEtab} » absente de la table ${ps.table}`);
-  const exclus = String(ps.exclus ?? "Retiré, Refusé, Fusionné").split(",").map(x => normaliser(x)).filter(Boolean);
-  const res = [];
-  t.id.forEach((id, i) => {
-    const v = cEtab[i];
-    if (typeof v === "string" ? !(nomEtab && normaliser(v) === nomEtab) : (refId(v) !== etabId && v !== etabId)) return;
-    if (cStatut && exclus.includes(normaliser(cStatut[i]))) return;
-    const nomBase = String((cNom && cNom[i]) ?? "").trim(), usage = String((cUsage && cUsage[i]) ?? "").trim();
-    const nom = usage || nomBase;
-    if (!nom) return;
-    const autres = String((cAutres && cAutres[i]) ?? "").split(/\s*[,;\n]\s*/).map(x => x.trim()).filter(Boolean);
-    res.push({ id, nom, nomBase, usage, autres, ordre: t.manualSort ? t.manualSort[i] : i });
-  });
-  return res.sort((a, b) => a.ordre - b.ordre);
-}
-function siteDuNom(sites, nom) {
-  const n = normaliser(nom);
-  if (!n) return null;
-  return sites.find(s => [s.nom, s.nomBase, s.usage, ...s.autres].some(x => x && normaliser(x) === n)) || null;
-}
-
 class Tableau {
   constructor(def, prefix, conteneur, surChangement) {
     Object.assign(this, { def, prefix, el: conteneur, surChangement, id: `${prefix}-${def.colId}`,
-      lignes: [], sousDefs: [], pret: false, erreur: "", confLisible: true, montrerErreurs: false,
-      ps: def.tableau && def.tableau.sites && def.tableau.sites.actif ? def.tableau.sites : null, sites: null, etabSites: undefined, fileSites: Promise.resolve() });
+      lignes: [], sousDefs: [], pret: false, erreur: "", confLisible: true, montrerErreurs: false });
     this.ecouter();
     this.promesse = this.preparer();
   }
@@ -4070,11 +3989,6 @@ class Tableau {
     const manque = [!this.colDossier && "Dossier (référence vers la table des signalements)", !this.colLigne && "Ligne_id (texte)"].filter(Boolean);
     this.avertissement = manque.length ? `Table « ${tid} » : ajoutez la colonne ${manque.join(" et la colonne ")} pour qu'elle soit tenue à jour.` : "";
     this.autos = this.sousDefs.filter(d => d.auto && typeBase(d.type) === "Text");
-    if (this.ps) {   // champs du nom et de la qualification de chaque site
-      this.dNom = this.sousDefs.find(d => d.colId === this.ps.roleNom) || null;
-      this.dQualif = this.sousDefs.find(d => d.colId === this.ps.roleQualif && typeBase(d.type) === "Choice") || null;
-      if (!this.dNom) { this.avertissement = `Une ligne par site : le champ « ${this.ps.roleNom || "?"} » qui doit recevoir le nom du site est introuvable dans la table ${tid}.`; this.ps = null; }
-    }
     this.def._sousDefs = this.sousDefs;
     this.pret = true;
     this.dessiner();
@@ -4087,9 +4001,7 @@ class Tableau {
     const c = resoudreColonne(ref, defs);
     return c && ["Numeric", "Int"].includes(typeBase(c.def.type)) ? c : null;
   }
-  avecSites() { return !!(this.ps && this.sites && this.sites.length); }
   nombreAttendu() {
-    if (this.avecSites()) return null;
     const c = this.colonneNombre();
     if (!c) return null;
     let v = null;
@@ -4117,7 +4029,6 @@ class Tableau {
   valeur() {   // JSON enregistré dans la colonne de la version (sans champs confidentiels ni champs masqués)
     const l = this.lignesValides().map(x => {
       const o = { _id: x._id };
-      if (x._site) o._site = x._site;
       for (const d of this.sousDefs) if (!d.confidentiel && this.visible(x, d) && !videSous(x.valeurs[d.colId])) o[d.colId] = x.valeurs[d.colId];
       return o;
     });
@@ -4127,63 +4038,13 @@ class Tableau {
     await this.promesse;
     const conf = await this.lireConfidentiels(dossier);
     this.lignes = lireTableauJson(json).map(o => {
-      const { _id, _site, ...valeurs } = o;
+      const { _id, ...valeurs } = o;
       const id = _id || nouvelIdLigne();
-      return { _id: id, ...(_site ? { _site } : {}), valeurs: { ...valeurs, ...(conf.get(id) || {}) } };
+      return { _id: id, valeurs: { ...valeurs, ...(conf.get(id) || {}) } };
     });
     this.lignes.forEach(l => this.initAuto(l));
     this.montrerErreurs = false; this.confModifie = false; this.dernierN = undefined;
     this.dessiner();
-    if (this.ps) await this.appliquerSites(true);
-  }
-  // Lignes des sites de l'établissement courant (au chargement d'un dossier, et quand l'établissement change)
-  appliquerSites(depuisChargement) {
-    if (!this.ps) return Promise.resolve();
-    this.fileSites = this.fileSites.then(() => this.appliquerSites1(depuisChargement)).catch(e => {
-      this.avertissement = `Sites de l'établissement illisibles (table « ${this.ps.table} ») : ${e.message || e}`; this.dessiner();
-    });
-    return this.fileSites;
-  }
-  async appliquerSites1(depuisChargement) {
-    await this.promesse;
-    if (!this.ps || !this.pret) return;
-    const e = etabCourant ? etabCourant.id : null;
-    if (!depuisChargement && e === this.etabSites) return;
-    const sites = e ? await sitesDeLEtablissement(this.ps, etabCourant) : [];
-    if ((etabCourant ? etabCourant.id : null) !== e) return;   // établissement changé pendant la lecture
-    this.etabSites = e; this.sites = sites;
-    const nom = this.dNom.colId, q = this.dQualif ? this.dQualif.colId : null, defaut = q ? this.ps.qualifDefaut : "";
-    // lignes saisies avant le préremplissage : rattachées au site du même nom
-    for (const l of this.lignes) if (!l._site) { const s = siteDuNom(sites, l.valeurs[nom]); if (s && !this.lignes.some(x => x._site === s.id)) l._site = s.id; }
-    // lignes préremplies pour un autre établissement et jamais modifiées : retirées
-    this.lignes = this.lignes.filter(l => !(l._prerempli && !l._touchee && !sites.some(s => s.id === l._site)));
-    const presents = new Set(this.lignes.map(l => l._site).filter(Boolean));
-    const ajout = sites.filter(s => !presents.has(s.id)).map(s => ({ _id: nouvelIdLigne(), _site: s.id, _prerempli: true,
-      valeurs: { [nom]: s.nom, ...(q && defaut ? { [q]: defaut } : {}) } }));
-    // sites de la base d'abord, dans l'ordre de la base ; puis les sites hors base
-    const rang = new Map(sites.map((s, i) => [s.id, i]));
-    this.lignes = [...this.lignes, ...ajout].map((l, i) => [l, i]).sort((a, b) =>
-      ((rang.has(a[0]._site) ? rang.get(a[0]._site) : 1e6 + a[1]) - (rang.has(b[0]._site) ? rang.get(b[0]._site) : 1e6 + b[1]))).map(([l]) => l);
-    for (const l of this.lignes) {   // nom à jour (nom d'usage changé dans la base)
-      const s = sites.find(x => x.id === l._site);
-      if (s && l.valeurs[nom] !== s.nom) { l.valeurs[nom] = s.nom; if (!l._touche) this.initAuto(l); }
-    }
-    ajout.forEach(l => { l._touche = {}; this.majAutos(l); });
-    this.dessiner();
-    if (!depuisChargement && ajout.length) { if (this.surChangement) this.surChangement(); if (this.prefix === "q") { appliquerConditions("q", defsQuestions); majDescriptionAuto(); majApercuAuto(); } }
-  }
-  // « Qualifier en une fois » : tous les sites, ou ceux qui ont encore la qualification par défaut (ou aucune)
-  qualifierEnMasse(valeur, tous) {
-    const q = this.dQualif.colId, defaut = this.ps.qualifDefaut || "";
-    let n = 0;
-    for (const l of this.lignes) {
-      if (!tous && !(videSous(l.valeurs[q]) || l.valeurs[q] === defaut)) continue;
-      if (!tous && !l._site && this.ligneVide(l)) continue;
-      l.valeurs[q] = valeur; l._touchee = true; this.majAutos(l); n++;
-    }
-    this.dessiner(); this.signaler();
-    const st = this.el.querySelector(".statut-masse");
-    if (st) st.textContent = n ? `${n} site${n > 1 ? "s" : ""} qualifié${n > 1 ? "s" : ""} « ${valeur} ».` : (tous ? "Aucun site." : `Aucun site encore « ${defaut || "sans qualification"} ».`);
   }
   async lireConfidentiels(dossier) {
     const res = new Map();
@@ -4239,11 +4100,6 @@ class Tableau {
   // ----- rendu
   champHtml(d, k, l) {
     const nom = `${this.id}-${k}-${d.colId}`, v = l.valeurs[d.colId], t = typeBase(d.type);
-    if (this.ps && l._site && this.dNom && d.colId === this.dNom.colId) {   // site de la base : nom affiché, non modifiable
-      const s = (this.sites || []).find(x => x.id === l._site);
-      const detail = s && s.usage && s.nomBase && normaliser(s.usage) !== normaliser(s.nomBase) ? `<small>${esc(s.nomBase)}</small>` : "";
-      return `<div class="sous-champ zone-tete nom-site-base" data-sous="${esc(d.colId)}"><span class="etiq">${esc(d.libelle || d.colId)}</span><strong>${esc(v ?? (s ? s.nom : ""))}</strong>${detail}<span class="msg-ligne" hidden></span></div>`;
-    }
     const ch = (d.opts && d.opts.choices) || [], couleurs = (d.opts && d.opts.choiceOptions) || {};
     const coul = x => { const c = couleurs[x] || {}; return c.fillColor ? `--c:${c.textColor || "#161616"};--c-bg:${c.fillColor}` : "--c:#fff;--c-bg:var(--bleu)"; };
     const titre = `<span class="etiq" id="${nom}-etiq">${esc(d.libelle || d.colId)}${d.obligatoire ? ' <span class="req">*</span>' : ""}` +
@@ -4287,33 +4143,8 @@ class Tableau {
     const aide = (d.aide ? `<span class="aide-sous">${esc(d.aide)}</span>` : "") + regen;
     return `<div class="sous-champ zone-${zoneSousChamp(d)}${d.condition ? " cond-ligne" : ""}" data-sous="${esc(d.colId)}">${titre}${ctl}${aide}<span class="msg-ligne" hidden></span></div>`;
   }
-  // Ligne d'un site sans précision (qualification par défaut ou RAS) : seuls le nom et la qualification sont affichés
-  replie(l) {
-    if (!this.ps || !this.dQualif || !l._site || l._ouvert || this.montrerErreurs) return false;   // sites hors base : toujours dépliés (nom à saisir)
-    const q = l.valeurs[this.dQualif.colId];
-    if (!(videSous(q) || q === this.ps.qualifDefaut || /^r\.?a\.?s\.?$/i.test(String(q).trim()))) return false;
-    return this.sousDefs.every(d => d === this.dNom || d === this.dQualif || d.auto || !this.visible(l, d) || videSous(l.valeurs[d.colId]));
-  }
-  redessinerLigne(k, focus) {
-    const div = this.el.querySelector(`.ligne-rep[data-k="${k}"]`); if (!div) return;
-    div.outerHTML = this.ligneHtml(this.lignes[k], k);
-    this.majLignes();
-    const n = this.el.querySelector(`.ligne-rep[data-k="${k}"]`), f = focus && n && n.querySelector(focus);
-    if (f) f.focus();
-  }
   ligneHtml(l, k) {
-    if (this.replie(l)) {   // ligne repliée : nom, qualification, et lien pour préciser
-      const autres = this.sousDefs.filter(d => d !== this.dNom && d !== this.dQualif && !d.auto && !d.confidentiel).map(d => (d.libelle || d.colId).toLowerCase());
-      // qualification : pastille seule ; un clic ouvre le choix
-      const q = l.valeurs[this.dQualif.colId], c = ((this.dQualif.opts && this.dQualif.opts.choiceOptions) || {})[q] || {};
-      const nomTxt = String(l.valeurs[this.dNom.colId] ?? "");
-      const pastille = `<button type="button" class="puce pastille-qualif" data-action="choix-qualif" aria-expanded="${!!l._choix}" aria-label="Qualification de ${esc(nomTxt)} : ${esc(q || "aucune")}, changer"${c.fillColor ? ` style="--c:${c.textColor || "#161616"};--c-bg:${c.fillColor}"` : ""}>${esc(q || "Qualifier")} ▾</button>`;
-      return `<div class="ligne-rep repliee" data-k="${k}"><div class="tete-ligne"><span class="num" aria-label="Ligne ${k + 1}">${k + 1}</span>
-        <div class="champs-ordonnes">${this.champHtml(this.dNom, k, l)}</div>${pastille}</div>
-        ${l._choix ? `<div class="choix-qualif">${this.champHtml(this.dQualif, k, l)}</div>` : ""}
-        ${autres.length ? `<button type="button" class="lien-texte preciser" data-action="preciser" title="${esc(autres.join(", "))}">+ Préciser</button>` : ""}</div>`;
-    }
-    const actions = this.ps && l._site ? `<span class="actions-ligne"></span>` : `<span class="actions-ligne"><button type="button" class="icone" data-action="dupliquer" title="Dupliquer cette ligne" aria-label="Dupliquer la ligne ${k + 1}">⧉</button><button type="button" class="icone" data-action="supprimer" title="Supprimer cette ligne" aria-label="Supprimer la ligne ${k + 1}">✕</button></span>`;
+    const actions = `<span class="actions-ligne"><button type="button" class="icone" data-action="dupliquer" title="Dupliquer cette ligne" aria-label="Dupliquer la ligne ${k + 1}">⧉</button><button type="button" class="icone" data-action="supprimer" title="Supprimer cette ligne" aria-label="Supprimer la ligne ${k + 1}">✕</button></span>`;
     // Ordre imposé par [ordre N] : les champs se suivent dans cet ordre (les champs courts côte à côte)
     if (this.ordonne) return `<div class="ligne-rep ordonnee" data-k="${k}"><div class="tete-ligne"><span class="num" aria-label="Ligne ${k + 1}">${k + 1}</span>
       <div class="champs-ordonnes">${this.sousDefs.map(d => this.champHtml(d, k, l)).join("")}</div>${actions}</div></div>`;
@@ -4321,30 +4152,16 @@ class Tableau {
     const textes = parZone("texte");
     return `<div class="ligne-rep" data-k="${k}">
       <div class="tete-ligne"><span class="num" aria-label="Ligne ${k + 1}">${k + 1}</span>${parZone("tete")}
-        ${actions}</div>
+        <span class="actions-ligne"><button type="button" class="icone" data-action="dupliquer" title="Dupliquer cette ligne" aria-label="Dupliquer la ligne ${k + 1}">⧉</button><button type="button" class="icone" data-action="supprimer" title="Supprimer cette ligne" aria-label="Supprimer la ligne ${k + 1}">✕</button></span></div>
       ${parZone("large")}${textes ? `<div class="textes-ligne">${textes}</div>` : ""}</div>`;
   }
   dessiner() {
     if (this.erreur) { this.el.innerHTML = `<p class="bandeau">${esc(this.erreur)}</p>`; return; }
     if (!this.pret) { this.el.innerHTML = `<p class="note">Chargement…</p>`; return; }
     if (!this.sousDefs.length) { this.el.innerHTML = `<p class="bandeau">La table « ${esc(this.table)} » n'a aucune colonne à saisir (colonnes non formules autres que Dossier, Ligne_id et Ordre).</p>`; return; }
-    const avecSites = this.avecSites();
-    const vide = !this.ps ? "Aucune ligne pour l'instant." : !etabCourant ? "Choisissez l'établissement : ses sites s'afficheront ici."
-      : this.sites && !this.sites.length ? "Aucun site connu pour cet établissement : ajoutez les sites concernés." : "Chargement des sites…";
-    let masse = "";
-    if (avecSites && this.dQualif && this.ps.masse !== false) {
-      const ch = (this.dQualif.opts && this.dQualif.opts.choices) || [], couleurs = (this.dQualif.opts && this.dQualif.opts.choiceOptions) || {};
-      const defaut = this.ps.qualifDefaut;
-      masse = `<div class="masse-sites" role="group" aria-label="Qualifier plusieurs sites en une fois"><div class="portee"><strong>Qualifier en une fois</strong>
-        <label><input type="radio" name="${this.id}-portee" value="attente" checked> les sites encore ${defaut ? `« ${esc(defaut)} »` : "sans qualification"}</label>
-        <label><input type="radio" name="${this.id}-portee" value="tous"> tous les sites</label></div>
-        <div class="puces">${ch.filter(x => x !== defaut).map(x => { const c = couleurs[x] || {};
-          return `<button type="button" class="puce" data-action="masse" data-q="${esc(x)}"${c.fillColor ? ` style="--c:${c.textColor || "#161616"};--c-bg:${c.fillColor}"` : ""}>${esc(x)}</button>`; }).join("")}</div>
-        <span class="statut-masse" role="status"></span></div>`;
-    }
-    this.el.innerHTML = (this.avertissement && !modeEtab ? `<p class="bandeau">${esc(this.avertissement)}</p>` : "") + masse +
-      `<div class="lignes-rep">${this.lignes.map((l, k) => this.ligneHtml(l, k)).join("") || `<p class="vide-tableau">${esc(vide)}</p>`}</div>
-      <div class="pied-tableau"><span class="ajout-lignes"><button type="button" class="secondaire petit" data-action="ajouter">${avecSites ? "+ Ajouter un site hors base" : "+ Ajouter"}</button>
+    this.el.innerHTML = (this.avertissement && !modeEtab ? `<p class="bandeau">${esc(this.avertissement)}</p>` : "") +
+      `<div class="lignes-rep">${this.lignes.map((l, k) => this.ligneHtml(l, k)).join("") || `<p class="vide-tableau">Aucune ligne pour l'instant.</p>`}</div>
+      <div class="pied-tableau"><span class="ajout-lignes"><button type="button" class="secondaire petit" data-action="ajouter">+ Ajouter</button>
         <input type="number" class="qte" min="1" max="50" value="1" aria-label="Nombre de lignes à ajouter"><span class="note-qte">ligne(s)</span></span>
         <span class="synthese" aria-live="polite"></span><span class="ecart" hidden></span></div>`;
     this.majLignes();
@@ -4415,7 +4232,6 @@ class Tableau {
     const div = sc.closest(".ligne-rep"), l = this.lignes[+div.dataset.k];
     const d = this.sousDefs.find(x => x.colId === sc.dataset.sous);
     l.valeurs[d.colId] = this.lireControle(sc, d);
-    l._touchee = true;
     if (d.auto) {
       if (!l._touche) l._touche = {};
       l._touche[d.colId] = !videSous(l.valeurs[d.colId]) && String(l.valeurs[d.colId]).trim() !== texteAutoLigne(this.def, l.valeurs).trim();
@@ -4424,16 +4240,6 @@ class Tableau {
     sc.querySelectorAll(".puce").forEach(p => p.classList.toggle("on", p.querySelector("input").checked));
     const r = sc.querySelector(".multi .resume");
     if (r) r.textContent = [...sc.querySelectorAll(".multi-liste input:checked")].map(c => c.parentNode.textContent.trim()).join(", ") || "Choisir…";
-    if (this.ps && this.dQualif && d === this.dQualif) {   // qualification choisie : la ligne se replie, ou se déplie si le site n'est pas RAS
-      const k = +div.dataset.k, etait = div.classList.contains("repliee"), choix = l._choix;
-      l._choix = false;
-      if (etait || choix || etait !== this.replie(l)) {
-        const v = l.valeurs[d.colId];
-        this.redessinerLigne(k, this.replie(l) ? ".pastille-qualif" : v == null ? null : `[data-sous="${CSS.escape(d.colId)}"] input[value="${CSS.escape(String(v))}"]`);
-        const n = this.el.querySelector(`.ligne-rep[data-k="${k}"]`); if (n) { n.classList.add("flash"); setTimeout(() => n.classList.remove("flash"), 500); }
-        this.signaler(); return;
-      }
-    }
     this.majLignes();
     this.signaler();
   }
@@ -4449,19 +4255,10 @@ class Tableau {
     });
     el.addEventListener("click", ev => {
       const inp = ev.target.closest('.seg input[type="radio"], .puces.unique input[type="radio"]');
-      if (inp && inp.dataset.etait === "true") {
-        const sc = inp.closest(".sous-champ");
-        if (this.ps && this.dQualif && sc.dataset.sous === this.dQualif.colId) {   // qualification d'un site : jamais vidée, le choix se referme
-          const k = +sc.closest(".ligne-rep").dataset.k, l = this.lignes[k];
-          if (l._choix) { l._choix = false; this.redessinerLigne(k, ".pastille-qualif"); }
-          return;
-        }
-        inp.checked = false; inp.dataset.etait = "false"; this.changement(sc); return;
-      }
+      if (inp && inp.dataset.etait === "true") { inp.checked = false; inp.dataset.etait = "false"; this.changement(inp.closest(".sous-champ")); return; }
       const b = ev.target.closest("button[data-action]");
       if (!b) return;
       const action = b.dataset.action;
-      if (action === "masse") { const p = el.querySelector(`input[name="${this.id}-portee"]:checked`); this.qualifierEnMasse(b.dataset.q, !!p && p.value === "tous"); return; }
       if (action === "ajouter") {
         const n = Math.max(1, Math.min(50, parseInt(el.querySelector(".qte").value, 10) || 1));
         for (let i = 0; i < n; i++) this.lignes.push({ _id: nouvelIdLigne(), valeurs: {} });
@@ -4471,8 +4268,6 @@ class Tableau {
         return;
       }
       const k = +b.closest(".ligne-rep").dataset.k, l = this.lignes[k];
-      if (action === "choix-qualif") { l._choix = !l._choix; this.redessinerLigne(k, l._choix ? `[data-sous="${CSS.escape(this.dQualif.colId)}"] input:checked, [data-sous="${CSS.escape(this.dQualif.colId)}"] input` : ".pastille-qualif"); return; }
-      if (action === "preciser") { l._ouvert = true; this.redessinerLigne(k, ".sous-champ:not(.nom-site-base):not([data-sous]) input, .sous-champ input, .sous-champ textarea"); return; }
       if (action === "regenerer") {
         this.majAutos(l, b.closest(".ligne-rep"), b.dataset.sous);
         this.majLignes(); this.signaler();
@@ -4540,7 +4335,7 @@ class Tableau {
     return maj.length + ajout.length + suppr.length;
   }
   lignesDepuisJson(json) {
-    return lireTableauJson(json).map(o => { const { _id, _site, ...valeurs } = o; return { _id: _id || nouvelIdLigne(), ...(_site ? { _site } : {}), valeurs }; })
+    return lireTableauJson(json).map(o => { const { _id, ...valeurs } = o; return { _id: _id || nouvelIdLigne(), valeurs }; })
       .filter(l => !this.ligneVide(l));
   }
 }
