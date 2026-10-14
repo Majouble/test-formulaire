@@ -1654,7 +1654,7 @@ function reconnaitreColonnesSignalement(meta, tid = tableId, lignes = enregistre
 
 
 // ⚙ : ce que le widget utilise réellement (utile pour comprendre un affichage inattendu)
-const VERSION_WIDGET = "14/10/2026 7 h";
+const VERSION_WIDGET = "14/10/2026 9 h";
 function remplirActivite() {
   const A = ACTIVITE, min = Math.max(1, (Date.now() - A.debut) / 60000), fait = A.envois.filter(e => e.ms != null);
   const recents = A.envois.filter(e => Date.now() - e.t < 60000).length, dernier = A.envois[A.envois.length - 1];
@@ -3922,11 +3922,17 @@ function texteTableauDescription(def, lignesBrutes, o = optionsAuto, avantBrutes
     if (!a || String(a[dQ.colId] ?? "") === String(l[dQ.colId] ?? "")) return null;
     return texteSousValeur(dQ, a[dQ.colId]) || "Sans qualification";
   };
+  // La flèche prend la place de la qualification dans le texte de la ligne : la nouvelle (texte automatique à jour)
+  // ou l'ancienne (texte retouché par l'agent, resté sur l'ancienne qualification) ; la plus longue est cherchée d'abord
+  // (« Blocage partiel » avant « Blocage »). Introuvable : la flèche est ajoutée en fin de ligne.
   const avecFleche = (t, l) => {
     const a = passage(l); if (!a) return t;
-    const q = texteSousValeur(dQ, l[dQ.colId]) || "Sans qualification";
-    const re = new RegExp(`(^|— |: )${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?= —|$)`);
-    return re.test(t) ? t.replace(re, `$1${a} → ==${q}==`) : `${t} — ${a} → ==${q}==`;
+    const q = texteSousValeur(dQ, l[dQ.colId]) || "Sans qualification", fleche = `${a} → ==${q}==`;
+    for (const v of [a, q].sort((x, y) => y.length - x.length)) {
+      const re = new RegExp(`(^|[\\s—:(,;])${v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "u");
+      if (re.test(t)) return t.replace(re, (m, avant) => `${avant}${fleche}`);
+    }
+    return `${t} — ${fleche}`;
   };
   const lignesTxt = lignes.map((l, k) => {
     const repris = autos.filter(d => vis(l, d)).map(d => String(l[d.colId] ?? "").trim()).filter(Boolean).join(" — ");
