@@ -2066,7 +2066,7 @@ async function lirePagesSaisie() {
       const vi = v.id.indexOf(s.parentId[i]);
       return { sectionRef: id, viewRef: s.parentId[i], page: vi >= 0 ? String(v.name[vi] || "") : "", table: t.tableId[t.id.indexOf(s.tableRef[i])] || "",
         url, access: cv.access || "", formulaire: wo.formulaire || null, unique: URL_SAISIE_V2.test(url), esr: /signalement-esr/i.test(url),
-        perimetre: Array.isArray(wo.perimetre) ? wo.perimetre : [], libelle: wo.libelle || "" };
+        perimetre: wo.perimetre || {}, libelle: wo.libelle || "" };
     }).filter(Boolean);
   } catch (_) { pagesSaisie = null; }
 }
@@ -2079,80 +2079,178 @@ function urlWidgetProposee() {
   if (deja) return deja;
   try { return new URL("../saisie/", location.href).href; } catch (_) { return "https://majouble.github.io/test-formulaire/v2/saisie/"; }
 }
-// Pages de saisie : une par agent (« Formulaire Alice », « Formulaire Bob »…), chacune avec son périmètre d'académies.
-// Les lignes se préparent dans le panneau, puis toutes les pages sont créées ou mises à jour en une fois.
+// Pages de saisie : une par agent (« Formulaire Alice (Versailles, Créteil) »…), chacune avec son périmètre.
+// Le périmètre se définit selon un ou plusieurs critères du référentiel (académie, département, public/privé,
+// circonscription…) : un établissement est dans le périmètre s'il remplit chaque critère utilisé par la page.
+// Stocké dans les options du widget de la page : perimetre = { <colonne du référentiel>: [valeurs] }.
+// Les critères proposés pour le document sont mémorisés dans la clé « repartition » de Config.
 const PREFIXE_PAGE = "Formulaire ";
-let repartition = null;          // [{ ref, vue, page, libelle, perimetre, url }] : brouillon de la répartition affichée
-let repartitionTable = null;     // table du formulaire pour laquelle le brouillon a été préparé
-const nomPageAgent = libelle => `${PREFIXE_PAGE}${libelle}`.trim();
-function preparerRepartition() {
-  if (repartition && repartitionTable === `${courant.id}|${courant.table}`) return;
-  repartitionTable = `${courant.id}|${courant.table}`;
-  repartition = (pagesSaisie || []).filter(x => x.table === courant.table).map(x => ({
-    ref: x.sectionRef, vue: x.viewRef, page: x.page, url: x.url, formulaire: x.formulaire,
-    libelle: x.libelle || (x.page.startsWith(PREFIXE_PAGE) ? x.page.slice(PREFIXE_PAGE.length) : x.page),
-    perimetre: [...x.perimetre], origine: JSON.stringify([x.libelle, x.perimetre, x.formulaire]),
-  }));
-  if (!repartition.length) repartition.push({ ref: null, libelle: "", perimetre: [] });
+const MAX_VALEURS_CRITERE = 200;      // au-delà, une colonne n'est pas proposée comme critère
+const ROLES_CRITERES = ["Academie", "Departement", "Statut_public_prive", "Libelle_nature", "Type", "Region_academique"];
+let repartition = null;               // brouillon : [{ ref, vue, page, url, formulaire, libelle, perimetre, origine }]
+let repartitionCle = null;
+let refInfo = null;                   // { table, cols: {colId: {label}}, roles: {role: colId}, valeurs: {colId: [{v, n}]} }
+
+async function lireReferentielRepartition() {
+  const S = window.Socle, table = socleGeneral.referentiel;
+  try {
+    const meta = await S.lireMeta(), tMeta = meta[table];
+    if (!tMeta) { refInfo = { table, absent: true }; return; }
+    const roles = S.resoudreRoles("referentiel", tMeta, { reponses: socleGeneral.reponses, referentiel: table },
+      ((socleConfig && socleConfig.valeurs.roles && socleConfig.valeurs.roles.referentiel) || {}), {});
+    const t = await grist.docApi.fetchTable(table), valeurs = {}, cols = {};
+    for (const c of Object.values(tMeta.colonnes)) {
+      if (!/^(Text|Choice|Ref)$/.test(c.type.split(":")[0]) || !t[c.colId]) continue;
+      let affiche = v => v;
+      const cible = S.cibleRef(c.type);
+      if (cible) {   // référence : on répartit sur le libellé affiché de la ligne visée
+        try {
+          const tc = await grist.docApi.fetchTable(cible), cTexte = Object.keys(tc).find(k => k !== "id" && k !== "manualSort" && (tc[k] || []).some(x => typeof x === "string"));
+          const lib = new Map(tc.id.map((id, i) => [id, cTexte ? tc[cTexte][i] : String(id)]));
+          affiche = v => lib.get(v);
+        } catch (_) { continue; }
+      }
+      const compte = new Map();
+      for (const brut of t[c.colId]) { const v = affiche(brut); if (typeof v === "string" && v.trim()) compte.set(v.trim(), (compte.get(v.trim()) || 0) + 1); }
+      if (!compte.size || compte.size > MAX_VALEURS_CRITERE) continue;
+      cols[c.colId] = { label: c.label || c.colId, ref: !!cible };
+      valeurs[c.colId] = [...compte.entries()].map(([v, n]) => ({ v, n })).sort((a, b) => a.v.localeCompare(b.v, "fr"));
+    }
+    // Académies : l'ordre et la liste de l'onglet Installation priment quand elles sont renseignées
+    const cAca = roles.Academie && roles.Academie.col;
+    if (cAca && valeurs[cAca] && (socleGeneral.academies || []).length) {
+      const n = new Map(valeurs[cAca].map(x => [x.v, x.n]));
+      valeurs[cAca] = socleGeneral.academies.map(a => ({ v: a, n: n.get(a) || 0 }));
+    }
+    refInfo = { table, cols, valeurs, roles: Object.fromEntries(Object.entries(roles).filter(([, r]) => r.col).map(([k, r]) => [k, r.col])) };
+  } catch (e) { refInfo = { table, erreur: e.message || String(e) }; }
 }
-const ligneModifiee = l => !l.ref || l.page !== nomPageAgent(l.libelle) || l.origine !== JSON.stringify([l.libelle, l.perimetre, courant.nom]);
+const libelleCritere = colId => {
+  const role = refInfo && Object.entries(refInfo.roles || {}).find(([, c]) => c === colId);
+  const noms = { Academie: "Académie", Departement: "Département", Statut_public_prive: "Public / privé", Libelle_nature: "Nature", Type: "Type", Region_academique: "Région académique" };
+  return role && noms[role[0]] ? noms[role[0]] : ((refInfo && refInfo.cols[colId] && refInfo.cols[colId].label) || colId);
+};
+function criteresDocument() {
+  const enr = socleConfig && socleConfig.valeurs.repartition && socleConfig.valeurs.repartition.criteres;
+  const dispo = c => refInfo && refInfo.valeurs && refInfo.valeurs[c];
+  if (Array.isArray(enr) && enr.length) return enr.filter(dispo);
+  const aca = refInfo && refInfo.roles && refInfo.roles.Academie;
+  return aca && dispo(aca) ? [aca] : [];
+}
+// Ancien format (liste d'académies) → { colonne académie: liste }
+function perimetreObjet(p) {
+  if (Array.isArray(p)) { const aca = (refInfo && refInfo.roles && refInfo.roles.Academie) || "Academie"; return p.length ? { [aca]: [...p] } : {}; }
+  return p && typeof p === "object" ? JSON.parse(JSON.stringify(p)) : {};
+}
+const nettoyer = p => Object.fromEntries(Object.entries(p).filter(([, v]) => Array.isArray(v) && v.length));
+const resumePerimetre = p => Object.values(nettoyer(p)).map(v => v.join(", ")).join(" – ");
+const nomPageAgent = l => { const r = resumePerimetre(l.perimetre); return `${PREFIXE_PAGE}${l.libelle.trim()}${r ? ` (${r})` : ""}`; };
+function preparerRepartition() {
+  const cle = `${courant.id}|${courant.table}`;
+  if (repartition && repartitionCle === cle) return;
+  repartitionCle = cle;
+  repartition = (pagesSaisie || []).filter(x => x.table === courant.table).map(x => {
+    const perimetre = perimetreObjet(x.perimetre);
+    const libelle = x.libelle || x.page.replace(/^Formulaire\s+/i, "").replace(/\s*\(.*\)\s*$/, "");
+    return { ref: x.sectionRef, vue: x.viewRef, page: x.page, url: x.url, formulaire: x.formulaire, libelle, perimetre,
+      origine: JSON.stringify([x.libelle, x.perimetre, x.formulaire]) };
+  });
+  if (!repartition.length) repartition.push({ ref: null, libelle: "", perimetre: {} });
+}
+const ligneModifiee = l => !l.ref || l.page !== nomPageAgent(l) || l.origine !== JSON.stringify([l.libelle.trim(), nettoyer(l.perimetre), courant.nom]);
+
 function groupePageHtml() {
   if (courant.type !== "etablissement") return "";
   if (pagesSaisie === null) return `<div class="groupe"><div class="t">Pages de saisie</div><p class="note" style="margin:0">Les pages du document ne sont pas lisibles (accès complet requis).</p></div>`;
+  if (!refInfo) return `<div class="groupe"><div class="t">Pages de saisie par agent</div><p class="note">Lecture du référentiel…</p></div>`;
   preparerRepartition();
-  const acas = socleGeneral.academies || [];
+  const criteres = criteresDocument();
   const publiees = new Set(formulaires.filter(f => typeof f.publie === "string" && f.publie.trim()).map(f => f.table));
   const malReliees = pagesSaisie.filter(x => !publiees.has(x.table) && x.table !== courant.table);
-  // contrôle de la répartition : académies sans agent, ou suivies par plusieurs
   const actives = repartition.filter(l => l.libelle.trim());
-  const parAca = new Map(acas.map(a => [a, actives.filter(l => l.perimetre.includes(a)).map(l => l.libelle.trim())]));
-  const sansAgent = acas.filter(a => !parAca.get(a).length), partagees = acas.filter(a => parAca.get(a).length > 1);
   const aFaire = actives.filter(ligneModifiee).length;
+  // critères disponibles : rôles connus d'abord, puis les autres colonnes du référentiel
+  const dispo = Object.keys(refInfo.valeurs || {});
+  const ordre = [...ROLES_CRITERES.map(r => refInfo.roles[r]).filter(c => c && dispo.includes(c)), ...dispo.filter(c => !Object.values(refInfo.roles).includes(c))];
+  const ajoutables = [...new Set(ordre)].filter(c => !criteres.includes(c));
+  // contrôle sur le premier critère : valeurs sans agent, ou suivies par plusieurs
+  const c0 = criteres[0], vals0 = c0 ? refInfo.valeurs[c0].map(x => x.v) : [];
+  const parVal = new Map(vals0.map(v => [v, actives.filter(l => (l.perimetre[c0] || []).includes(v)).map(l => l.libelle.trim())]));
+  const sansAgent = actives.length && !actives.some(l => !(l.perimetre[c0] || []).length) ? vals0.filter(v => !parVal.get(v).length) : [];
+  const partagees = vals0.filter(v => parVal.get(v).length > 1);
   const lignes = repartition.map((l, i) => {
     const etat = !l.ref ? `<span class="pastille-pg nouv">nouvelle</span>` : ligneModifiee(l) ? `<span class="pastille-pg modif">modifiée</span>` : `<span class="pastille-pg ok">à jour</span>`;
     const autre = l.ref && l.formulaire && l.formulaire !== courant.nom ? `<small class="note">affiche « ${esc(l.formulaire)} » : sera basculée sur ce formulaire</small>` : "";
+    const horsCriteres = Object.keys(nettoyer(l.perimetre)).filter(c => !criteres.includes(c));
     return `<div class="agent" data-i="${i}">
       <div class="agent-haut"><input type="text" data-pg="libelle" value="${esc(l.libelle)}" placeholder="Prénom de l'agent" aria-label="Agent">
         ${etat}${l.ref ? "" : `<button type="button" class="danger" data-pg="retirer" title="Retirer cette ligne">×</button>`}</div>
-      ${acas.length ? `<div class="puces">${acas.map(a => `<button type="button" class="puce${l.perimetre.includes(a) ? " on" : ""}" data-pg="aca" data-aca="${esc(a)}" aria-pressed="${l.perimetre.includes(a)}">${esc(a)}</button>`).join("")}</div>` : ""}
-      <small class="note">${esc(l.libelle.trim() ? `Page « ${nomPageAgent(l.libelle.trim())} »` : "Nom de page : « Formulaire » suivi du prénom")}${l.perimetre.length ? "" : " · toutes les académies"}</small>${autre}
+      ${criteres.map(c => `<div class="crit-lib">${esc(libelleCritere(c))}</div><div class="puces">${refInfo.valeurs[c].map(x => {
+        const on = (l.perimetre[c] || []).includes(x.v);
+        return `<button type="button" class="puce${on ? " on" : ""}" data-pg="val" data-col="${esc(c)}" data-val="${esc(x.v)}" aria-pressed="${on}" title="${x.n} établissement(s)">${esc(x.v)}</button>`;
+      }).join("")}</div>`).join("")}
+      ${horsCriteres.length ? `<small class="note">Aussi limitée par : ${horsCriteres.map(c => `${esc(libelleCritere(c))} = ${esc(l.perimetre[c].join(", "))}`).join(" ; ")}</small>` : ""}
+      <small class="note">${l.libelle.trim() ? `Page « ${esc(nomPageAgent(l))} »` : "Nom de page : « Formulaire », le prénom puis le périmètre"}${Object.keys(nettoyer(l.perimetre)).length ? "" : " · tous les établissements"}</small>${autre}
     </div>`;
   }).join("");
   return `<div class="groupe"><div class="t">Pages de saisie par agent</div>
-    <p class="note" style="margin:0 0 8px">Une page par agent, nommée « Formulaire » suivi de son prénom. Les académies cochées limitent sa liste de dossiers et sa recherche d'établissements (aucune cochée = toutes). Cela répartit le travail, sans restreindre l'accès.</p>
-    ${acas.length ? "" : `<p class="avert">Renseignez les académies du document dans l'onglet Installation pour pouvoir les répartir.</p>`}
+    <p class="note" style="margin:0 0 8px">Une page par agent. Son périmètre limite la liste des dossiers et la recherche d'établissements : un établissement en fait partie s'il remplit chaque critère coché (rien de coché = tous). Cela répartit le travail, sans restreindre l'accès.</p>
+    ${refInfo.absent ? `<p class="avert">Le référentiel « ${esc(refInfo.table)} » est introuvable : terminez l'installation.</p>` : ""}
+    ${refInfo.erreur ? `<p class="avert">Référentiel illisible : ${esc(refInfo.erreur)}</p>` : ""}
+    <div class="l">Répartir selon</div>
+    <div class="criteres">${criteres.map(c => `<span class="crit">${esc(libelleCritere(c))}<button type="button" data-pg="crit-retirer" data-col="${esc(c)}" title="Retirer ce critère" aria-label="Retirer ${esc(libelleCritere(c))}">×</button></span>`).join("")}
+      ${ajoutables.length ? `<select data-pg="crit-ajouter" aria-label="Ajouter un critère"><option value="">+ critère…</option>${ajoutables.map(c => `<option value="${esc(c)}">${esc(libelleCritere(c))} (${refInfo.valeurs[c].length})</option>`).join("")}</select>` : ""}</div>
+    ${criteres.length ? "" : `<p class="note">Aucun critère : chaque page couvre tous les établissements.</p>`}
     ${malReliees.map(x => `<p class="avert">La page « ${esc(x.page)} » affiche le formulaire de saisie sur la table « ${esc(x.table)} », pour laquelle aucun formulaire n'est publié : elle reste vide.</p>`).join("")}
     <div id="pg-agents">${lignes}</div>
     <button type="button" class="secondaire petit" data-pg="ajouter" style="margin:6px 0 10px">+ Ajouter un agent</button>
-    ${acas.length && actives.length && sansAgent.length ? `<p class="avert">Sans agent : ${sansAgent.map(esc).join(", ")}.</p>` : ""}
-    ${partagees.length ? `<p class="note">Suivies par plusieurs agents : ${partagees.map(a => `${esc(a)} (${parAca.get(a).map(esc).join(", ")})`).join(" ; ")}.</p>` : ""}
+    ${sansAgent.length ? `<p class="avert">${esc(libelleCritere(c0))} sans agent : ${sansAgent.map(esc).join(", ")}.</p>` : ""}
+    ${partagees.length ? `<p class="note">Suivies par plusieurs agents : ${partagees.map(v => `${esc(v)} (${parVal.get(v).map(esc).join(", ")})`).join(" ; ")}.</p>` : ""}
     <label class="l" for="pg-url">Adresse du widget de saisie (nouvelles pages)</label><input type="text" id="pg-url" value="${esc(urlWidgetProposee())}" spellcheck="false">
     <button type="button" class="primaire petit" id="pg-creer" style="margin-top:8px"${aFaire ? "" : " disabled"}>${aFaire ? `Créer et mettre à jour les pages (${aFaire})` : "Pages à jour"}</button>
     <p class="statut" id="pg-statut" role="status"></p>${courant.publie ? "" : `<p class="note">Publiez le formulaire pour que les pages l'affichent.</p>`}</div>`;
 }
-// Événements du groupe (délégués : le groupe est redessiné à chaque changement)
+async function enregistrerCriteres(liste) {
+  try {
+    await window.Socle.ecrireConfig("repartition", { ...((socleConfig && socleConfig.valeurs.repartition) || {}), criteres: liste });
+    socleConfig = await window.Socle.lireConfig();
+  } catch (e) { message(`Critères non enregistrés : ${e.message || e}`, "err"); }
+}
+// Événements du groupe (le groupe est redessiné à chaque changement)
 function lierPages(p) {
+  if (!refInfo) { lireReferentielRepartition().then(() => { if (courant && !choisi && !modeTest) dessinerPanneau(); }); return; }
   const zone = p.querySelector("#pg-agents");
   if (!zone) return;
   const redessiner = focus => {
-    const url = $("pg-url").value;
+    const url = $("pg-url").value, haut = p.scrollTop;
     dessinerPanneau();
+    p.scrollTop = haut;
     if ($("pg-url")) $("pg-url").value = url;
     if (focus != null) { const el = document.querySelector(`#pg-agents .agent[data-i="${focus}"] input[data-pg=libelle]`); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
   };
-  zone.addEventListener("input", ev => {
-    const a = ev.target.closest(".agent");
-    if (a && ev.target.dataset.pg === "libelle") { repartition[+a.dataset.i].libelle = ev.target.value; }
-  });
+  zone.addEventListener("input", ev => { const a = ev.target.closest(".agent"); if (a && ev.target.dataset.pg === "libelle") repartition[+a.dataset.i].libelle = ev.target.value; });
   zone.addEventListener("change", ev => { const a = ev.target.closest(".agent"); if (a && ev.target.dataset.pg === "libelle") redessiner(); });
   zone.addEventListener("click", ev => {
     const b = ev.target.closest("[data-pg]"), a = ev.target.closest(".agent");
     if (!b || !a) return;
     const l = repartition[+a.dataset.i];
-    if (b.dataset.pg === "aca") { const v = b.dataset.aca; l.perimetre = l.perimetre.includes(v) ? l.perimetre.filter(x => x !== v) : [...l.perimetre, v]; redessiner(); }
-    if (b.dataset.pg === "retirer") { repartition.splice(+a.dataset.i, 1); if (!repartition.length) repartition.push({ ref: null, libelle: "", perimetre: [] }); redessiner(); }
+    if (b.dataset.pg === "val") {
+      const c = b.dataset.col, v = b.dataset.val, liste = l.perimetre[c] || [];
+      l.perimetre[c] = liste.includes(v) ? liste.filter(x => x !== v) : [...liste, v];
+      if (!l.perimetre[c].length) delete l.perimetre[c];
+      redessiner();
+    }
+    if (b.dataset.pg === "retirer") { repartition.splice(+a.dataset.i, 1); if (!repartition.length) repartition.push({ ref: null, libelle: "", perimetre: {} }); redessiner(); }
   });
-  p.querySelector('[data-pg="ajouter"]').addEventListener("click", () => { repartition.push({ ref: null, libelle: "", perimetre: [] }); redessiner(repartition.length - 1); });
+  p.querySelector('[data-pg="ajouter"]').addEventListener("click", () => { repartition.push({ ref: null, libelle: "", perimetre: {} }); redessiner(repartition.length - 1); });
+  const sel = p.querySelector('[data-pg="crit-ajouter"]');
+  if (sel) sel.addEventListener("change", async () => { if (!sel.value) return; await enregistrerCriteres([...criteresDocument(), sel.value]); redessiner(); });
+  p.querySelectorAll('[data-pg="crit-retirer"]').forEach(x => x.addEventListener("click", async () => {
+    const c = x.dataset.col, utilise = repartition.filter(l => (l.perimetre[c] || []).length).length;
+    if (utilise && !confirm(`${utilise} page(s) utilisent le critère « ${libelleCritere(c)} ». Le retirer efface ce critère de leur périmètre (à enregistrer ensuite). Continuer ?`)) return;
+    repartition.forEach(l => { delete l.perimetre[c]; });
+    await enregistrerCriteres(criteresDocument().filter(k => k !== c)); redessiner();
+  }));
   $("pg-creer").addEventListener("click", creerPagesAgents);
 }
 async function creerPagesAgents() {
@@ -2167,7 +2265,6 @@ async function creerPagesAgents() {
   if (!nouvelles.length && !modifiees.length) { dire("Rien à faire : les pages sont à jour."); return; }
   btn.disabled = true; dire("Création et mise à jour des pages…");
   try {
-    // 1. Nouvelles pages, toutes en une fois
     if (nouvelles.length) {
       const [t] = metaTables, tref = t.id[t.tableId.indexOf(courant.table)];
       if (tref == null) throw new Error(`table ${courant.table} introuvable`);
@@ -2175,14 +2272,13 @@ async function creerPagesAgents() {
       const rvs = (res && res.retValues) || [];
       nouvelles.forEach((l, i) => { const rv = rvs[i] || {}; l.ref = rv.sectionRef; l.vue = rv.viewRef; l.url = url; if (!l.ref) throw new Error("Grist n'a pas indiqué la vue créée"); });
     }
-    // 2. Réglages de toutes les pages concernées, en une fois
     const sections = await grist.docApi.fetchTable("_grist_Views_section");
     const acts = [];
     for (const l of [...nouvelles, ...modifiees]) {
-      const i = sections.id.indexOf(l.ref), nom = nomPageAgent(l.libelle.trim());
+      const i = sections.id.indexOf(l.ref), nom = nomPageAgent(l);
       const { o, cv } = optionsVue(i >= 0 ? sections.options[i] : "");
       o.customView = JSON.stringify({ ...cv, mode: "url", url: cv.url || l.url || url, access: "full",
-        widgetOptions: { ...(cv.widgetOptions || {}), formulaire: courant.nom, libelle: l.libelle.trim(), perimetre: l.perimetre } });
+        widgetOptions: { ...(cv.widgetOptions || {}), formulaire: courant.nom, libelle: l.libelle.trim(), perimetre: nettoyer(l.perimetre) } });
       acts.push(["UpdateRecord", "_grist_Views_section", l.ref, { options: JSON.stringify(o), title: nom }]);
       const vue = l.vue || (i >= 0 ? sections.parentId[i] : null);
       if (vue) acts.push(["UpdateRecord", "_grist_Views", vue, { name: nom }]);
@@ -2544,7 +2640,7 @@ async function lireSocle() {
   TABLE_FORMULAIRES = socleGeneral.formulaires || "Formulaires";
 }
 async function afficher() {
-  if (demarre) { await lireSocle(); await lirePagesSaisie(); if (courant) dessinerPanneau(); return; }
+  if (demarre) { await lireSocle(); refInfo = null; repartition = null; await lirePagesSaisie(); if (courant) dessinerPanneau(); return; }
   demarre = true;
   await lireSocle();
   try {
