@@ -22,6 +22,10 @@
     UAI: "identifiant_de_l_etablissement", Nom: "nom_etablissement", Type: "type_etablissement",
     Commune: "nom_commune", Academie: "libelle_academie", Departement: "libelle_departement", Mail: "mail",
   };
+  // Rôles facultatifs du socle, remplis si le champ existe dans le jeu de données
+  const CHAMPS_ROLES_OPTION = {
+    Statut_public_prive: "statut_public_prive", Libelle_nature: "libelle_nature", Latitude: "latitude", Longitude: "longitude",
+  };
   const CHAMP_ETAT = "etat";                // « OUVERT » / « FERME » … (si présent dans le jeu de données)
   const TAILLE_LOT = 400;                   // lignes par envoi à Grist
   const TYPES_GRIST = { text: "Text", int: "Int", double: "Numeric", date: "Date", datetime: "DateTime:Europe/Paris", boolean: "Bool" };
@@ -116,7 +120,7 @@
       $("ref-types").innerHTML = types.map((t, i) => `<label class="etape" style="padding:4px 0"><input type="checkbox" data-type="${i}"
           ${!deja || deja.includes(t.valeur) ? "checked" : ""}><span>${esc(t.valeur || "(sans type)")} <span class="pastille">${nf(t.n)}</span></span></label>`).join("");
       const dejaChamps = new Set(ctx.reglages.champs || []);
-      const pris = new Set([...Object.values(CHAMPS_ROLES), CHAMP_ETAT]);
+      const pris = new Set([...Object.values(CHAMPS_ROLES), ...Object.values(CHAMPS_ROLES_OPTION), CHAMP_ETAT]);
       $("ref-champs").innerHTML = champsJeu.filter(f => !pris.has(f.name) && TYPES_GRIST[f.type]).map(f =>
         `<label class="etape" style="padding:2px 0"><input type="checkbox" data-champ="${esc(f.name)}" ${dejaChamps.has(f.name) ? "checked" : ""}>
           <span>${esc(f.label)} <code>${esc(f.name)}</code></span></label>`).join("");
@@ -156,16 +160,18 @@
     try {
       const ctx = await contexte();
       const extras = champsCoches();
-      const champs = [...Object.values(CHAMPS_ROLES), ...extras];
+      const col = r => ctx.roles[r] && ctx.roles[r].col;
+      const options = Object.entries(CHAMPS_ROLES_OPTION).filter(([r, champ]) => col(r) && champsJeu.some(f => f.name === champ));
+      const champs = [...Object.values(CHAMPS_ROLES), ...options.map(([, champ]) => champ), ...extras];
       const lignes = await telecharger(clauseWhere(ctx.g.academies, types, $("ref-ouverts").checked), champs);
       statut(`${nf(lignes.length)} établissements téléchargés, comparaison avec ${ctx.table}…`);
 
       // colonnes cibles : rôles résolus + colonnes supplémentaires (créées si besoin)
-      const col = r => ctx.roles[r] && ctx.roles[r].col;
       const aCreer = extras.filter(c => !ctx.tMeta.colonnes[nomColonne(c)])
         .map(c => ({ id: nomColonne(c), type: TYPES_GRIST[champsJeu.find(f => f.name === c).type] || "Text" }));
       const cibles = [
         ...Object.entries(CHAMPS_ROLES).filter(([r]) => col(r)).map(([r, champ]) => ({ colonne: col(r), lire: l => l[champ] })),
+        ...options.map(([r, champ]) => ({ colonne: col(r), lire: l => l[champ] })),
         ...(col("Region_academique") ? [{ colonne: col("Region_academique"), lire: l => S.regionDeAcademie(l[CHAMPS_ROLES.Academie]) }] : []),
         ...extras.map(c => ({ colonne: nomColonne(c), lire: l => l[c] })),
       ];

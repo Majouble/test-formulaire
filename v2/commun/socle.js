@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0-alpha.2 (15/10/2026)";
+  const VERSION = "2.0.0-alpha.3 (15/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -129,6 +129,18 @@
       { role: "Mail", libelle: "Courriel", obligatoire: false, accepte: c => typeBase(c.type) !== "Bool",
         motifs: [/^(mail|courriel|e_?mail)$/, /mail|courriel/], sauf: /contact_2|secondaire/,
         creer: () => ({ type: "Text", isFormula: false }) },
+      { role: "Statut_public_prive", libelle: "Public / privé", obligatoire: false, parDefaut: true, accepte: c => /^(Text|Choice)$/.test(typeBase(c.type)),
+        motifs: [/statut_?public_?prive/, /public_?prive/, /^secteur/], sauf: /contrat|^id/,
+        creer: () => ({ type: "Choice", isFormula: false, widgetOptions: json({ choices: ["Public", "Privé"] }) }) },
+      { role: "Libelle_nature", libelle: "Nature (libellé)", obligatoire: false, parDefaut: true, accepte: c => /^(Text|Choice)$/.test(typeBase(c.type)),
+        motifs: [/libelle_?nature/, /nature_?libelle/, /^nature$/], sauf: /code|^id/,
+        creer: () => ({ type: "Text", isFormula: false }) },
+      { role: "Latitude", libelle: "Latitude", obligatoire: false, parDefaut: true, accepte: c => /^(Numeric|Any)$/.test(typeBase(c.type)),
+        motifs: [/^latitude/, /^lat$/, /latitude/], sauf: /^id/,
+        creer: () => ({ type: "Numeric", isFormula: false }) },
+      { role: "Longitude", libelle: "Longitude", obligatoire: false, parDefaut: true, accepte: c => /^(Numeric|Any)$/.test(typeBase(c.type)),
+        motifs: [/^longitude/, /^lon$|^lng$/, /longitude/], sauf: /^id/,
+        creer: () => ({ type: "Numeric", isFormula: false }) },
       { role: "Origine", libelle: "Origine de la ligne", obligatoire: false, accepte: c => /^(Choice|Text)$/.test(typeBase(c.type)),
         motifs: [/^origine$/, /origine|source/], sauf: /^id/,
         creer: () => ({ type: "Choice", isFormula: false,
@@ -321,9 +333,9 @@
       for (const def of ROLES.referentiel) {
         const r = rolesRef[def.role];
         if (r && r.col) continue;
-        if (!def.obligatoire && !choix[`ref:${def.role}`]) continue;
+        if (!def.obligatoire && !def.parDefaut && !choix[`ref:${def.role}`]) continue;
         if (tRef.colonnes[def.role]) { infos.push(`${referentiel}.${def.role} existe mais son type ne convient pas au rôle « ${def.libelle} ».`); continue; }
-        etapes.push({ id: `ref-${def.role}`, groupe: "Colonnes", coche: def.obligatoire,
+        etapes.push({ id: `ref-${def.role}`, groupe: "Colonnes", coche: def.obligatoire || !!def.parDefaut,
           titre: `Ajouter ${referentiel}.${def.role}`, detail: `Aucune colonne ne joue le rôle « ${def.libelle} ».`,
           actions: [["AddColumn", referentiel, def.role, def.creer(ctxRef)]] });
       }
