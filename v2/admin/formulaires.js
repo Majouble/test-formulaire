@@ -1048,8 +1048,7 @@ function dessinerPanneauBase() {
       <div class="groupe"><div class="t">Formulaire</div><label class="l" for="pf-nom">Nom</label><input type="text" id="pf-nom" value="${esc(courant.nom)}">
       <button type="button" class="danger" id="pf-supprimer">Supprimer ce formulaire…</button></div>${groupeVersionHtml()}${groupePageHtml()}${groupeColonnesHtml()}`;
     lierVersion(p);
-    if ($("pg-creer")) $("pg-creer").addEventListener("click", creerPageSaisie);
-    if ($("pg-cible")) $("pg-cible").addEventListener("change", remplirPageChoisie);
+    lierPages(p);
     p.querySelectorAll("[data-ajout-col]").forEach(x => x.addEventListener("click", () => ajouterColonneService(x.dataset.ajoutCol)));
     lierRoles(p);
     $("pf-nom").addEventListener("change", async () => {
@@ -2080,81 +2079,129 @@ function urlWidgetProposee() {
   if (deja) return deja;
   try { return new URL("../saisie/", location.href).href; } catch (_) { return "https://majouble.github.io/test-formulaire/v2/saisie/"; }
 }
-// Pages de saisie : une par agent, chacune avec son libellé et son périmètre d'académies (options du widget de la page)
+// Pages de saisie : une par agent (« Formulaire Alice », « Formulaire Bob »…), chacune avec son périmètre d'académies.
+// Les lignes se préparent dans le panneau, puis toutes les pages sont créées ou mises à jour en une fois.
+const PREFIXE_PAGE = "Formulaire ";
+let repartition = null;          // [{ ref, vue, page, libelle, perimetre, url }] : brouillon de la répartition affichée
+let repartitionTable = null;     // table du formulaire pour laquelle le brouillon a été préparé
+const nomPageAgent = libelle => `${PREFIXE_PAGE}${libelle}`.trim();
+function preparerRepartition() {
+  if (repartition && repartitionTable === `${courant.id}|${courant.table}`) return;
+  repartitionTable = `${courant.id}|${courant.table}`;
+  repartition = (pagesSaisie || []).filter(x => x.table === courant.table).map(x => ({
+    ref: x.sectionRef, vue: x.viewRef, page: x.page, url: x.url, formulaire: x.formulaire,
+    libelle: x.libelle || (x.page.startsWith(PREFIXE_PAGE) ? x.page.slice(PREFIXE_PAGE.length) : x.page),
+    perimetre: [...x.perimetre], origine: JSON.stringify([x.libelle, x.perimetre, x.formulaire]),
+  }));
+  if (!repartition.length) repartition.push({ ref: null, libelle: "", perimetre: [] });
+}
+const ligneModifiee = l => !l.ref || l.page !== nomPageAgent(l.libelle) || l.origine !== JSON.stringify([l.libelle, l.perimetre, courant.nom]);
 function groupePageHtml() {
   if (courant.type !== "etablissement") return "";
   if (pagesSaisie === null) return `<div class="groupe"><div class="t">Pages de saisie</div><p class="note" style="margin:0">Les pages du document ne sont pas lisibles (accès complet requis).</p></div>`;
-  const publiees = new Set(formulaires.filter(f => typeof f.publie === "string" && f.publie.trim()).map(f => f.table));
-  const ici = pagesSaisie.filter(x => x.table === courant.table);
-  const malReliees = pagesSaisie.filter(x => !publiees.has(x.table) && x.table !== courant.table);
-  const desc = x => [x.unique ? "widget de saisie v2" : "widget de saisie v1",
-    x.formulaire ? (x.formulaire === courant.nom ? "affiche ce formulaire" : `réglée sur « ${x.formulaire} »`) : "premier formulaire publié de la table",
-    x.libelle ? `agent : ${x.libelle}` : "",
-    x.perimetre.length ? `périmètre : ${x.perimetre.join(", ")}` : "toutes les académies",
-    x.access && x.access !== "full" ? "⚠ accès non complet" : ""].filter(Boolean).join(" · ");
+  preparerRepartition();
   const acas = socleGeneral.academies || [];
-  return `<div class="groupe"><div class="t">Pages de saisie</div>
-    ${ici.length ? `<ul class="liste-cols">${ici.map(x => `<li><span class="present">✓</span> Page « ${esc(x.page)} »<small>${esc(desc(x))}</small></li>`).join("")}</ul>`
-      : `<p class="note" style="margin:0 0 6px">Aucune page n'affiche encore le formulaire de saisie de la table ${esc(courant.table)}.</p>`}
-    ${malReliees.map(x => `<p class="avert">La page « ${esc(x.page)} » affiche le formulaire de saisie sur la table « ${esc(x.table)} », pour laquelle aucun formulaire n'est publié : elle reste vide. Supprimez-la dans Grist et créez la page ci-dessous.</p>`).join("")}
-    <label class="l" for="pg-cible" style="margin-top:8px">Page à régler</label>
-    <select id="pg-cible"><option value="">+ Nouvelle page</option>${ici.map(x => `<option value="${x.sectionRef}">${esc(x.page)}</option>`).join("")}</select>
-    <label class="l" for="pg-nom">Nom de la page</label><input type="text" id="pg-nom" value="${esc(courant.nom)}">
-    <label class="l" for="pg-libelle">Agent</label><input type="text" id="pg-libelle" placeholder="Prénom de l'agent qui saisit sur cette page">
-    <div class="l">Périmètre</div>
-    ${acas.length ? `<div id="pg-perimetre">${acas.map(a => `<label class="case"><input type="checkbox" value="${esc(a)}"> ${esc(a)}</label>`).join("")}</div>
-      <p class="note" style="margin:0 0 8px">Les académies dont cette page s'occupe : la liste des dossiers et la recherche d'établissements s'y limitent. Aucune case cochée = toutes. Ce périmètre répartit le travail, il ne restreint pas l'accès.</p>`
-      : `<p class="note" style="margin:0 0 8px">Renseignez les académies du document dans l'onglet Installation pour répartir les établissements entre les pages.</p>`}
-    <label class="l" for="pg-url">Adresse du widget de saisie</label><input type="text" id="pg-url" value="${esc(urlWidgetProposee())}" spellcheck="false">
-    <p class="note" style="margin:0 0 8px">La page est reliée à la table ${esc(courant.table)}, en accès complet, avec ce formulaire présélectionné.${courant.publie ? "" : " Publiez le formulaire pour que la page l'affiche."}</p>
-    <button type="button" class="secondaire petit" id="pg-creer">+ Créer la page de saisie</button>
-    <p class="statut" id="pg-statut" role="status"></p></div>`;
+  const publiees = new Set(formulaires.filter(f => typeof f.publie === "string" && f.publie.trim()).map(f => f.table));
+  const malReliees = pagesSaisie.filter(x => !publiees.has(x.table) && x.table !== courant.table);
+  // contrôle de la répartition : académies sans agent, ou suivies par plusieurs
+  const actives = repartition.filter(l => l.libelle.trim());
+  const parAca = new Map(acas.map(a => [a, actives.filter(l => l.perimetre.includes(a)).map(l => l.libelle.trim())]));
+  const sansAgent = acas.filter(a => !parAca.get(a).length), partagees = acas.filter(a => parAca.get(a).length > 1);
+  const aFaire = actives.filter(ligneModifiee).length;
+  const lignes = repartition.map((l, i) => {
+    const etat = !l.ref ? `<span class="pastille-pg nouv">nouvelle</span>` : ligneModifiee(l) ? `<span class="pastille-pg modif">modifiée</span>` : `<span class="pastille-pg ok">à jour</span>`;
+    const autre = l.ref && l.formulaire && l.formulaire !== courant.nom ? `<small class="note">affiche « ${esc(l.formulaire)} » : sera basculée sur ce formulaire</small>` : "";
+    return `<div class="agent" data-i="${i}">
+      <div class="agent-haut"><input type="text" data-pg="libelle" value="${esc(l.libelle)}" placeholder="Prénom de l'agent" aria-label="Agent">
+        ${etat}${l.ref ? "" : `<button type="button" class="danger" data-pg="retirer" title="Retirer cette ligne">×</button>`}</div>
+      ${acas.length ? `<div class="puces">${acas.map(a => `<button type="button" class="puce${l.perimetre.includes(a) ? " on" : ""}" data-pg="aca" data-aca="${esc(a)}" aria-pressed="${l.perimetre.includes(a)}">${esc(a)}</button>`).join("")}</div>` : ""}
+      <small class="note">${esc(l.libelle.trim() ? `Page « ${nomPageAgent(l.libelle.trim())} »` : "Nom de page : « Formulaire » suivi du prénom")}${l.perimetre.length ? "" : " · toutes les académies"}</small>${autre}
+    </div>`;
+  }).join("");
+  return `<div class="groupe"><div class="t">Pages de saisie par agent</div>
+    <p class="note" style="margin:0 0 8px">Une page par agent, nommée « Formulaire » suivi de son prénom. Les académies cochées limitent sa liste de dossiers et sa recherche d'établissements (aucune cochée = toutes). Cela répartit le travail, sans restreindre l'accès.</p>
+    ${acas.length ? "" : `<p class="avert">Renseignez les académies du document dans l'onglet Installation pour pouvoir les répartir.</p>`}
+    ${malReliees.map(x => `<p class="avert">La page « ${esc(x.page)} » affiche le formulaire de saisie sur la table « ${esc(x.table)} », pour laquelle aucun formulaire n'est publié : elle reste vide.</p>`).join("")}
+    <div id="pg-agents">${lignes}</div>
+    <button type="button" class="secondaire petit" data-pg="ajouter" style="margin:6px 0 10px">+ Ajouter un agent</button>
+    ${acas.length && actives.length && sansAgent.length ? `<p class="avert">Sans agent : ${sansAgent.map(esc).join(", ")}.</p>` : ""}
+    ${partagees.length ? `<p class="note">Suivies par plusieurs agents : ${partagees.map(a => `${esc(a)} (${parAca.get(a).map(esc).join(", ")})`).join(" ; ")}.</p>` : ""}
+    <label class="l" for="pg-url">Adresse du widget de saisie (nouvelles pages)</label><input type="text" id="pg-url" value="${esc(urlWidgetProposee())}" spellcheck="false">
+    <button type="button" class="primaire petit" id="pg-creer" style="margin-top:8px"${aFaire ? "" : " disabled"}>${aFaire ? `Créer et mettre à jour les pages (${aFaire})` : "Pages à jour"}</button>
+    <p class="statut" id="pg-statut" role="status"></p>${courant.publie ? "" : `<p class="note">Publiez le formulaire pour que les pages l'affichent.</p>`}</div>`;
 }
-function remplirPageChoisie() {
-  const ref = +$("pg-cible").value, x = (pagesSaisie || []).find(p => p.sectionRef === ref);
-  $("pg-nom").value = x ? x.page : courant.nom;
-  $("pg-libelle").value = x ? x.libelle : "";
-  $("pg-url").value = x ? x.url : urlWidgetProposee();
-  document.querySelectorAll("#pg-perimetre input").forEach(c => { c.checked = !!x && x.perimetre.includes(c.value); });
-  $("pg-creer").textContent = x ? "Mettre à jour la page" : "+ Créer la page de saisie";
-  $("pg-statut").textContent = "";
+// Événements du groupe (délégués : le groupe est redessiné à chaque changement)
+function lierPages(p) {
+  const zone = p.querySelector("#pg-agents");
+  if (!zone) return;
+  const redessiner = focus => {
+    const url = $("pg-url").value;
+    dessinerPanneau();
+    if ($("pg-url")) $("pg-url").value = url;
+    if (focus != null) { const el = document.querySelector(`#pg-agents .agent[data-i="${focus}"] input[data-pg=libelle]`); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
+  };
+  zone.addEventListener("input", ev => {
+    const a = ev.target.closest(".agent");
+    if (a && ev.target.dataset.pg === "libelle") { repartition[+a.dataset.i].libelle = ev.target.value; }
+  });
+  zone.addEventListener("change", ev => { const a = ev.target.closest(".agent"); if (a && ev.target.dataset.pg === "libelle") redessiner(); });
+  zone.addEventListener("click", ev => {
+    const b = ev.target.closest("[data-pg]"), a = ev.target.closest(".agent");
+    if (!b || !a) return;
+    const l = repartition[+a.dataset.i];
+    if (b.dataset.pg === "aca") { const v = b.dataset.aca; l.perimetre = l.perimetre.includes(v) ? l.perimetre.filter(x => x !== v) : [...l.perimetre, v]; redessiner(); }
+    if (b.dataset.pg === "retirer") { repartition.splice(+a.dataset.i, 1); if (!repartition.length) repartition.push({ ref: null, libelle: "", perimetre: [] }); redessiner(); }
+  });
+  p.querySelector('[data-pg="ajouter"]').addEventListener("click", () => { repartition.push({ ref: null, libelle: "", perimetre: [] }); redessiner(repartition.length - 1); });
+  $("pg-creer").addEventListener("click", creerPagesAgents);
 }
-async function creerPageSaisie() {
-  const cible = +$("pg-cible").value || null;
-  const nom = $("pg-nom").value.trim() || courant.nom, url = $("pg-url").value.trim(), st = $("pg-statut"), btn = $("pg-creer");
-  const libelle = $("pg-libelle").value.trim();
-  const perimetre = [...document.querySelectorAll("#pg-perimetre input:checked")].map(c => c.value);
+async function creerPagesAgents() {
+  const st = $("pg-statut"), btn = $("pg-creer"), url = $("pg-url").value.trim();
   const dire = (t, err) => { st.textContent = t; st.className = `statut${err ? " err" : " ok"}`; };
-  if (!/^https?:\/\/\S+$/i.test(url)) { dire("Indiquez l'adresse complète du widget de saisie (https://…).", true); $("pg-url").focus(); return; }
-  btn.disabled = true; dire(cible ? "Mise à jour de la page…" : "Création de la page…");
+  const actives = repartition.filter(l => l.libelle.trim());
+  const noms = actives.map(l => l.libelle.trim().toLowerCase());
+  const doublon = noms.find((n, i) => noms.indexOf(n) !== i);
+  if (doublon) { dire(`Deux lignes portent le même agent (« ${doublon} »).`, true); return; }
+  const nouvelles = actives.filter(l => !l.ref), modifiees = actives.filter(l => l.ref && ligneModifiee(l));
+  if (nouvelles.length && !/^https?:\/\/\S+$/i.test(url)) { dire("Indiquez l'adresse complète du widget de saisie (https://…).", true); $("pg-url").focus(); return; }
+  if (!nouvelles.length && !modifiees.length) { dire("Rien à faire : les pages sont à jour."); return; }
+  btn.disabled = true; dire("Création et mise à jour des pages…");
   try {
-    let sec = cible, vue = null;
-    if (!cible) {
-      const [t] = metaTables, ref = t.id[t.tableId.indexOf(courant.table)];
-      if (ref == null) throw new Error(`table ${courant.table} introuvable`);
-      const res = await actions([["CreateViewSection", ref, 0, "custom", null, null]]);
-      const rv = (res && res.retValues && res.retValues[0]) || {};
-      sec = rv.sectionRef; vue = rv.viewRef;
-      if (!sec) throw new Error("Grist n'a pas indiqué la vue créée");
-    } else vue = ((pagesSaisie || []).find(p => p.sectionRef === cible) || {}).viewRef || null;
-    const sections = await grist.docApi.fetchTable("_grist_Views_section"), i = sections.id.indexOf(sec);
-    const { o, cv } = optionsVue(i >= 0 ? sections.options[i] : "");
-    o.customView = JSON.stringify({ ...cv, mode: "url", url, access: "full",
-      widgetOptions: { ...(cv.widgetOptions || {}), formulaire: courant.nom, libelle, perimetre } });
-    const acts = [["UpdateRecord", "_grist_Views_section", sec, { options: JSON.stringify(o), title: nom }]];
-    if (vue) acts.push(["UpdateRecord", "_grist_Views", vue, { name: nom }]);
+    // 1. Nouvelles pages, toutes en une fois
+    if (nouvelles.length) {
+      const [t] = metaTables, tref = t.id[t.tableId.indexOf(courant.table)];
+      if (tref == null) throw new Error(`table ${courant.table} introuvable`);
+      const res = await actions(nouvelles.map(() => ["CreateViewSection", tref, 0, "custom", null, null]));
+      const rvs = (res && res.retValues) || [];
+      nouvelles.forEach((l, i) => { const rv = rvs[i] || {}; l.ref = rv.sectionRef; l.vue = rv.viewRef; l.url = url; if (!l.ref) throw new Error("Grist n'a pas indiqué la vue créée"); });
+    }
+    // 2. Réglages de toutes les pages concernées, en une fois
+    const sections = await grist.docApi.fetchTable("_grist_Views_section");
+    const acts = [];
+    for (const l of [...nouvelles, ...modifiees]) {
+      const i = sections.id.indexOf(l.ref), nom = nomPageAgent(l.libelle.trim());
+      const { o, cv } = optionsVue(i >= 0 ? sections.options[i] : "");
+      o.customView = JSON.stringify({ ...cv, mode: "url", url: cv.url || l.url || url, access: "full",
+        widgetOptions: { ...(cv.widgetOptions || {}), formulaire: courant.nom, libelle: l.libelle.trim(), perimetre: l.perimetre } });
+      acts.push(["UpdateRecord", "_grist_Views_section", l.ref, { options: JSON.stringify(o), title: nom }]);
+      const vue = l.vue || (i >= 0 ? sections.parentId[i] : null);
+      if (vue) acts.push(["UpdateRecord", "_grist_Views", vue, { name: nom }]);
+    }
     await actions(acts);
-    try {
+    if (nouvelles.length) try {
       if (!colonnesDe(TABLE_FORMULAIRES).Widget) { await actions([["AddColumn", TABLE_FORMULAIRES, "Widget", { type: "Text", isFormula: false }]]); await lireMeta(); }
       await actions([["UpdateRecord", TABLE_FORMULAIRES, courant.id, { Widget: url }]]);
       courant.widget = url; const f = formulaires.find(x => x.id === courant.id); if (f) f.widget = url;
     } catch (_) { /* mémorisation facultative */ }
+    repartition = null;
     await lirePagesSaisie(); dessinerPanneau();
-    message(cible ? `Page « ${nom} » mise à jour. Rechargez-la dans Grist pour appliquer le périmètre.`
-      : `Page « ${nom} » créée : elle apparaît dans la liste des pages de Grist, à gauche.${courant.publie ? "" : " Publiez le formulaire pour qu'elle l'affiche."}`, "ok");
+    const pl = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
+    message([nouvelles.length ? `${pl(nouvelles.length, "page créée", "pages créées")} (liste des pages de Grist, à gauche)` : "",
+      modifiees.length ? `${pl(modifiees.length, "page mise à jour", "pages mises à jour")} : rechargez-la dans Grist si elle est ouverte` : ""].filter(Boolean).join(" ; ") + ".", "ok");
   } catch (e) {
     btn.disabled = false;
-    dire(`${cible ? "Mise à jour" : "Création"} refusée par Grist (${e.message || e}).`, true);
+    dire(`Opération refusée par Grist (${e.message || e}). Les pages déjà créées apparaissent dans la liste : relancez pour terminer.`, true);
+    repartition = null; await lirePagesSaisie(); dessinerPanneau();
   }
 }
 

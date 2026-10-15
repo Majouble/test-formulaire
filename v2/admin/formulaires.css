@@ -500,3 +500,13 @@
 #formulaires[hidden] { display: none !important; }
 #formulaires .lien-retour { display: inline-block; background: none; border: 0; padding: 0; margin: 0 0 10px; color: var(--bleu); font: inherit; font-size: .85rem; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
 #formulaires .lien-retour:hover { text-decoration-thickness: 2px; }
+#formulaires .agent { border: 1px solid var(--trait); border-radius: 6px; padding: 8px; margin-bottom: 8px; background: #fff; }
+#formulaires .agent-haut { display: flex; align-items: center; gap: 8px; }
+#formulaires .agent-haut input { flex: 1; min-width: 0; }
+#formulaires .agent .puces { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 4px; }
+#formulaires .puce { font: inherit; font-size: .78rem; padding: 2px 9px; border-radius: 12px; border: 1px solid var(--trait); background: #fff; color: var(--gris); cursor: pointer; }
+#formulaires .puce.on { background: var(--bleu); border-color: var(--bleu); color: #fff; }
+#formulaires .pastille-pg { font-size: .72rem; padding: 1px 8px; border-radius: 10px; white-space: nowrap; }
+#formulaires .pastille-pg.nouv { background: var(--bleu-clair); color: var(--bleu); }
+#formulaires .pastille-pg.modif { background: #fff3cd; color: #8a4b00; }
+#formulaires .pastille-pg.ok { background: #e6f4ea; color: #18753c; }
