@@ -6,6 +6,7 @@
 <title>Administration des signalements</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="../commun/socle.js"></script>
+<script src="../commun/point-moteur.js"></script>
 <link rel="stylesheet" href="formulaires.css">
 <style>
   :root {
@@ -63,26 +64,60 @@
   :is(#installation, #referentiel, #point-situation) ul.journal li.err { color: var(--alerte); }
   :is(#installation, #referentiel, #point-situation) .vide { color: var(--doux); font-style: italic; }
   :is(#installation, #referentiel, #point-situation) code { background: #f0f0f0; padding: 0 4px; border-radius: 3px; font-size: 12.5px; }
-  /* onglet Point de situation */
+  /* onglet Point de situation : éditeur à gauche, aperçu en direct à droite */
+  main#point-situation { max-width: none; }
+  #point-situation .ps-mise { display: grid; grid-template-columns: minmax(420px, 1fr) minmax(380px, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 1000px) { #point-situation .ps-mise { grid-template-columns: 1fr; } }
+  #point-situation .ps-apercu { position: sticky; top: 92px; max-height: calc(100vh - 104px); overflow: auto; background: #fff; border: 1px solid var(--trait); border-radius: 8px; padding: 12px; }
+  #point-situation .ps-apercu-barre { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+  #point-situation .ps-apercu-barre select { width: auto; }
   #point-situation .ps-tete { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   #point-situation .ps-tete h2 { margin: 0; }
-  #point-situation .ps-ligne { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-bottom: 1px solid var(--trait); }
-  #point-situation .ps-num { font-weight: 700; color: var(--accent); width: 18px; padding-top: 18px; }
-  #point-situation .ps-champs { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-  #point-situation .ps-rang { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; }
-  #point-situation .ps-mini-lib { display: block; font-size: 12px; color: var(--doux); }
-  #point-situation .ps-mini-lib input, #point-situation .ps-mini-lib textarea, #point-situation .ps-mini-lib select { margin-top: 2px; color: var(--texte); }
-  #point-situation input[type=color] { padding: 0 2px; height: 31px; width: 60px; }
-  #point-situation .ps-case { font-size: 12px; color: var(--doux); white-space: nowrap; padding-top: 20px; }
-  #point-situation .ps-outils { display: flex; gap: 2px; padding-top: 16px; }
-  #point-situation .ps-mini { font: inherit; border: 1px solid var(--trait); background: #fff; border-radius: 4px; width: 26px; height: 26px; cursor: pointer; }
+  #point-situation .ps-bloc { border: 1px solid var(--trait); border-radius: 8px; margin: 10px 0; background: #fff; }
+  #point-situation .ps-bloc.inactif { opacity: .55; }
+  #point-situation .ps-bloc-tete { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #f8f8fb; border-bottom: 1px solid var(--trait); border-radius: 8px 8px 0 0; flex-wrap: wrap; }
+  #point-situation .ps-bloc-tete select { width: auto; flex: 1 1 140px; }
+  #point-situation .ps-bloc-corps { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 6px; }
+  #point-situation .ps-num { font-weight: 700; color: var(--accent); min-width: 16px; }
+  #point-situation .ps-titre { flex: 1 1 160px; font-weight: 600; }
+  #point-situation .ps-clause { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #point-situation .ps-clause select, #point-situation .ps-clause input { width: auto; flex: 1 1 120px; min-width: 0; }
+  #point-situation .ps-clause select.ps-lien { flex: 0 0 auto; }
+  #point-situation .ps-lien-1, #point-situation .ps-ligne-n { color: var(--doux); font-size: 12px; width: 26px; text-align: right; }
+  #point-situation .ps-badge { flex: 1; font-size: 12px; background: #fff3a6; padding: 4px 8px; border-radius: 4px; }
+  #point-situation .ps-ajouts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--doux); }
+  #point-situation .ps-ajouts select { width: auto; }
+  #point-situation .ps-options-col { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #point-situation .ps-petit { font-size: 12px; color: var(--doux); }
+  #point-situation .ps-petit input[type=number] { width: 58px; }
+  #point-situation input[type=color] { padding: 0 2px; height: 30px; width: 40px; border: 1px solid #bbb; border-radius: 4px; }
+  #point-situation .ps-actif { font-size: 12px; color: var(--doux); white-space: nowrap; }
+  #point-situation .ps-outils { display: flex; gap: 2px; }
+  #point-situation .ps-mini { font: inherit; border: 1px solid var(--trait); background: #fff; border-radius: 4px; width: 26px; height: 26px; cursor: pointer; padding: 0; }
   #point-situation .ps-mini.danger { color: var(--alerte); }
-  #point-situation .ps-mini:disabled { opacity: .35; cursor: default; }
-  #point-situation .puces-ps { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  #point-situation .ps-mini:disabled { opacity: .3; cursor: default; }
+  #point-situation .ps-lienbtn { align-self: flex-start; background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-size: 13px; cursor: pointer; text-decoration: underline; }
+  #point-situation .ps-lienbtn.discret { color: var(--doux); font-size: 12px; align-self: flex-end; }
+  #point-situation .ps-note { font-size: 12px; color: var(--doux); margin: 0; }
+  #point-situation .ps-note.err { color: var(--alerte); }
+  #point-situation .puces-ps { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
   #point-situation .puce-ps { font: inherit; font-size: 12px; padding: 2px 9px; border-radius: 12px; border: 1px solid var(--trait); background: #fff; color: var(--texte); cursor: pointer; }
   #point-situation .puce-ps.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-  #point-situation section > button.secondaire { margin-top: 10px; }
+  #point-situation .puce-ps button { background: none; border: 0; color: inherit; cursor: pointer; padding: 0 2px; font: inherit; }
+  #point-situation section > button.secondaire { margin-top: 4px; }
   #point-situation details summary { cursor: pointer; }
+  #point-situation #ps-statut { position: sticky; bottom: 0; background: var(--fond); padding: 6px 0; margin: 0; }
+  /* aperçu : rendu proche du widget */
+  #point-situation .page { font-family: Marianne, Arial, sans-serif; font-size: 11px; color: #161616; }
+  #point-situation .page .entete { display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 8px; align-items: center; font-size: 10px; border-bottom: 1px solid #ccc; padding-bottom: 6px; }
+  #point-situation .page .logo { font-weight: 700; font-size: 9px; line-height: 1.2; }
+  #point-situation .page .bandeau { text-align: center; font-weight: 700; color: var(--accent); }
+  #point-situation .page h1 { font-size: 13px; text-align: center; margin: 10px 0; }
+  #point-situation .page h2 { font-size: 12px; font-weight: 600; border-bottom: 2px solid var(--accent); margin: 12px 0 6px; padding-bottom: 2px; }
+  #point-situation .page table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  #point-situation .page th, #point-situation .page td { border: 1px solid #000; padding: 3px 4px; vertical-align: top; font-size: 10px; text-align: left; word-wrap: break-word; }
+  #point-situation .page mark { background: #ff0; }
+  #point-situation .page .vide { color: var(--doux); font-style: italic; }
 </style>
 </head>
 <body>
@@ -211,10 +246,7 @@
   </form>
 </dialog>
 </main>
-<main id="point-situation" hidden>
-  <div id="ps-contenu"><p class="vide">Lecture…</p></div>
-  <p class="statut" id="ps-statut" role="status" style="position:sticky;bottom:0;background:var(--fond);padding:6px 0;margin:0"></p>
-</main>
+<main id="point-situation" hidden></main>
 <script src="installation.js"></script>
 <script src="point-situation.js"></script>
 <script src="formulaires.js"></script>
