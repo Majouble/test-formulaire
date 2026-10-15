@@ -6,6 +6,7 @@
 <title>Administration des signalements</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="../commun/socle.js"></script>
+<link rel="stylesheet" href="formulaires.css">
 <style>
   :root {
     --fond: #f6f6f6; --carte: #fff; --texte: #1e1e1e; --doux: #666; --trait: #ddd;
@@ -23,42 +24,45 @@
   nav button:disabled { cursor: default; opacity: .55; }
   main { padding: 16px; max-width: 980px; }
   main[hidden] { display: none; }
-  .carte { background: var(--carte); border: 1px solid var(--trait); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-  .carte h2 { font-size: 15px; margin: 0 0 4px; }
-  .carte > p.aide { color: var(--doux); margin: 0 0 12px; }
-  .bandeau { border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-weight: 600; }
-  .bandeau.ok { background: var(--ok-clair); color: var(--ok); }
-  .bandeau.alerte { background: var(--alerte-clair); color: var(--alerte); }
-  .bandeau.info { background: var(--info-clair); color: var(--accent); }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--trait); vertical-align: top; }
-  th { font-size: 12px; color: var(--doux); font-weight: 600; }
-  select, input[type="text"], textarea { font: inherit; padding: 5px 8px; border: 1px solid #bbb; border-radius: 4px; width: 100%; background: #fff; }
-  textarea { min-height: 64px; resize: vertical; }
-  label.champ { display: block; margin-bottom: 10px; }
-  label.champ span { display: block; font-weight: 600; margin-bottom: 3px; }
-  label.champ small { display: block; color: var(--doux); font-weight: normal; }
-  .grille { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
-  @media (max-width: 640px) { .grille { grid-template-columns: 1fr; } }
-  .pastille { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: #eee; color: var(--doux); white-space: nowrap; }
-  .pastille.manque { background: var(--alerte-clair); color: var(--alerte); }
-  .pastille.reco { background: var(--info-clair); color: var(--accent); }
-  .pastille.ok { background: var(--ok-clair); color: var(--ok); }
-  .groupe { font-size: 12px; font-weight: 600; color: var(--doux); text-transform: uppercase; letter-spacing: .03em; margin: 14px 0 6px; }
-  .etape { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--trait); }
-  .etape input { margin-top: 3px; }
-  .etape .detail { color: var(--doux); font-size: 13px; }
-  .boutons { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
-  button.primaire, button.secondaire { font: inherit; padding: 7px 14px; border-radius: 4px; cursor: pointer; }
-  button.primaire { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
-  button.secondaire { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
-  button:disabled { opacity: .5; cursor: default; }
-  .statut { font-size: 13px; }
-  .statut.ok { color: var(--ok); } .statut.err { color: var(--alerte); }
-  ul.journal { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
-  ul.journal li.err { color: var(--alerte); }
-  .vide { color: var(--doux); font-style: italic; }
-  code { background: #f0f0f0; padding: 0 4px; border-radius: 3px; font-size: 12.5px; }
+  main#formulaires { padding: 0; max-width: none; }
+  #formulaires .app { height: calc(100vh - 80px); }
+  :is(#installation, #referentiel) .carte { background: var(--carte); border: 1px solid var(--trait); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  :is(#installation, #referentiel) .carte h2 { font-size: 15px; margin: 0 0 4px; }
+  :is(#installation, #referentiel) .carte > p.aide { color: var(--doux); margin: 0 0 12px; }
+  :is(#installation, #referentiel) .bandeau { border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-weight: 600; }
+  :is(#installation, #referentiel) .bandeau.ok { background: var(--ok-clair); color: var(--ok); }
+  :is(#installation, #referentiel) .bandeau.alerte { background: var(--alerte-clair); color: var(--alerte); }
+  :is(#installation, #referentiel) .bandeau.info { background: var(--info-clair); color: var(--accent); }
+  :is(#installation, #referentiel) table { width: 100%; border-collapse: collapse; }
+  :is(#installation, #referentiel) th, :is(#installation, #referentiel) td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--trait); vertical-align: top; }
+  :is(#installation, #referentiel) th { font-size: 12px; color: var(--doux); font-weight: 600; }
+  :is(#installation, #referentiel) select, :is(#installation, #referentiel) input[type="text"], :is(#installation, #referentiel) textarea { font: inherit; padding: 5px 8px; border: 1px solid #bbb; border-radius: 4px; width: 100%; background: #fff; }
+  :is(#installation, #referentiel) textarea { min-height: 64px; resize: vertical; }
+  :is(#installation, #referentiel) label.champ { display: block; margin-bottom: 10px; }
+  :is(#installation, #referentiel) label.champ span { display: block; font-weight: 600; margin-bottom: 3px; }
+  :is(#installation, #referentiel) label.champ small { display: block; color: var(--doux); font-weight: normal; }
+  :is(#installation, #referentiel) .grille { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  @media (max-width: 640px) { :is(#installation, #referentiel) .grille { grid-template-columns: 1fr; } }
+  :is(#installation, #referentiel) .pastille { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: #eee; color: var(--doux); white-space: nowrap; }
+  :is(#installation, #referentiel) .pastille.manque { background: var(--alerte-clair); color: var(--alerte); }
+  :is(#installation, #referentiel) .pastille.reco { background: var(--info-clair); color: var(--accent); }
+  :is(#installation, #referentiel) .pastille.ok { background: var(--ok-clair); color: var(--ok); }
+  :is(#installation, #referentiel) .groupe { font-size: 12px; font-weight: 600; color: var(--doux); text-transform: uppercase; letter-spacing: .03em; margin: 14px 0 6px; }
+  :is(#installation, #referentiel) .etape { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--trait); }
+  :is(#installation, #referentiel) .etape input { margin-top: 3px; }
+  :is(#installation, #referentiel) .etape .detail { color: var(--doux); font-size: 13px; }
+  :is(#installation, #referentiel) .boutons { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+  :is(#installation, #referentiel) button.primaire, :is(#installation, #referentiel) button.secondaire { font: inherit; padding: 7px 14px; border-radius: 4px; cursor: pointer; }
+  :is(#installation, #referentiel) button.primaire { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
+  :is(#installation, #referentiel) button.secondaire { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+  :is(#installation, #referentiel) button:disabled { opacity: .5; cursor: default; }
+  :is(#installation, #referentiel) .statut { font-size: 13px; }
+  :is(#installation, #referentiel) .statut.ok { color: var(--ok); }
+  :is(#installation, #referentiel) .statut.err { color: var(--alerte); }
+  :is(#installation, #referentiel) ul.journal { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
+  :is(#installation, #referentiel) ul.journal li.err { color: var(--alerte); }
+  :is(#installation, #referentiel) .vide { color: var(--doux); font-style: italic; }
+  :is(#installation, #referentiel) code { background: #f0f0f0; padding: 0 4px; border-radius: 3px; font-size: 12.5px; }
 </style>
 </head>
 <body>
@@ -67,7 +71,7 @@
   <nav role="tablist">
     <button role="tab" aria-selected="true" data-onglet="installation">Installation</button>
     <button role="tab" aria-selected="false" data-onglet="referentiel">Référentiel</button>
-    <button role="tab" aria-selected="false" disabled title="À venir">Formulaires</button>
+    <button role="tab" aria-selected="false" data-onglet="formulaires">Formulaires</button>
     <button role="tab" aria-selected="false" disabled title="À venir">Point de situation</button>
     <button role="tab" aria-selected="false" disabled title="À venir">Tableau de bord</button>
   </nav>
@@ -148,7 +152,47 @@
   </section>
   <p class="statut" id="ref-statut"></p>
 </main>
+<main id="formulaires" hidden>
+<div class="app" id="app">
+  <header class="haut">
+    <h1>Administration des formulaires</h1>
+    <label for="choix-formulaire" class="visuellement-cache">Formulaire</label>
+    <select id="choix-formulaire"></select>
+    <span class="infos" id="infos"></span>
+    <span class="espace"></span>
+    <span class="etat-publi" id="etat-publi" role="status"></span>
+    <button type="button" class="secondaire" id="btn-tester" aria-pressed="false">▶ Tester</button>
+    <button type="button" class="secondaire" id="btn-nouveau">+ Nouveau</button>
+    <button type="button" class="secondaire" id="btn-dupliquer">⧉ Dupliquer</button>
+    <button type="button" class="primaire" id="btn-publier">Publier</button>
+  </header>
+  <section class="apercu" id="apercu" aria-label="Aperçu du formulaire"></section>
+  <aside class="panneau" id="panneau" aria-label="Réglages"></aside>
+</div>
+
+<div class="menu-ajout" id="menu-ajout" role="dialog" aria-label="Ajouter un bloc" hidden></div>
+<dialog id="dlg-nouveau">
+  <form method="dialog" id="form-nouveau">
+    <h3 id="dlg-titre">Nouveau formulaire</h3>
+    <div class="champ"><label for="nf-nom">Nom du formulaire</label><input type="text" id="nf-nom" required></div>
+    <div class="champ" id="nf-bloc-type"><label for="nf-type">Type de questionnaire</label><select id="nf-type"><option value="etablissement">Questionnaire établissement</option></select>
+      <span class="aide">Établissement recherché par nom ou UAI et complété automatiquement ; nouveau signalement puis mises à jour (versions) ; qualification, date des faits, description automatique ; visas départemental et académique.</span></div>
+    <div class="champ" id="nf-bloc-table"><label for="nf-table">Table des réponses<span class="aide">La table où chaque réponse est enregistrée (une ligne par version).</span></label><select id="nf-table"></select></div>
+    <div class="champ" id="nf-bloc-nouvelle" hidden><label for="nf-nouvelle">Nom de la nouvelle table<span class="aide">Créée avec les colonnes du questionnaire établissement : Etablissement, Date_faits, Qualification, Description, Dossier, Nature, Date, Commentaire, Auteur (et Site, Clos selon les options ci-dessous).</span></label><input type="text" id="nf-nouvelle" autocomplete="off"></div>
+    <div class="champ" id="nf-bloc-etab" hidden><label for="nf-etab">Référentiel des établissements<span class="aide">Table dans laquelle l'établissement est recherché par nom ou UAI ; la colonne Etablissement y fait référence.</span></label><select id="nf-etab"></select>
+      <p class="note" id="nf-etab-info" style="margin:4px 0 0" hidden></p></div>
+    <div id="nf-bloc-options" hidden>
+      <label class="case"><input type="checkbox" id="nf-site"> Champ « Site / bâtiment » (version enseignement supérieur)</label>
+      <label class="case"><input type="checkbox" id="nf-clos" checked> Clôture des signalements (colonne « Clos »)</label>
+    </div>
+    <label class="case" id="nf-bloc-import"><input type="checkbox" id="nf-import" checked> Proposer d'ajouter les colonnes existantes de la table</label>
+    <p class="statut err" id="nf-erreur" role="alert"></p>
+    <div class="actions"><button type="button" class="secondaire" id="nf-annuler">Annuler</button><button type="submit" class="primaire" id="nf-valider">Créer</button></div>
+  </form>
+</dialog>
+</main>
 <script src="installation.js"></script>
+<script src="formulaires.js"></script>
 <script src="referentiel.js"></script>
 <script>
   // Onglets
@@ -156,6 +200,7 @@
     document.querySelectorAll("nav button[data-onglet]").forEach(x => x.setAttribute("aria-selected", String(x === b)));
     document.querySelectorAll("main").forEach(m => { m.hidden = m.id !== b.dataset.onglet; });
     if (b.dataset.onglet === "referentiel") window.OngletReferentiel.afficher();
+    if (b.dataset.onglet === "formulaires") window.OngletFormulaires.afficher();
   }));
 </script>
 </body>
