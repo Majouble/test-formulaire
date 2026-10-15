@@ -6,8 +6,8 @@ Ce dossier contient la version 2 des widgets. La version 1 (`index.html` à la r
 | --- | --- | --- |
 | `https://majouble.github.io/test-formulaire/` | v1 | Documents en production (ne pas modifier pendant la refonte) |
 | `https://majouble.github.io/test-formulaire/v2/saisie/` | v2 | Formulaire de saisie : Config, rôles, périmètre de la page, fusion des mises à jour concurrentes (en test) |
-| `https://majouble.github.io/test-formulaire/v2/admin/` | v2 | Administration : onglets Installation, Référentiel (annuaire EN) et Formulaires en test ; point de situation et tableau de bord à venir |
-| `https://majouble.github.io/test-formulaire/v2/point-situation/` | v2 | Production du point de situation (à venir) |
+| `https://majouble.github.io/test-formulaire/v2/admin/` | v2 | Administration : onglets Installation, Référentiel (annuaire EN), Formulaires et Point de situation en test ; tableau de bord à venir |
+| `https://majouble.github.io/test-formulaire/v2/point-situation/` | v2 | Production du point de situation, selon la configuration publiée dans l'administration (en test) |
 | `https://majouble.github.io/test-formulaire/v2/tableau-de-bord/` | v2 | Tableau de bord (à venir) |
 
 ## Organisation

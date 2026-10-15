@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0-alpha.5 (15/10/2026)";
+  const VERSION = "2.0.0-alpha.6 (15/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -479,7 +479,22 @@ return "".join(resultat)`;
     return resultats;
   }
 
+  // Réglages techniques du point de situation déduits du socle (table et colonnes) : valeurs par défaut,
+  // que la configuration publiée peut remplacer
+  async function reglagesPointParDefaut(meta, config) {
+    meta = meta || await lireMeta();
+    const g = general(config), assoc = (config && config.valeurs && config.valeurs.roles) || {};
+    const ctx = { reponses: g.reponses, referentiel: g.referentiel };
+    const rr = resoudreRoles("reponses", meta[g.reponses], ctx, assoc.reponses || {}, {});
+    const rf = resoudreRoles("referentiel", meta[g.referentiel], ctx, assoc.referentiel || {}, {});
+    const c = (r, role, def) => (r[role] && r[role].col) || def;
+    const etab = c(rr, "Etablissement", "Etablissement");
+    return { table: g.reponses, dossier: c(rr, "Dossier", "Dossier"), date: c(rr, "Cree_le", "Cree_le"), dateFaits: c(rr, "Date_faits", ""),
+      nature: c(rr, "Nature", ""), champAcademie: `${etab}.${c(rf, "Academie", "Academie")}`, modeleTable: TABLE_CONFIG, modeleColonne: "Fichier" };
+  }
+
   window.Socle = {
+    reglagesPointParDefaut,
     VERSION, TABLE_CONFIG, DEFAUTS_GENERAL, NATURES, ROLES,
     norm, cibleRef, lireMeta, lireConfig, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer,

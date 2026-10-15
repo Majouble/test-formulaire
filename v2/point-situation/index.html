@@ -1,0 +1,747 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Point de situation</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="../commun/socle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pizzip@3.3.0/dist/pizzip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/docxtemplater@3.71.0/build/docxtemplater.js"></script>
+<style>
+  :root { --bleu: #000091; --fond: #f4f4f4; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Marianne, Arial, sans-serif; font-size: 13px; background: var(--fond); color: #161616; }
+  .barre { position: sticky; top: 0; z-index: 2; background: #fff; border-bottom: 1px solid #ddd; padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: end; }
+  .barre label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: #555; }
+  input, select, textarea { font: inherit; padding: 3px 5px; border: 1px solid #bbb; border-radius: 3px; }
+  .barre input[type=number] { width: 60px; }
+  button { font: inherit; padding: 5px 10px; border: 1px solid var(--bleu); background: #fff; color: var(--bleu); border-radius: 3px; cursor: pointer; }
+  button.principal { background: var(--bleu); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid #0a76f6; outline-offset: 1px; }
+  #etat { font-size: 12px; color: #555; flex-basis: 100%; white-space: pre-line; }
+  #etat.erreur { color: #ce0500; }
+  #etat.alerte { color: #b34000; }
+  .page { background: #fff; width: 210mm; max-width: calc(100% - 24px); margin: 12px auto; padding: 12mm 10mm; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+  .entete { display: grid; grid-template-columns: 1fr 1.2fr 1.6fr 1fr; gap: 8px; align-items: center; margin-bottom: 14px; font-weight: bold; text-align: center; }
+  .entete .logo { text-align: left; font-size: 10px; line-height: 1.2; }
+  .entete .bandeau { background: #4472C4; color: #fff; padding: 12px 6px; }
+  .entete .cmc { text-align: left; border-left: 3px solid #000; padding-left: 6px; }
+  h1 { font-size: 13px; text-align: center; margin: 8px 0; }
+  h2 { font-size: 14px; font-weight: normal; border-bottom: 2px solid var(--bleu); margin: 18px 0 8px 40px; padding-bottom: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11.5px; table-layout: fixed; }
+  th { text-align: left; padding: 8px 5px; border: 1px solid #000; }
+  td { border: 1px solid #000; padding: 3px 5px; vertical-align: top; overflow-wrap: anywhere; }
+  mark { background: #ffff00; }
+  .vide { font-style: italic; color: #555; margin: 4px 0; }
+  #reglages { display: none; background: #fff; margin: 12px; padding: 12px; border: 1px solid #ccc; }
+  #reglages.ouvert { display: block; }
+  #reglages fieldset { border: 1px solid #ddd; margin: 0 0 10px; }
+  #reglages .grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 12px; }
+  #reglages label { display: flex; flex-direction: column; font-size: 11px; color: #555; }
+  #reglages label.large { grid-column: 1 / -1; }
+  .aide { font-size: 11.5px; color: #555; line-height: 1.45; }
+  .aide code { background: #eee; padding: 0 3px; }
+  #champs { max-height: 180px; overflow: auto; font-family: monospace; font-size: 11.5px; background: #fafafa; border: 1px solid #ddd; padding: 6px; }
+</style>
+</head>
+<body>
+<div class="barre" role="toolbar" aria-label="Paramètres du point de situation">
+  <label>Signalements depuis <input type="datetime-local" id="depuis"></label>
+  <label>Marquer « nouveau » après <input type="datetime-local" id="dernierPoint"></label>
+  <label>Heure du point <input type="datetime-local" id="maintenant"></label>
+  <label>N° <input type="number" id="numero" min="1"></label>
+  <label>Académie <select id="academie"><option value="">Toutes</option></select></label>
+  <button id="actualiser">Actualiser</button>
+  <button id="telecharger" class="principal" disabled>Télécharger le .docx</button>
+  <button id="copierWord" disabled title="Copie les tableaux avec le gras et le surlignage, à coller dans Word">Copier pour Word</button>
+  <button id="enregistrer" title="Enregistre l'heure et le numéro de ce point dans la table Points_situation">Enregistrer ce point</button>
+  <button id="btnReglages" aria-expanded="false" aria-controls="reglages">⚙ Réglages</button>
+  <div id="etat" role="status" aria-live="polite">Chargement…</div>
+</div>
+
+<div id="reglages">
+  <fieldset><legend>Réglages</legend>
+    <p class="aide">Les tableaux, colonnes, tris et l'en-tête de ce point de situation se règlent dans l'<b>administration</b>, onglet <b>Point de situation</b>, puis « Publier ». Ce widget applique la version publiée.</p>
+    <p class="aide" id="infoConfig"></p>
+    <label>Modèle Word pour cette session (facultatif) <input type="file" id="modeleFichier" accept=".docx"></label>
+    <details><summary>Champs disponibles</summary><div id="champs"></div></details>
+    <button id="creerTables" hidden></button><button id="sauverReglages" hidden></button>
+  </fieldset>
+</div>
+<main id="apercu" aria-label="Aperçu du point de situation"></main>
+
+<script>
+/* ===================== Assemblage du point de situation (commun widget / n8n) =====================
+   Entrée : une « source » qui sait lire les tables Grist :
+     source.table(nom)  -> { lignes: [{id, Col: valeur…}], parId: Map }   (valeurs déjà décodées)
+     source.types(nom)  -> { Col: "Ref:Table" | "Text" | … }
+   Configuration (tables du document) :
+     Colonnes_point : Ordre, Titre, Contenu, Largeur, Couleur, Fusionner, Tableaux, Actif
+     Sections_point : Ordre, Titre, Condition, Actif
+     Réglages       : table, dossier, date, dateFaits, nature, tri, depuis, dernierPoint, academie, champAcademie
+*/
+const DEFAUT_COLONNES = [
+  { Ordre: 1, Titre: "Académie", Contenu: "**{Etablissement.Academie}**\n{Etablissement.Departement}", Largeur: 14, Couleur: "17877A", Fusionner: true, Tableaux: "", Actif: true },
+  { Ordre: 2, Titre: "Établissement", Contenu: "**{Etablissement.Nom}**\n{Etablissement.Commune}\n{nouveau}", Largeur: 30, Couleur: "17877A", Fusionner: false, Tableaux: "", Actif: true },
+  { Ordre: 3, Titre: "Actions", Contenu: "{Qualification}", Largeur: 14, Couleur: "B2C6BD", Fusionner: false, Tableaux: "", Actif: true },
+  { Ordre: 4, Titre: "Suites", Contenu: "{Suites}", Largeur: 10, Couleur: "B2C6BD", Fusionner: false, Tableaux: "", Actif: true },
+  { Ordre: 5, Titre: "Synthèse", Contenu: "{Description|sans_entete}", Largeur: 32, Couleur: "17877A", Fusionner: false, Tableaux: "", Actif: true },
+];
+const DEFAUT_SECTIONS = [
+  { Ordre: 1, Titre: "Violences signalées", Condition: "Violences = Oui", Actif: true },
+  { Ordre: 2, Titre: "Etat des mobilisations", Condition: "", Actif: true },
+];
+const DEFAUT_TRI = "Etablissement.Academie, Etablissement.Departement, Etablissement.Nom";
+
+/* ---------- lecture des champs, y compris à travers les références (Etablissement.Academie) ---------- */
+async function creerLecteur(source, tableBase) {
+  const manquants = new Set(), alias = {}, cacheNoms = {};
+  // correspondance « nom écrit » -> identifiant de colonne : identifiant exact, sinon identifiant ou libellé
+  // sans tenir compte des accents ni des majuscules (« Grève » -> Greve)
+  async function nomsDe(t) {
+    if (!cacheNoms[t]) {
+      const ty = await source.types(t), lb = source.libelles ? await source.libelles(t) : {}, m = new Map();
+      for (const c of Object.keys(ty)) if (!m.has(normal(c))) m.set(normal(c), c);
+      for (const [c, l] of Object.entries(lb || {})) if (l && !m.has(normal(l))) m.set(normal(l), c);
+      cacheNoms[t] = m;
+    }
+    return cacheNoms[t];
+  }
+  async function resoudre(t, morceau) {
+    const ty = await source.types(t);
+    if (morceau in ty || morceau === "id") return morceau;
+    return (await nomsDe(t)).get(normal(morceau)) || morceau;
+  }
+  async function prechargerChemin(chemin) {
+    let t = tableBase;
+    const morceaux = chemin.split("."), reel = [];
+    for (const brut of morceaux.slice(0, -1)) {
+      const morceau = await resoudre(t, brut.trim()); reel.push(morceau);
+      const type = (await source.types(t))[morceau] || "";
+      const cible = (type.match(/^Ref(?:List)?:(.+)$/) || [])[1];
+      if (!cible) { manquants.add(chemin); return; }
+      await source.table(cible); t = cible;
+    }
+    const der = await resoudre(t, morceaux[morceaux.length - 1].trim()), types = await source.types(t);
+    reel.push(der); alias[chemin] = reel.join(".");
+    if (!(der in types) && der !== "id") manquants.add(chemin);
+    // le champ final est lui-même une référence : charger la table visée pour afficher son libellé
+    const cibleFinale = ((types[der] || "").match(/^Ref(?:List)?:(.+)$/) || [])[1];
+    if (cibleFinale) await source.table(cibleFinale);
+  }
+  // lecture synchrone une fois les tables chargées
+  const cacheTypes = {}, cacheAff = {};
+  async function preparer(chemins) {
+    for (const c of new Set(chemins)) if (c) await prechargerChemin(c);
+    for (const t of [...Object.keys(source._charge || {}), tableBase]) {
+      cacheTypes[t] = await source.types(t);
+      cacheAff[t] = source.affichage ? await source.affichage(t) : {};
+    }
+  }
+  // valeur affichée d'une colonne Référence : colonne d'affichage de Grist, sinon colonne visible, sinon premier texte
+  function afficher(t, col, val, ligne) {
+    const cible = (((cacheTypes[t] || {})[col] || "").match(/^Ref(?:List)?:(.+)$/) || [])[1];
+    if (!cible) return val;
+    const inf = (cacheAff[t] || {})[col] || {};
+    if (inf.display && ligne && ligne[inf.display] != null && ligne[inf.display] !== "") return ligne[inf.display];
+    const tb = source._charge[cible];
+    if (!tb) return val;
+    const vis = inf.visible || Object.entries(cacheTypes[cible] || {}).find(([c, ty]) => !/^gristHelper|^manualSort$/.test(c) && /^(Text|Choice)/.test(ty))?.[0];
+    const un = id => { const r = tb.parId.get(id); return r ? afficher(cible, vis, r[vis], r) : ""; };
+    return Array.isArray(val) ? val.map(un) : (val ? un(val) : "");
+  }
+  function lire(ligne, chemin) {
+    let t = tableBase, v = ligne;
+    const morceaux = (alias[chemin] || chemin).split(".");
+    for (let i = 0; i < morceaux.length; i++) {
+      if (v == null) return "";
+      const val = v[morceaux[i]];
+      if (i === morceaux.length - 1) return afficher(t, morceaux[i], val, v);
+      const type = (cacheTypes[t] || {})[morceaux[i]] || "";
+      const cible = (type.match(/^Ref(?:List)?:(.+)$/) || [])[1];
+      if (!cible) return "";
+      const tb = source._charge[cible];
+      if (Array.isArray(val)) return val.map(id => { const r = tb.parId.get(id); return r ? afficher(cible, morceaux[i + 1], r[morceaux[i + 1]], r) : null; }).filter(x => x != null); // RefList : un niveau
+      v = tb.parId.get(val); t = cible;
+    }
+    return v;
+  }
+  // liste des choix Grist de la colonne visée par un chemin (pour « Ordre des choix »)
+  function choix(chemin) {
+    let t = tableBase; const m = (alias[chemin] || chemin).split(".");
+    for (let i = 0; i < m.length - 1; i++) {
+      const cible = (((cacheTypes[t] || {})[m[i]] || "").match(/^Ref(?:List)?:(.+)$/) || [])[1];
+      if (!cible) return [];
+      t = cible;
+    }
+    let col = m[m.length - 1];
+    const inf = (cacheAff[t] || {})[col] || {};
+    if (inf.choices && inf.choices.length) return inf.choices;
+    // référence : ordre des lignes de la table visée
+    const cible = (((cacheTypes[t] || {})[col] || "").match(/^Ref(?:List)?:(.+)$/) || [])[1];
+    if (cible && source._charge[cible]) {
+      const tb = source._charge[cible], vis = inf.visible || Object.entries(cacheTypes[cible] || {}).find(([c, ty]) => !/^gristHelper|^manualSort$/.test(c) && /^(Text|Choice)/.test(ty))?.[0];
+      return [...tb.lignes].sort((a, b) => (a.manualSort ?? a.id) - (b.manualSort ?? b.id)).map(r => r[vis]);
+    }
+    return [];
+  }
+  return { preparer, lire, choix, manquants };
+}
+
+/* ---------- mise en forme des valeurs ---------- */
+function texteValeur(v) {
+  if (v == null || v === false) return "";
+  if (v === true) return "Oui";
+  if (Array.isArray(v)) return v.map(texteValeur).filter(Boolean).join(", ");
+  if (v instanceof Date) return v.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" });
+  return String(v);
+}
+const FILTRES = {
+  sans_entete: s => s.replace(/^\s*\*\*[^*]+\*\*\s*,\s*\*\*[^*]+\*\*\s*:\s*/, "").replace(/^(==|\*\*)?(\p{Ll})/u, (m, a, l) => (a || "") + l.toUpperCase()),
+  majuscules: s => s.toUpperCase(),
+  date: s => s.split(" ")[0],
+  heure: s => (s.split(" ")[1] || "").replace(":", "h"),
+};
+// "**{Etablissement.Nom}**\n{Etablissement.Commune}" -> texte balisé (** gras, == surligné), lignes vides retirées
+function remplir(modele, ligne, lecteur, extra) {
+  const lignes = String(modele || "").split(/\n|\\n/).map(l => l.replace(/\{([^{}|]+)(?:\|([^{}]+))?\}/g, (m, chemin, filtres) => {
+    chemin = chemin.trim();
+    let s = chemin in extra ? extra[chemin] : texteValeur(lecteur.lire(ligne, chemin));
+    for (const f of (filtres || "").split("|").map(x => x.trim()).filter(Boolean)) if (FILTRES[f]) s = FILTRES[f](s);
+    return s;
+  }));
+  return lignes.filter(l => l.replace(/\*\*|==/g, "").trim()).join("\n");
+}
+/* Texte balisé -> lignes de segments [{t, g, s}] (g : gras, s : mis en évidence).
+   Les ==…== peuvent venir de deux sources qui se chevauchent (ajouts repérés par la formule de la description, et
+   changements de qualification écrits par le widget : « RAS → ==Blocage== »), et un ajout peut couvrir plusieurs lignes.
+   Chaque « == » ouvre donc (après une espace, un retour à la ligne ou le début) ou ferme (après un caractère) une mise en
+   évidence imbriquable ; une fermeture sans ouverture en cours compte comme une ouverture ; « ==== » ne laisse rien ouvert.
+   La mise en évidence se poursuit d'une ligne à l'autre ; le gras reste limité à sa ligne. */
+function segmentsLignes(texte) {
+  const lignes = []; let out = [], g = false, prof = 0, buf = "";
+  const pousser = () => { if (buf) { out.push({ t: buf, g, s: prof > 0 }); buf = ""; } };
+  texte = String(texte ?? "");
+  for (let i = 0; i < texte.length; i++) {
+    const c = texte[i], d = texte.slice(i, i + 2);
+    if (c === "\n") { pousser(); lignes.push(out); out = []; g = false; continue; }
+    if (d === "**") { pousser(); g = !g; i++; continue; }
+    if (d === "==") {
+      pousser();
+      const avant = i > 0 ? texte[i - 1] : " ";
+      if (avant === "=") { if (prof > 0) prof--; }          // second « == » collé au précédent
+      else if (/\s/.test(avant)) prof++;                     // « … ==mot » : ouverture
+      else prof > 0 ? prof-- : prof++;                       // « mot== » : fermeture
+      i++; continue;
+    }
+    buf += c;
+  }
+  pousser(); lignes.push(out); return lignes;
+}
+function segments(texte) { return segmentsLignes(texte).flat(); }   // texte d'une seule ligne
+
+/* ---------- conditions de section : « Violences = Oui », « Interpellations > 0 et Suites contient plainte » ---------- */
+function normal(v) { return String(v ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim(); }
+// « Champ opérateur valeur » ; le champ peut être un identifiant (Greve) ou un libellé (Grève), avec des espaces
+function analyserCondition(c) {
+  const m = String(c).replace(/[’‘]/g, "'").match(/^\s*(.+?)\s*(?:(!=|≠|>=|<=|=|>|<)|\s(ne contient pas|contient|n'est pas vide|est vide|non vide|vide))\s*(.*)$/iu);
+  if (!m) return null;
+  let op = (m[2] || m[3]).toLowerCase();
+  if (op === "≠") op = "!="; if (op === "non vide") op = "n'est pas vide"; if (op === "vide") op = "est vide";
+  return { chemin: m[1].trim().replace(/^["'«“]\s*|\s*["'»”]$/g, ""), op, brut: m[4] || "" };
+}
+const morceauxCondition = cond => String(cond || "").split(/\s+ou\s+/i).flatMap(b => b.split(/\s+et\s+/i)).map(analyserCondition).filter(Boolean);
+function testerCondition(cond, ligne, lecteur) {
+  if (!cond || !cond.trim()) return true;
+  return cond.split(/\s+ou\s+/i).some(bloc => bloc.split(/\s+et\s+/i).every(c => {
+    const a = analyserCondition(c);
+    if (!a) return false;
+    const { chemin, op, brut } = a, v = lecteur.lire(ligne, chemin), attendu = normal(brut.replace(/^["'«“]\s*|\s*["'»”]$/g, ""));
+    const vals = Array.isArray(v) ? v.map(normal) : [normal(v === true ? "oui" : v === false ? "non" : v instanceof Date ? v.toISOString() : v)];
+    const vide = vals.every(x => !x || x === "non" || x === "0");
+    const oui = x => ["oui", "vrai", "true", "1"].includes(x);
+    switch (op) {
+      case "=": return oui(attendu) ? vals.some(oui) : (attendu === "non" ? vide : vals.includes(attendu));
+      case "!=": return oui(attendu) ? !vals.some(oui) : !vals.includes(attendu);
+      case ">": return Number(v) > Number(brut); case "<": return Number(v) < Number(brut);
+      case ">=": return Number(v) >= Number(brut); case "<=": return Number(v) <= Number(brut);
+      case "contient": return vals.some(x => x.includes(attendu));
+      case "ne contient pas": return !vals.some(x => x.includes(attendu));
+      case "est vide": return vide;
+      case "n'est pas vide": return !vide;
+    }
+    return false;
+  }));
+}
+
+/* ---------- assemblage ---------- */
+function actifs(liste) { return liste.filter(x => x.Actif !== false && x.Actif !== 0).sort((a, b) => (Number(a.Ordre) || 0) - (Number(b.Ordre) || 0)); }
+function cleTri(v) { return v instanceof Date ? v.getTime() : typeof v === "number" ? v : normal(texteValeur(v)); }
+/* Règles de tri : texte « Champ, Champ desc, Champ [Valeur 1; Valeur 2], Champ [choix] »
+   ou table Tri_point : Ordre, Champ, Sens (A→Z, Z→A, Liste, Ordre des choix), Valeurs (une par ligne), Actif */
+function lireRegles(texte, table) {
+  if (table && table.length) return actifs(table).filter(r => String(r.Champ || "").trim()).map(r => {
+    const sens = normal(r.Sens);
+    const valeurs = String(r.Valeurs || "").split(/\n|;/).map(normal).filter(Boolean);
+    return { c: String(r.Champ).trim(), desc: /z.*a|desc|decroissant/.test(sens), choix: /choix/.test(sens), valeurs: /liste|valeur|perso/.test(sens) || (valeurs.length && !/choix/.test(sens)) ? valeurs : null };
+  });
+  const regles = [], re = /\s*([^,\[]+?)\s*(\[([^\]]*)\])?\s*(desc)?\s*(?:,|$)/gi;
+  let m;
+  while ((m = re.exec(String(texte))) && m[0]) {
+    const [c, sens] = m[1].trim().split(/\s+/);
+    if (!c) continue;
+    const liste = m[3] != null ? m[3].split(";").map(normal).filter(Boolean) : null;
+    regles.push({ c, desc: /^desc/i.test(sens || m[4] || ""), choix: !!liste && liste.length === 1 && liste[0] === "choix", valeurs: liste && !(liste.length === 1 && liste[0] === "choix") ? liste : null });
+  }
+  return regles;
+}
+// rang d'une valeur dans une liste imposée ; les valeurs absentes de la liste passent après, par ordre alphabétique
+function rangValeur(v, valeurs) {
+  const items = (Array.isArray(v) ? v : [v]).map(x => normal(texteValeur(x))).filter(Boolean);
+  if (!items.length) return valeurs.length + 1;
+  return Math.min(...items.map(x => { const i = valeurs.indexOf(x); return i < 0 ? valeurs.length : i; }));
+}
+function comparer(a, b, desc) { if (a < b) return desc ? 1 : -1; if (a > b) return desc ? -1 : 1; return 0; }
+
+async function assemblerPoint(sources, cfg) {
+  const R = cfg.reglages || {};
+  const nomTable = R.table || "Reponses", colDossier = R.dossier || "Dossier", colDate = R.date || "Cree_le", colNature = R.nature || "Nature";
+  const colonnes = actifs(cfg.colonnes && cfg.colonnes.length ? cfg.colonnes : DEFAUT_COLONNES);
+  const sections = actifs(cfg.sections && cfg.sections.length ? cfg.sections : DEFAUT_SECTIONS);
+  const tri = lireRegles(R.tri || DEFAUT_TRI, cfg.tri);
+
+  const chemins = [colDossier, colDate, colNature, ...tri.map(t => t.c)];
+  for (const col of colonnes) for (const m of String(col.Contenu || "").matchAll(/\{([^{}|]+)(?:\|[^{}]+)?\}/g)) if (m[1].trim() !== "nouveau") chemins.push(m[1].trim());
+  for (const s of sections) for (const a of morceauxCondition(s.Condition)) chemins.push(a.chemin);
+  if (R.champAcademie) chemins.push(R.champAcademie);
+
+  // plusieurs sources possibles (point national : un document par région académique)
+  const depuis = R.depuis ? new Date(R.depuis) : null, marque = R.dernierPoint ? new Date(R.dernierPoint) : null;
+  const manquants = new Set();
+  let lignes = [];
+  for (const source of (Array.isArray(sources) ? sources : [sources])) {
+    const base = await source.table(nomTable), lec = await creerLecteur(source, nomTable);
+    // date des faits : réglage « dateFaits », sinon colonne Date_faits si elle existe, sinon date de saisie
+    const typesBase = await source.types(nomTable);
+    const colFaits = R.dateFaits || (typesBase.Date_faits ? "Date_faits" : colDate);
+    await lec.preparer([...chemins, colFaits]); lec.manquants.forEach(m => manquants.add(m));
+    // une ligne par dossier : sa dernière version = faits les plus récents, puis saisie la plus récente, puis ordre de création
+    const derniere = new Map();
+    const cle = r => {
+      const saisie = r[colDate] instanceof Date ? r[colDate].getTime() : 0;
+      return [r[colFaits] instanceof Date ? r[colFaits].getTime() : saisie, saisie, r.id];
+    };
+    const plusRecente = (x, y) => x[0] !== y[0] ? x[0] > y[0] : x[1] !== y[1] ? x[1] > y[1] : x[2] > y[2];
+    // Étapes datées d'un jour à venir (faits annoncés, reprise sur plusieurs jours) : pas encore dans le point.
+    // Colonne Date : minuit UTC, lue en UTC ; colonne Date et heure : jour à Paris.
+    const jourParis = x => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" }).format(x);
+    const jourDe = x => x.getUTCHours() === 0 && x.getUTCMinutes() === 0 && x.getUTCSeconds() === 0 ? x.toISOString().slice(0, 10) : jourParis(x);
+    const aujourdhui = jourParis(new Date());
+    for (const r of base.lignes) {
+      if (r[colFaits] instanceof Date && jourDe(r[colFaits]) > aujourdhui) continue;
+      const d = r[colDossier] || r.id, k = cle(r), p = derniere.get(d);
+      if (!p || plusRecente(k, p.k)) derniere.set(d, { r, k });
+    }
+    for (const { r } of derniere.values()) {
+      const quand = r[colFaits] instanceof Date ? r[colFaits] : r[colDate];   // versions sans date des faits : date de saisie
+      if (depuis && quand instanceof Date && quand < depuis) continue;
+      if (R.academie && texteValeur(lec.lire(r, R.champAcademie || "Etablissement.Academie")) !== R.academie) continue;
+      lignes.push({ r, lec });
+    }
+  }
+  // listes de valeurs « ordre des choix » : prises dans la configuration de la colonne Grist
+  for (const t of tri) if (t.choix) {
+    const l = lignes.find(x => x.lec.choix(t.c).length);
+    t.valeurs = l ? l.lec.choix(t.c).map(normal) : [];
+  }
+  lignes.sort((a, b) => {
+    for (const { c, desc, valeurs } of tri) {
+      const va = a.lec.lire(a.r, c), vb = b.lec.lire(b.r, c);
+      if (valeurs) {   // ordre imposé ; les valeurs non listées passent après, par ordre alphabétique
+        const ra = rangValeur(va, valeurs), rb = rangValeur(vb, valeurs);
+        const d = comparer(ra, rb, desc); if (d) return d;
+        if (ra < valeurs.length) continue;   // même valeur listée : on passe au critère suivant
+      }
+      const d = comparer(cleTri(va), cleTri(vb), valeurs ? false : desc); if (d) return d;
+    }
+    return a.r.id - b.r.id;
+  });
+
+  // répartition : chaque ligne va dans la première section dont la condition est vraie
+  const restantes = new Set(lignes);
+  const sortie = sections.map(sec => {
+    const cols = colonnes.filter(c => !String(c.Tableaux || "").trim() || String(c.Tableaux).split(",").map(normal).includes(normal(sec.Titre)));
+    const lignesSec = lignes.filter(x => restantes.has(x) && testerCondition(sec.Condition, x.r, x.lec));
+    lignesSec.forEach(x => restantes.delete(x));
+    const rows = lignesSec.map(({ r, lec }) => {
+      const nouveau = marque && r[colDate] instanceof Date && r[colDate] > marque && r[colNature] === "Nouveau signalement";
+      return cols.map(c => remplir(c.Contenu, r, lec, { nouveau: nouveau ? "==**Nouveau signalement**==" : "" }));
+    });
+    return { titre: sec.Titre, colonnes: cols, rows };
+  });
+  return { sections: sortie, nb: lignes.length, horsSection: restantes.size, manquants: [...manquants] };
+}
+
+/* ---------- rendu HTML (aperçu) ---------- */
+function echap(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function clair(hex) { const h = String(hex || "17877A").replace("#", ""); const [r, g, b] = [0, 2, 4].map(i => parseInt(h.substr(i, 2), 16)); return (0.299 * r + 0.587 * g + 0.114 * b) > 150; }
+function celluleHTML(txt) {
+  return segmentsLignes(txt).map(l => l.map(s => { let t = echap(s.t); if (s.g) t = `<strong>${t}</strong>`; if (s.s) t = `<mark style="background-color:#FFFF00">${t}</mark>`; return t; }).join("")).join("<br>");
+}
+function portees(sec) {   // fusion verticale : nombre de lignes couvertes par chaque cellule
+  return sec.colonnes.map((c, j) => sec.rows.map((row, i) => {
+    if (!c.Fusionner) return 1;
+    if (i > 0 && sec.rows[i - 1][j] === row[j] && row[j] !== "") return 0;
+    let n = 1; while (i + n < sec.rows.length && sec.rows[i + n][j] === row[j] && row[j] !== "") n++; return n;
+  }));
+}
+function sectionsHTML(point) {
+  return point.sections.map((sec, k) => {
+    const tot = sec.colonnes.reduce((s, c) => s + (Number(c.Largeur) || 10), 0), p = portees(sec);
+    const tete = `<h2>${k + 1}. ${echap(sec.titre)}</h2>`;
+    if (!sec.rows.length) return tete + '<p class="vide">Aucun signalement.</p>';
+    return tete + `<table><colgroup>${sec.colonnes.map(c => `<col style="width:${((Number(c.Largeur) || 10) / tot * 100).toFixed(1)}%">`).join("")}</colgroup>
+      <thead><tr>${sec.colonnes.map(c => `<th scope="col" style="background:#${String(c.Couleur || "17877A").replace("#", "")};color:${clair(c.Couleur) ? "#161616" : "#fff"}">${echap(c.Titre)}</th>`).join("")}</tr></thead>
+      <tbody>${sec.rows.map((row, i) => `<tr>${row.map((v, j) => p[j][i] === 0 ? "" : `<td${p[j][i] > 1 ? ` rowspan="${p[j][i]}"` : ""}>${celluleHTML(v)}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  }).join("");
+}
+
+/* ---------- rendu WordprocessingML (inséré dans le modèle via {@corps}) ---------- */
+const LARGEUR_TABLE = 10828;
+function xmlEsc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function runs(txt, blanc, segs) {
+  return (segs || segments(txt)).map(s => `<w:r><w:rPr><w:rFonts w:ascii="Marianne" w:hAnsi="Marianne"/>${s.g ? "<w:b/><w:bCs/>" : ""}${blanc ? '<w:color w:val="FFFFFF"/>' : ""}<w:sz w:val="18"/><w:szCs w:val="18"/>${s.s ? '<w:highlight w:val="yellow"/>' : ""}</w:rPr><w:t xml:space="preserve">${xmlEsc(s.t)}</w:t></w:r>`).join("");
+}
+function paras(txt, blanc) {
+  return segmentsLignes(txt).map(l => `<w:p><w:pPr><w:spacing w:before="20" w:after="20"/><w:jc w:val="left"/></w:pPr>${runs("", blanc, l)}</w:p>`).join("");
+}
+const BORD = '<w:tcBorders><w:top w:val="single" w:sz="8" w:space="0" w:color="auto"/><w:left w:val="single" w:sz="8" w:space="0" w:color="auto"/><w:bottom w:val="single" w:sz="8" w:space="0" w:color="auto"/><w:right w:val="single" w:sz="8" w:space="0" w:color="auto"/></w:tcBorders>';
+function sectionsXML(point, styleTitre) {
+  return point.sections.map(sec => {
+    const titre = `<w:p><w:pPr><w:pStyle w:val="${styleTitre}"/><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr><w:spacing w:before="240" w:after="120" w:line="240" w:lineRule="auto"/><w:rPr><w:color w:val="auto"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr></w:pPr><w:r><w:rPr><w:color w:val="auto"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr><w:t xml:space="preserve">${xmlEsc(sec.titre)}</w:t></w:r></w:p>`;
+    if (!sec.rows.length) return titre + `<w:p>${runs("Aucun signalement.")}</w:p>`;
+    const tot = sec.colonnes.reduce((s, c) => s + (Number(c.Largeur) || 10), 0);
+    const w = sec.colonnes.map(c => Math.round((Number(c.Largeur) || 10) / tot * LARGEUR_TABLE)), p = portees(sec);
+    const cell = (j, contenu, fond, fusion, blanc) => `<w:tc><w:tcPr><w:tcW w:w="${w[j]}" w:type="dxa"/>${fusion || ""}${BORD}${fond ? `<w:shd w:val="clear" w:color="auto" w:fill="${fond}"/>` : ""}<w:tcMar><w:left w:w="70" w:type="dxa"/><w:right w:w="70" w:type="dxa"/></w:tcMar><w:vAlign w:val="${fond ? "center" : "top"}"/></w:tcPr>${paras(contenu, blanc)}</w:tc>`;
+    const tete = `<w:tr><w:trPr><w:tblHeader/><w:trHeight w:val="600"/></w:trPr>${sec.colonnes.map((c, j) => { const f = String(c.Couleur || "17877A").replace("#", ""); return cell(j, `**${c.Titre}**`, f, "", !clair(f)); }).join("")}</w:tr>`;
+    const corps = sec.rows.map((row, i) => `<w:tr><w:trPr><w:cantSplit/></w:trPr>${row.map((v, j) => {
+      const n = p[j][i];
+      return cell(j, n === 0 ? "" : v, null, n === 0 ? '<w:vMerge/>' : (n > 1 ? '<w:vMerge w:val="restart"/>' : ""));
+    }).join("")}</w:tr>`).join("");
+    return titre + `<w:tbl><w:tblPr><w:tblW w:w="${LARGEUR_TABLE}" w:type="dxa"/><w:tblInd w:w="-719" w:type="dxa"/><w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="0" w:type="dxa"/><w:right w:w="0" w:type="dxa"/></w:tblCellMar><w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/></w:tblPr><w:tblGrid>${w.map(x => `<w:gridCol w:w="${x}"/>`).join("")}</w:tblGrid>${tete}${corps}</w:tbl><w:p/>`;
+  }).join("");
+}
+
+
+/* ======================= widget Grist ======================= */
+const $ = id => document.getElementById(id);
+const etat = (t, cls) => { $("etat").textContent = t; $("etat").className = cls || ""; };
+const enLocal = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+let options = {}, modeleLocal = null, point = null;
+const TABLE_REGLAGES = "Parametres", COL_REGLAGES = "Reglages_point_situation";
+
+// Source Grist : tables décodées + types de colonnes
+function creerSource() {
+  let meta = null, aff = null, libs = null;
+  const src = { _charge: {} };
+  async function lireMeta() {
+    if (meta) return;
+    const t = await grist.docApi.fetchTable("_grist_Tables"), c = await grist.docApi.fetchTable("_grist_Tables_column");
+    const noms = {}, colId = {}; t.id.forEach((id, i) => noms[id] = t.tableId[i]); c.id.forEach((id, i) => colId[id] = c.colId[i]);
+    meta = {}; aff = {}; libs = {};
+    c.id.forEach((id, i) => {
+      const tb = noms[c.parentId[i]];
+      (meta[tb] = meta[tb] || {})[c.colId[i]] = c.type[i];
+      (libs[tb] = libs[tb] || {})[c.colId[i]] = (c.label || [])[i] || "";
+      let choices = [];
+      try { choices = JSON.parse((c.widgetOptions || [])[i] || "{}").choices || []; } catch (e) { /* options illisibles */ }
+      (aff[tb] = aff[tb] || {})[c.colId[i]] = { display: colId[(c.displayCol || [])[i]] || null, visible: colId[(c.visibleCol || [])[i]] || null, choices };
+    });
+  }
+  src.types = async nom => { await lireMeta(); return meta[nom] || {}; };
+  src.affichage = async nom => { await lireMeta(); return aff[nom] || {}; };
+  src.libelles = async nom => { await lireMeta(); return libs[nom] || {}; };
+  src.table = async nom => {
+    if (!src._charge[nom]) {
+      const brut = await grist.docApi.fetchTable(nom), ty = await src.types(nom);
+      const lignes = brut.id.map((id, i) => {
+        const r = { id };
+        for (const k in brut) {
+          let v = brut[k][i];
+          if (Array.isArray(v) && v[0] === "L") v = v.slice(1);
+          else if (typeof v === "number" && /^(Date|DateTime)/.test(ty[k] || "")) v = new Date(v * 1000);
+          r[k] = v;
+        }
+        return r;
+      });
+      src._charge[nom] = { lignes, parId: new Map(lignes.map(r => [r.id, r])) };
+    }
+    return src._charge[nom];
+  };
+  return src;
+}
+let source = creerSource();
+
+async function listeTables() { return grist.docApi.listTables(); }
+let psPublie = null, psInfo = "";
+const CFG_PS = { Colonnes_point: "colonnes", Sections_point: "sections", Tri_point: "tri" };
+async function lireConfigTable(nom) {
+  if (psPublie && CFG_PS[nom] && Array.isArray(psPublie[CFG_PS[nom]]))
+    return psPublie[CFG_PS[nom]].map((r, i) => ({ ...r, Ordre: i + 1, Actif: r.Actif !== false }));
+  if (!(await listeTables()).includes(nom)) return null;
+  return (await source.table(nom)).lignes;
+}
+
+// ---------- réglages (table Parametres, pour ne pas écraser le code du Custom Widget Builder)
+async function lireReglages() {
+  // v2 : configuration publiée dans Config ; réglages techniques par défaut déduits du socle (table, colonnes)
+  let defauts = {};
+  try {
+    const meta = await window.Socle.lireMeta(), config = await window.Socle.lireConfig(meta);
+    defauts = await window.Socle.reglagesPointParDefaut(meta, config);
+    const ps = config && config.valeurs.point_situation;
+    if (ps && ps.publie) {
+      psPublie = ps.publie;
+      psInfo = `Configuration publiée le ${ps.publie_le ? new Date(ps.publie_le * 1000).toLocaleString("fr-FR") : "?"}.`;
+      const o = { ...defauts };
+      for (const [k, v] of Object.entries(ps.publie.options || {})) if (v !== "" && v != null) o[k] = v;
+      return o;
+    }
+    if (config) psInfo = "Aucune configuration publiée : réglages par défaut (ou anciennes tables Colonnes_point, Sections_point, Tri_point).";
+  } catch (e) { console.warn(e); }
+  try {
+    if (!(await listeTables()).includes(TABLE_REGLAGES)) return defauts;
+    const t = await grist.docApi.fetchTable(TABLE_REGLAGES);
+    const v = (t[COL_REGLAGES] || []).find(x => x && String(x).trim());
+    return { ...defauts, ...(v ? JSON.parse(v) : {}) };
+  } catch (e) { console.warn(e); return defauts; }
+}
+async function sauverReglages(nv) {
+  const json = JSON.stringify(nv), acts = [], tables = await listeTables();
+  if (!tables.includes(TABLE_REGLAGES)) {
+    acts.push(["AddTable", TABLE_REGLAGES, [{ id: COL_REGLAGES, type: "Text" }]], ["AddRecord", TABLE_REGLAGES, null, { [COL_REGLAGES]: json }]);
+  } else {
+    const t = await grist.docApi.fetchTable(TABLE_REGLAGES);
+    if (!(COL_REGLAGES in t)) acts.push(["AddColumn", TABLE_REGLAGES, COL_REGLAGES, { type: "Text" }]);
+    acts.push(t.id.length ? ["UpdateRecord", TABLE_REGLAGES, t.id[0], { [COL_REGLAGES]: json }] : ["AddRecord", TABLE_REGLAGES, null, { [COL_REGLAGES]: json }]);
+  }
+  await grist.docApi.applyUserActions(acts);
+}
+$("btnReglages").onclick = () => {
+  const o = $("reglages").classList.toggle("ouvert"); $("btnReglages").setAttribute("aria-expanded", o);
+  if (o) { $("infoConfig").textContent = `${psInfo} Version ${window.Socle.VERSION}.`; afficherChamps(); }
+};
+$("sauverReglages").onclick = async () => {
+  const nv = {}; document.querySelectorAll("[data-opt]").forEach(i => { if (i.value.trim()) nv[i.dataset.opt] = i.value.trim(); });
+  try { await sauverReglages(nv); options = nv; $("reglages").classList.remove("ouvert"); $("btnReglages").setAttribute("aria-expanded", "false"); charger(); }
+  catch (e) { etat("Enregistrement des réglages impossible : " + (e.message || e), "erreur"); }
+};
+$("modeleFichier").onchange = async e => { const f = e.target.files[0]; if (f) { modeleLocal = await f.arrayBuffer(); etat("Modèle chargé : « " + f.name + " »."); } };
+
+// ---------- tables de configuration
+$("creerTables").onclick = async () => {
+  try {
+    const tables = await listeTables(), acts = [];
+    const cols = (await lireConfigTable("Colonnes_point")) || DEFAUT_COLONNES, secs = (await lireConfigTable("Sections_point")) || DEFAUT_SECTIONS;
+    if (!tables.includes("Colonnes_point")) {
+      acts.push(["AddTable", "Colonnes_point", [{ id: "Ordre", type: "Numeric" }, { id: "Titre", type: "Text" }, { id: "Contenu", type: "Text" }, { id: "Largeur", type: "Numeric" },
+        { id: "Couleur", type: "Text" }, { id: "Fusionner", type: "Bool" }, { id: "Tableaux", type: "Text" }, { id: "Actif", type: "Bool" }]]);
+      acts.push(["BulkAddRecord", "Colonnes_point", cols.map(() => null), ["Ordre", "Titre", "Contenu", "Largeur", "Couleur", "Fusionner", "Tableaux", "Actif"].reduce((o, k) => (o[k] = cols.map(c => c[k] ?? null), o), {})]);
+    }
+    if (!tables.includes("Sections_point")) {
+      acts.push(["AddTable", "Sections_point", [{ id: "Ordre", type: "Numeric" }, { id: "Titre", type: "Text" }, { id: "Condition", type: "Text" }, { id: "Actif", type: "Bool" }]]);
+      acts.push(["BulkAddRecord", "Sections_point", secs.map(() => null), ["Ordre", "Titre", "Condition", "Actif"].reduce((o, k) => (o[k] = secs.map(c => c[k] ?? null), o), {})]);
+    }
+    if (!tables.includes("Tri_point")) {
+      const regles = lireRegles(options.tri || DEFAUT_TRI);
+      acts.push(["AddTable", "Tri_point", [{ id: "Ordre", type: "Numeric" }, { id: "Champ", type: "Text" },
+        { id: "Sens", type: "Choice", widgetOptions: JSON.stringify({ choices: ["A→Z", "Z→A", "Liste", "Ordre des choix"] }) }, { id: "Valeurs", type: "Text" }, { id: "Actif", type: "Bool" }]]);
+      acts.push(["BulkAddRecord", "Tri_point", regles.map(() => null), {
+        Ordre: regles.map((r, i) => i + 1), Champ: regles.map(r => r.c),
+        Sens: regles.map(r => r.choix ? "Ordre des choix" : r.valeurs ? "Liste" : r.desc ? "Z→A" : "A→Z"),
+        Valeurs: regles.map(r => r.valeurs ? r.valeurs.join("\n") : ""), Actif: regles.map(() => true) }]);
+    }
+    if (!acts.length) { etat("Les tables Colonnes_point, Sections_point et Tri_point existent déjà."); return; }
+    await grist.docApi.applyUserActions(acts);
+    etat("Tables créées : ajoutez une page pour les modifier, puis « Actualiser »."); charger();
+  } catch (e) { etat("Création impossible : " + (e.message || e), "erreur"); }
+};
+async function afficherChamps() {
+  try {
+    const nomT = options.table || "Reponses", ty = await source.types(nomT), lignes = [];
+    for (const [c, t] of Object.entries(ty)) {
+      if (c.startsWith("gristHelper") || c === "manualSort") continue;
+      lignes.push(`${c}  (${t})`);
+      const cible = (t.match(/^Ref(?:List)?:(.+)$/) || [])[1];
+      if (cible) for (const [c2, t2] of Object.entries(await source.types(cible))) if (!c2.startsWith("gristHelper") && c2 !== "manualSort") lignes.push(`${c}.${c2}  (${t2})`);
+    }
+    $("champs").textContent = lignes.join("\n");
+    $("champs").style.whiteSpace = "pre";
+  } catch (e) { $("champs").textContent = "Table introuvable : " + (options.table || "Reponses"); }
+}
+
+// ---------- points déjà enregistrés
+let initialise = false;
+async function initialiser() {
+  if (initialise) return; initialise = true;
+  const debut = new Date(); debut.setHours(0, 0, 0, 0);
+  $("depuis").value = enLocal(debut); $("dernierPoint").value = enLocal(debut); $("maintenant").value = enLocal(new Date()); $("numero").value = 1;
+  try {
+    const pts = await lireConfigTable("Points_situation");
+    const p = (pts || []).filter(r => r.Horodatage instanceof Date).sort((a, b) => b.Horodatage - a.Horodatage)[0];
+    if (p) { $("numero").value = (Number(p.Numero) || 0) + 1; $("dernierPoint").value = enLocal(p.Horodatage); }
+  } catch (e) { /* pas encore de point enregistré */ }
+}
+
+// ---------- assemblage et aperçu
+async function charger() {
+  try {
+    etat("Assemblage…");
+    source = creerSource();
+    await initialiser();
+    await calculer(true);
+  } catch (e) { console.error(e); etat("Erreur : " + (e.message || e) + " — vérifiez ⚙ Réglages.", "erreur"); }
+}
+async function calculer(majAcademies) {
+  const cfg = {
+    reglages: { ...options, depuis: $("depuis").value ? new Date($("depuis").value) : null, dernierPoint: $("dernierPoint").value ? new Date($("dernierPoint").value) : null, academie: $("academie").value },
+    colonnes: await lireConfigTable("Colonnes_point"), sections: await lireConfigTable("Sections_point"), tri: await lireConfigTable("Tri_point"),
+  };
+  if (majAcademies) {
+    // liste des académies présentes (sans filtre)
+    const tout = await assemblerPoint(source, { ...cfg, reglages: { ...cfg.reglages, academie: "" }, sections: [{ Titre: "t", Condition: "", Actif: true }], colonnes: [{ Titre: "a", Contenu: `{${options.champAcademie || "Etablissement.Academie"}}`, Actif: true }] });
+    const acas = [...new Set(tout.sections[0].rows.map(r => r[0]).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr"));
+    const sel = $("academie"), garde = sel.value;
+    sel.innerHTML = '<option value="">Toutes</option>' + acas.map(a => `<option>${echap(a)}</option>`).join("");
+    sel.value = acas.includes(garde) ? garde : ""; cfg.reglages.academie = sel.value;
+  }
+  point = await assemblerPoint(source, cfg);
+  const e = entete();
+  $("apercu").innerHTML = `<article class="page"><div class="entete"><div class="logo">MINISTÈRE<br>DE L'ÉDUCATION<br>NATIONALE</div>
+    <div class="bandeau">${echap(e.bandeau)}<br>${echap(e.perimetre_court)}</div>
+    <div>Point de situation n°${echap(e.numero)}<br>${echap(e.date_longue)}<br>Actualisation à ${echap(e.heure)}</div><div class="cmc">Centre ministériel de crise</div></div>
+    <h1>ESSENTIEL ${echap(e.perimetre_long)}</h1>${sectionsHTML(point)}<h2>${point.sections.length + 1}. Veille DELCOM</h2><p>A compléter.</p></article>`;
+  $("telecharger").disabled = false; $("copierWord").disabled = false;
+  const msgs = [`${point.nb} dossier(s) : ${point.sections.map(s => `${s.titre} ${s.rows.length}`).join(", ")}.`];
+  if (point.horsSection) msgs.push(`${point.horsSection} dossier(s) n'entrent dans aucun tableau : ajoutez une section sans condition pour les afficher.`);
+  if (point.manquants.length) msgs.push("Champs introuvables : " + point.manquants.join(", ") + " (voir ⚙ Réglages › Champs disponibles).");
+  if (!cfg.colonnes) msgs.push("Configuration par défaut : réglez le point de situation dans l'administration (onglet Point de situation), puis publiez.");
+  etat(msgs.join("\n"), point.manquants.length || point.horsSection ? "alerte" : "");
+}
+function entete() {
+  const n = $("maintenant").value ? new Date($("maintenant").value) : new Date(), aca = $("academie").value;
+  return {
+    bandeau: options.bandeau || "Mouvements sociaux", perimetre_court: options.perimetre_court || "EN",
+    perimetre_long: (options.perimetre_long || "ENSEIGNEMENT SUPÉRIEUR") + (aca ? " – ACADÉMIE DE " + aca.toUpperCase() : ""),
+    numero: $("numero").value || "",
+    date_longue: n.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }),
+    heure: n.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }).replace(":", "h"),
+  };
+}
+["depuis", "dernierPoint", "academie"].forEach(id => $(id).addEventListener("change", () => calculer(false).catch(e => etat("Erreur : " + e.message, "erreur"))));
+["maintenant", "numero"].forEach(id => $(id).addEventListener("change", () => calculer(false)));
+$("actualiser").onclick = () => { $("maintenant").value = enLocal(new Date()); charger(); };
+
+// ---------- document Word
+async function modele() {
+  if (modeleLocal) return modeleLocal;
+  const nomT = options.modeleTable || "Parametres", col = options.modeleColonne || "Modele_point_situation";
+  const lignes = await lireConfigTable(nomT);
+  const pj = lignes && lignes.map(r => r[col]).find(v => Array.isArray(v) && v.length);
+  if (!pj) throw new Error(`aucun modèle dans ${nomT}.${col} : ajoutez-le en pièce jointe, ou chargez un fichier dans ⚙ Réglages`);
+  const jeton = await grist.docApi.getAccessToken({ readOnly: true });
+  const rep = await fetch(`${jeton.baseUrl}/attachments/${pj[0]}/download?auth=${jeton.token}`);
+  if (!rep.ok) throw new Error("téléchargement du modèle impossible (" + rep.status + ")");
+  return rep.arrayBuffer();
+}
+$("telecharger").onclick = async () => {
+  try {
+    etat("Préparation du document…");
+    const zip = new PizZip(await modele());
+    const styleTitre = ((zip.file("word/styles.xml") || { asText: () => "" }).asText().match(/<w:style [^>]*w:styleId="(Titre1|Heading1)"/) || [, "Titre1"])[1];
+    const doc = new docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+    doc.render({ ...entete(), corps: sectionsXML(point, styleTitre) });
+    const blob = doc.getZip().generate({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    const n = new Date($("maintenant").value || Date.now()), p2 = x => String(x).padStart(2, "0");
+    const nom = `${n.getFullYear()}_${p2(n.getMonth() + 1)}_${p2(n.getDate())}_Point_de_situation_n${p2($("numero").value || 0)}${$("academie").value ? "_" + $("academie").value : ""}.docx`;
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nom; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+    etat("Document généré : " + nom);
+  } catch (e) {
+    console.error(e);
+    const det = e.properties && e.properties.errors ? e.properties.errors.map(x => x.properties.explanation).join(" ; ") : (e.message || e);
+    etat("Erreur : " + det, "erreur");
+  }
+};
+$("enregistrer").onclick = async () => {
+  try {
+    const acts = [];
+    if (!(await listeTables()).includes("Points_situation")) acts.push(["AddTable", "Points_situation", [
+      { id: "Horodatage", type: "DateTime:Europe/Paris" }, { id: "Numero", type: "Int" }, { id: "Academie", type: "Text" }, { id: "Nb_dossiers", type: "Int" }]]);
+    acts.push(["AddRecord", "Points_situation", null, { Horodatage: new Date($("maintenant").value || Date.now()).getTime() / 1000,
+      Numero: Number($("numero").value) || null, Academie: $("academie").value, Nb_dossiers: point ? point.nb : null }]);
+    await grist.docApi.applyUserActions(acts);
+    etat(`Point n°${$("numero").value} enregistré.`);
+    $("dernierPoint").value = $("maintenant").value; $("numero").value = (Number($("numero").value) || 0) + 1;
+    calculer(false);
+  } catch (e) { etat("Erreur à l'enregistrement : " + (e.message || e), "erreur"); }
+};
+
+/* ---------- Copier-coller vers Word ----------
+   Word ne reconnaît pas le surlignage d'une page web (<mark>, fond CSS) : il faut lui fournir un HTML
+   « à la Word », avec mso-highlight pour le surlignage et des styles écrits sur chaque cellule.
+   Le navigateur supprime mso-highlight s'il copie lui-même la sélection : on écrit donc le presse-papiers
+   nous-mêmes, dans l'événement « copy » (fonctionne aussi dans le cadre du widget, sans autorisation). */
+const STYLE_CELLULE = "border:1px solid #000;padding:2pt 4pt;vertical-align:top;font-family:Marianne,Arial,sans-serif;font-size:9pt";
+function htmlPourWord(fragment) {
+  const div = document.createElement("div");
+  div.appendChild(fragment);
+  div.querySelectorAll("mark").forEach(m => {
+    const s = document.createElement("span");
+    s.setAttribute("style", "background-color:#FFFF00;mso-highlight:yellow");
+    s.innerHTML = m.innerHTML; m.replaceWith(s);
+  });
+  div.querySelectorAll("strong").forEach(b => { const n = document.createElement("b"); n.innerHTML = b.innerHTML; b.replaceWith(n); });
+  div.querySelectorAll("table").forEach(t => t.setAttribute("style", "border-collapse:collapse;width:100%;table-layout:fixed"));
+  div.querySelectorAll("td").forEach(c => c.setAttribute("style", STYLE_CELLULE));
+  div.querySelectorAll("th").forEach(c => c.setAttribute("style", `${STYLE_CELLULE};font-weight:bold;${c.getAttribute("style") || ""}`));
+  div.querySelectorAll("h1, h2").forEach(h => h.setAttribute("style", "font-family:Marianne,Arial,sans-serif;font-size:12pt;font-weight:normal;border-bottom:1.5pt solid #000091;margin:12pt 0 6pt"));
+  div.querySelectorAll("p, li, div").forEach(p => { if (!p.getAttribute("style")) p.setAttribute("style", "font-family:Marianne,Arial,sans-serif;font-size:10pt"); });
+  return div.innerHTML;
+}
+let copieForcee = null;   // contenu à copier par le bouton, sinon la sélection
+document.addEventListener("copy", ev => {
+  let frag = null, texte = "";
+  if (copieForcee) { frag = copieForcee.cloneNode(true); texte = copieForcee.innerText; }
+  else {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    const r = sel.getRangeAt(0), ap = $("apercu");
+    if (ap.contains(r.commonAncestorContainer)) frag = r.cloneContents();
+    else if (r.intersectsNode(ap)) { frag = document.createDocumentFragment(); [...ap.childNodes].forEach(n => frag.appendChild(n.cloneNode(true))); }
+    else return;   // copie ordinaire ailleurs dans le widget
+    texte = sel.toString();
+  }
+  ev.clipboardData.setData("text/html", htmlPourWord(frag));
+  ev.clipboardData.setData("text/plain", texte);
+  ev.preventDefault();
+});
+$("copierWord").onclick = () => {
+  const cible = $("apercu").querySelector(".page");
+  if (!cible) return;
+  // l'en-tête (logo, bandeau) vient du modèle Word : on ne copie que le titre et les tableaux
+  const tmp = document.createElement("div");
+  cible.querySelectorAll(":scope > h1, :scope > h2, :scope > table, :scope > p").forEach(n => tmp.appendChild(n.cloneNode(true)));
+  copieForcee = tmp;
+  let ok = false;
+  try { ok = document.execCommand("copy"); } finally { copieForcee = null; }
+  etat(ok ? "Point copié : collez-le dans Word (Ctrl+V). Le gras et le surlignage sont conservés." : "Copie impossible dans ce navigateur : utilisez « Télécharger le .docx ».", ok ? "" : "erreur");
+};
+
+grist.ready({ requiredAccess: "full", allowSelectBy: false });
+lireReglages().then(o => { options = o || {}; charger(); });
+</script>
+</body>
+</html>
