@@ -22,6 +22,7 @@
   nav button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
   nav button:disabled { cursor: default; opacity: .55; }
   main { padding: 16px; max-width: 980px; }
+  main[hidden] { display: none; }
   .carte { background: var(--carte); border: 1px solid var(--trait); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
   .carte h2 { font-size: 15px; margin: 0 0 4px; }
   .carte > p.aide { color: var(--doux); margin: 0 0 12px; }
@@ -64,7 +65,8 @@
 <header>
   <h1>Administration des signalements<span class="version" id="version"></span></h1>
   <nav role="tablist">
-    <button role="tab" aria-selected="true" id="onglet-installation">Installation</button>
+    <button role="tab" aria-selected="true" data-onglet="installation">Installation</button>
+    <button role="tab" aria-selected="false" data-onglet="referentiel">Référentiel</button>
     <button role="tab" aria-selected="false" disabled title="À venir">Formulaires</button>
     <button role="tab" aria-selected="false" disabled title="À venir">Point de situation</button>
     <button role="tab" aria-selected="false" disabled title="À venir">Tableau de bord</button>
@@ -119,6 +121,42 @@
     <ul class="journal" id="remarques"></ul>
   </section>
 </main>
+<main id="referentiel" hidden>
+  <section class="carte">
+    <h2>Annuaire de l'éducation nationale</h2>
+    <p class="aide">Import depuis l'open data (data.education.gouv.fr), limité aux académies du document. Les établissements sont rapprochés par UAI : les existants sont mis à jour, les nouveaux ajoutés. Rien n'est supprimé : les établissements saisis à la main et ceux sortis de l'annuaire restent, car des signalements peuvent y renvoyer.</p>
+    <div id="ref-contexte"></div>
+    <div id="ref-etape1">
+      <label class="etape" style="border:0"><input type="checkbox" id="ref-ouverts" checked><span>Établissements ouverts seulement</span></label>
+      <div class="boutons"><button class="primaire" id="btn-ref-apercu">1. Interroger l'annuaire</button></div>
+    </div>
+  </section>
+  <section class="carte" id="ref-etape2" hidden>
+    <h2>Périmètre</h2>
+    <p class="aide">Nombre d'établissements par académie, puis par type. Décochez les types à ne pas importer.</p>
+    <div id="ref-academies" style="margin-bottom:12px"></div>
+    <div class="grille">
+      <div><div class="groupe">Types d'établissements</div><div id="ref-types"></div></div>
+      <div><div class="groupe">Informations supplémentaires (facultatif)</div><p class="aide" style="margin:0 0 6px">Chaque champ coché devient une colonne du référentiel.</p><div id="ref-champs" style="max-height:320px;overflow:auto"></div></div>
+    </div>
+    <div class="boutons"><button class="primaire" id="btn-ref-analyser">2. Télécharger et comparer</button></div>
+  </section>
+  <section class="carte" id="ref-etape3" hidden>
+    <h2>Bilan avant import</h2>
+    <div id="ref-bilan"></div>
+    <div class="boutons"><button class="primaire" id="btn-ref-importer">3. Importer dans Grist</button></div>
+  </section>
+  <p class="statut" id="ref-statut"></p>
+</main>
 <script src="installation.js"></script>
+<script src="referentiel.js"></script>
+<script>
+  // Onglets
+  document.querySelectorAll("nav button[data-onglet]").forEach(b => b.addEventListener("click", () => {
+    document.querySelectorAll("nav button[data-onglet]").forEach(x => x.setAttribute("aria-selected", String(x === b)));
+    document.querySelectorAll("main").forEach(m => { m.hidden = m.id !== b.dataset.onglet; });
+    if (b.dataset.onglet === "referentiel") window.OngletReferentiel.afficher();
+  }));
+</script>
 </body>
 </html>

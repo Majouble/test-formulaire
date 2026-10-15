@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0-alpha.1 (15/10/2026)";
+  const VERSION = "2.0.0-alpha.2 (15/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -34,6 +34,18 @@
   const cibleRef = t => (/^Ref:(.+)$/.exec(String(t || "")) || [])[1] || null;
   const json = v => JSON.stringify(v);
   const maintenant = () => Date.now() / 1000;
+
+
+  /* ---------- Régions académiques ---------- */
+  const REGIONS_ACADEMIQUES = {
+    "Auvergne-Rhône-Alpes": ["Clermont-Ferrand", "Grenoble", "Lyon"], "Bourgogne-Franche-Comté": ["Besançon", "Dijon"], "Bretagne": ["Rennes"],
+    "Centre-Val de Loire": ["Orléans-Tours"], "Corse": ["Corse"], "Grand Est": ["Nancy-Metz", "Reims", "Strasbourg"], "Hauts-de-France": ["Amiens", "Lille"],
+    "Île-de-France": ["Créteil", "Paris", "Versailles"], "Normandie": ["Normandie", "Caen", "Rouen"], "Nouvelle-Aquitaine": ["Bordeaux", "Limoges", "Poitiers"],
+    "Occitanie": ["Montpellier", "Toulouse"], "Pays de la Loire": ["Nantes"], "Provence-Alpes-Côte d'Azur": ["Aix-Marseille", "Nice"],
+    "Guadeloupe": ["Guadeloupe"], "Martinique": ["Martinique"], "Guyane": ["Guyane"], "La Réunion": ["La Réunion", "Réunion"], "Mayotte": ["Mayotte"],
+  };
+  const REGION_PAR_ACADEMIE = new Map(Object.entries(REGIONS_ACADEMIQUES).flatMap(([r, l]) => l.map(a => [norm(a), r])));
+  const regionDeAcademie = a => REGION_PAR_ACADEMIE.get(norm(a)) || "";
 
   /* ---------- Rôles ----------
      Chaque rôle : nom canonique, libellé, obligatoire, test de type (accepte), motifs de reconnaissance,
@@ -398,5 +410,6 @@
     VERSION, TABLE_CONFIG, DEFAUTS_GENERAL, NATURES, ROLES,
     norm, cibleRef, lireMeta, lireConfig, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer,
+    REGIONS_ACADEMIQUES, regionDeAcademie,
   };
 })();
