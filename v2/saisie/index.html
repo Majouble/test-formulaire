@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Signalements</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="../commun/socle.js"></script>
 <style>
   :root {
     --bleu: #000091; --bleu-clair: #e3e3fd; --fond-suivi: #f5f5fe; --fond-visa: #fef7ec; --brun: #8a4b00;
@@ -455,6 +456,9 @@
   .confirmation p { margin: 6px 0 10px; }
   .confirmation .conf-actions { display: flex; gap: 8px 10px; flex-wrap: wrap; align-items: center; }
   .champ-description:not(:focus-within) .barre-format { opacity: .45; }
+  .bandeau-perimetre { margin: 0; font-size: .85rem; color: var(--gris, #666); flex: 1 1 auto; }
+  .bandeau-perimetre .lien { background: none; border: 0; padding: 0; margin-left: 6px; color: var(--bleu, #000091); text-decoration: underline; cursor: pointer; font: inherit; }
+  .source.hors { background: #fff3cd; color: #8a4b00; }
 </style>
 </head>
 <body>
@@ -462,6 +466,7 @@
   <!-- ===== Barre d'application (toujours visible) ===== -->
   <div class="barre-app">
     <p class="marque-app" id="marque-app"></p>
+    <p class="bandeau-perimetre" id="bandeau-perimetre" hidden></p>
     <button type="button" class="secondaire petit" id="btn-config" title="Réglages du formulaire" hidden>⚙ Réglages</button>
   </div>
   <div class="bandeau" id="alerte" hidden></div>
@@ -1218,6 +1223,36 @@ const col = cle => (mappings && typeof mappings[cle] === "string") ? mappings[cl
 const val = (ligne, cle) => (ligne && col(cle)) ? ligne[col(cle)] : null;
 let indexEtabs = new Map();
 let rolesAdmin = {};   // rôle -> colonne associée dans l'administration (formulaire publié)
+/* ---------- Périmètre de la page (réglé dans l'administration, « Pages de saisie par agent ») ----------
+   perimetre = { colonne du référentiel: [valeurs] } : un établissement en fait partie s'il remplit chaque critère.
+   Ancien format : liste d'académies. Le périmètre répartit le travail ; il ne restreint pas l'accès. */
+let perimetreBrut = null, libellePage = "", voirToutPerimetre = false;
+function perimetre() {
+  if (modeEtab || !perimetreBrut) return {};
+  const p = Array.isArray(perimetreBrut) ? (perimetreBrut.length ? { [E.academie]: perimetreBrut } : {}) : perimetreBrut;
+  return Object.fromEntries(Object.entries(p || {}).filter(([c, v]) => Array.isArray(v) && v.length && (!etabs.length || colsEtab.includes(c))));
+}
+const perimetreActif = () => !voirToutPerimetre && Object.keys(perimetre()).length > 0;
+function dansPerimetre(e) {
+  if (!e) return true;   // établissement inconnu du référentiel : jamais masqué
+  for (const [c, vals] of Object.entries(perimetre())) {
+    const v = e[c];
+    if (!vals.some(x => sansAccent(String(x)) === sansAccent(String(v ?? "").trim()))) return false;
+  }
+  return true;
+}
+const resumePerimetre = () => Object.values(perimetre()).map(v => v.join(", ")).join(" – ");
+function afficherBandeauPerimetre() {
+  const b = $("bandeau-perimetre");
+  if (!b) return;
+  const r = resumePerimetre();
+  if (modeEtab || (!r && !libellePage)) { b.hidden = true; return; }
+  b.hidden = false;
+  b.innerHTML = `${libellePage ? `<strong>${esc(libellePage)}</strong>` : ""}${libellePage && r ? " · " : ""}${r ? `périmètre : ${esc(r)}` : ""}`
+    + (r ? ` <button type="button" class="lien" id="btn-voir-tout">${voirToutPerimetre ? "Revenir à mon périmètre" : "Voir tous les signalements"}</button>` : "");
+  const btn = $("btn-voir-tout");
+  if (btn) btn.addEventListener("click", () => { voirToutPerimetre = !voirToutPerimetre; afficherBandeauPerimetre(); majListeDossiers(); });
+}
 const etabDe = id => indexEtabs.get(id) || null;
 /* Établissement d'un signalement. Une cellule en rouge dans Grist (texte qui ne correspond à aucune ligne du référentiel,
    par exemple après conversion d'une colonne texte en référence) arrive sous forme de texte : l'établissement est alors
@@ -1477,7 +1512,17 @@ const defsDe = cle => mappings ? (mappings[cle] || []).map(c => metaSig[c]).filt
    et repères dans les descriptions de colonnes).
    Les réglages de chaque question sont traduits en repères ([si …], [couleur …], * …) : tout le moteur existant s'applique.
    ========================================================= */
-const TABLE_FORMULAIRES = "Formulaires";
+let TABLE_FORMULAIRES = "Formulaires";   // remplacé par la clé « general » de Config
+/* ---------- Socle v2 : Config, tables et règles communes ---------- */
+let socleConfig = null, socleGeneral = { ...window.Socle.DEFAUTS_GENERAL };
+async function lireSocleSaisie() {
+  try { socleConfig = await window.Socle.lireConfig(); } catch (_) { socleConfig = null; }
+  socleGeneral = window.Socle.general(socleConfig);
+  TABLE_FORMULAIRES = socleGeneral.formulaires || "Formulaires";
+}
+// Réglages communs du widget (description automatique, table du référentiel) : clé « resume_auto » de Config,
+// sinon l'ancienne table Parametres (documents pas encore installés)
+const reglagesDansConfig = () => !!socleConfig;
 let formulaireActif = null, signatureFormulaire = "", decorsQ = { avant: {}, fin: [] }, formulairesDispo = [];
 let dernierControleFormulaire = 0;
 async function lireFormulaires() {
@@ -1493,6 +1538,8 @@ async function choisirFormulaire() {
   let voulu = null;
   try { voulu = grist.getOption ? await grist.getOption("formulaire") : null; } catch (_) {}
   try { versionPage = grist.getOption ? await grist.getOption("version") : null; } catch (_) { versionPage = null; }
+  try { perimetreBrut = grist.getOption ? await grist.getOption("perimetre") : null; } catch (_) { perimetreBrut = null; }
+  try { libellePage = grist.getOption ? (await grist.getOption("libelle")) || "" : ""; } catch (_) { libellePage = ""; }
   const publies = formulairesDispo.filter(f => typeof f.publie === "string" && f.publie.trim());
   const f = (voulu && publies.find(x => x.nom === voulu)) || publies[0] || null;
   let conf = null;
@@ -1654,7 +1701,7 @@ function reconnaitreColonnesSignalement(meta, tid = tableId, lignes = enregistre
 
 
 // ⚙ : ce que le widget utilise réellement (utile pour comprendre un affichage inattendu)
-const VERSION_WIDGET = "14/10/2026 9 h";
+const VERSION_WIDGET = `v2 · ${window.Socle.VERSION}`;
 function remplirActivite() {
   const A = ACTIVITE, min = Math.max(1, (Date.now() - A.debut) / 60000), fait = A.envois.filter(e => e.ms != null);
   const recents = A.envois.filter(e => Date.now() - e.t < 60000).length, dernier = A.envois[A.envois.length - 1];
@@ -1723,6 +1770,7 @@ function remplirDiagnostic() {
 
 async function chargerConfiguration() {
   const alertes = [];
+  await lireSocleSaisie();
   metaSig = {};
   // Toutes les lectures partent en même temps : le temps d'attente est celui de la plus longue,
   // et non plus leur somme. Le référentiel, le plus lourd, est attendu à part (voir plus bas).
@@ -1755,6 +1803,16 @@ async function chargerConfiguration() {
       // une colonne associée à un rôle n'en joue pas un autre par reconnaissance
       const imposees = new Set(Object.values(rolesAdmin).filter(Boolean));
       for (const r of Object.keys(colsParDefaut)) if (!(r in rolesAdmin) && imposees.has(colsParDefaut[r])) delete colsParDefaut[r];
+    }
+    // Associations du socle (clé « roles » de Config) pour les rôles que le formulaire ne règle pas
+    if (tableId === socleGeneral.reponses) {
+      const rs = (socleConfig && socleConfig.valeurs.roles && socleConfig.valeurs.roles.reponses) || {};
+      for (const [r0, c] of Object.entries(rs)) {
+        const r = r0 === "Cree_le" ? "Date" : r0;
+        if (r in rolesAdmin || typeof c !== "string" || !metaSig[c]) continue;
+        for (const k of Object.keys(colsParDefaut)) if (k !== r && colsParDefaut[k] === c && !(k in rolesAdmin)) delete colsParDefaut[k];
+        colsParDefaut[r] = c;
+      }
     }
     trouverColNomReponses();
     // Formulaire de cette table encore jamais publié : le dire plutôt que d'afficher l'ancien fonctionnement sans explication
@@ -1856,7 +1914,11 @@ async function determinerTableEtab() {
     c = col("Etablissement") || reconnaitreColonnesSignalement(m, tid).Etablissement || null;   // sans association : colonne reconnue (Etablissement, Etablissement_ESR…)
     cible = (m && c && m[c] && ((m[c].type || "").match(/^Ref:(.+)$/) || [])[1]) || null;
   } catch (_) { /* métadonnées illisibles */ }
-  try {
+  if (reglagesDansConfig()) {
+    const r = socleConfig.valeurs.resume_auto;
+    choisie = (r && r[CLE_TABLE_ETAB]) || null;
+    if (!choisie && socleGeneral.referentiel && (await metaColonnes(socleGeneral.referentiel).catch(() => null))) choisie = socleGeneral.referentiel;
+  } else try {
     const t = await grist.docApi.fetchTable(PARAMETRES.table);
     const brut = (t[PARAMETRES.colonne] || [])[0];
     if (typeof brut === "string" && brut.trim()) choisie = JSON.parse(brut)[CLE_TABLE_ETAB] || null;
@@ -1976,7 +2038,8 @@ async function resoudreRefsEtab() {
   let meta = null;
   try { meta = await metaColonnes(ETAB.table); } catch (_) {}
   if (!meta) return;
-  for (const colId of new Set([...Object.values(E), colonneRegion(), ...S().fiche.map(f => colonneChampFiche(f.col))].filter(Boolean))) {
+  const colsPerimetre = perimetreBrut && !Array.isArray(perimetreBrut) ? Object.keys(perimetreBrut) : [];
+  for (const colId of new Set([...Object.values(E), colonneRegion(), ...S().fiche.map(f => colonneChampFiche(f.col)), ...colsPerimetre].filter(Boolean))) {
     const def = meta[colId];
     if (!def || typeBase(def.type) !== "Ref") continue;
     let libelles;
@@ -2706,6 +2769,22 @@ function appliquerConditions(prefix, defs) {
 }
 
 // Ne garde que les champs dont la valeur diffère de la ligne de référence
+// Une version est arrivée depuis l'ouverture du formulaire : on garde les réponses que l'agent a changées,
+// et pour les autres celles de la version la plus récente (l'apport du collègue n'est pas effacé).
+function fusionnerAvecVersionRecente(valeurs) {
+  const res = { valeurs: {}, conflits: [], recuperes: [] };
+  if (!versionAffichee || !derniere || versionAffichee.id === derniere.id) return res;
+  const defs = [...champsVersion, ...defsQuestions], def = c => defs.find(d => d.colId === c) || { type: "Any" };
+  const pareil = (c, a, b) => egal(norm(def(c), a), norm(def(c), b));
+  for (const [c, v] of Object.entries(valeurs)) {
+    const avant = versionAffichee[c], recent = derniere[c];
+    const moi = !pareil(c, v, avant), lui = !pareil(c, recent, avant);
+    if (!moi && lui) { res.valeurs[c] = recent; res.recuperes.push(def(c).libelle || c); }
+    else if (moi && lui && !pareil(c, v, recent)) res.conflits.push(def(c).libelle || c);
+  }
+  return res;
+}
+const auteurDe = l => { const a = l && col("Auteur") ? val(l, "Auteur") : ""; return a ? ` (par ${a})` : ""; };
 function seulementModifies(defs, valeurs, ligne) {
   const res = {};
   for (const [c, v] of Object.entries(valeurs)) {
@@ -3302,7 +3381,8 @@ const mentionMobilisation = n => `(${ordinal(n)} jour de mobilisation)`;
 // Choix multiples : écartée seulement si « RAS » est son seul choix.
 function qualificationRas(q) {
   const l = Array.isArray(q) ? q.filter(x => x !== "L") : (q == null || q === "" ? [] : [q]);
-  return l.length > 0 && l.every(x => String(x).trim().toUpperCase() === "RAS");
+  const retour = new Set((socleGeneral.retour_normale && socleGeneral.retour_normale.length ? socleGeneral.retour_normale : ["RAS"]).map(x => String(x).trim().toUpperCase()));
+  return l.length > 0 && l.every(x => retour.has(String(x).trim().toUpperCase()));
 }
 const signalementEnCoursRas = () => !!col("Qualification") && qualificationRas(lireQualificationInitiale());
 function ajouterMobilisation(texte, o = optionsAuto, n = jourDeMobilisation()) {
@@ -3493,6 +3573,14 @@ function appliquerOptions(o) {
 }
 async function chargerReglages() {
   ligneParametres = null; colsParametres = [];
+  if (!socleConfig) { try { await lireSocleSaisie(); } catch (_) {} }
+  if (reglagesDansConfig()) {
+    const v = socleConfig.valeurs.resume_auto;
+    ligneParametres = { id: null, [PARAMETRES.colonne]: v ? JSON.stringify(v) : "" };
+    colsParametres = [PARAMETRES.colonne];
+    appliquerOptions(v || null);
+    return;
+  }
   try {
     const t = await grist.docApi.fetchTable(PARAMETRES.table);
     colsParametres = Object.keys(t);
@@ -3616,11 +3704,21 @@ $("cfg-enregistrer").addEventListener("click", async () => {
   const o = garderDescriptionCommune({ ...anciens, ...lireConfig() });
   if (!o[CLE_TABLE_ETAB]) delete o[CLE_TABLE_ETAB];
   const tableAvant = ETAB.table;
-  if (!colsParametres.includes(PARAMETRES.colonne)) {
+  if (!reglagesDansConfig() && !colsParametres.includes(PARAMETRES.colonne)) {
     statut("cfg-statut", `Créez d'abord une colonne texte « ${PARAMETRES.colonne} » dans la table « ${PARAMETRES.table} ».`, "err");
     return;
   }
   const fields = { [PARAMETRES.colonne]: JSON.stringify(o) };
+  if (reglagesDansConfig()) {
+    try {
+      await window.Socle.ecrireConfig("resume_auto", o);
+      await lireSocleSaisie(); await chargerReglages();
+      statut("cfg-statut", "Réglages enregistrés (clé resume_auto de Config).", "ok");
+      if ((o[CLE_TABLE_ETAB] || null) !== (tableAvant === TABLE_ETAB_DEFAUT ? null : tableAvant)) { await determinerTableEtab(); await rafraichirEtabs(true); }
+      await rafraichir();
+    } catch (e) { statut("cfg-statut", `Échec : ${e.message || e}`, "err"); }
+    return;
+  }
   try {
     const table = grist.getTable(PARAMETRES.table);
     if (ligneParametres) await table.update({ id: ligneParametres.id, fields });
@@ -3655,6 +3753,7 @@ function majListeDossiers() {
   cacheDernieres = null;
   const cD = col("Dossier");
   dossiersInit = enregistrements.filter(l => (refId(cD && l[cD]) || l.id) === l.id)
+    .filter(l => !perimetreActif() || dansPerimetre(etabDeLigne(l)))
     .sort((a, b) => (secondes(val(b, "Date")) ?? 0) - (secondes(val(a, "Date")) ?? 0));
   majFiltre();
   if (!$("resultats-signalements").hidden) afficherResultatsRecherche();
@@ -3668,6 +3767,7 @@ function majListeDossiers() {
   // des centaines de libellés à chaque changement de signalement.
   if ($("btn-dossiers").getAttribute("aria-expanded") === "true") afficherOptionsDossiers();
   if (vue === "accueil") afficherCartes();
+  afficherBandeauPerimetre();
 }
 /* ---------- Barre de recherche des signalements ----------
    Cherche dans tous les dossiers visibles : établissement, commune, UAI, académie, n° de dossier, et le texte
@@ -5184,8 +5284,10 @@ async function reprendreReponses(d) {
    Signalement : création, puis mise à jour par nouvelle version
    ========================================================= */
 // Le formulaire reflète toujours l'état courant, c'est-à-dire la dernière version enregistrée.
+let versionAffichee = null;   // copie de la version sur laquelle l'agent travaille
 async function remplirFormulaire() {
   const ref = derniere || initiale;
+  versionAffichee = ref ? { ...ref } : null;
   $("description").value = (ref ? val(ref, "Description") : "") ?? "";
   $("site").value = (ref && col("Site") ? val(ref, "Site") : "") ?? "";
   cocherQualif(ref ? val(ref, "Qualification") : "");
@@ -5330,6 +5432,10 @@ async function enregistrerSignalement(correction = false) {
   btn.setAttribute("aria-disabled", "true"); $("btn-corriger").setAttribute("aria-disabled", "true");
   try {
     const table = grist.getTable();
+    if (correction && versionAffichee && derniere && versionAffichee.id !== derniere.id) {
+      statut("statut-signalement", `Une nouvelle version de ce dossier a été enregistrée pendant votre correction${auteurDe(derniere)}. Rouvrez le dossier pour partir de la version la plus récente.`, "err");
+      return;
+    }
     if (correction) {
       // Correction : la dernière version est modifiée sur place ; aucune nouvelle ligne, donc aucun message Tchap.
       // L'établissement, le dossier, la nature et la date de saisie ne changent pas.
@@ -5368,6 +5474,10 @@ async function enregistrerSignalement(correction = false) {
         statut("statut-signalement", afficherCommentaire() ? "Modifiez au moins une réponse ou ajoutez un commentaire." : "Modifiez au moins une réponse avant de mettre à jour.", "err");
         return;
       }
+      const fusion = fusionnerAvecVersionRecente(valeurs);
+      if (fusion.conflits.length && !confirm(`Une mise à jour de ce dossier a été enregistrée pendant votre saisie${auteurDe(derniere)}.\n\n`
+          + `Vous avez tous deux modifié : ${fusion.conflits.join(", ")}.\n\nOK : enregistrer vos réponses pour ces questions (les autres apports de votre collègue sont conservés).\nAnnuler : revenir au formulaire.`)) return;
+      Object.assign(valeurs, fusion.valeurs);
       const fields = { ...valeurs,
         [col("Etablissement")]: refId(val(initiale, "Etablissement")),   // l'établissement du dossier, et lui seul
         ...(col("Dossier") ? { [col("Dossier")]: dossierId } : {}) };
@@ -5637,11 +5747,14 @@ function rechercheLocale(q) {
   const colsRecherche = colsEtab.includes(E.nom)
     ? [...new Set([E.nom, E.commune, E.uai, ...COLONNES_RECHERCHE_EN_PLUS, ...S().recherche])]
     : colsEtab.filter(c => c !== "id" && c !== "manualSort" && !c.startsWith("gristHelper") && c !== E.cle && c !== E.lien);
-  return etabs.filter(e => {
+  const trouves = etabs.filter(e => {
     const texte = sansAccent(colsRecherche.map(c => e[c]).filter(v => v != null && typeof v !== "object").join(" "));
     return mots.every(m => texte.includes(m));
-  }).slice(0, NB_RESULTATS).map(e => ({ source: "local", ligne: e, nom: e[E.nom] ?? libelleEtabDeRepli(e), uai: e[E.uai], type: e[E.type],
-    academie: e[E.academie], departement: e[E.departement], commune: e[E.commune], mail: e[E.mail] }));
+  });
+  const dedans = perimetreActif() ? trouves.filter(dansPerimetre) : trouves;
+  const retenus = dedans.length ? dedans : trouves;
+  return retenus.slice(0, NB_RESULTATS).map(e => ({ source: "local", ligne: e, nom: e[E.nom] ?? libelleEtabDeRepli(e), uai: e[E.uai], type: e[E.type],
+    academie: e[E.academie], departement: e[E.departement], commune: e[E.commune], mail: e[E.mail], hors: perimetreActif() && !dedans.length }));
 }
 
 // Sans colonne de nom reconnue : première valeur texte de la ligne
@@ -5663,8 +5776,11 @@ async function rechercher(q) {
   const rep = await Promise.allSettled(actives.map(x => interroger(x, q)));
   if (id !== requete) return;
   const connus = new Set(locaux.map(l => String(l.uai || "").toUpperCase()));
+  // annuaire en ligne : filtré sur l'académie ou le département quand le périmètre en dépend
+  const p = perimetreActif() ? perimetre() : {}, filtres = [["academie", E.academie], ["departement", E.departement]].filter(([, c]) => p[c]);
   const distants = rep.flatMap(r => r.status === "fulfilled" ? r.value : [])
-    .filter(e => !connus.has(String(e.uai || "").toUpperCase()));
+    .filter(e => !connus.has(String(e.uai || "").toUpperCase()))
+    .filter(e => filtres.every(([k, c]) => !e[k] || p[c].some(x => sansAccent(x) === sansAccent(e[k]))));
   resultats = [...locaux, ...distants];
   if (locaux.length && rep.every(r => r.status === "rejected")) { afficherResultats(); return; }
   rep.filter(r => r.status === "rejected").forEach(r => console.warn("Autocomplétion :", r.reason));
@@ -5680,7 +5796,7 @@ function afficherResultats() {
   index = -1;
   liste.innerHTML = resultats.map((e, i) => `
     <li role="option" id="opt-${i}" data-i="${i}" aria-selected="false">
-      <div class="nom">${esc(e.nom)}${!sourcesActives().length ? "" : e.source === "local" ? '<span class="source connu">référentiel</span>' : `<span class="source">${esc(e.source)}</span>`}</div>
+      <div class="nom">${esc(e.nom)}${e.hors ? '<span class="source hors">hors périmètre</span>' : ""}${!sourcesActives().length ? "" : e.source === "local" ? '<span class="source connu">référentiel</span>' : `<span class="source">${esc(e.source)}</span>`}</div>
       <div class="meta">${esc([e.uai, e.type, e.commune, e.academie].filter(Boolean).join(", "))}</div>
     </li>`).join("");
   ouvrir();

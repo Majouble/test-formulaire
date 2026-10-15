@@ -5,7 +5,7 @@ Ce dossier contient la version 2 des widgets. La version 1 (`index.html` à la r
 | Adresse | Version | Usage |
 | --- | --- | --- |
 | `https://majouble.github.io/test-formulaire/` | v1 | Documents en production (ne pas modifier pendant la refonte) |
-| `https://majouble.github.io/test-formulaire/v2/saisie/` | v2 | Formulaire de saisie, en test |
+| `https://majouble.github.io/test-formulaire/v2/saisie/` | v2 | Formulaire de saisie : Config, rôles, périmètre de la page, fusion des mises à jour concurrentes (en test) |
 | `https://majouble.github.io/test-formulaire/v2/admin/` | v2 | Administration : onglets Installation, Référentiel (annuaire EN) et Formulaires en test ; point de situation et tableau de bord à venir |
 | `https://majouble.github.io/test-formulaire/v2/point-situation/` | v2 | Production du point de situation (à venir) |
 | `https://majouble.github.io/test-formulaire/v2/tableau-de-bord/` | v2 | Tableau de bord (à venir) |
@@ -28,7 +28,7 @@ v2/
 1. Un widget ne lit jamais une colonne par son nom en dur : il passe par un rôle (voir le contrat du socle).
 2. Un réglage commun au document s'écrit dans la table `Config`, sous la clé de son module. Un réglage propre à une page (formulaire, périmètre, libellé) reste dans les options du widget de cette page.
 3. Un module ne dépend que du socle, jamais d'un autre module.
-4. Chaque widget affiche son numéro de version dans son panneau de diagnostic.
+4. Chaque widget affiche son numéro de version dans son panneau de diagnostic. Le numéro (`VERSION` de `commun/socle.js`) est incrémenté à chaque mise à jour publiée.
 
 ## Décisions (15/10/2026)
 
