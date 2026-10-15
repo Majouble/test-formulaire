@@ -742,7 +742,8 @@ $("apercu").addEventListener("click", ev => {
   if (aj) { const ins = aj.closest(".insertion") || aj; ouvrirMenu(ins.dataset.section || aj.dataset.section, +(ins.dataset.index ?? aj.dataset.index), aj); return; }
   const outil = ev.target.closest("[data-act]");
   const bloc = ev.target.closest(".bloc");
-  if (!bloc) return;
+  // Clic dans un espace vide de l'aperçu : retour aux réglages du formulaire
+  if (!bloc) { if (choisi && !ev.target.closest("button, a, input, select, textarea, label, .insertion, [data-section-feuille] h3")) choisir(null); return; }
   ev.preventDefault();
   const id = bloc.dataset.bloc;
   if (outil) { agir(outil.dataset.act, id); return; }
@@ -1016,7 +1017,22 @@ function ajouterExistantes(ids, section, index) {
 /* =========================================================
    Panneau de réglages
    ========================================================= */
+// Panneau de droite ; quand un élément est choisi, un lien ramène aux réglages du formulaire
 function dessinerPanneau() {
+  dessinerPanneauBase();
+  if (modeTest || !courant || !choisi) return;
+  const p = $("panneau");
+  if (!p.firstElementChild || p.querySelector("#pn-retour")) return;
+  p.insertAdjacentHTML("afterbegin", `<button type="button" class="lien-retour" id="pn-retour">← Réglages du formulaire</button>`);
+  $("pn-retour").addEventListener("click", () => choisir(null));
+}
+// Échap : retour aux réglages du formulaire (sauf dans un champ de saisie ou un menu ouvert)
+document.addEventListener("keydown", ev => {
+  if (ev.key !== "Escape" || !choisi || modeTest || $("formulaires").hidden || !$("menu-ajout").hidden) return;
+  if (ev.target.closest && ev.target.closest("input, select, textarea, dialog")) return;
+  choisir(null);
+});
+function dessinerPanneauBase() {
   const p = $("panneau");
   if (modeTest) return dessinerPanneauTest();
   const b = blocDe(choisi);
