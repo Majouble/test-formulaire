@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0-alpha.4 (15/10/2026)";
+  const VERSION = "2.0.0-alpha.5 (15/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -85,6 +85,10 @@
         accepte: c => c.isFormula && /^(Bool|Any)$/.test(typeBase(c.type)),
         motifs: [/derniere_?version/],
         creer: ctx => ({ type: "Bool", isFormula: true, formula: formuleDerniereVersion(ctx) }) },
+      { role: "Description_Word_", libelle: "Description avec les ajouts marqués (Word, Tchap)", obligatoire: false, parDefaut: true,
+        accepte: c => c.isFormula && /^(Text|Any)$/.test(typeBase(c.type)),
+        motifs: [/description_?word/, /description_?(marquee|tchap)/],
+        creer: ctx => ({ type: "Text", isFormula: true, formula: formuleDescriptionMarquee(ctx) }) },
       { role: "Commentaire", libelle: "Commentaire de mise à jour", obligatoire: false,
         accepte: c => typeBase(c.type) === "Text" && !c.isFormula,
         motifs: [/^commentaire/, /commentaire/],
@@ -161,6 +165,62 @@
       `  return (r.${c} is not None, r.${c}, r.id)`,
       `return max(versions, key=cle).id == $id`,
     ].join("\n");
+  }
+
+  // Description d'une mise à jour avec les mots ajoutés depuis la version précédente entourés de == (repris par
+  // n8n pour Tchap et par le point de situation pour Word). Formule des documents MEN et ESR, rendue paramétrable.
+  function formuleDescriptionMarquee(ctx) {
+    const d = (ctx.cols && ctx.cols.Dossier) || "Dossier", c = (ctx.cols && ctx.cols.Cree_le) || "Cree_le",
+      desc = (ctx.cols && ctx.cols.Description) || "Description";
+    return `import difflib, re
+
+# 1. Retrouver la version précédente du même dossier
+dossier = $${d} or rec
+versions = list(${ctx.reponses}.lookupRecords(${d}=dossier))
+for r in (dossier, rec):           # la ligne initiale et la ligne courante, même sans dossier renseigné
+  if r not in versions:
+    versions.append(r)
+versions.sort(key=lambda r: (r.${c} is not None, r.${c}, r.id))
+position = versions.index(rec)
+if position == 0:
+  return $${desc} or ""         # signalement initial : rien à comparer
+precedente = versions[position - 1]
+
+# 2. Comparer mot à mot avec sa description
+jetons = lambda t: re.findall(r"\\*\\*|\\s+|\\w+|[^\\w\\s]", t)
+BORD = " \\t\\n,.;:!?)(«»\\"'-–—"      # ponctuation et espaces laissés hors du marquage
+
+def marquer(morceaux):
+  # Entoure de == chaque suite de mots ajoutés ; ponctuation en bordure et ** restent dehors
+  sortie, groupe = [], []
+  def fermer():
+    if groupe:
+      texte = "".join(groupe)
+      coeur = texte.strip(BORD)
+      if coeur:
+        i = texte.index(coeur)
+        sortie.append(texte[:i] + "==" + coeur + "==" + texte[i + len(coeur):])
+      else:
+        sortie.append(texte)
+      del groupe[:]
+  for j in morceaux:
+    if j == "**":
+      fermer()
+      sortie.append(j)
+    else:
+      groupe.append(j)
+  fermer()
+  return "".join(sortie)
+
+a, b = jetons(precedente.${desc} or ""), jetons($${desc} or "")
+resultat = []
+for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+  if op == "equal":
+    resultat.append("".join(b[j1:j2]))
+  elif op in ("insert", "replace"):
+    resultat.append(marquer(b[j1:j2]))
+  # les suppressions ne sont pas reprises
+return "".join(resultat)`;
   }
 
   /* ---------- Schéma des tables techniques du socle ---------- */
@@ -346,12 +406,13 @@
     let rolesRep = {};
     if (!tRep) {
       // Colonnes simples avec la table, références et formule ensuite (la table doit exister pour s'y référer)
-      const defs = ROLES.reponses.filter(d => d.obligatoire);
-      const simples = defs.filter(d => !["Etablissement", "Dossier", "Derniere_version"].includes(d.role));
+      const defs = ROLES.reponses.filter(d => d.obligatoire || d.parDefaut);
+      const apres = ["Etablissement", "Dossier", "Derniere_version", "Description_Word_"];   // références et formules : une fois la table créée
+      const simples = defs.filter(d => !apres.includes(d.role));
       etapes.push({ id: "table-reponses", groupe: "Tables", coche: true, titre: `Créer la table ${g.reponses}`,
         detail: `Une ligne par version de signalement : ${defs.map(d => d.role).join(", ")}.`,
         actions: [...actionsNouvelleTable(g.reponses, simples.map(d => ({ id: d.role, ...d.creer(ctx) }))),
-                  ...["Etablissement", "Dossier", "Derniere_version"].map(role =>
+                  ...apres.map(role =>
                     ["AddColumn", g.reponses, role, ROLES.reponses.find(d => d.role === role).creer(ctx)])] });
     } else {
       rolesRep = resoudreRoles("reponses", tRep, ctx, assoc.reponses || {}, {});
@@ -359,9 +420,9 @@
       for (const def of ROLES.reponses) {
         const r = rolesRep[def.role];
         if (r && r.col) continue;
-        if (!def.obligatoire && !choix[`rep:${def.role}`]) continue;
+        if (!def.obligatoire && !def.parDefaut && !choix[`rep:${def.role}`]) continue;
         if (tRep.colonnes[def.role]) { infos.push(`${g.reponses}.${def.role} existe mais son type ne convient pas au rôle « ${def.libelle} ».`); continue; }
-        etapes.push({ id: `rep-${def.role}`, groupe: "Colonnes", coche: def.obligatoire,
+        etapes.push({ id: `rep-${def.role}`, groupe: "Colonnes", coche: def.obligatoire || !!def.parDefaut,
           titre: `Ajouter ${g.reponses}.${def.role}`, detail: `Aucune colonne ne joue le rôle « ${def.libelle} ».`,
           actions: [["AddColumn", g.reponses, def.role, def.creer({ ...ctx, cols: { ...ctx.cols, [def.role]: def.role } })]] });
       }
