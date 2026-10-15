@@ -6,7 +6,7 @@ Ce dossier contient la version 2 des widgets. La version 1 (`index.html` à la r
 | --- | --- | --- |
 | `https://majouble.github.io/test-formulaire/` | v1 | Documents en production (ne pas modifier pendant la refonte) |
 | `https://majouble.github.io/test-formulaire/v2/saisie/` | v2 | Formulaire de saisie, en test |
-| `https://majouble.github.io/test-formulaire/v2/admin/` | v2 | Administration : installation, formulaires, point de situation, tableau de bord (à venir) |
+| `https://majouble.github.io/test-formulaire/v2/admin/` | v2 | Administration : onglet Installation en test ; formulaires, point de situation et tableau de bord à venir |
 | `https://majouble.github.io/test-formulaire/v2/point-situation/` | v2 | Production du point de situation (à venir) |
 | `https://majouble.github.io/test-formulaire/v2/tableau-de-bord/` | v2 | Tableau de bord (à venir) |
 
@@ -15,7 +15,7 @@ Ce dossier contient la version 2 des widgets. La version 1 (`index.html` à la r
 ```
 v2/
 ├── README.md            ce fichier
-├── commun/              code partagé : lecture de Config, rôles, diagnostic (à venir)
+├── commun/socle.js      code partagé : lecture de Config, rôles, plan d'installation
 ├── saisie/              formulaire de saisie
 ├── admin/               administration (un fichier par onglet)
 ├── point-situation/     production du point de situation
@@ -37,3 +37,10 @@ v2/
 - Un document Grist par situation, dupliqué depuis le modèle.
 - Une page par agent, chacune avec son périmètre d'académies.
 - La configuration des formulaires, du point de situation et du tableau de bord se fait dans l'administration.
+
+## Tester l'installation
+
+1. Créer un document Grist vierge.
+2. Ajouter une page avec un widget « Personnalisé », lié à n'importe quelle table.
+3. Adresse : `https://majouble.github.io/test-formulaire/v2/admin/`, accès « complet au document ».
+4. Vérifier les actions proposées, puis « Appliquer la sélection ».
