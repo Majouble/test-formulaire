@@ -578,7 +578,7 @@
       <button type="button" class="porte porte-nouveau" id="porte-nouveau">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 7v10M7 12h10"></path></svg>
         <span class="porte-titre">Nouveau signalement</span>
-        <span class="porte-texte">Un événement à signaler dans un établissement.</span>
+        <span class="porte-texte" id="porte-nouveau-texte">Un événement à signaler dans un établissement.</span>
       </button>
       <button type="button" class="porte porte-retrouver" id="porte-retrouver">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
@@ -2953,7 +2953,12 @@ function majBoutonEnvoi() {
     return;
   }
   a.removeAttribute("aria-disabled"); a.title = "";
-  a.href = `mailto:${encodeURIComponent(mail)}?subject=${encodeURIComponent(MESSAGE.objet(nomEtab))}&body=${encodeURIComponent(MESSAGE.corps(nomEtab, lien))}`;
+  // message réglé dans l'administration (onglet Établissements, clé « liens » de Config), sinon message par défaut
+  const m = socleConfig && socleConfig.valeurs.liens && socleConfig.valeurs.liens.message, e = etabCourant || {};
+  const remplir = t => String(t).replace(/\{(nom|uai|commune|lien|situation)\}/g, (_, k) => k === "nom" ? nomEtab || "" : k === "lien" ? lien
+    : k === "situation" ? ((socleConfig && socleConfig.valeurs.general && socleConfig.valeurs.general.situation) || "") : String(e[E[k]] ?? ""));
+  const objet = m && m.objet ? remplir(m.objet) : MESSAGE.objet(nomEtab), corps = m && m.corps ? remplir(m.corps) : MESSAGE.corps(nomEtab, lien);
+  a.href = `mailto:${encodeURIComponent(mail)}?subject=${encodeURIComponent(objet)}&body=${encodeURIComponent(corps)}`;
 }
 
 $("mail").addEventListener("input", () => { if (!etabCourant) $("mail").dataset.saisi = $("mail").value; majBoutonEnvoi(); });
@@ -6209,6 +6214,7 @@ function afficherCartes() {
   if (!ul) return;
   if (!indexRecherche) construireIndexRecherche();
   $("titre-liste").textContent = modeEtab ? "Vos signalements" : "Signalements";
+  $("porte-nouveau-texte").textContent = modeEtab ? "Un événement à signaler dans votre établissement." : "Un événement à signaler dans un établissement.";
   $("porte-retrouver-texte").textContent = modeEtab ? "Consulter ou actualiser vos signalements." : "Consulter ou actualiser un signalement existant.";
   const q = $("recherche-signalements").value.trim(), mots = sansAccent(q).split(/\s+/).filter(Boolean);
   const base = filtreActif() ? indexRecherche.filter(x => passeFiltre(x.l)) : indexRecherche;

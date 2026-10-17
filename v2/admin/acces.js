@@ -6,7 +6,9 @@
    - un agent actif de l'équipe saisit sur les formulaires de son champ (EN, ESR) s'il est mobilisé sur ce champ
      au planning, 7 jours avant ou après aujourd'hui (colonne formule Agents.Champs_acces) ; il lit le reste ;
    - une personne absente de l'équipe (ou inactive) ne voit rien ;
-   - l'accès des établissements par lien (link key) viendra plus tard.
+   - accès des établissements par lien (link key, mis en place dans l'onglet Établissements) : attribut « Etab »
+     (clé du lien → ligne du référentiel) ; l'établissement lit et complète ses seuls signalements, sans les visas
+     ni l'auteur, voit sa seule ligne du référentiel (sans clé ni lien) et lit les réglages et formulaires.
    Les règles s'appuient sur l'attribut utilisateur « Agent » (table Agents, rapprochée par adresse).
    Elles portent un mémo « Socle v2 — … » (affiché par Grist en cas de refus) qui permet de les retrouver :
    appliquer remplace les règles des tables gérées et la règle par défaut ; les autres tables ne sont pas touchées.
@@ -22,7 +24,7 @@
   const PROPRIETAIRE = "user.Access == OWNER";
   const MEMBRE = `user.${ATTRIBUT}.Actif`;
 
-  let config, general, meta, agents, formulaires, acl, racine;
+  let config, general, meta, agents, formulaires, groupes, acl, racine;
 
   /* ---------- Lecture ---------- */
   async function charger() {
@@ -30,17 +32,9 @@
     general = S.general(config);
     meta = await S.lireMeta();
     agents = await R.lireAgents(general, null);
-    formulaires = await lireFormulaires();
+    formulaires = await R.lireFormulairesPublies(general);
+    groupes = R.groupesLiens(meta, config, general, formulaires).filter(g => g.cle);   // accès par lien : clés en place
     acl = await lireAcl();
-  }
-  async function lireFormulaires() {
-    let t;
-    try { t = await grist.docApi.fetchTable(general.formulaires); } catch (_) { return []; }
-    return (t.id || []).map((id, i) => {
-      let conf = null;
-      try { conf = t.Publie && t.Publie[i] ? JSON.parse(t.Publie[i]) : null; } catch (_) { conf = null; }
-      return { id, nom: String((t.Nom || [])[i] || ""), table: String((t.Table || [])[i] || ""), conf, type: String((t.Type || [])[i] || "etablissement") };
-    }).filter(f => f.conf && f.table);
   }
   // null si les règles ne sont pas lisibles (non propriétaire)
   async function lireAcl() {
@@ -71,6 +65,7 @@
       cols.forEach(c => { const cible = S.cibleRef(c.type); if (cible && cible !== f.table && /etab|site|referentiel/i.test(`${c.colId} ${cible}`)) referentiels.add(cible); });
     }
     if (meta[general.referentiel]) referentiels.add(general.referentiel);
+    (groupes || []).forEach(g => referentiels.add(g.table));
     [...saisie.keys()].forEach(t => referentiels.delete(t));
     return { saisie, referentiels: [...referentiels].filter(t => meta[t]) };
   }
@@ -110,9 +105,79 @@
       { aclFormula: MEMBRE, permissionsText: "-CRUD", memo: `${MEMO} — émargement : chaque agent ne voit et ne modifie que le sien` },
     ], lignes: ["Agent actif : il émarge pour lui-même et voit ses propres émargements ; pas de suppression.",
       "Les autres émargements ne lui sont pas visibles (données personnelles).", "Propriétaires : tous les émargements, avec correction possible."] });
+    reglesEtablissements(out);
     return out;
   }
-  const attributProposé = () => ({ name: ATTRIBUT, tableId: general.agents, lookupColId: "Email", charId: "Email" });
+
+  /* ---------- Accès des établissements par lien ---------- */
+  const condEtab = g => `user.${g.attribut} and user.LinkKey.${g.attribut}`;
+  const COL_ACCES = "Etablissement_acces";   // sous-tables : établissement du signalement parent (les règles ne suivent pas les références)
+  const PARTIES = [{ id: "q", role: "q" }, { id: "vd", role: "vd" }, { id: "va", role: "va" }];
+  // Colonnes masquées aux établissements : questions de visa (parties « vd » et « va » : ni lecture ni écriture)
+  // et auteur (lecture seulement : sa formule d'initialisation doit pouvoir s'écrire quand l'établissement saisit)
+  function colonnesMasquees(f) {
+    const parties = Array.isArray(f.conf.parties) && f.conf.parties.length ? f.conf.parties : PARTIES, cols = meta[f.table].colonnes, visas = new Set();
+    (f.conf.blocs || []).forEach(b => { const p = parties.find(x => x.id === (b.section || "q")); if (p && p.role !== "q" && b.colonne && cols[b.colonne]) visas.add(b.colonne); });
+    const rr = S.resoudreRoles("reponses", meta[f.table], { reponses: f.table, referentiel: general.referentiel }, {}, {});
+    return { visas: [...visas].sort(), auteur: rr.Auteur && rr.Auteur.col && !visas.has(rr.Auteur.col) ? rr.Auteur.col : null };
+  }
+  // Sous-tables (tableaux) d'un formulaire : { table, parent (colonne Ref vers la table des réponses), acces (colonne d'aide présente ?) }
+  function sousTables(f) {
+    const out = [];
+    (f.conf.blocs || []).forEach(b => {
+      const st = b && b.reglages && b.reglages.tableau && b.reglages.tableau.table;
+      if (!st || !meta[st] || out.some(x => x.table === st)) return;
+      const parent = Object.values(meta[st].colonnes).find(c => c.type === `Ref:${f.table}`);
+      if (parent) out.push({ table: st, parent: parent.colId, acces: !!meta[st].colonnes[COL_ACCES] });
+    });
+    return out;
+  }
+  function reglesEtablissements(out) {
+    if (!groupes || !groupes.length) return;
+    const entree = (t, colIds) => out.find(p => p.tableId === t && p.colIds === colIds);
+    const ajouterEn = (t, colIds, titre, regles, lignes, avant) => {
+      let e = entree(t, colIds);
+      if (!e) { e = { tableId: t, colIds, titre, regles: [], lignes: [] }; out.push(e); }
+      if (avant) { e.regles.unshift(...regles); e.lignes.unshift(...lignes); } else { e.regles.push(...regles); e.lignes.push(...lignes); }
+      return e;
+    };
+    const lecture = new Set([S.TABLE_CONFIG, general.formulaires]);
+    for (const g of groupes) {
+      const E = condEtab(g), qui = `établissement (lien ${g.attribut}_)`;
+      const signalements = (t, col) => [
+        { aclFormula: `${E} and rec.${col} != user.${g.attribut}.id`, permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : signalements des autres établissements invisibles` },
+        { aclFormula: `${E} and newRec.${col} != user.${g.attribut}.id`, permissionsText: "-CU", memo: `${MEMO} — ${qui} : saisie pour son seul établissement` },
+        { aclFormula: E, permissionsText: "+CRU-D", memo: `${MEMO} — ${qui} : ses signalements, ajout et mise à jour` },
+      ];
+      for (const f of g.formulaires) {
+        ajouterEn(f.table, "*", `${f.table} — signalements`, signalements(f.table, f.colEtab),
+          [`Établissement ouvert par son lien : ses seuls signalements (lecture, ajout, mise à jour ; pas de suppression).`]);
+        const { visas, auteur } = colonnesMasquees(f);
+        if (visas.length) ajouterEn(f.table, visas.join(","), `${f.table} — visas (${visas.join(", ")})`,
+          [{ aclFormula: E, permissionsText: "-RU", memo: `${MEMO} — ${qui} : visas réservés à la cellule` }],
+          ["Établissement ouvert par son lien : ni lecture ni modification des visas."]);
+        if (auteur) ajouterEn(f.table, auteur, `${f.table} — auteur (${auteur})`,
+          [{ aclFormula: E, permissionsText: "-R", memo: `${MEMO} — ${qui} : adresse de l'auteur illisible` }],
+          ["Établissement ouvert par son lien : adresse de l'auteur illisible."]);
+        for (const st of sousTables(f)) ajouterEn(st.table, "*", `${st.table} — lignes des tableaux du formulaire`, signalements(st.table, COL_ACCES),
+          [`Établissement ouvert par son lien : les lignes de ses signalements (colonne ${COL_ACCES}${st.acces ? "" : ", ajoutée à l'application"}).`]).sousTable = { ...st, formule: `$${st.parent}.${f.colEtab}`, type: `Ref:${g.table}` };
+        // tables visées par les questions (listes de choix) : lecture
+        Object.values(meta[f.table].colonnes).forEach(c => { const x = S.cibleRef(c.type) || (/^RefList:(.+)$/.exec(c.type) || [])[1]; if (x && x !== f.table && x !== g.table && meta[x] && x !== general.agents) lecture.add(x); });
+      }
+      ajouterEn(g.table, "*", `${g.table} — référentiel`, [{ aclFormula: `${E} and rec.id == user.${g.attribut}.id`, permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : sa seule ligne` }],
+        ["Établissement ouvert par son lien : sa seule ligne, en lecture."]);
+      ajouterEn(g.table, [R.LIEN.cle, R.LIEN.lien].sort().join(","), `${g.table} — clé et lien d'accès`, [{ aclFormula: E, permissionsText: "-RU", memo: `${MEMO} — ${qui} : clé et lien illisibles` }],
+        ["Établissement ouvert par son lien : clé et lien illisibles (le widget passe ainsi en mode établissement)."]);
+    }
+    groupes.forEach(g => lecture.delete(g.table));
+    const tous = groupes.map(condEtab), cond = tous.length > 1 ? tous.map(c => `(${c})`).join(" or ") : tous[0];
+    for (const t of lecture) if (meta[t]) ajouterEn(t, "*", `${t} — lecture pour les établissements`,
+      [{ aclFormula: cond, permissionsText: "+R-CUD", memo: `${MEMO} — établissements (lien) : lecture, pour le formulaire` }],
+      ["Établissement ouvert par son lien : lecture (réglages, formulaires, listes de choix)."]);
+  }
+  const attributsProposes = () => [{ name: ATTRIBUT, tableId: general.agents, lookupColId: "Email", charId: "Email" },
+    ...(groupes || []).map(g => ({ name: g.attribut, tableId: g.table, lookupColId: R.LIEN.cle, charId: `LinkKey.${g.attribut}` }))];
+  const estAttributSocle = r => { try { const n = JSON.parse(r.userAttributes).name; return n === ATTRIBUT || /^Etab(_|$)/.test(n); } catch (_) { return false; } };
 
   // Règles en place qui seront remplacées : tables gérées (toutes colonnes), règle par défaut, attribut « Agent »
   function aRemplacer(propose) {
@@ -121,17 +186,22 @@
     return acl.regles.filter(r => {
       const res = acl.ressources.get(r.resource);
       if (!res) return false;
-      if (r.userAttributes) { try { return JSON.parse(r.userAttributes).name === ATTRIBUT; } catch (_) { return false; } }
+      if (r.userAttributes) return estAttributSocle(r);
       return tables.has(res.tableId);
     });
   }
   // Les règles du document correspondent-elles exactement à la proposition ?
   function aJour(propose) {
     if (!acl) return false;
-    const attr = acl.regles.find(r => r.userAttributes && (() => { try { const a = JSON.parse(r.userAttributes); return a.name === ATTRIBUT && a.tableId === general.agents && a.lookupColId === "Email"; } catch (_) { return false; } })());
-    if (!attr) return false;
+    const enPlace = acl.regles.filter(r => r.userAttributes && estAttributSocle(r)).map(r => JSON.parse(r.userAttributes));
+    const voulus = attributsProposes();
+    if (enPlace.length !== voulus.length || !voulus.every(v => enPlace.some(a => a.name === v.name && a.tableId === v.tableId && a.lookupColId === v.lookupColId && a.charId === v.charId))) return false;
+    if (propose.some(p => p.sousTable && !p.sousTable.acces)) return false;
+    // pas de règle du socle restée sur une ressource qui n'est plus proposée (anciennes colonnes masquées…)
+    const cles = new Set(propose.map(p => `${p.tableId}|${p.colIds}`));
+    if (acl.regles.some(r => { const x = acl.ressources.get(r.resource); return x && !r.userAttributes && r.memo.startsWith(MEMO) && !cles.has(`${x.tableId}|${x.colIds}`); })) return false;
     return propose.every(p => {
-      const res = [...acl.ressources.values()].filter(x => x.tableId === p.tableId);
+      const res = [...acl.ressources.values()].filter(x => x.tableId === p.tableId && x.colIds === p.colIds);
       const regles = acl.regles.filter(r => !r.userAttributes && res.some(x => x.id === r.resource));
       return regles.length === p.regles.length && regles.every((r, i) => r.aclFormula === p.regles[i].aclFormula && r.permissionsText === p.regles[i].permissionsText);
     });
@@ -176,7 +246,7 @@
 
   function carteRegles(propose, remplacees, ok, sansFormule) {
     return `<section class="carte"><h2>Règles proposées</h2>
-      <p class="aide">Attribut utilisateur « ${ATTRIBUT} » : la ligne de la table ${esc(general.agents)} dont l'adresse (colonne Email) est celle du compte Grist connecté.</p>
+      <p class="aide">Attribut utilisateur « ${ATTRIBUT} » : la ligne de la table ${esc(general.agents)} dont l'adresse (colonne Email) est celle du compte Grist connecté.${(groupes || []).map(g => ` Attribut « ${esc(g.attribut)} » : la ligne de ${esc(g.table)} dont la clé (${esc(R.LIEN.cle)}) est celle du lien (paramètre ${esc(g.attribut)}_).`).join("")}</p>
       ${propose.map(p => `<div class="ac-table"><strong>${esc(p.titre)}</strong><ul>${p.lignes.map(l => `<li>${esc(l)}</li>`).join("")}</ul>
         <details><summary>Formules Grist</summary><table class="ac-formules"><tbody>${p.regles.map(r => `<tr><td><code>${esc(r.aclFormula || "Tous les autres")}</code></td><td><code>${esc(r.permissionsText)}</code></td></tr>`).join("")}</tbody></table></details></div>`).join("")}
       ${!formulaires.length ? `<p class="avert">Aucun formulaire publié : seules la règle par défaut et le référentiel sont proposés. Publiez les formulaires puis revenez ici.</p>` : ""}
@@ -213,7 +283,8 @@
         <li>Les personnes hors équipe peuvent rester invitées : elles ne verront rien. Ajoutez-les à l'équipe pour leur ouvrir la lecture.</li>
         <li>Le compte utilisé par n8n (clé d'API) doit être <strong>propriétaire</strong> du document, ou figurer dans l'équipe avec les bons créneaux, pour continuer à lire et écrire.</li>
         <li>Vérifier : page « Règles d'accès » de Grist, bouton « Voir en tant que », en choisissant un agent.</li>
-        <li>L'accès des établissements par lien personnel viendra avec le publipostage.</li>
+        <li>${(groupes || []).length ? `Accès des établissements par lien : vérifiez avec un compte qui n'est ni propriétaire ni dans l'équipe, en ouvrant un lien de l'onglet Établissements ; ouvrez ensuite le partage public du document en <strong>Éditeur</strong> (bouton « Partager » de Grist).`
+          : "Accès des établissements par lien personnel : à mettre en place dans l'onglet Établissements (clés, page, publipostage) ; les règles s'ajoutent ensuite ici."}</li>
       </ol></section>`;
   }
 
@@ -254,6 +325,9 @@
     const propose = reglesProposees();
     $("ac-appliquer").disabled = true; dire("Application des règles…");
     try {
+      // 0. sous-tables : colonne d'aide (établissement du signalement parent), lue par les règles
+      const aides = propose.filter(p => p.sousTable && !p.sousTable.acces);
+      if (aides.length) await grist.docApi.applyUserActions(aides.map(p => ["AddColumn", p.tableId, COL_ACCES, { type: p.sousTable.type, isFormula: true, formula: p.sousTable.formule }]));
       // 1. ressources manquantes
       const trouver = (t, c) => [...acl.ressources.values()].find(x => x.tableId === t && x.colIds === c);
       const manquantes = propose.filter(p => !trouver(p.tableId, p.colIds));
@@ -263,7 +337,7 @@
       const ids = aRemplacer(propose).map(r => r.id);
       let pos = Math.max(0, ...acl.regles.filter(r => !ids.includes(r.id)).map(r => r.rulePos).filter(Number.isFinite)) + 1;
       const defaut = trouver("*", "*");
-      const ajouts = [["AddRecord", "_grist_ACLRules", null, { resource: defaut.id, userAttributes: JSON.stringify(attributProposé()), rulePos: pos++, aclFormula: "", permissionsText: "", memo: "" }]];
+      const ajouts = attributsProposes().map(a => ["AddRecord", "_grist_ACLRules", null, { resource: defaut.id, userAttributes: JSON.stringify(a), rulePos: pos++, aclFormula: "", permissionsText: "", memo: "" }]);
       for (const p of propose) {
         const res = trouver(p.tableId, p.colIds);
         p.regles.forEach(r => ajouts.push(["AddRecord", "_grist_ACLRules", null, { resource: res.id, aclFormula: r.aclFormula, permissionsText: r.permissionsText, memo: r.memo, rulePos: pos++ }]));
@@ -277,7 +351,7 @@
     }
   }
   function retirer() {
-    const socle = acl.regles.filter(r => r.memo.startsWith(MEMO) || (r.userAttributes && (() => { try { return JSON.parse(r.userAttributes).name === ATTRIBUT; } catch (_) { return false; } })()));
+    const socle = acl.regles.filter(r => r.memo.startsWith(MEMO) || (r.userAttributes && estAttributSocle(r)));
     confirmer(`Retirer les ${socle.length} règle(s) du socle ? Les droits redeviendront ceux du partage du document (éditeurs : tout ; lecteurs : lecture).`,
       "Oui, retirer les règles", () => executerRetrait(socle));
   }

@@ -122,6 +122,7 @@
         const { cv } = optionsVue(s.options[i]), url = cv.url || (cv.widgetDef && cv.widgetDef.url) || "";
         const wo = cv.widgetOptions || {};
         if (!/signalement|\/saisie\/?/i.test(url) && !("formulaire" in wo)) return null;
+        if (wo.etablissements) return null;   // page des établissements (accès par lien) : onglet Établissements
         const vi = v.id.indexOf(s.parentId[i]);
         return { sectionRef: id, viewRef: s.parentId[i], page: vi >= 0 ? String(v.name[vi] || "") : "", table: t.tableId[t.id.indexOf(s.tableRef[i])] || "",
           url, access: cv.access || "", formulaire: wo.formulaire || null, unique: URL_SAISIE_V2.test(url), esr: /signalement-esr/i.test(url),
@@ -137,10 +138,58 @@
     return n ? agents.find(x => S().norm(x.nom) === n) || null : null;
   }
 
+  /* ---------- Accès des établissements par lien (onglets Établissements et Accès) ---------- */
+  // Formulaires d'établissement publiés : [{ id, nom, table, conf }]
+  async function lireFormulairesPublies(general) {
+    let t;
+    try { t = await grist.docApi.fetchTable(general.formulaires); } catch (_) { return []; }
+    return (t.id || []).map((id, i) => {
+      let conf = null;
+      try { conf = t.Publie && t.Publie[i] ? JSON.parse(t.Publie[i]) : null; } catch (_) { conf = null; }
+      return { id, nom: String((t.Nom || [])[i] || ""), table: String((t.Table || [])[i] || ""), conf, type: String((t.Type || [])[i] || "etablissement") };
+    }).filter(f => f.conf && f.table);
+  }
+  // Un groupe par référentiel visé par les formulaires d'établissement : clé UUID, colonne Lien, attribut utilisateur
+  // (« Etab » pour le premier, « Etab_<table> » ensuite) et paramètre de lien du même nom (?Etab_=<clé>).
+  const LIEN = { cle: "UUID", lien: "Lien" };
+  function groupesLiens(meta, config, general, formulaires) {
+    const assoc = (config && config.valeurs.roles && config.valeurs.roles.reponses) || {}, parTable = new Map();
+    for (const f of formulaires.filter(x => x.type === "etablissement" && meta[x.table])) {
+      const rr = S().resoudreRoles("reponses", meta[f.table], { reponses: f.table, referentiel: general.referentiel }, f.table === general.reponses ? assoc : {}, {});
+      const col = rr.Etablissement && rr.Etablissement.col, cible = col ? S().cibleRef(meta[f.table].colonnes[col].type) : null;
+      if (!cible || !meta[cible]) continue;
+      if (!parTable.has(cible)) parTable.set(cible, { table: cible, formulaires: [] });
+      parTable.get(cible).formulaires.push({ ...f, colEtab: col });
+    }
+    const liste = [...parTable.values()].sort((a, b) => (b.table === general.referentiel) - (a.table === general.referentiel) || a.table.localeCompare(b.table));
+    liste.forEach((g, k) => {
+      g.attribut = k === 0 ? "Etab" : `Etab_${g.table}`;
+      const cols = meta[g.table].colonnes;
+      g.cle = cols[LIEN.cle] ? LIEN.cle : null; g.lien = cols[LIEN.lien] ? LIEN.lien : null;
+      g.formuleLien = g.lien ? cols[LIEN.lien].formula : "";
+    });
+    return liste;
+  }
+  const formuleLien = (attribut, page) => `SELF_HYPERLINK(${page ? `page=${page}, ` : ""}LinkKey_${attribut}=$${LIEN.cle})`;
+  // Pages des établissements : vues personnalisées dont l'option « etablissements » nomme le référentiel
+  async function lirePagesEtab() {
+    try {
+      const [s, v] = await Promise.all([grist.docApi.fetchTable("_grist_Views_section"), grist.docApi.fetchTable("_grist_Views")]);
+      return s.id.map((id, i) => {
+        if (s.parentKey[i] !== "custom" || !s.parentId[i]) return null;
+        const { cv } = optionsVue(s.options[i]), wo = cv.widgetOptions || {};
+        if (!wo.etablissements) return null;
+        const vi = v.id.indexOf(s.parentId[i]);
+        return { sectionRef: id, viewRef: s.parentId[i], page: vi >= 0 ? String(v.name[vi] || "") : "", referentiel: wo.etablissements, formulaire: wo.formulaire || "", url: cv.url || "" };
+      }).filter(Boolean);
+    } catch (_) { return null; }
+  }
+
   window.Repartition = {
     PREFIXE_PAGE, URL_SAISIE_V2, ROLES_CRITERES,
     lireReferentiel, libelleCritere, criteres, criteresAjoutables, enregistrerCriteres,
     perimetreObjet, nettoyer, memePerimetre, resumePerimetre, nomPage,
     lireAgents, optionsVue, lirePages, agentDePage,
+    LIEN, lireFormulairesPublies, groupesLiens, formuleLien, lirePagesEtab,
   };
 })();

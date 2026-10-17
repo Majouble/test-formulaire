@@ -6,7 +6,7 @@ Ce dossier contient la version 2 des widgets. La version 1 (`index.html` à la r
 | --- | --- | --- |
 | `https://majouble.github.io/test-formulaire/` | v1 | Documents en production (ne pas modifier pendant la refonte) |
 | `https://majouble.github.io/test-formulaire/v2/saisie/` | v2 | Formulaire de saisie : Config, rôles, périmètre de la page, fusion des mises à jour concurrentes (en test) |
-| `https://majouble.github.io/test-formulaire/v2/admin/` | v2 | Administration : onglets Installation, Référentiel (annuaire EN), Équipe, Planning, Actions, Accès, Formulaires, Point de situation et Tableau de bord en test |
+| `https://majouble.github.io/test-formulaire/v2/admin/` | v2 | Administration : onglets Installation, Référentiel (annuaire EN), Équipe, Planning, Actions, Accès, Établissements (liens d'accès et publipostage), Formulaires, Point de situation et Tableau de bord en test |
 | `https://majouble.github.io/test-formulaire/v2/point-situation/` | v2 | Production du point de situation, selon la configuration publiée dans l'administration (en test) |
 | `https://majouble.github.io/test-formulaire/v2/tableau-de-bord/` | v2 | Tableau de bord en lecture, selon la version publiée dans l'administration (en test) |
 | `https://majouble.github.io/test-formulaire/v2/cartographie/` | v2 | Cartographie : carte des signalements et export GeoJSON, KML, GPX, CSV (WKT), Shapefile (en test) |
@@ -19,7 +19,7 @@ v2/
 ├── commun/socle.js      code partagé : lecture de Config, rôles, plan d'installation
 ├── commun/geo.js        fond de carte commun : départements et académies (Lambert-93, encarts), placement d'un point latitude / longitude
 ├── saisie/              formulaire de saisie
-├── admin/               administration : installation.js, referentiel.js, equipe.js, planning.js, actions.js, acces.js, repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css)
+├── admin/               administration : installation.js, referentiel.js, equipe.js, planning.js, actions.js, acces.js, liens.js, repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css)
 ├── point-situation/     production du point de situation
 ├── cartographie/        carte et export cartographique (reprise du widget « Export cartographique »)
 ├── tableau-de-bord/     tableau de bord : tableau.js (module partagé, édition dans l'administration, lecture dans le widget)
@@ -60,6 +60,8 @@ v2/
 - Répartition des cartes (17/10) : les cartes par département ou par académie (aplats de couleur) restent dans le tableau de bord ; le tableau de bord gagne le graphique « Carte des établissements (points) » (un point par établissement, taille et couleur selon la valeur, encart agrandi pour Paris et la petite couronne, détail au clic, image dans Word), sur le même fond embarqué, sans service extérieur. La cartographie sert à l'export et à l'analyse fine sur fond IGN. Le fond de carte et les correspondances département / académie sont dans `commun/geo.js`, partagé par les deux widgets.
 
 - Colonnes de l'établissement (17/10) : l'installation ajoute à la table des réponses des colonnes formules recopiées du référentiel : `UAI`, `Nom_etablissement`, `Commune`, `Departement`, `Academie`, `Latitude`, `Longitude` (`$Etablissement.UAI`…, selon les colonnes du référentiel). Elles servent aux lignes par UAI et aux cartes du tableau de bord, et rendent les exports CSV lisibles. Document déjà installé : étape « Ajouter à Reponses les colonnes de l'établissement » de l'onglet Installation, ou bandeau de l'onglet Tableau de bord. La carte des établissements lit les coordonnées sur la table elle-même quand les lignes sont l'UAI ; la cartographie reprend ces colonnes sans les dupliquer.
+
+- Accès des établissements par lien (17/10, onglet Établissements) : clé secrète par établissement (colonne `UUID` du référentiel, formule d'initialisation `UUID()`, clés manquantes générées en un clic) et lien (`Lien` = `SELF_HYPERLINK(page=<page des établissements>, LinkKey_Etab=$UUID)`, soit `…/p/<n>?Etab_=<clé>`). Page « Signalement — établissements » créée avec le widget de saisie (option `etablissements`), ignorée par l'équipe et les pages d'agents. Règles (onglet Accès, avec les autres) : attribut « Etab » (clé du lien → ligne du référentiel) ; l'établissement lit, crée et met à jour ses seuls signalements, sans les visas (ni lecture ni écriture) ni l'adresse de l'auteur ; il voit sa seule ligne du référentiel, sans clé ni lien, et lit Config, Formulaires et les listes de choix ; les sous-tables reçoivent une colonne `Etablissement_acces` (les règles ne suivent pas les références). Le widget passe de lui-même en mode établissement (« Vos signalements »). Ensuite : test avec un compte hors équipe, puis partage public du document en Éditeur. Publipostage : filtres par critère de répartition, message modifiable (clé `liens` de Config, repris par le bouton ✉ des pages de saisie), fichier CSV (UAI, nom, commune, adresse, lien, objet, message) pour une fusion Word / Outlook ou n8n, nouvelle clé pour révoquer un lien.
 
 ## Tester l'installation
 
