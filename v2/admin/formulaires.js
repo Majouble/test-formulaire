@@ -2065,9 +2065,23 @@ function urlWidgetProposee() {
 let refInfo = null;                   // référentiel (valeurs des critères), lu par Repartition
 let agentsEquipe;                     // undefined : pas encore lu ; null : pas de table Agents
 let repartition = null;               // { cle, inclure: Map(id agent → bool) } : cases « créer sa page »
+let planningEquipe = null;   // planning (champs EN / ESR sur lesquels chaque agent a été mobilisé)
+// Champ du formulaire (EN, ESR) d'après sa version
+const champForm = () => (window.Socle.CHAMPS.find(c => c.version === versionForm()) || {}).id || "";
+// Champs sur lesquels un agent est mobilisé au planning ; null s'il n'y figure pas encore
+function champsAgent(id) {
+  const l = ((planningEquipe && planningEquipe.affectations) || []).filter(a => a.agent === id);
+  return l.length ? [...new Set(l.flatMap(window.Socle.champsDe))] : null;
+}
+// Nom de la page : « Formulaire Alice » ; « Formulaire ESR Alice » quand le document publie plusieurs formulaires établissement
+function nomPageAgent(a) {
+  const plusieurs = formulaires.filter(f => typeof f.publie === "string" && f.publie.trim() && (f.type || "etablissement") === "etablissement").length > 1;
+  return R.nomPage(plusieurs && champForm() ? `${champForm()} ${a.nom}` : a.nom, {});
+}
 async function lireEquipe() {
   refInfo = await R.lireReferentiel(socleGeneral, socleConfig);
   agentsEquipe = await R.lireAgents(socleGeneral, refInfo);
+  planningEquipe = await window.Socle.lirePlanning(socleGeneral);
 }
 const avecPage = a => a.actif;
 const fonctionDeSaisie = nom => !!(window.Socle.reglagesPlanning(socleConfig).fonctions.find(f => f.nom === nom) || {}).saisie;
@@ -2082,11 +2096,11 @@ function etatPages() {
   return { parAgent, orphelines };
 }
 // La page ne porte plus de périmètre fixe : celui du créneau en cours (onglet Planning) s'applique
-const pageAJour = (p, a) => p.page === R.nomPage(a.nom, {}) && p.libelle === a.nom && p.agent === a.id
+const pageAJour = (p, a) => p.page === nomPageAgent(a) && p.libelle === a.nom && p.agent === a.id
   && p.formulaire === courant.nom && !Object.keys(R.nettoyer(R.perimetreObjet(refInfo, p.perimetre))).length;
 // Pourquoi une page existante est à mettre à jour
 function raisonMaj(pg, a) {
-  const nom = R.nomPage(a.nom, {}), autres = pg.filter(p => p.page !== nom);
+  const nom = nomPageAgent(a), autres = pg.filter(p => p.page !== nom);
   if (autres.length) return `actuellement « ${esc(autres.map(p => p.page).join(" », « "))} »`;
   if (pg.some(p => Object.keys(R.nettoyer(R.perimetreObjet(refInfo, p.perimetre))).length)) return "périmètre fixe à retirer : le planning le donne";
   if (pg.some(p => p.formulaire !== courant.nom)) return "formulaire à changer";
@@ -2098,7 +2112,8 @@ function planPages() {
   const { parAgent, orphelines } = etatPages();
   const lignes = (agentsEquipe || []).filter(avecPage).map(a => {
     const pg = parAgent.get(a.id) || [];
-    if (!repartition.inclure.has(a.id)) repartition.inclure.set(a.id, fonctionDeSaisie(a.fonction));
+    const ch = champsAgent(a.id);
+    if (!repartition.inclure.has(a.id)) repartition.inclure.set(a.id, fonctionDeSaisie(a.fonction) && (!ch || ch.includes(champForm())));
     const etat = pg.length ? (pg.every(p => pageAJour(p, a)) ? "ok" : "modif") : (repartition.inclure.get(a.id) ? "nouv" : "sans");
     return { a, pg, etat };
   });
@@ -2128,12 +2143,13 @@ function groupePageHtml() {
     return `<div class="agent" data-id="${a.id}">
       <div class="agent-haut">${pg.length ? `<strong>${esc(a.nom)}</strong>` : `<label class="case" style="margin:0"><input type="checkbox" data-pg="inclure"${repartition.inclure.get(a.id) ? " checked" : ""}> <strong>${esc(a.nom)}</strong></label>`}
         <small class="note" style="margin-left:auto">${esc(a.fonction)}</small>${pastilles[etat]}</div>
-      <small class="note">page « ${esc(R.nomPage(a.nom, {}))} »${etat === "modif" ? ` (${raisonMaj(pg, a)})` : ""}</small>
+      <small class="note">page « ${esc(nomPageAgent(a))} »${etat === "modif" ? ` (${raisonMaj(pg, a)})` : ""}${(() => { const ch = champsAgent(a.id);
+        return !ch ? " · pas encore au planning" : ch.includes(champForm()) ? ` · mobilisé ${esc(ch.join(" et "))}` : ` · <strong>jamais mobilisé ${esc(champForm())}</strong> (${esc(ch.join(", "))} seulement)`; })()}</small>
       ${autre ? `<small class="note">affiche « ${esc(autre.formulaire)} » : sera basculée sur ce formulaire</small>` : ""}
     </div>`;
   }).join("");
   return `<div class="groupe">${titre}
-    <p class="note" style="margin:0 0 8px">Une page par agent de l'équipe qui saisit (les fonctions de saisie sont cochées d'office). La page applique le périmètre du créneau en cours (onglet Planning) ; hors créneau, elle montre tous les établissements. Le périmètre répartit le travail sans restreindre l'accès.</p>
+    <p class="note" style="margin:0 0 8px">Une page par agent de l'équipe. Cochés d'office : les agents d'une fonction qui saisit, mobilisés au planning sur le champ de ce formulaire (${esc(champForm())}) ou pas encore au planning. La page applique le périmètre du créneau en cours (onglet Planning) ; hors créneau, elle montre tous les établissements. Le périmètre répartit le travail sans restreindre l'accès.</p>
     ${refInfo && refInfo.absent ? `<p class="avert">Le référentiel « ${esc(refInfo.table)} » est introuvable : terminez l'installation.</p>` : ""}
     ${malReliees.map(x => `<p class="avert">La page « ${esc(x.page)} » affiche le formulaire de saisie sur la table « ${esc(x.table)} », pour laquelle aucun formulaire n'est publié : elle reste vide.</p>`).join("")}
     <div id="pg-agents">${html}</div>
@@ -2178,7 +2194,7 @@ async function creerPagesAgents() {
     const sections = await grist.docApi.fetchTable("_grist_Views_section");
     const acts = [];
     for (const c of cibles) {
-      const i = sections.id.indexOf(c.ref), nom = R.nomPage(c.a.nom, {});
+      const i = sections.id.indexOf(c.ref), nom = nomPageAgent(c.a);
       const { o, cv } = optionsVue(i >= 0 ? sections.options[i] : "");
       o.customView = JSON.stringify({ ...cv, mode: "url", url: cv.url || c.url || url, access: "full",
         widgetOptions: { ...(cv.widgetOptions || {}), formulaire: courant.nom, libelle: c.a.nom, perimetre: {}, agent: c.a.id } });

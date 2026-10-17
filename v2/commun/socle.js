@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0-alpha.12 (17/10/2026)";
+  const VERSION = "2.0.0-alpha.13 (17/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -243,13 +243,20 @@ return "".join(resultat)`;
      Creneaux : créneaux nommés de chaque jour (Debut et Fin datés : un créneau de nuit finit le lendemain).
      Affectations : un agent sur un créneau, avec sa fonction et son périmètre pour ce créneau
      (Perimetre : JSON { <colonne du référentiel>: [valeurs] } ; vide = tous les établissements).
+     Champ : EN et/ou ESR, les formulaires sur lesquels l'agent est mobilisé pendant le créneau (vide = les deux).
      Le périmètre n'est pas fixé sur la fiche : il change d'un créneau à l'autre.
      Liste des fonctions et modèles de journée : clé « planning » de Config. */
+  // Champs de mobilisation : rattachés à la version des formulaires (en / esr)
+  const CHAMPS = [
+    { id: "EN", version: "en", libelle: "Éducation nationale" },
+    { id: "ESR", version: "esr", libelle: "Enseignement supérieur et recherche" },
+  ];
+  // fonctions : une ligne du tableau du planning chacune, dans cet ordre ; ligne: false = non affichée ; saisie: page de saisie
   const PLANNING_DEFAUT = {
     fonctions: [
-      { nom: "Coordinateur", saisie: false },
-      { nom: "Opérateur", saisie: true },
-      { nom: "Rédacteur", saisie: false },
+      { nom: "Coordinateur", saisie: false, ligne: true },
+      { nom: "Opérateur", saisie: true, ligne: true },
+      { nom: "Rédacteur", saisie: false, ligne: true },
     ],
     modeles: [
       { nom: "Semaine", creneaux: [{ nom: "Matin", debut: "08:00", fin: "13:00" }, { nom: "Après-midi", debut: "13:00", fin: "19:00" }] },
@@ -259,7 +266,8 @@ return "".join(resultat)`;
   function reglagesPlanning(config) {
     const v = (config && config.valeurs && config.valeurs.planning) || {};
     return {
-      fonctions: Array.isArray(v.fonctions) && v.fonctions.length ? v.fonctions : PLANNING_DEFAUT.fonctions,
+      fonctions: (Array.isArray(v.fonctions) && v.fonctions.length ? v.fonctions : PLANNING_DEFAUT.fonctions)
+        .map(f => ({ nom: String(f.nom || ""), saisie: !!f.saisie, ligne: f.ligne !== false })),
       modeles: Array.isArray(v.modeles) ? v.modeles : PLANNING_DEFAUT.modeles,
     };
   }
@@ -280,9 +288,14 @@ return "".join(resultat)`;
     return [
       { id: "Creneau", type: `Ref:${g.creneaux}` }, { id: "Agent", type: `Ref:${g.agents}` },
       { id: "Fonction", type: "Choice", widgetOptions: choix(reglagesPlanning(config).fonctions.map(f => f.nom)) },
-      { id: "Perimetre", type: "Text" }, { id: "Note", type: "Text" }, { id: "Modifie_le", type: "DateTime:Europe/Paris" },
+      { id: "Perimetre", type: "Text" }, { id: "Champ", type: "ChoiceList", widgetOptions: choix(CHAMPS.map(c => c.id)) },
+      { id: "Note", type: "Text" }, { id: "Modifie_le", type: "DateTime:Europe/Paris" },
     ];
   }
+  // Valeur d'une colonne ChoiceList (["L", "EN", …], texte « EN, ESR », ou vide) → liste
+  const listeChoix = v => Array.isArray(v) ? v.filter(x => x !== "L").map(String) : (typeof v === "string" && v.trim() ? v.split(/\s*,\s*/) : []);
+  // Champs couverts par une affectation : vide = les deux
+  const champsDe = a => { const l = (a && a.champ) || []; return l.length ? l : CHAMPS.map(c => c.id); };
   // Planning lu en une fois : { creneaux: [{id, date, nom, debut, fin, note}], affectations: [{id, creneau, agent, fonction, perimetre(texte), note}] }
   // null si les tables n'existent pas.
   async function lirePlanning(g) {
@@ -293,7 +306,7 @@ return "".join(resultat)`;
       creneaux: (c.id || []).map((id, i) => ({ id, date: v(c, "Date", i), nom: String(v(c, "Nom", i) || ""), debut: v(c, "Debut", i), fin: v(c, "Fin", i), note: String(v(c, "Note", i) || "") }))
         .sort((x, y) => (x.debut || 0) - (y.debut || 0)),
       affectations: (a.id || []).map((id, i) => ({ id, creneau: v(a, "Creneau", i), agent: v(a, "Agent", i), fonction: String(v(a, "Fonction", i) || ""),
-        perimetre: v(a, "Perimetre", i) || "", note: String(v(a, "Note", i) || "") })),
+        perimetre: v(a, "Perimetre", i) || "", champ: listeChoix(v(a, "Champ", i)), note: String(v(a, "Note", i) || "") })),
     };
   }
   // Affectations en cours d'un agent à l'instant t (secondes) : [{ affectation, creneau }]
@@ -568,7 +581,7 @@ return "".join(resultat)`;
   window.Socle = {
     reglagesPointParDefaut,
     VERSION, TABLE_CONFIG, DEFAUTS_GENERAL, NATURES, ROLES,
-    PLANNING_DEFAUT, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
+    PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
     norm, cibleRef, lireMeta, lireConfig, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer,
     REGIONS_ACADEMIQUES, regionDeAcademie,

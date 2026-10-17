@@ -4,10 +4,12 @@
    - Tableau de la semaine : une colonne par jour, une ligne par fonction (opérateur, rédacteur…) ; chaque case
      donne les agents mobilisés. En tête : nombre de personnes mobilisées par jour, et créneaux du jour.
    - Creneaux : créneaux nommés de chaque jour (Matin 8 h–13 h…), créés un par un ou à partir des modèles de journée.
-   - Affectations : un agent sur un créneau, avec sa fonction et son périmètre pour ce créneau (vide = tous les
-     établissements). La page de saisie de l'agent applique le périmètre du créneau en cours.
+   - Affectations : un agent sur un créneau, avec sa fonction, son champ (EN et/ou ESR : les formulaires concernés)
+     et son périmètre pour ce créneau (vide = tous les établissements). La page de saisie de l'agent applique le
+     périmètre du créneau en cours.
    - Cellule du jour, suivi individuel (créneaux et heures par agent).
-   - Réglages (clé « planning » de Config) : critères de périmètre, liste des fonctions, modèles de journée.
+   - Réglages (clé « planning » de Config) : critères de périmètre, fonctions (lignes du tableau, ordre, affichage,
+     saisie ; un renommage est reporté sur l'équipe et le planning), modèles de journée.
    Heures : celles du navigateur (la cellule travaille à l'heure de Paris).
    ===================================================================== */
 (function () {
@@ -55,7 +57,12 @@
     ref = await R.lireReferentiel(general, config);
     agents = await R.lireAgents(general, ref);
     planning = await S.lirePlanning(general);
+    // tables créées par une version antérieure : colonnes du socle manquantes (Champ…)
+    const meta = await S.lireMeta(), ids = [T().agents, T().creneaux, T().affectations].map(n => `cols-${n}`);
+    manquantes = !meta[T().affectations] ? [] : S.planInstallation(meta, config).etapes.filter(e => ids.includes(e.id))
+      .map(e => `${e.titre.replace(/^Compléter la table /, "")} : ${e.detail.replace(/^Colonnes ajoutées : /, "").replace(/\.$/, "")}`);
   }
+  let manquantes = [];
   const agentDe = id => (agents || []).find(a => a.id === id) || null;
   const creneauxDu = iso => planning.creneaux.filter(c => jourDuCreneau(c) === iso);
   const affectationsDe = cId => planning.affectations.filter(a => a.creneau === cId);
@@ -65,11 +72,22 @@
   const resume = p => R.resumePerimetre(p) || "tous les établissements";
   const nomCourt = c => c.nom.toLowerCase();
   // Lignes du tableau : les fonctions de la liste, puis celles trouvées sur le planning et absentes de la liste
+  // (fonctions absentes de la liste mais présentes sur le planning de la semaine : ajoutées à la fin, pour ne rien cacher)
   const lignesFonctions = jours => {
     const ids = new Set(jours.flatMap(iso => creneauxDu(iso).map(c => c.id)));
     const vues = [...new Set(planning.affectations.filter(a => ids.has(a.creneau)).map(a => a.fonction || "(sans fonction)"))];
-    return [...reglages.fonctions.map(f => f.nom), ...vues.filter(f => !reglages.fonctions.some(x => x.nom === f))];
+    return [...reglages.fonctions.filter(f => f.ligne).map(f => f.nom), ...vues.filter(f => !reglages.fonctions.some(x => x.nom === f))];
   };
+  const fonctionsMasquees = () => reglages.fonctions.filter(f => !f.ligne).map(f => f.nom);
+  const CHAMPS = S.CHAMPS.map(c => c.id);
+  const texteChamps = l => (!l || !l.length || l.length === CHAMPS.length) ? "EN et ESR" : l.join(" et ");
+  // Dernier champ connu d'un agent : proposé par défaut quand on le mobilise
+  function dernierChamp(agentId, avant) {
+    const parId = new Map(planning.creneaux.map(c => [c.id, c]));
+    const l = planning.affectations.filter(a => a.agent === agentId && parId.get(a.creneau) && parId.get(a.creneau).debut <= avant)
+      .sort((x, y) => parId.get(y.creneau).debut - parId.get(x.creneau).debut);
+    return l.length ? S.champsDe(l[0]) : [...CHAMPS];
+  }
   // Dernier périmètre connu d'un agent avant un instant : proposé par défaut quand on l'affecte
   function dernierPerimetre(agentId, avant) {
     const parId = new Map(planning.creneaux.map(c => [c.id, c]));
@@ -90,7 +108,8 @@
       $("pl-creer-tables").addEventListener("click", creerTables);
       return;
     }
-    racine.innerHTML = `${carteSemaine()}${edition ? carteEdition() : ""}${carteDuJour()}${carteSuivi()}${carteReglages()}`;
+    racine.innerHTML = `${manquantes.length ? `<div class="bandeau alerte">Les tables du planning datent d'une version antérieure (colonnes à ajouter : ${esc(manquantes.join(", "))}). <button class="primaire" id="pl-completer" style="margin-left:8px">Compléter les tables</button></div>` : ""}${carteSemaine()}${edition ? carteEdition() : ""}${carteDuJour()}${carteSuivi()}${carteReglages()}`;
+    if ($("pl-completer")) $("pl-completer").addEventListener("click", creerTables);
     lier();
   }
 
@@ -117,7 +136,10 @@
     const auj = aujourdhui(), cls = iso => [iso === auj ? "auj" : "", edition && edition.jour === iso ? "choisi-col" : ""].filter(Boolean).join(" ");
     const mobilises = iso => new Set(creneauxDu(iso).flatMap(c => affectationsDe(c.id).map(a => a.agent))).size;
     const tete = jours.map(iso => `<th class="${cls(iso)}" scope="col">${esc(jourCourt(iso))}</th>`).join("");
-    const compte = jours.map(iso => { const n = mobilises(iso); return `<td class="${cls(iso)}"><span class="pl-nb${n ? "" : " zero"}">${n}</span></td>`; }).join("");
+    const parChamp = (iso, ch) => new Set(creneauxDu(iso).flatMap(c => affectationsDe(c.id).filter(a => S.champsDe(a).includes(ch)).map(a => a.agent))).size;
+    const compte = jours.map(iso => { const n = mobilises(iso);
+      return `<td class="${cls(iso)}"><span class="pl-nb${n ? "" : " zero"}">${n}</span>${n ? `<span class="pl-nb-champs">${CHAMPS.map(ch => `${ch} ${parChamp(iso, ch)}`).join(" · ")}</span>` : ""}</td>`; }).join("");
+    const masquees = fonctionsMasquees().filter(f => jours.some(iso => creneauxDu(iso).some(c => affectationsDe(c.id).some(a => a.fonction === f))));
     const creneaux = jours.map(iso => {
       const cs = creneauxDu(iso), al = cs.flatMap(c => alertesCreneau(c).map(x => `${c.nom} : ${x}`));
       return `<td class="${cls(iso)}"><button type="button" class="pl-cr-jour${al.length ? " alerte" : ""}" data-jour="${iso}" title="${esc(al.join("\n"))}">
@@ -132,8 +154,10 @@
       const nomDe = id => (agentDe(id) || { nom: "?" }).nom;
       const noms = [...parAgent.entries()].sort(([x], [y]) => nomDe(x).localeCompare(nomDe(y), "fr")).map(([id, l]) => {
         const ag = agentDe(id), partiel = cs.length > 1 && l.length < cs.length;
-        const titreP = l.map(({ c, a }) => `${c.nom} : ${resume(perimetreAff(a).perimetre)}`).join("\n");
-        return `<span class="pl-nom" title="${esc(titreP)}">${esc(ag ? ag.nom : "?")}${partiel ? ` <small>${esc(l.map(x => nomCourt(x.c)).join(", "))}</small>` : ""}</span>`;
+        const titreP = l.map(({ c, a }) => `${c.nom} : ${texteChamps(S.champsDe(a))} · ${resume(perimetreAff(a).perimetre)}`).join("\n");
+        const champs = [...new Set(l.flatMap(x => S.champsDe(x.a)))];
+        const tag = champs.length < CHAMPS.length ? `<span class="pl-champ pl-champ-${esc(champs[0] || "").toLowerCase()}">${esc(champs.join("+"))}</span>` : "";
+        return `<span class="pl-nom" title="${esc(titreP)}">${esc(ag ? ag.nom : "?")}${tag}${partiel ? ` <small>${esc(l.map(x => nomCourt(x.c)).join(", "))}</small>` : ""}</span>`;
       }).join("");
       const choisie = edition && edition.mode === "cellule" && edition.jour === iso && edition.fonction === f;
       return `<td class="${cls(iso)}"><button type="button" class="pl-cellule${choisie ? " choisie" : ""}" data-cellule="${iso}" data-fonction="${esc(f)}" aria-label="${esc(f)}, ${esc(jourLong(iso))}">${noms || `<span class="pl-plus">+</span>`}</button></td>`;
@@ -144,13 +168,15 @@
     return `<section class="carte"><div class="pl-barre"><h2>${esc(titre)}</h2>
         <button type="button" class="secondaire petit" id="pl-prec" aria-label="Semaine précédente">◀</button>
         <button type="button" class="secondaire petit" id="pl-auj">Cette semaine</button>
-        <button type="button" class="secondaire petit" id="pl-suiv" aria-label="Semaine suivante">▶</button></div>
+        <button type="button" class="secondaire petit" id="pl-suiv" aria-label="Semaine suivante">▶</button>
+        <button type="button" class="secondaire petit" id="pl-ouvrir-reglages" style="margin-left:auto">⚙ Lignes et réglages</button></div>
       <div class="pl-defile"><table class="pl-tableau">
         <thead><tr><th></th>${tete}</tr>
           <tr class="pl-ligne-compte"><th scope="row">Mobilisés</th>${compte}</tr>
           <tr class="pl-ligne-creneaux"><th scope="row">Créneaux</th>${creneaux}</tr></thead>
         <tbody>${lignes}</tbody></table></div>
-      <p class="aide">Cliquez sur une case pour mobiliser des agents dans cette fonction ce jour-là, avec leur périmètre ; sur la ligne « Créneaux » pour régler les créneaux du jour. Un nom suivi d'un créneau (« matin ») n'est mobilisé que sur ce créneau. Survolez un nom pour voir son périmètre.</p>
+      ${masquees.length ? `<p class="aide">Agents mobilisés cette semaine dans des fonctions masquées : ${esc(masquees.join(", "))} (comptés dans « Mobilisés »).</p>` : ""}
+      <p class="aide">Cliquez sur une case pour mobiliser des agents dans cette fonction ce jour-là, avec leur périmètre ; sur la ligne « Créneaux » pour régler les créneaux du jour. Un nom suivi d'un créneau (« matin ») n'est mobilisé que sur ce créneau. Une étiquette EN ou ESR signale un agent mobilisé sur un seul champ ; sans étiquette, sur les deux. Survolez un nom pour voir son champ et son périmètre.</p>
       <details class="pl-outils"><summary>Remplir la semaine</summary>
         <p class="aide">Créer les créneaux d'un modèle de journée (réglages en bas de page) pour chaque jour choisi. Un créneau de même nom déjà présent ce jour-là n'est pas recréé.</p>
         ${modeles.length ? `<div class="pl-modeles">${jours.map(choixModele).join("")}</div>
@@ -184,8 +210,10 @@
       const ls = e.lignes.map((l, i) => ({ l, i })).filter(x => x.l.creneau === c.id);
       return `<div class="pl-bloc-creneau"><div class="pl-bloc-tete"><strong>${esc(c.nom)}</strong> <span class="aide">${esc(plage(c))}</span></div>
         ${ls.map(({ l, i }) => { const ag = agentDe(l.agent); return `<div class="pl-aff" data-i="${i}">
-          <div class="pl-aff-haut"><strong>${esc(ag ? ag.nom : "?")}</strong><small class="aide">${esc(resume(l.perimetre))}</small>
+          <div class="pl-aff-haut"><strong>${esc(ag ? ag.nom : "?")}</strong><small class="aide">${esc(texteChamps(l.champ))} · ${esc(resume(l.perimetre))}</small>
             <button type="button" class="pl-mini danger" data-retirer="${i}" title="Retirer de ce créneau" aria-label="Retirer ${esc(ag ? ag.nom : "")} du créneau ${esc(c.nom)}">×</button></div>
+          <div class="pl-crit"><span class="eq-crit-lib">Champ</span><span class="eq-puces">${CHAMPS.map(ch => { const on = l.champ.includes(ch);
+            return `<button type="button" class="eq-puce${on ? " on" : ""}" data-champ-ligne="${i}" data-val="${ch}" aria-pressed="${on}" title="${esc((S.CHAMPS.find(x => x.id === ch) || {}).libelle || ch)}">${ch}</button>`; }).join("")}</span></div>
           ${puces(l.perimetre, `data-ligne="${i}"`)}</div>`; }).join("") || `<p class="vide">Personne sur ce créneau.</p>`}
         <select data-ajout-creneau="${c.id}" aria-label="Mobiliser un agent sur le créneau ${esc(c.nom)}"><option value="">+ mobiliser sur ce créneau…</option>${actifs.map(a => option(a, c.id)).join("")}</select></div>`;
     }).join("");
@@ -193,7 +221,7 @@
       ${cs.length > 1 ? `<div class="pl-ajout-agent"><select id="pl-ajout-journee"><option value="">+ mobiliser sur toute la journée…</option>${actifs.map(a => `<option value="${a.id}">${esc(a.nom)}${a.fonction && a.fonction !== e.fonction ? ` (habituellement ${esc(a.fonction.toLowerCase())})` : ""}</option>`).join("")}</select>
         <small class="aide">L'agent est ajouté à chaque créneau du jour où il n'est pas déjà.</small></div>` : ""}
       ${blocs}
-      <p class="aide">Le périmètre proposé pour un agent est son dernier périmètre sur le planning. Aucune valeur cochée : tous les établissements. Un agent absent de la liste se crée dans l'onglet Équipe.</p>
+      <p class="aide">Champ : les formulaires (EN, ESR) sur lesquels l'agent est mobilisé ; sa page de saisie de l'autre champ le lui signale. Le champ et le périmètre proposés sont ceux de son dernier créneau. Aucune valeur cochée : tous les établissements. Un agent absent de la liste se crée dans l'onglet Équipe.</p>
       <div class="boutons"><button class="primaire" id="pl-enregistrer">Enregistrer</button>
         <button class="secondaire" id="pl-fermer">Fermer</button>
         <span class="statut" id="pl-edition-statut" role="status"></span></div></section>`;
@@ -223,7 +251,7 @@
       const ordre = f => { const i = reglages.fonctions.findIndex(x => x.nom === f); return i < 0 ? 99 : i; };
       return `<div class="pl-jour-creneau${c.debut <= t && t < c.fin ? " en-cours" : ""}"><div><strong>${esc(c.nom)}</strong> ${esc(plage(c))} ${etat}</div>
         <ul>${affs.sort((x, y) => ordre(x.fonction) - ordre(y.fonction)).map(a => { const ag = agentDe(a.agent);
-          return `<li><strong>${esc(ag ? ag.nom : "?")}</strong> · ${esc(a.fonction || "fonction ?")} · ${esc(resume(perimetreAff(a).perimetre))}${ag && ag.telephone ? ` · ${esc(ag.telephone)}` : ""}</li>`; }).join("")}</ul>
+          return `<li><strong>${esc(ag ? ag.nom : "?")}</strong> · ${esc(a.fonction || "fonction ?")} · ${esc(texteChamps(S.champsDe(a)))} · ${esc(resume(perimetreAff(a).perimetre))}${ag && ag.telephone ? ` · ${esc(ag.telephone)}` : ""}</li>`; }).join("")}</ul>
         ${al.map(x => `<p class="avert">${esc(x)}</p>`).join("")}</div>`;
     }).join("");
     return `<section class="carte"><h2>Cellule du jour — ${esc(jourLong(iso))}</h2>
@@ -263,7 +291,7 @@
   }
 
   function carteReglages() {
-    const r = reglagesEdites || JSON.parse(JSON.stringify(reglages));
+    const r = reglagesEdites || { ...JSON.parse(JSON.stringify(reglages)), fonctions: reglages.fonctions.map(f => ({ ...f, ancien: f.nom })) };
     reglagesEdites = r;
     return `<section class="carte"><details id="pl-reglages"${reglagesOuverts ? " open" : ""}><summary><strong>Réglages : périmètres, fonctions et modèles de journée</strong></summary>
       <div class="eq-lib" style="margin-top:8px">Périmètres définis selon</div>
@@ -271,10 +299,15 @@
       <div class="eq-criteres">${R.criteres(ref, config).map(c => `<span class="crit">${esc(R.libelleCritere(ref, c))}<button type="button" data-crit-retirer="${esc(c)}" title="Retirer ce critère" aria-label="Retirer ${esc(R.libelleCritere(ref, c))}">×</button></span>`).join("") || `<span class="vide">aucun critère : chaque agent couvre tous les établissements</span>`}
         ${(() => { const aj = R.criteresAjoutables(ref, config); return aj.length ? `<select id="pl-crit-ajouter" aria-label="Ajouter un critère"><option value="">+ critère…</option>${aj.map(c => `<option value="${esc(c)}">${esc(R.libelleCritere(ref, c))} (${ref.valeurs[c].length})</option>`).join("")}</select>` : ""; })()}</div>
       ${ref.absent ? `<p class="avert">Le référentiel « ${esc(ref.table)} » est introuvable : terminez l'installation.</p>` : ""}
-      <div class="eq-lib" style="margin-top:14px">Fonctions dans la cellule</div>
-      <p class="aide">Une ligne par fonction dans le tableau. « Saisit » : les agents de cette fonction ont une page de saisie (cochée d'office dans l'onglet Formulaires) et comptent pour la couverture des créneaux.</p>
-      ${r.fonctions.map((f, i) => `<div class="pl-reg-ligne" data-fonction="${i}"><input type="text" data-champ="nom" value="${esc(f.nom)}" aria-label="Nom de la fonction">
+      <div class="eq-lib" style="margin-top:14px">Fonctions : lignes du tableau</div>
+      <p class="aide">Une ligne par fonction, dans cet ordre (↑ ↓). « Ligne affichée » : la fonction a sa ligne dans le tableau. « Saisit » : les agents de cette fonction ont une page de saisie (cochée d'office dans l'onglet Formulaires) et comptent pour la couverture des créneaux. Renommer une fonction met à jour l'équipe et le planning.</p>
+      ${r.fonctions.map((f, i) => `<div class="pl-reg-ligne" data-fonction="${i}">
+        <button type="button" class="pl-mini" data-monter-fonction="${i}"${i ? "" : " disabled"} aria-label="Monter">↑</button>
+        <button type="button" class="pl-mini" data-descendre-fonction="${i}"${i < r.fonctions.length - 1 ? "" : " disabled"} aria-label="Descendre">↓</button>
+        <input type="text" data-champ="nom" value="${esc(f.nom)}" aria-label="Nom de la fonction">
+        <label class="pl-case"><input type="checkbox" data-champ="ligne"${f.ligne ? " checked" : ""}> ligne affichée</label>
         <label class="pl-case"><input type="checkbox" data-champ="saisie"${f.saisie ? " checked" : ""}> saisit</label>
+        ${f.ancien && f.ancien !== f.nom.trim() ? `<small class="aide">renommée (« ${esc(f.ancien)} »)</small>` : ""}
         <button type="button" class="pl-mini danger" data-suppr-fonction="${i}" aria-label="Supprimer la fonction">×</button></div>`).join("")}
       <button type="button" class="lien" id="pl-plus-fonction">+ fonction</button>
       <div class="eq-lib" style="margin-top:14px">Modèles de journée</div>
@@ -296,6 +329,7 @@
     $("pl-prec").addEventListener("click", () => { lundi = plusJours(lundi, -7); dessiner(); });
     $("pl-suiv").addEventListener("click", () => { lundi = plusJours(lundi, 7); dessiner(); });
     $("pl-auj").addEventListener("click", () => { lundi = lundiDe(aujourdhui()); dessiner(); });
+    $("pl-ouvrir-reglages").addEventListener("click", () => { const d = $("pl-reglages"); d.open = true; reglagesOuverts = true; d.scrollIntoView({ block: "start" }); });
     if ($("pl-appliquer-modeles")) $("pl-appliquer-modeles").addEventListener("click", appliquerModeles);
     $("pl-copier").addEventListener("click", copierSemaine);
     racine.querySelectorAll("[data-suivi]").forEach(tr => {
@@ -310,7 +344,7 @@
   function ouvrirCellule(iso, fonction) {
     const ids = new Set(creneauxDu(iso).map(c => c.id));
     const lignes = planning.affectations.filter(a => ids.has(a.creneau) && (a.fonction || "(sans fonction)") === fonction)
-      .map(a => ({ id: a.id, creneau: a.creneau, agent: a.agent, perimetre: R.perimetreObjet(ref, a.perimetre), note: a.note }));
+      .map(a => ({ id: a.id, creneau: a.creneau, agent: a.agent, perimetre: R.perimetreObjet(ref, a.perimetre), champ: S.champsDe(a), note: a.note }));
     edition = { mode: "cellule", jour: iso, fonction, lignes, origine: JSON.parse(JSON.stringify(lignes)) };
     dessiner(); versEdition();
   }
@@ -331,7 +365,8 @@
       if (e.lignes.some(l => l.creneau === cId && l.agent === agentId)) return;
       if (planning.affectations.some(a => a.creneau === cId && a.agent === agentId && (a.fonction || "(sans fonction)") !== e.fonction)) return;
       const c = planning.creneaux.find(x => x.id === cId);
-      e.lignes.push({ id: null, creneau: cId, agent: agentId, perimetre: dernierPerimetre(agentId, c ? c.debut : Date.now() / 1000), note: "" });
+      const t = c ? c.debut : Date.now() / 1000;
+      e.lignes.push({ id: null, creneau: cId, agent: agentId, perimetre: dernierPerimetre(agentId, t), champ: dernierChamp(agentId, t), note: "" });
     };
     zone.addEventListener("change", ev => {
       const t = ev.target, v = +t.value;
@@ -342,6 +377,13 @@
       dessiner(); versEdition();
     });
     zone.addEventListener("click", ev => {
+      const ch = ev.target.closest(".eq-puce[data-champ-ligne]");
+      if (ch) {
+        const l = e.lignes[+ch.dataset.champLigne], v = ch.dataset.val;
+        l.champ = l.champ.includes(v) ? l.champ.filter(x => x !== v) : CHAMPS.filter(x => x === v || l.champ.includes(x));
+        if (!l.champ.length) l.champ = CHAMPS.filter(x => x !== v);   // au moins un champ
+        dessiner(); versEdition(); return;
+      }
       const p = ev.target.closest(".eq-puce[data-ligne]");
       if (p) {
         const l = e.lignes[+p.dataset.ligne], c = p.dataset.col, v = p.dataset.val, liste = l.perimetre[c] || [];
@@ -349,7 +391,7 @@
         if (!l.perimetre[c].length) delete l.perimetre[c];
         const on = (l.perimetre[c] || []).includes(v);
         p.classList.toggle("on", on); p.setAttribute("aria-pressed", String(on));
-        const r = p.closest(".pl-aff").querySelector(".pl-aff-haut small"); if (r) r.textContent = resume(l.perimetre);
+        const r = p.closest(".pl-aff").querySelector(".pl-aff-haut small"); if (r) r.textContent = `${texteChamps(l.champ)} · ${resume(l.perimetre)}`;
         return;
       }
       const r = ev.target.closest("[data-retirer]");
@@ -392,15 +434,18 @@
     det.addEventListener("toggle", () => { reglagesOuverts = det.open; });
     det.addEventListener("input", ev => {
       const t = ev.target, f = t.closest("[data-fonction]"), m = t.closest("[data-modele]"), c = t.closest("[data-creneau]");
-      if (f) { const x = r.fonctions[+f.dataset.fonction]; if (t.dataset.champ === "nom") x.nom = t.value; if (t.dataset.champ === "saisie") x.saisie = t.checked; return; }
+      if (f) { const x = r.fonctions[+f.dataset.fonction]; if (t.dataset.champ === "nom") x.nom = t.value; if (t.dataset.champ === "saisie") x.saisie = t.checked; if (t.dataset.champ === "ligne") x.ligne = t.checked; return; }
       if (m && c) { r.modeles[+m.dataset.modele].creneaux[+c.dataset.creneau][t.dataset.champ] = t.value; return; }
       if (m && t.dataset.champ === "nom") r.modeles[+m.dataset.modele].nom = t.value;
     });
-    det.addEventListener("change", ev => { const t = ev.target, f = t.closest("[data-fonction]"); if (f && t.dataset.champ === "saisie") r.fonctions[+f.dataset.fonction].saisie = t.checked; });
+    det.addEventListener("change", ev => { const t = ev.target, f = t.closest("[data-fonction]"); if (f && (t.dataset.champ === "saisie" || t.dataset.champ === "ligne")) r.fonctions[+f.dataset.fonction][t.dataset.champ] = t.checked; });
     det.addEventListener("click", ev => {
       const t = ev.target.closest("button"); if (!t) return;
       const m = t.closest("[data-modele]");
-      if (t.id === "pl-plus-fonction") r.fonctions.push({ nom: "", saisie: false });
+      const echanger = (i, j) => { [r.fonctions[i], r.fonctions[j]] = [r.fonctions[j], r.fonctions[i]]; };
+      if (t.id === "pl-plus-fonction") r.fonctions.push({ nom: "", saisie: false, ligne: true });
+      else if (t.dataset.monterFonction != null) echanger(+t.dataset.monterFonction, +t.dataset.monterFonction - 1);
+      else if (t.dataset.descendreFonction != null) echanger(+t.dataset.descendreFonction, +t.dataset.descendreFonction + 1);
       else if (t.dataset.supprFonction != null) r.fonctions.splice(+t.dataset.supprFonction, 1);
       else if (t.id === "pl-plus-modele") r.modeles.push({ nom: "Nouveau modèle", creneaux: [{ nom: "Journée", debut: "09:00", fin: "18:00" }] });
       else if (t.dataset.supprModele != null) r.modeles.splice(+t.dataset.supprModele, 1);
@@ -418,7 +463,7 @@
 
   /* ---------- Écritures ---------- */
   const champsAff = (l, fonction) => ({ Creneau: l.creneau, Agent: l.agent, Fonction: fonction,
-    Perimetre: JSON.stringify(R.nettoyer(l.perimetre)), Note: l.note || "", Modifie_le: maintenant() });
+    Perimetre: JSON.stringify(R.nettoyer(l.perimetre)), Champ: ["L", ...l.champ], Note: l.note || "", Modifie_le: maintenant() });
   async function enregistrerCellule() {
     const e = edition, avant = new Map(e.origine.map(l => [l.id, l])), gardes = new Set(e.lignes.filter(l => l.id).map(l => l.id));
     const acts = [
@@ -473,7 +518,7 @@
         return ["AddRecord", T().creneaux, null, { Date: dateGrist(iso), Nom: c.nom, Debut: d, Fin: f, Note: c.note }]; }));
       const ids = res.retValues;
       const affs = sources.flatMap(({ c }, k) => affectationsDe(c.id).filter(a => { const ag = agentDe(a.agent); return ag && ag.actif; })
-        .map(a => ["AddRecord", T().affectations, null, { Creneau: ids[k], Agent: a.agent, Fonction: a.fonction, Perimetre: a.perimetre || "", Note: a.note, Modifie_le: maintenant() }]));
+        .map(a => ["AddRecord", T().affectations, null, { Creneau: ids[k], Agent: a.agent, Fonction: a.fonction, Perimetre: a.perimetre || "", Champ: ["L", ...S.champsDe(a)], Note: a.note, Modifie_le: maintenant() }]));
       await actions(affs);
       await recharger();
       dire("pl-statut", `${sources.length} créneau(x) et ${affs.length} affectation(s) recopiés de la semaine précédente.`);
@@ -481,13 +526,22 @@
   }
   async function enregistrerReglages() {
     const r = reglagesEdites;
-    r.fonctions = r.fonctions.map(f => ({ nom: f.nom.trim(), saisie: !!f.saisie })).filter(f => f.nom);
+    const renommages = r.fonctions.filter(f => f.ancien && f.nom.trim() && f.ancien !== f.nom.trim()).map(f => [f.ancien, f.nom.trim()]);
+    const supprimees = reglages.fonctions.map(f => f.nom).filter(n => !r.fonctions.some(f => f.ancien === n));
+    r.fonctions = r.fonctions.map(f => ({ nom: f.nom.trim(), saisie: !!f.saisie, ligne: f.ligne !== false })).filter(f => f.nom);
     r.modeles = r.modeles.map(m => ({ nom: m.nom.trim(), creneaux: m.creneaux.map(c => ({ nom: c.nom.trim(), debut: c.debut, fin: c.fin })).filter(c => c.nom && c.debut && c.fin) })).filter(m => m.nom);
     if (!r.fonctions.length) { dire("pl-reg-statut", "Gardez au moins une fonction.", true); return; }
     const noms = r.fonctions.map(f => S.norm(f.nom));
     if (noms.some((n, i) => noms.indexOf(n) !== i)) { dire("pl-reg-statut", "Deux fonctions portent le même nom.", true); return; }
+    const utilisees = supprimees.filter(n => planning.affectations.some(a => a.fonction === n) || agents.some(a => a.fonction === n));
+    if (utilisees.length && !confirm(`Fonction(s) supprimée(s) mais encore utilisée(s) par l'équipe ou le planning : ${utilisees.join(", ")}. Elles resteront affichées là où elles sont utilisées. Continuer ?`)) return;
     try {
       const meta = await S.lireMeta(), choix = JSON.stringify({ choices: r.fonctions.map(f => f.nom) }), acts = [];
+      // renommage reporté sur les fiches et sur le planning
+      for (const [ancien, nouveau] of renommages) {
+        agents.filter(a => a.fonction === ancien).forEach(a => acts.push(["UpdateRecord", T().agents, a.id, { Fonction: nouveau }]));
+        planning.affectations.filter(a => a.fonction === ancien).forEach(a => acts.push(["UpdateRecord", T().affectations, a.id, { Fonction: nouveau }]));
+      }
       for (const t of [T().agents, T().affectations]) {
         const c = meta[t] && meta[t].colonnes.Fonction;
         if (!c || !/^Choice/.test(c.type)) continue;
@@ -495,8 +549,8 @@
         acts.push(["ModifyColumn", t, "Fonction", { widgetOptions: JSON.stringify({ ...o, choices: JSON.parse(choix).choices }) }]);
       }
       await actions([S.actionConfig(config, "planning", r), ...acts]);
-      config = await S.lireConfig(); reglages = S.reglagesPlanning(config); reglagesEdites = null;
-      dessiner(); dire("pl-reg-statut", "Réglages enregistrés.");
+      await charger(); reglagesEdites = null; reglagesOuverts = true;
+      dessiner(); dire("pl-reg-statut", `Réglages enregistrés.${renommages.length ? ` Renommage reporté sur l'équipe et le planning : ${renommages.map(([a, b]) => `${a} → ${b}`).join(", ")}.` : ""}`);
     } catch (err) { dire("pl-reg-statut", `Enregistrement refusé par Grist (${err.message || err}).`, true); }
   }
   async function creerTables() {

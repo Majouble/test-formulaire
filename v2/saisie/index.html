@@ -1230,15 +1230,20 @@ let perimetreBrut = null, libellePage = "", voirToutPerimetre = false;
 /* Planning (onglet Planning de l'administration) : pendant un créneau où l'agent de la page est affecté, le périmètre
    du créneau s'applique (vide = tous les établissements). Hors créneau : périmètre des options de la page (vide pour
    les pages créées depuis l'équipe, donc tous les établissements). Relu chaque minute. */
-let agentPage = null, perimetreFiche = null, creneauPage = null;   // creneauPage : { creneau, affectation }
+let agentPage = null, perimetreFiche = null, creneauPage = null;   // creneauPage : { creneau, affectation, horsChamp }
+// Champ de ce formulaire (EN, ESR) : un agent mobilisé sur l'autre champ pendant le créneau en est averti
+const champWidget = () => { try { return (window.Socle.CHAMPS.find(c => c.version === S().version) || {}).id || ""; } catch (_) { return ""; } };
 async function majCreneau(redessiner) {
   if (agentPage == null) { creneauPage = null; return; }
   let pl = null;
   try { pl = await window.Socle.lirePlanning(socleGeneral); } catch (_) { pl = null; }
-  const x = window.Socle.affectationsEnCours(pl, agentPage)[0] || null;
+  const enCours = window.Socle.affectationsEnCours(pl, agentPage), ch = champWidget();
+  // de préférence une affectation qui couvre le champ de ce formulaire
+  const dansChamp = enCours.find(e => !ch || window.Socle.champsDe(e.affectation).includes(ch));
+  const x = dansChamp || (enCours[0] ? { ...enCours[0], horsChamp: true } : null);
   const avant = JSON.stringify([creneauPage && creneauPage.affectation.id, perimetreBrut]);
   let p = perimetreFiche;
-  if (x) { try { p = String(x.affectation.perimetre || "").trim() ? JSON.parse(x.affectation.perimetre) : {}; } catch (_) { p = {}; } }
+  if (x && !x.horsChamp) { try { p = String(x.affectation.perimetre || "").trim() ? JSON.parse(x.affectation.perimetre) : {}; } catch (_) { p = {}; } }
   creneauPage = x; perimetreBrut = p;
   if (redessiner && avant !== JSON.stringify([x && x.affectation.id, perimetreBrut])) { afficherBandeauPerimetre(); majListeDossiers(); }
 }
@@ -1248,7 +1253,8 @@ function texteCreneau() {
   if (agentPage == null) return "";
   if (!creneauPage) return "hors créneau";
   const c = creneauPage.creneau, a = creneauPage.affectation;
-  return `${c.nom} ${heureCourte(c.debut)}–${heureCourte(c.fin)}${a.fonction ? `, ${a.fonction.toLowerCase()}` : ""}`;
+  return `${c.nom} ${heureCourte(c.debut)}–${heureCourte(c.fin)}${a.fonction ? `, ${a.fonction.toLowerCase()}` : ""}`
+    + (creneauPage.horsChamp ? ` ${window.Socle.champsDe(a).join(" et ")} (pas ${champWidget()} sur ce créneau)` : "");
 }
 function perimetre() {
   if (modeEtab || !perimetreBrut) return {};
@@ -1271,7 +1277,7 @@ function afficherBandeauPerimetre() {
   const r = resumePerimetre();
   if (modeEtab || (!r && !libellePage)) { b.hidden = true; return; }
   b.hidden = false;
-  const cr = texteCreneau(), propre = creneauPage && String(creneauPage.affectation.perimetre || "").trim();
+  const cr = texteCreneau(), propre = creneauPage && !creneauPage.horsChamp && String(creneauPage.affectation.perimetre || "").trim();
   b.innerHTML = [libellePage ? `<strong>${esc(libellePage)}</strong>` : "", cr ? esc(cr) : "",
       r ? `${propre ? "périmètre du créneau" : "périmètre"} : ${esc(r)}` : (agentPage != null ? "tous les établissements" : "")].filter(Boolean).join(" · ")
     + (r ? ` <button type="button" class="lien" id="btn-voir-tout">${voirToutPerimetre ? "Revenir à mon périmètre" : "Voir tous les signalements"}</button>` : "");
@@ -1568,13 +1574,13 @@ async function choisirFormulaire() {
   try { agentPage = grist.getOption ? await grist.getOption("agent") : null; } catch (_) { agentPage = null; }
   if (agentPage != null && typeof agentPage !== "number") agentPage = Number(agentPage) || null;
   perimetreFiche = perimetreBrut;
-  await majCreneau(false);
   const publies = formulairesDispo.filter(f => typeof f.publie === "string" && f.publie.trim());
   const f = (voulu && publies.find(x => x.nom === voulu)) || publies[0] || null;
   let conf = null;
   if (f) { try { conf = JSON.parse(f.publie); } catch (_) { conf = null; } }
   formulaireActif = f && conf && Array.isArray(conf.blocs) ? { ...f, conf } : null;
   signatureFormulaire = f ? `${f.nom}|${f.publie}` : "";
+  await majCreneau(false);
   return formulaireActif;
 }
 // Réglages d'une question → repères de description (même syntaxe que la saisie manuelle)
