@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0-alpha.17 (17/10/2026)";
+  const VERSION = "2.0.0-alpha.18 (17/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -328,16 +328,37 @@ return sorted(champs)`;
       auteur: String(v("Auteur", i) || ""), note: String(v("Note", i) || "") })).sort((a, b) => (a.debut || 0) - (b.debut || 0));
   }
   // Suivi des actions (onglet Actions de l'administration, en kanban) : une ligne par action.
-  const STATUTS_ACTION = ["À faire", "En cours", "Fait"];
+  // Colonnes du kanban (statuts) réglables : clé « actions » de Config ; « clos » = la colonne qui termine une action
+  // (heure de réalisation notée, plus de retard). Ordre : position manuelle dans la colonne. Archivee : rangée dans les archives.
+  const ACTIONS_DEFAUT = {
+    statuts: [
+      { nom: "À faire", couleur: "#6a6af4", emoji: "", clos: false },
+      { nom: "En cours", couleur: "#d68a00", emoji: "", clos: false },
+      { nom: "Fait", couleur: "#18753c", emoji: "", clos: true },
+    ],
+    cartes: { priorite: true, description: true, echeance: true, responsable: true, creation: false },
+  };
+  const STATUTS_ACTION = ACTIONS_DEFAUT.statuts.map(x => x.nom);
   const PRIORITES_ACTION = ["Haute", "Moyenne", "Basse"];
-  function colonnesActions(g) {
+  function reglagesActions(config) {
+    const v = (config && config.valeurs && config.valeurs.actions) || {};
+    const statuts = (Array.isArray(v.statuts) && v.statuts.length >= 2 ? v.statuts : ACTIONS_DEFAUT.statuts)
+      .map(x => ({ nom: String(x.nom || ""), couleur: x.couleur || "#94a3b8", emoji: String(x.emoji || ""), clos: !!x.clos })).filter(x => x.nom);
+    if (!statuts.some(x => x.clos)) statuts[statuts.length - 1].clos = true;
+    return { statuts, cartes: { ...ACTIONS_DEFAUT.cartes, ...(v.cartes || {}) } };
+  }
+  // Options de la colonne Choice Statut : choix et couleurs des colonnes du kanban
+  const optionsStatuts = statuts => json({ choices: statuts.map(x => x.nom),
+    choiceOptions: Object.fromEntries(statuts.map(x => [x.nom, { fillColor: x.couleur, textColor: "#ffffff" }])) });
+  function colonnesActions(g, config) {
     return [
       { id: "Titre", type: "Text" }, { id: "Description", type: "Text" },
-      { id: "Statut", type: "Choice", widgetOptions: choix(STATUTS_ACTION) },
+      { id: "Statut", type: "Choice", widgetOptions: optionsStatuts(reglagesActions(config).statuts) },
       { id: "Priorite", type: "Choice", widgetOptions: choix(PRIORITES_ACTION) },
       { id: "Responsable", type: `Ref:${g.agents}` }, { id: "Echeance", type: "Date" },
       { id: "Cree_par", type: "Text", formula: "user.Email" }, { id: "Cree_le", type: "DateTime:Europe/Paris", formula: "NOW()" },
       { id: "Fait_le", type: "DateTime:Europe/Paris" },
+      { id: "Ordre", type: "Numeric" }, { id: "Archivee", type: "Bool" },
     ];
   }
   async function lireActions(g) {
@@ -345,9 +366,10 @@ return sorted(champs)`;
     try { t = await grist.docApi.fetchTable(g.actions || "Actions"); } catch (_) { return null; }
     const v = (k, i) => (t[k] || [])[i];
     return (t.id || []).map((id, i) => ({ id, titre: String(v("Titre", i) || ""), description: String(v("Description", i) || ""),
-      statut: STATUTS_ACTION.includes(v("Statut", i)) ? v("Statut", i) : "À faire", priorite: PRIORITES_ACTION.includes(v("Priorite", i)) ? v("Priorite", i) : "Moyenne",
+      statut: String(v("Statut", i) || ""), priorite: PRIORITES_ACTION.includes(v("Priorite", i)) ? v("Priorite", i) : "Moyenne",
       responsable: v("Responsable", i) || null, echeance: v("Echeance", i) || null, creePar: String(v("Cree_par", i) || ""),
-      creeLe: v("Cree_le", i) || null, faitLe: v("Fait_le", i) || null }));
+      creeLe: v("Cree_le", i) || null, faitLe: v("Fait_le", i) || null, ordre: typeof v("Ordre", i) === "number" ? v("Ordre", i) : null,
+      archivee: !!v("Archivee", i) }));
   }
   // Valeur d'une colonne ChoiceList (["L", "EN", …], texte « EN, ESR », ou vide) → liste
   const listeChoix = v => Array.isArray(v) ? v.filter(x => x !== "L").map(String) : (typeof v === "string" && v.trim() ? v.split(/\s*,\s*/) : []);
@@ -510,7 +532,7 @@ return sorted(champs)`;
     ajouterTableTechnique(g.agents, colsAgents.filter(c => !c.isFormula), "Équipe de la cellule : nom, adresse, fonction habituelle, téléphone (onglet Équipe).");
     ajouterTableTechnique(g.creneaux, COLONNES_CRENEAUX, "Planning : créneaux de chaque jour (onglet Planning).");
     ajouterTableTechnique(g.affectations, colonnesAffectations(g, config), "Planning : agents affectés à chaque créneau, avec leur fonction et leur périmètre.");
-    ajouterTableTechnique(g.actions, colonnesActions(g), "Suivi des actions de la cellule : kanban des coordinateurs (onglet Actions).");
+    ajouterTableTechnique(g.actions, colonnesActions(g, config), "Suivi des actions de la cellule : kanban des coordinateurs (onglet Actions).");
     ajouterTableTechnique(g.emargements, colonnesEmargements(g), "Émargement : prises et fins de service des agents (page de saisie, suivi dans l'onglet Planning).");
     // Formules de la table Agents : après Affectations, qu'elles lisent
     const formules = colsAgents.filter(c => c.isFormula && !(meta[g.agents] && meta[g.agents].colonnes[c.id]));
@@ -648,7 +670,7 @@ return sorted(champs)`;
   window.Socle = {
     reglagesPointParDefaut,
     VERSION, TABLE_CONFIG, DEFAUTS_GENERAL, NATURES, ROLES,
-    colonnesEmargements, lireEmargements, STATUTS_ACTION, PRIORITES_ACTION, colonnesActions, lireActions,
+    colonnesEmargements, lireEmargements, STATUTS_ACTION, PRIORITES_ACTION, ACTIONS_DEFAUT, reglagesActions, optionsStatuts, colonnesActions, lireActions,
     PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
     norm, cibleRef, lireMeta, lireConfig, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer,
