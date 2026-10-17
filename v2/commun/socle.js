@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0-alpha.13 (17/10/2026)";
+  const VERSION = "2.0.0-alpha.14 (17/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -272,12 +272,28 @@ return "".join(resultat)`;
     };
   }
   const choix = liste => json({ choices: liste });
+  // Champs_acces (formule) : champs EN / ESR sur lesquels l'agent est mobilisé au planning, 7 jours avant ou après
+  // aujourd'hui ; lu par les règles d'accès (onglet Accès). Grist réévalue NOW() environ toutes les heures.
+  const formuleChampsAcces = g => `# Champs (EN, ESR) sur lesquels l'agent est mobilisé au planning, 7 jours avant ou après aujourd'hui.
+# Lu par les règles d'accès (onglet Accès de l'administration). Recalculé environ toutes les heures.
+from datetime import timedelta
+if not $Actif:
+  return []
+maintenant = NOW()
+champs = set()
+for a in ${g.affectations}.lookupRecords(Agent=$id):
+  c = a.Creneau
+  if c and c.Debut and c.Fin and c.Fin >= maintenant - timedelta(days=7) and c.Debut <= maintenant + timedelta(days=7):
+    champs.update(a.Champ or ${json(CHAMPS.map(c => c.id))})
+return sorted(champs)`;
   function colonnesAgents(config) {
+    const g = general(config);
     return [
       { id: "Nom", type: "Text" }, { id: "Email", type: "Text" },
       { id: "Fonction", type: "Choice", widgetOptions: choix(reglagesPlanning(config).fonctions.map(f => f.nom)) },
       { id: "Telephone", type: "Text" }, { id: "Actif", type: "Bool" },
       { id: "Modifie_le", type: "DateTime:Europe/Paris" },
+      { id: "Champs_acces", type: "ChoiceList", isFormula: true, formula: formuleChampsAcces(g), widgetOptions: choix(CHAMPS.map(c => c.id)) },
     ];
   }
   const COLONNES_CRENEAUX = [
@@ -447,9 +463,15 @@ return "".join(resultat)`;
     // 1. Tables techniques
     ajouterTableTechnique(TABLE_CONFIG, COLONNES_CONFIG, "Réglages du document, une ligne par clé (valeur en JSON).");
     ajouterTableTechnique(g.formulaires, COLONNES_FORMULAIRES, "Formulaires en brouillon et publiés.");
-    ajouterTableTechnique(g.agents, colonnesAgents(config), "Équipe de la cellule : nom, adresse, fonction habituelle, téléphone (onglet Équipe).");
+    const colsAgents = colonnesAgents(config);
+    ajouterTableTechnique(g.agents, colsAgents.filter(c => !c.isFormula), "Équipe de la cellule : nom, adresse, fonction habituelle, téléphone (onglet Équipe).");
     ajouterTableTechnique(g.creneaux, COLONNES_CRENEAUX, "Planning : créneaux de chaque jour (onglet Planning).");
     ajouterTableTechnique(g.affectations, colonnesAffectations(g, config), "Planning : agents affectés à chaque créneau, avec leur fonction et leur périmètre.");
+    // Formules de la table Agents : après Affectations, qu'elles lisent
+    const formules = colsAgents.filter(c => c.isFormula && !(meta[g.agents] && meta[g.agents].colonnes[c.id]));
+    if (formules.length) etapes.push({ id: `formule-${g.agents}`, groupe: "Tables", coche: true, titre: `Ajouter ${formules.map(c => `${g.agents}.${c.id}`).join(", ")}`,
+      detail: "Champs (EN, ESR) de chaque agent d'après le planning, lus par les règles d'accès.",
+      actions: formules.map(c => ["AddColumn", g.agents, c.id, { type: c.type, isFormula: true, formula: c.formula, widgetOptions: c.widgetOptions || "" }]) });
 
     // 2. Table des réponses : la référence Établissement indique, dans un document existant, la vraie table du référentiel
     const tRep = meta[g.reponses];

@@ -6,7 +6,7 @@ Ce dossier contient la version 2 des widgets. La version 1 (`index.html` à la r
 | --- | --- | --- |
 | `https://majouble.github.io/test-formulaire/` | v1 | Documents en production (ne pas modifier pendant la refonte) |
 | `https://majouble.github.io/test-formulaire/v2/saisie/` | v2 | Formulaire de saisie : Config, rôles, périmètre de la page, fusion des mises à jour concurrentes (en test) |
-| `https://majouble.github.io/test-formulaire/v2/admin/` | v2 | Administration : onglets Installation, Référentiel (annuaire EN), Équipe, Planning, Formulaires, Point de situation et Tableau de bord en test |
+| `https://majouble.github.io/test-formulaire/v2/admin/` | v2 | Administration : onglets Installation, Référentiel (annuaire EN), Équipe, Planning, Accès, Formulaires, Point de situation et Tableau de bord en test |
 | `https://majouble.github.io/test-formulaire/v2/point-situation/` | v2 | Production du point de situation, selon la configuration publiée dans l'administration (en test) |
 | `https://majouble.github.io/test-formulaire/v2/tableau-de-bord/` | v2 | Tableau de bord en lecture, selon la version publiée dans l'administration (en test) |
 
@@ -17,7 +17,7 @@ v2/
 ├── README.md            ce fichier
 ├── commun/socle.js      code partagé : lecture de Config, rôles, plan d'installation
 ├── saisie/              formulaire de saisie
-├── admin/               administration : installation.js, referentiel.js, equipe.js, planning.js, repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css)
+├── admin/               administration : installation.js, referentiel.js, equipe.js, planning.js, acces.js, repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css)
 ├── point-situation/     production du point de situation
 ├── tableau-de-bord/     tableau de bord : tableau.js (module partagé, édition dans l'administration, lecture dans le widget)
 └── modeles/             exemples de configuration à importer (à venir)
@@ -45,6 +45,8 @@ v2/
 - Le champ (EN, ESR) dit sur quels formulaires l'agent est mobilisé : l'onglet Formulaires coche d'office les agents mobilisés sur le champ du formulaire ; la page de saisie de l'autre champ prévient l'agent pendant le créneau. Les règles d'accès s'appuieront dessus.
 - Affichage : une colonne par jour, une ligne par fonction, le nom des agents mobilisés dans chaque case ; en tête, le nombre de personnes mobilisées par jour et les créneaux du jour. Modèles de journée et copie de la semaine précédente pour remplir vite ; cellule du jour ; suivi individuel des créneaux et des heures.
 - Une page de saisie par agent qui saisit (« Formulaire Alice »), créée depuis l'onglet Formulaires, sans périmètre fixe. Pendant un créneau où l'agent est mobilisé, la page applique le périmètre du créneau (relu chaque minute) ; hors créneau, tous les établissements.
+
+- Règles d'accès (onglet Accès, propriétaires seulement) : attribut utilisateur « Agent » (table Agents, par adresse). Propriétaires : tout. Agent actif mobilisé sur un champ (EN, ESR) au planning, 7 jours avant ou après aujourd'hui (formule `Agents.Champs_acces`) : saisie (lecture, ajout, modification, sans suppression) sur les tables des formulaires de ce champ et sur le référentiel. Autres agents actifs : lecture seule. Personnes absentes de l'équipe : aucun accès. Les règles portent le mémo « Socle v2 — … » ; les appliquer remplace celles des tables gérées et la règle par défaut, sans toucher aux autres tables. L'accès des établissements par lien viendra avec le publipostage.
 
 ## Tester l'installation
 

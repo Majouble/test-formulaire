@@ -102,6 +102,7 @@
       id, nom: String(col("Nom", i) || "").trim(), email: String(col("Email", i) || "").trim(),
       fonction: String(col("Fonction", i) || "").trim() || FONCTION_ANCIEN_ROLE[String(col("Role", i) || "").trim()] || "",
       telephone: String(col("Telephone", i) || "").trim(), actif: col("Actif", i) !== false,
+      champsAcces: t.Champs_acces ? S().listeChoix(col("Champs_acces", i)) : null,   // null : colonne absente
     })).sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
   }
 

@@ -32,7 +32,7 @@
     agents = await R.lireAgents(general, ref);
     pages = await R.lirePages();
     const meta = await S.lireMeta(), t = meta[table()];
-    colonnesManquantes = t ? S.colonnesAgents(config).map(c => c.id).filter(c => !t.colonnes[c]) : [];
+    colonnesManquantes = t ? S.colonnesAgents(config).filter(c => !c.isFormula).map(c => c.id).filter(c => !t.colonnes[c]) : [];
   }
 
   /* ---------- Rendu ---------- */
@@ -165,8 +165,12 @@
   async function creerTable() {
     const meta = await S.lireMeta(), plan = S.planInstallation(meta, config);
     const etape = plan.etapes.find(e => e.id === `table-${table()}` || e.id === `cols-${table()}`);
+    // formule Champs_acces : seulement si la table des affectations existe (sinon l'onglet Planning l'ajoutera)
+    const formule = meta[general.affectations || "Affectations"] ? plan.etapes.find(e => e.id === `formule-${table()}`) : null;
+    if (!etape && formule) { await S.appliquer([formule]); await charger(); dessiner(); return; }
     if (!etape) { await charger(); dessiner(); return; }
     const [r] = await S.appliquer([etape]);
+    if (r.ok && formule) await S.appliquer([formule]);
     // ancienne colonne Role : la fonction en est déduite à la première lecture, puis enregistrée
     if (r.ok && etape.id.startsWith("cols-") && agents && agents.length)
       try { await grist.docApi.applyUserActions(agents.filter(a => a.fonction).map(a => ["UpdateRecord", table(), a.id, { Fonction: a.fonction }])); } catch (_) { /* facultatif */ }

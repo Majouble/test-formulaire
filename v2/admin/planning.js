@@ -58,9 +58,9 @@
     agents = await R.lireAgents(general, ref);
     planning = await S.lirePlanning(general);
     // tables créées par une version antérieure : colonnes du socle manquantes (Champ…)
-    const meta = await S.lireMeta(), ids = [T().agents, T().creneaux, T().affectations].map(n => `cols-${n}`);
+    const meta = await S.lireMeta(), ids = [...[T().agents, T().creneaux, T().affectations].map(n => `cols-${n}`), `formule-${T().agents}`];
     manquantes = !meta[T().affectations] ? [] : S.planInstallation(meta, config).etapes.filter(e => ids.includes(e.id))
-      .map(e => `${e.titre.replace(/^Compléter la table /, "")} : ${e.detail.replace(/^Colonnes ajoutées : /, "").replace(/\.$/, "")}`);
+      .map(e => e.id.startsWith("formule-") ? e.titre.replace(/^Ajouter /, "") : `${e.titre.replace(/^Compléter la table /, "")} : ${e.detail.replace(/^Colonnes ajoutées : /, "").replace(/\.$/, "")}`);
   }
   let manquantes = [];
   const agentDe = id => (agents || []).find(a => a.id === id) || null;
@@ -556,7 +556,7 @@
   async function creerTables() {
     const meta = await S.lireMeta(), plan = S.planInstallation(meta, config);
     const noms = [T().agents, T().creneaux, T().affectations];
-    const etapes = plan.etapes.filter(e => noms.some(n => e.id === `table-${n}` || e.id === `cols-${n}`));
+    const etapes = plan.etapes.filter(e => noms.some(n => e.id === `table-${n}` || e.id === `cols-${n}`) || e.id === `formule-${T().agents}`);
     const res = await S.appliquer(etapes), ko = res.find(r => !r.ok);
     if (ko) { dire("pl-statut", `Création refusée par Grist (${ko.erreur}).`, true); return; }
     await charger(); dessiner();
