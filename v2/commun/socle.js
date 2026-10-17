@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0-alpha.10 (17/10/2026)";
+  const VERSION = "2.0.0-alpha.11 (17/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -23,6 +23,8 @@
     referentiel: "Etablissements",         // table des établissements (et des sites)
     formulaires: "Formulaires",            // table des formulaires
     agents: "Agents",                      // équipe de la cellule (une ligne par agent)
+    creneaux: "Creneaux",                  // planning : créneaux de chaque jour
+    affectations: "Affectations",          // planning : agents affectés à chaque créneau
     retour_normale: ["RAS"],               // qualifications qui valent retour à la normale
   };
   const NATURES = ["Nouveau signalement", "Mise à jour"];
@@ -236,19 +238,78 @@ return "".join(resultat)`;
     { id: "Type", type: "Text" }, { id: "Widget", type: "Text" },
   ];
 
-  // Équipe de la cellule. Perimetre : JSON { <colonne du référentiel>: [valeurs] }, le même format que les pages de saisie.
-  // Le rôle servira aux règles d'accès ; il ne restreint encore rien.
-  const ROLES_AGENT = [
-    { id: "Coordination", libelle: "Coordination", detail: "Pilote la cellule : administration, point de situation, validation." },
-    { id: "Saisie", libelle: "Saisie", detail: "Saisit et suit les signalements de son périmètre, sur sa page." },
-    { id: "Lecture", libelle: "Lecture", detail: "Consulte le tableau de bord et les points de situation." },
+  /* ---------- Équipe et planning ----------
+     Agents : la fiche de chaque agent. Deux notions distinctes :
+     - Acces : niveau d'accès (national, académique, départemental), stable, pour les règles d'accès ;
+     - Fonction : fonction habituelle dans la cellule (opérateur, rédacteur…), qu'un créneau peut changer.
+     Perimetre : JSON { <colonne du référentiel>: [valeurs] }, le même format que les pages de saisie.
+     Creneaux : créneaux nommés de chaque jour (Debut et Fin datés : un créneau de nuit finit le lendemain).
+     Affectations : un agent sur un créneau, avec sa fonction et son périmètre pour ce créneau.
+     Liste des fonctions et modèles de journée : clé « planning » de Config. */
+  const ACCES_AGENT = [
+    { id: "National", detail: "Tous les établissements." },
+    { id: "Académique", detail: "Les académies de son périmètre." },
+    { id: "Départemental", detail: "Les départements de son périmètre." },
   ];
-  const COLONNES_AGENTS = [
-    { id: "Nom", type: "Text" }, { id: "Email", type: "Text" },
-    { id: "Role", type: "Choice", widgetOptions: json({ choices: ROLES_AGENT.map(r => r.id) }) },
-    { id: "Telephone", type: "Text" }, { id: "Perimetre", type: "Text" }, { id: "Actif", type: "Bool" },
-    { id: "Modifie_le", type: "DateTime:Europe/Paris" },
+  const PLANNING_DEFAUT = {
+    fonctions: [
+      { nom: "Coordinateur", saisie: false },
+      { nom: "Opérateur", saisie: true },
+      { nom: "Rédacteur", saisie: false },
+    ],
+    modeles: [
+      { nom: "Semaine", creneaux: [{ nom: "Matin", debut: "08:00", fin: "13:00" }, { nom: "Après-midi", debut: "13:00", fin: "19:00" }] },
+      { nom: "Week-end", creneaux: [{ nom: "Journée", debut: "09:00", fin: "18:00" }] },
+    ],
+  };
+  function reglagesPlanning(config) {
+    const v = (config && config.valeurs && config.valeurs.planning) || {};
+    return {
+      fonctions: Array.isArray(v.fonctions) && v.fonctions.length ? v.fonctions : PLANNING_DEFAUT.fonctions,
+      modeles: Array.isArray(v.modeles) ? v.modeles : PLANNING_DEFAUT.modeles,
+    };
+  }
+  const choix = liste => json({ choices: liste });
+  function colonnesAgents(config) {
+    return [
+      { id: "Nom", type: "Text" }, { id: "Email", type: "Text" },
+      { id: "Acces", type: "Choice", widgetOptions: choix(ACCES_AGENT.map(r => r.id)) },
+      { id: "Fonction", type: "Choice", widgetOptions: choix(reglagesPlanning(config).fonctions.map(f => f.nom)) },
+      { id: "Telephone", type: "Text" }, { id: "Perimetre", type: "Text" }, { id: "Actif", type: "Bool" },
+      { id: "Modifie_le", type: "DateTime:Europe/Paris" },
+    ];
+  }
+  const COLONNES_CRENEAUX = [
+    { id: "Date", type: "Date" }, { id: "Nom", type: "Text" },
+    { id: "Debut", type: "DateTime:Europe/Paris" }, { id: "Fin", type: "DateTime:Europe/Paris" }, { id: "Note", type: "Text" },
   ];
+  function colonnesAffectations(g, config) {
+    return [
+      { id: "Creneau", type: `Ref:${g.creneaux}` }, { id: "Agent", type: `Ref:${g.agents}` },
+      { id: "Fonction", type: "Choice", widgetOptions: choix(reglagesPlanning(config).fonctions.map(f => f.nom)) },
+      { id: "Perimetre", type: "Text" }, { id: "Note", type: "Text" }, { id: "Modifie_le", type: "DateTime:Europe/Paris" },
+    ];
+  }
+  // Planning lu en une fois : { creneaux: [{id, date, nom, debut, fin, note}], affectations: [{id, creneau, agent, fonction, perimetre(texte), note}] }
+  // null si les tables n'existent pas.
+  async function lirePlanning(g) {
+    let c, a;
+    try { [c, a] = await Promise.all([grist.docApi.fetchTable(g.creneaux), grist.docApi.fetchTable(g.affectations)]); } catch (_) { return null; }
+    const v = (t, k, i) => (t[k] || [])[i];
+    return {
+      creneaux: (c.id || []).map((id, i) => ({ id, date: v(c, "Date", i), nom: String(v(c, "Nom", i) || ""), debut: v(c, "Debut", i), fin: v(c, "Fin", i), note: String(v(c, "Note", i) || "") }))
+        .sort((x, y) => (x.debut || 0) - (y.debut || 0)),
+      affectations: (a.id || []).map((id, i) => ({ id, creneau: v(a, "Creneau", i), agent: v(a, "Agent", i), fonction: String(v(a, "Fonction", i) || ""),
+        perimetre: v(a, "Perimetre", i) || "", note: String(v(a, "Note", i) || "") })),
+    };
+  }
+  // Affectations en cours d'un agent à l'instant t (secondes) : [{ affectation, creneau }]
+  function affectationsEnCours(planning, agentId, t = Date.now() / 1000) {
+    if (!planning || agentId == null) return [];
+    const parId = new Map(planning.creneaux.map(c => [c.id, c]));
+    return planning.affectations.filter(a => a.agent === agentId).map(a => ({ affectation: a, creneau: parId.get(a.creneau) }))
+      .filter(x => x.creneau && x.creneau.debut <= t && t < x.creneau.fin);
+  }
 
   /* ---------- Lecture des métadonnées Grist ---------- */
   async function lireMeta() {
@@ -380,7 +441,9 @@ return "".join(resultat)`;
     // 1. Tables techniques
     ajouterTableTechnique(TABLE_CONFIG, COLONNES_CONFIG, "Réglages du document, une ligne par clé (valeur en JSON).");
     ajouterTableTechnique(g.formulaires, COLONNES_FORMULAIRES, "Formulaires en brouillon et publiés.");
-    ajouterTableTechnique(g.agents, COLONNES_AGENTS, "Équipe de la cellule : nom, adresse, rôle, périmètre (onglet Équipe).");
+    ajouterTableTechnique(g.agents, colonnesAgents(config), "Équipe de la cellule : nom, adresse, niveau d'accès, fonction, périmètre (onglet Équipe).");
+    ajouterTableTechnique(g.creneaux, COLONNES_CRENEAUX, "Planning : créneaux de chaque jour (onglet Planning).");
+    ajouterTableTechnique(g.affectations, colonnesAffectations(g, config), "Planning : agents affectés à chaque créneau, avec leur fonction et leur périmètre.");
 
     // 2. Table des réponses : la référence Établissement indique, dans un document existant, la vraie table du référentiel
     const tRep = meta[g.reponses];
@@ -511,7 +574,8 @@ return "".join(resultat)`;
 
   window.Socle = {
     reglagesPointParDefaut,
-    VERSION, TABLE_CONFIG, DEFAUTS_GENERAL, NATURES, ROLES, ROLES_AGENT, COLONNES_AGENTS,
+    VERSION, TABLE_CONFIG, DEFAUTS_GENERAL, NATURES, ROLES,
+    ACCES_AGENT, PLANNING_DEFAUT, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
     norm, cibleRef, lireMeta, lireConfig, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer,
     REGIONS_ACADEMIQUES, regionDeAcademie,

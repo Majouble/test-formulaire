@@ -1227,6 +1227,28 @@ let rolesAdmin = {};   // rôle -> colonne associée dans l'administration (form
    perimetre = { colonne du référentiel: [valeurs] } : un établissement en fait partie s'il remplit chaque critère.
    Ancien format : liste d'académies. Le périmètre répartit le travail ; il ne restreint pas l'accès. */
 let perimetreBrut = null, libellePage = "", voirToutPerimetre = false;
+/* Planning (onglet Planning de l'administration) : pendant un créneau où l'agent de la page est affecté, le périmètre
+   du créneau remplace celui de la page (périmètre habituel, recopié de la fiche de l'agent). Relu chaque minute. */
+let agentPage = null, perimetreFiche = null, creneauPage = null;   // creneauPage : { creneau, affectation }
+async function majCreneau(redessiner) {
+  if (agentPage == null) { creneauPage = null; return; }
+  let pl = null;
+  try { pl = await window.Socle.lirePlanning(socleGeneral); } catch (_) { pl = null; }
+  const x = window.Socle.affectationsEnCours(pl, agentPage)[0] || null;
+  const avant = JSON.stringify([creneauPage && creneauPage.affectation.id, perimetreBrut]);
+  let p = perimetreFiche;
+  if (x && String(x.affectation.perimetre || "").trim()) { try { p = JSON.parse(x.affectation.perimetre); } catch (_) { p = perimetreFiche; } }
+  creneauPage = x; perimetreBrut = p;
+  if (redessiner && avant !== JSON.stringify([x && x.affectation.id, perimetreBrut])) { afficherBandeauPerimetre(); majListeDossiers(); }
+}
+setInterval(() => { if (!document.hidden && agentPage != null) majCreneau(true).catch(() => {}); }, 60000);
+const heureCourte = sec => { const d = new Date(sec * 1000); return `${d.getHours()} h${d.getMinutes() ? ` ${String(d.getMinutes()).padStart(2, "0")}` : ""}`; };
+function texteCreneau() {
+  if (agentPage == null) return "";
+  if (!creneauPage) return "hors créneau";
+  const c = creneauPage.creneau, a = creneauPage.affectation;
+  return `${c.nom} ${heureCourte(c.debut)}–${heureCourte(c.fin)}${a.fonction ? `, ${a.fonction.toLowerCase()}` : ""}`;
+}
 function perimetre() {
   if (modeEtab || !perimetreBrut) return {};
   const p = Array.isArray(perimetreBrut) ? (perimetreBrut.length ? { [E.academie]: perimetreBrut } : {}) : perimetreBrut;
@@ -1248,7 +1270,9 @@ function afficherBandeauPerimetre() {
   const r = resumePerimetre();
   if (modeEtab || (!r && !libellePage)) { b.hidden = true; return; }
   b.hidden = false;
-  b.innerHTML = `${libellePage ? `<strong>${esc(libellePage)}</strong>` : ""}${libellePage && r ? " · " : ""}${r ? `périmètre : ${esc(r)}` : ""}`
+  const cr = texteCreneau(), propre = creneauPage && String(creneauPage.affectation.perimetre || "").trim();
+  b.innerHTML = [libellePage ? `<strong>${esc(libellePage)}</strong>` : "", cr ? esc(cr) : "",
+      r ? `${propre ? "périmètre du créneau" : (agentPage != null ? "périmètre habituel" : "périmètre")} : ${esc(r)}` : ""].filter(Boolean).join(" · ")
     + (r ? ` <button type="button" class="lien" id="btn-voir-tout">${voirToutPerimetre ? "Revenir à mon périmètre" : "Voir tous les signalements"}</button>` : "");
   const btn = $("btn-voir-tout");
   if (btn) btn.addEventListener("click", () => { voirToutPerimetre = !voirToutPerimetre; afficherBandeauPerimetre(); majListeDossiers(); });
@@ -1540,6 +1564,10 @@ async function choisirFormulaire() {
   try { versionPage = grist.getOption ? await grist.getOption("version") : null; } catch (_) { versionPage = null; }
   try { perimetreBrut = grist.getOption ? await grist.getOption("perimetre") : null; } catch (_) { perimetreBrut = null; }
   try { libellePage = grist.getOption ? (await grist.getOption("libelle")) || "" : ""; } catch (_) { libellePage = ""; }
+  try { agentPage = grist.getOption ? await grist.getOption("agent") : null; } catch (_) { agentPage = null; }
+  if (agentPage != null && typeof agentPage !== "number") agentPage = Number(agentPage) || null;
+  perimetreFiche = perimetreBrut;
+  await majCreneau(false);
   const publies = formulairesDispo.filter(f => typeof f.publie === "string" && f.publie.trim());
   const f = (voulu && publies.find(x => x.nom === voulu)) || publies[0] || null;
   let conf = null;

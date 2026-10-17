@@ -90,14 +90,17 @@
   const nomPage = (nom, perimetre) => { const r = resumePerimetre(perimetre); return `${PREFIXE_PAGE}${String(nom || "").trim()}${r ? ` (${r})` : ""}`; };
 
   /* ---------- Équipe (table Agents) ---------- */
-  // null si la table n'existe pas ; sinon [{ id, nom, email, role, telephone, perimetre, actif }]
+  // null si la table n'existe pas ; sinon [{ id, nom, email, acces, fonction, telephone, perimetre, actif }]
+  // Ancienne colonne Role (alpha.10) : Saisie → Opérateur, Coordination → Coordinateur, si Fonction est vide.
+  const FONCTION_ANCIEN_ROLE = { Saisie: "Opérateur", Coordination: "Coordinateur", Lecture: "" };
   async function lireAgents(general, ref) {
     const table = general.agents || "Agents";
     let t;
     try { t = await grist.docApi.fetchTable(table); } catch (_) { return null; }
     const col = (k, i) => (t[k] || [])[i];
     return (t.id || []).map((id, i) => ({
-      id, nom: String(col("Nom", i) || "").trim(), email: String(col("Email", i) || "").trim(), role: String(col("Role", i) || "").trim(),
+      id, nom: String(col("Nom", i) || "").trim(), email: String(col("Email", i) || "").trim(), acces: String(col("Acces", i) || "").trim(),
+      fonction: String(col("Fonction", i) || "").trim() || FONCTION_ANCIEN_ROLE[String(col("Role", i) || "").trim()] || "",
       telephone: String(col("Telephone", i) || "").trim(), perimetre: perimetreObjet(ref, col("Perimetre", i)), actif: col("Actif", i) !== false,
     })).sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
   }

@@ -2069,7 +2069,8 @@ async function lireEquipe() {
   refInfo = await R.lireReferentiel(socleGeneral, socleConfig);
   agentsEquipe = await R.lireAgents(socleGeneral, refInfo);
 }
-const avecPage = a => a.actif && (a.role === "Saisie" || a.role === "Coordination");
+const avecPage = a => a.actif;
+const fonctionDeSaisie = nom => !!(window.Socle.reglagesPlanning(socleConfig).fonctions.find(f => f.nom === nom) || {}).saisie;
 // Pages de la table du formulaire par agent, et pages sans agent actif
 function etatPages() {
   const ici = (pagesSaisie || []).filter(x => x.table === courant.table);
@@ -2096,7 +2097,7 @@ function planPages() {
   const { parAgent, orphelines } = etatPages();
   const lignes = (agentsEquipe || []).filter(avecPage).map(a => {
     const pg = parAgent.get(a.id) || [];
-    if (!repartition.inclure.has(a.id)) repartition.inclure.set(a.id, a.role === "Saisie");
+    if (!repartition.inclure.has(a.id)) repartition.inclure.set(a.id, fonctionDeSaisie(a.fonction));
     const etat = pg.length ? (pg.every(p => pageAJour(p, a)) ? "ok" : "modif") : (repartition.inclure.get(a.id) ? "nouv" : "sans");
     return { a, pg, etat };
   });
@@ -2115,7 +2116,7 @@ function groupePageHtml() {
   if (agentsEquipe === null || !agentsEquipe.filter(avecPage).length) {
     const ici = pagesSaisie.filter(x => x.table === courant.table);
     return `<div class="groupe">${titre}
-      <p class="note" style="margin:0 0 8px">Une page par agent de l'équipe, limitée à son périmètre. ${agentsEquipe === null ? "La table de l'équipe n'existe pas encore" : "L'équipe ne compte aucun agent actif de saisie ou de coordination"} : commencez par l'onglet Équipe${ici.length ? ", qui peut reprendre les pages existantes" : ""}.</p>
+      <p class="note" style="margin:0 0 8px">Une page par agent de l'équipe, limitée à son périmètre. ${agentsEquipe === null ? "La table de l'équipe n'existe pas encore" : "L'équipe ne compte aucun agent actif"} : commencez par l'onglet Équipe${ici.length ? ", qui peut reprendre les pages existantes" : ""}.</p>
       ${ici.length ? `<ul class="liste-cols">${ici.map(x => `<li><span class="present">✓</span> ${esc(x.page)}</li>`).join("")}</ul>` : ""}
       ${lienEquipe}</div>`;
   }
@@ -2126,13 +2127,13 @@ function groupePageHtml() {
     const autre = pg.find(p => p.formulaire && p.formulaire !== courant.nom);
     return `<div class="agent" data-id="${a.id}">
       <div class="agent-haut">${pg.length ? `<strong>${esc(a.nom)}</strong>` : `<label class="case" style="margin:0"><input type="checkbox" data-pg="inclure"${repartition.inclure.get(a.id) ? " checked" : ""}> <strong>${esc(a.nom)}</strong></label>`}
-        <small class="note" style="margin-left:auto">${esc(a.role)}</small>${pastilles[etat]}</div>
+        <small class="note" style="margin-left:auto">${esc(a.fonction)}</small>${pastilles[etat]}</div>
       <small class="note">${r ? esc(r) : "tous les établissements"} · page « ${esc(R.nomPage(a.nom, a.perimetre))} »${etat === "modif" ? ` (${raisonMaj(pg, a)})` : ""}</small>
       ${autre ? `<small class="note">affiche « ${esc(autre.formulaire)} » : sera basculée sur ce formulaire</small>` : ""}
     </div>`;
   }).join("");
   return `<div class="groupe">${titre}
-    <p class="note" style="margin:0 0 8px">Une page par agent de l'équipe (saisie et coordination). Son périmètre limite la liste des dossiers et la recherche d'établissements ; il répartit le travail sans restreindre l'accès. Le nom et le périmètre se règlent dans l'onglet Équipe.</p>
+    <p class="note" style="margin:0 0 8px">Une page par agent de l'équipe qui saisit (les fonctions de saisie sont cochées d'office). La page applique le périmètre du créneau du planning en cours, à défaut celui de la fiche de l'agent ; il répartit le travail sans restreindre l'accès. Nom et périmètre habituel : onglet Équipe.</p>
     ${refInfo && refInfo.absent ? `<p class="avert">Le référentiel « ${esc(refInfo.table)} » est introuvable : terminez l'installation.</p>` : ""}
     ${malReliees.map(x => `<p class="avert">La page « ${esc(x.page)} » affiche le formulaire de saisie sur la table « ${esc(x.table)} », pour laquelle aucun formulaire n'est publié : elle reste vide.</p>`).join("")}
     <div id="pg-agents">${html}</div>
