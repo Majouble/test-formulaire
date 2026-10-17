@@ -9,6 +9,7 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <!-- Socle v2 : rôles des colonnes (établissement, coordonnées du référentiel, dernière version, qualification) -->
 <script src="../commun/socle.js"></script>
+<script src="../commun/geo.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
@@ -491,8 +492,30 @@ function renderStats() {
   if (state.ref && !grpCol) $("stats").insertAdjacentHTML("beforeend", `<div class="msg warn" style="flex-basis:100%">Pour un taux juste, activez « Une entité par établissement » : sinon un établissement signalé plusieurs fois compte plusieurs fois.</div>`);
 }
 
+// Sans Leaflet (réseau filtré) : points sur le fond de carte du socle (départements, académies, encarts), si tous sont en France
+function renderPreviewFond() {
+  const G = window.Geo, svg = $("preview");
+  if (!G || !state.features.length || !state.features.every(f => f.geometry && f.geometry.type === "Point")) return false;
+  const places = state.features.map(f => ({ f, p: G.placer(f.geometry.coordinates[1], f.geometry.coordinates[0]) }));
+  if (places.some(x => !x.p)) return false;
+  const pal = legendeCouleurs(), k = 1;
+  svg.style.height = "auto"; svg.style.aspectRatio = `${G.GEO.w} / ${G.GEO.h}`;
+  svg.setAttribute("viewBox", `0 0 ${G.GEO.w} ${G.GEO.h}`);
+  const cadres = G.GEO.frames.map(f => `<rect x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" fill="none" stroke="#c3c2b7" stroke-width="1.5" rx="4"></rect><text x="${f.x + 6}" y="${f.y + 18}" font-size="15" fill="#666">${esc(f.t)}</text>`).join("");
+  let ronds = "";
+  [...places].sort((a, b) => !!b.f._ref - !!a.f._ref).forEach(({ f, p }) => {
+    const coul = f._ref ? "#a3a3b2" : pal ? (pal.get(valeurCouleur(f)) || "#000091") : "#000091", r = f._ref ? 6 : 10;
+    const att = `r="${r}" fill="${coul}" fill-opacity="${f._ref ? .6 : .9}" stroke="#fff" stroke-width="1.5"`;
+    const titre = `<title>${esc(String(f._name ?? ""))}</title>`;
+    ronds += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" ${att}>${titre}</circle>`;
+    if (p.paris) ronds += `<circle cx="${p.paris.x.toFixed(1)}" cy="${p.paris.y.toFixed(1)}" ${att}>${titre}</circle>`;
+  });
+  svg.innerHTML = G.fondSvg(k, { fond: "#eef0f5", trait: "#ffffff", traitAcademie: "#8a8fa3" }) + cadres + ronds;
+  $("couleurs").innerHTML = pal && pal.size ? [...pal.entries()].map(([v, c]) => `<span><i style="background:${c}"></i>${esc(v)}</span>`).join("") : "";
+  return true;
+}
 function renderPreview() {
-  const svg = $("preview"); const W = svg.clientWidth || 600, H = svg.clientHeight || 190;
+  const svg = $("preview"); svg.style.height = ""; svg.style.aspectRatio = ""; const W = svg.clientWidth || 600, H = svg.clientHeight || 190;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.innerHTML = "";
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   state.features.forEach(f => eachCoord(f.geometry, ([x, y]) => {
@@ -591,7 +614,7 @@ $("copy").addEventListener("click", async () => {
 
 $("format").addEventListener("change", render);
 $("withId").addEventListener("change", () => recompute());
-window.addEventListener("resize", () => { if (window.L && carte) carte.invalidateSize(); else renderPreview(); });
+window.addEventListener("resize", () => { if (window.L && carte) carte.invalidateSize(); else renderCarte(); });
 
 // ---------------------------------------------------------------------------
 // Branchement Grist
@@ -1044,15 +1067,27 @@ async function enrichirSocle(records) {
     const nom = col => present.has(col) ? `Etab_${col}` : col;
     await loadMeta(); const refTypes = typesOfTable(refTable);
     refCols.forEach(col => { colTypes[nom(col)] = refTypes[col]; });
+    // département et académie déduits des coordonnées (fond de carte du socle) quand le référentiel ne les donne pas
+    const G = window.Geo, terr = [];
+    if (G && !c("Departement")) terr.push(["Departement_carte", l => l.dep + " · " + l.departement]);
+    if (G && !c("Academie")) terr.push(["Academie_carte", l => l.academie]);
+    const lieux = new Map();
     const out = records.map(r => {
       const id = refIdOf(r[etabCol]), i = id ? idx.get(id) : undefined, e = { ...r };
-      if (i !== undefined) { refCols.forEach(col => { e[nom(col)] = data[col][i]; }); if (c("Nom")) e[etabCol] = data[c("Nom")][i]; }
+      if (i !== undefined) {
+        refCols.forEach(col => { e[nom(col)] = data[col][i]; }); if (c("Nom")) e[etabCol] = data[c("Nom")][i];
+        if (terr.length) {
+          if (!lieux.has(id)) lieux.set(id, G.localiser(data[c("Latitude")][i], data[c("Longitude")][i]));
+          const l = lieux.get(id); terr.forEach(([col, f]) => { e[col] = l ? f(l) : null; });
+        }
+      }
       return e;
     });
+    terr.forEach(([col]) => { colTypes[col] = "Text"; });
     colTypes[etabCol] = "Text";
     socle = { referentiel: refTable, etabCol, auto: { Latitude: nom(c("Latitude")), Longitude: nom(c("Longitude")), Nom: c("Nom") ? nom(c("Nom")) : etabCol },
       uai: c("UAI") ? nom(c("UAI")) : null, dv: rr.Derniere_version && rr.Derniere_version.col, qualif: rr.Qualification && rr.Qualification.col,
-      ajoutees: refCols.map(nom) };
+      ajoutees: [...refCols.map(nom), ...terr.map(([col]) => col)] };
     return out;
   } catch (e) { diagError = e && e.message ? e.message : String(e); return records; }
 }
@@ -1086,7 +1121,7 @@ function popupHtml(f) {
   return `<b>${esc(f._name ?? ("Ligne " + f._id))}</b><table>${lignes}</table>`;
 }
 function renderCarte() {
-  if (!window.L) { $("carte").classList.remove("active"); $("preview").style.display = ""; renderPreview(); $("couleurs").innerHTML = ""; return; }
+  if (!window.L) { $("carte").classList.remove("active"); $("preview").style.display = ""; $("couleurs").innerHTML = ""; if (!renderPreviewFond()) renderPreview(); return; }
   $("preview").style.display = "none"; $("carte").classList.add("active");
   if (!carte) {
     carte = L.map("carte", { preferCanvas: true, scrollWheelZoom: true });
