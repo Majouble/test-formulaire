@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0-alpha.16 (17/10/2026)";
+  const VERSION = "2.0.0-alpha.17 (17/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -26,6 +26,7 @@
     creneaux: "Creneaux",                  // planning : créneaux de chaque jour
     affectations: "Affectations",          // planning : agents affectés à chaque créneau
     emargements: "Emargements",            // émargement : prises et fins de service
+    actions: "Actions",                    // suivi des actions (kanban des coordinateurs)
     retour_normale: ["RAS"],               // qualifications qui valent retour à la normale
   };
   const NATURES = ["Nouveau signalement", "Mise à jour"];
@@ -326,6 +327,28 @@ return sorted(champs)`;
     return (t.id || []).map((id, i) => ({ id, agent: v("Agent", i), creneau: v("Creneau", i) || null, debut: v("Debut", i) || null, fin: v("Fin", i) || null,
       auteur: String(v("Auteur", i) || ""), note: String(v("Note", i) || "") })).sort((a, b) => (a.debut || 0) - (b.debut || 0));
   }
+  // Suivi des actions (onglet Actions de l'administration, en kanban) : une ligne par action.
+  const STATUTS_ACTION = ["À faire", "En cours", "Fait"];
+  const PRIORITES_ACTION = ["Haute", "Moyenne", "Basse"];
+  function colonnesActions(g) {
+    return [
+      { id: "Titre", type: "Text" }, { id: "Description", type: "Text" },
+      { id: "Statut", type: "Choice", widgetOptions: choix(STATUTS_ACTION) },
+      { id: "Priorite", type: "Choice", widgetOptions: choix(PRIORITES_ACTION) },
+      { id: "Responsable", type: `Ref:${g.agents}` }, { id: "Echeance", type: "Date" },
+      { id: "Cree_par", type: "Text", formula: "user.Email" }, { id: "Cree_le", type: "DateTime:Europe/Paris", formula: "NOW()" },
+      { id: "Fait_le", type: "DateTime:Europe/Paris" },
+    ];
+  }
+  async function lireActions(g) {
+    let t;
+    try { t = await grist.docApi.fetchTable(g.actions || "Actions"); } catch (_) { return null; }
+    const v = (k, i) => (t[k] || [])[i];
+    return (t.id || []).map((id, i) => ({ id, titre: String(v("Titre", i) || ""), description: String(v("Description", i) || ""),
+      statut: STATUTS_ACTION.includes(v("Statut", i)) ? v("Statut", i) : "À faire", priorite: PRIORITES_ACTION.includes(v("Priorite", i)) ? v("Priorite", i) : "Moyenne",
+      responsable: v("Responsable", i) || null, echeance: v("Echeance", i) || null, creePar: String(v("Cree_par", i) || ""),
+      creeLe: v("Cree_le", i) || null, faitLe: v("Fait_le", i) || null }));
+  }
   // Valeur d'une colonne ChoiceList (["L", "EN", …], texte « EN, ESR », ou vide) → liste
   const listeChoix = v => Array.isArray(v) ? v.filter(x => x !== "L").map(String) : (typeof v === "string" && v.trim() ? v.split(/\s*,\s*/) : []);
   // Champs couverts par une affectation : vide = les deux
@@ -487,6 +510,7 @@ return sorted(champs)`;
     ajouterTableTechnique(g.agents, colsAgents.filter(c => !c.isFormula), "Équipe de la cellule : nom, adresse, fonction habituelle, téléphone (onglet Équipe).");
     ajouterTableTechnique(g.creneaux, COLONNES_CRENEAUX, "Planning : créneaux de chaque jour (onglet Planning).");
     ajouterTableTechnique(g.affectations, colonnesAffectations(g, config), "Planning : agents affectés à chaque créneau, avec leur fonction et leur périmètre.");
+    ajouterTableTechnique(g.actions, colonnesActions(g), "Suivi des actions de la cellule : kanban des coordinateurs (onglet Actions).");
     ajouterTableTechnique(g.emargements, colonnesEmargements(g), "Émargement : prises et fins de service des agents (page de saisie, suivi dans l'onglet Planning).");
     // Formules de la table Agents : après Affectations, qu'elles lisent
     const formules = colsAgents.filter(c => c.isFormula && !(meta[g.agents] && meta[g.agents].colonnes[c.id]));
@@ -624,7 +648,7 @@ return sorted(champs)`;
   window.Socle = {
     reglagesPointParDefaut,
     VERSION, TABLE_CONFIG, DEFAUTS_GENERAL, NATURES, ROLES,
-    colonnesEmargements, lireEmargements,
+    colonnesEmargements, lireEmargements, STATUTS_ACTION, PRIORITES_ACTION, colonnesActions, lireActions,
     PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
     norm, cibleRef, lireMeta, lireConfig, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer,

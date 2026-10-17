@@ -168,6 +168,55 @@
   #planning .pl-reg-ligne .pl-mini { margin-left: 0; }
   #planning .pl-reg-creneau { margin-left: 20px; }
   #planning .pl-reg-modele { border-left: 3px solid var(--accent-clair); padding-left: 8px; margin: 8px 0; }
+  /* onglet Actions (kanban) */
+  main#onglet-actions { max-width: none; padding: 0; }
+  #onglet-actions button.primaire, #onglet-actions button.secondaire { font: inherit; padding: 7px 14px; border-radius: 4px; cursor: pointer; }
+  #onglet-actions button.primaire { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
+  #onglet-actions button.secondaire { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+  #onglet-actions button.danger { color: var(--alerte); border-color: var(--alerte); }
+  #onglet-actions .statut { font-size: 13px; margin: 0 16px; } #onglet-actions .statut.ok { color: var(--ok); } #onglet-actions .statut.err { color: var(--alerte); }
+  #onglet-actions .ak-vide-table { padding: 24px 16px; }
+  #onglet-actions .ak-barre { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 16px; background: #fff; border-bottom: 1px solid var(--trait); }
+  #onglet-actions .ak-barre input[type=search], #onglet-actions .ak-barre select { font: inherit; padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px; }
+  #onglet-actions .ak-case { font-size: 13px; color: var(--doux); display: flex; gap: 4px; align-items: center; }
+  #onglet-actions .ak-stats { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+  #onglet-actions .ak-stat { font-size: 12px; background: #f2f2f2; border-radius: 12px; padding: 3px 10px; color: var(--doux); }
+  #onglet-actions .ak-stat strong { color: var(--texte); }
+  #onglet-actions .ak-stat.retard.actif { background: var(--alerte-clair); color: var(--alerte); } #onglet-actions .ak-stat.retard.actif strong { color: var(--alerte); }
+  #onglet-actions .ak-stat.fait { background: var(--ok-clair); color: var(--ok); }
+  #onglet-actions .ak-tableau { display: grid; grid-template-columns: repeat(3, minmax(240px, 1fr)); gap: 14px; padding: 14px 16px; align-items: start; overflow-x: auto; }
+  #onglet-actions .ak-col { background: #f0f0f4; border-radius: 10px; display: flex; flex-direction: column; max-height: calc(100vh - 160px); }
+  #onglet-actions .ak-col-tete { display: flex; align-items: center; gap: 6px; padding: 10px 12px; font-weight: 700; color: var(--c); border-bottom: 3px solid var(--c); }
+  #onglet-actions .ak-point { width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+  #onglet-actions .ak-nb { background: #fff; color: var(--doux); border-radius: 10px; padding: 0 8px; font-size: 12px; font-weight: 600; }
+  #onglet-actions .ak-plus { margin-left: auto; border: 0; background: #fff; color: var(--c); width: 26px; height: 26px; border-radius: 6px; font-size: 18px; line-height: 1; cursor: pointer; }
+  #onglet-actions .ak-cartes { padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 80px; overflow-y: auto; border-radius: 0 0 10px 10px; transition: background .15s; }
+  #onglet-actions .ak-cartes.survol { background: color-mix(in srgb, var(--c) 12%, transparent); }
+  #onglet-actions .ak-vide { color: var(--doux); font-size: 13px; text-align: center; margin: 14px 0; }
+  #onglet-actions .ak-carte { background: #fff; border-radius: 8px; padding: 10px 12px; box-shadow: 0 1px 2px rgba(0,0,0,.08); border-left: 4px solid #c9c9d6; cursor: grab; }
+  #onglet-actions .ak-carte:hover, #onglet-actions .ak-carte:focus { box-shadow: 0 2px 8px rgba(0,0,0,.14); outline: none; }
+  #onglet-actions .ak-carte.glisse { opacity: .4; }
+  #onglet-actions .ak-carte.prio-haute { border-left-color: #ce0500; }
+  #onglet-actions .ak-carte.prio-basse { border-left-color: #9fbfe0; }
+  #onglet-actions .ak-carte.retard { background: #fff6f4; }
+  #onglet-actions .ak-carte-tete { display: flex; gap: 6px; align-items: flex-start; justify-content: space-between; }
+  #onglet-actions .ak-titre { font-weight: 600; font-size: 14px; }
+  #onglet-actions .ak-prio { font-size: 11px; border-radius: 10px; padding: 1px 8px; white-space: nowrap; }
+  #onglet-actions .ak-prio.prio-haute { background: #ffe9e9; color: #ce0500; } #onglet-actions .ak-prio.prio-basse { background: #e8edff; color: #000091; }
+  #onglet-actions .ak-desc { font-size: 12.5px; color: var(--doux); margin: 4px 0 0; white-space: pre-line; }
+  #onglet-actions .ak-carte-pied { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 8px; font-size: 12px; color: var(--doux); }
+  #onglet-actions .ak-date.retard { color: var(--alerte); font-weight: 600; } #onglet-actions .ak-date.jour { color: #b36b00; font-weight: 600; }
+  #onglet-actions .ak-resp { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  #onglet-actions .ak-resp.vide { background: #ddd; color: #777; }
+  #onglet-actions .ak-voile { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: flex-start; justify-content: center; padding-top: 8vh; z-index: 10; }
+  #onglet-actions .ak-fenetre { background: #fff; border-radius: 10px; padding: 18px 20px; width: min(560px, calc(100% - 32px)); box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+  #onglet-actions .ak-fenetre h2 { font-size: 16px; margin: 0 0 12px; }
+  #onglet-actions .ak-fenetre label.champ { display: block; margin-bottom: 10px; }
+  #onglet-actions .ak-fenetre label.champ span { display: block; font-weight: 600; margin-bottom: 3px; font-size: 13px; }
+  #onglet-actions .ak-fenetre input, #onglet-actions .ak-fenetre select, #onglet-actions .ak-fenetre textarea { font: inherit; padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px; width: 100%; background: #fff; }
+  #onglet-actions .ak-grille { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+  #onglet-actions .boutons { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+  #onglet-actions .aide { color: var(--doux); font-size: 12px; }
   /* onglet Accès */
   #acces .ac-table { border-top: 1px solid var(--trait); padding: 10px 0; }
   #acces .ac-table ul { margin: 4px 0 6px; padding-left: 18px; }
@@ -257,6 +306,7 @@
     <button role="tab" aria-selected="false" data-onglet="referentiel">Référentiel</button>
     <button role="tab" aria-selected="false" data-onglet="equipe">Équipe</button>
     <button role="tab" aria-selected="false" data-onglet="planning">Planning</button>
+    <button role="tab" aria-selected="false" data-onglet="onglet-actions">Actions</button>
     <button role="tab" aria-selected="false" data-onglet="acces">Accès</button>
     <button role="tab" aria-selected="false" data-onglet="formulaires">Formulaires</button>
     <button role="tab" aria-selected="false" data-onglet="point-situation">Point de situation</button>
@@ -341,6 +391,7 @@
 </main>
 <main id="equipe" hidden></main>
 <main id="planning" hidden></main>
+<main id="onglet-actions" hidden></main>
 <main id="acces" hidden></main>
 <main id="formulaires" hidden>
 <div class="app" id="app">
@@ -393,6 +444,7 @@
 <script src="equipe.js"></script>
 <script src="planning.js"></script>
 <script src="acces.js"></script>
+<script src="actions.js"></script>
 <script>
   // Onglets
   document.querySelectorAll("nav button[data-onglet]").forEach(b => b.addEventListener("click", () => {
@@ -402,6 +454,7 @@
     if (b.dataset.onglet === "equipe") window.OngletEquipe.afficher();
     if (b.dataset.onglet === "planning") window.OngletPlanning.afficher();
     if (b.dataset.onglet === "acces") window.OngletAcces.afficher();
+    if (b.dataset.onglet === "onglet-actions") window.OngletActions.afficher();
     if (b.dataset.onglet === "formulaires") window.OngletFormulaires.afficher();
     if (b.dataset.onglet === "point-situation") window.OngletPointSituation.afficher();
     if (b.dataset.onglet === "onglet-tdb") window.OngletTableauDeBord.afficher();
