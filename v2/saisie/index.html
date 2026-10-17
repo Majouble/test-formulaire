@@ -1228,7 +1228,8 @@ let rolesAdmin = {};   // rôle -> colonne associée dans l'administration (form
    Ancien format : liste d'académies. Le périmètre répartit le travail ; il ne restreint pas l'accès. */
 let perimetreBrut = null, libellePage = "", voirToutPerimetre = false;
 /* Planning (onglet Planning de l'administration) : pendant un créneau où l'agent de la page est affecté, le périmètre
-   du créneau remplace celui de la page (périmètre habituel, recopié de la fiche de l'agent). Relu chaque minute. */
+   du créneau s'applique (vide = tous les établissements). Hors créneau : périmètre des options de la page (vide pour
+   les pages créées depuis l'équipe, donc tous les établissements). Relu chaque minute. */
 let agentPage = null, perimetreFiche = null, creneauPage = null;   // creneauPage : { creneau, affectation }
 async function majCreneau(redessiner) {
   if (agentPage == null) { creneauPage = null; return; }
@@ -1237,7 +1238,7 @@ async function majCreneau(redessiner) {
   const x = window.Socle.affectationsEnCours(pl, agentPage)[0] || null;
   const avant = JSON.stringify([creneauPage && creneauPage.affectation.id, perimetreBrut]);
   let p = perimetreFiche;
-  if (x && String(x.affectation.perimetre || "").trim()) { try { p = JSON.parse(x.affectation.perimetre); } catch (_) { p = perimetreFiche; } }
+  if (x) { try { p = String(x.affectation.perimetre || "").trim() ? JSON.parse(x.affectation.perimetre) : {}; } catch (_) { p = {}; } }
   creneauPage = x; perimetreBrut = p;
   if (redessiner && avant !== JSON.stringify([x && x.affectation.id, perimetreBrut])) { afficherBandeauPerimetre(); majListeDossiers(); }
 }
@@ -1272,7 +1273,7 @@ function afficherBandeauPerimetre() {
   b.hidden = false;
   const cr = texteCreneau(), propre = creneauPage && String(creneauPage.affectation.perimetre || "").trim();
   b.innerHTML = [libellePage ? `<strong>${esc(libellePage)}</strong>` : "", cr ? esc(cr) : "",
-      r ? `${propre ? "périmètre du créneau" : (agentPage != null ? "périmètre habituel" : "périmètre")} : ${esc(r)}` : ""].filter(Boolean).join(" · ")
+      r ? `${propre ? "périmètre du créneau" : "périmètre"} : ${esc(r)}` : (agentPage != null ? "tous les établissements" : "")].filter(Boolean).join(" · ")
     + (r ? ` <button type="button" class="lien" id="btn-voir-tout">${voirToutPerimetre ? "Revenir à mon périmètre" : "Voir tous les signalements"}</button>` : "");
   const btn = $("btn-voir-tout");
   if (btn) btn.addEventListener("click", () => { voirToutPerimetre = !voirToutPerimetre; afficherBandeauPerimetre(); majListeDossiers(); });

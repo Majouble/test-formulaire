@@ -1,11 +1,10 @@
 /* =====================================================================
    Administration v2 — onglet « Équipe » : les agents de la cellule
    ---------------------------------------------------------------------
-   Table Agents du socle : nom, adresse, niveau d'accès (national, académique, départemental),
-   fonction habituelle dans la cellule (opérateur, rédacteur… : clé « planning » de Config), téléphone, périmètre, actif.
-   - Le périmètre d'un agent répartit le travail : sa page de saisie (onglet Formulaires) s'y limite ;
-     un créneau du planning peut le changer.
-   - Le niveau d'accès et l'adresse serviront aux règles d'accès ; ils ne restreignent encore rien.
+   Table Agents du socle : nom, adresse, fonction habituelle dans la cellule (opérateur, rédacteur… :
+   clé « planning » de Config), téléphone, actif.
+   - Le périmètre n'est pas sur la fiche : il change d'un créneau à l'autre et se règle dans l'onglet Planning.
+   - L'adresse servira aux règles d'accès.
    - Une liste peut être collée depuis un tableur ; les pages de saisie existantes peuvent être reprises.
    ===================================================================== */
 (function () {
@@ -16,7 +15,7 @@
   const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   let config = null, general = null, ref = null, agents = null, pages = null;
-  let edition = null;       // agent en cours de modification : { id|null, nom, email, acces, fonction, telephone, perimetre, actif }
+  let edition = null;       // agent en cours de modification : { id|null, nom, email, fonction, telephone, actif }
   let colonnesManquantes = [];   // colonnes du socle absentes de la table Agents (document d'une version antérieure)
   let racine = null;
 
@@ -42,7 +41,7 @@
     if (agents === null) {
       racine.innerHTML = `<div class="bandeau info">La table ${esc(table())} n'existe pas encore.</div>
         <section class="carte"><h2>Équipe de la cellule</h2>
-        <p class="aide">Une ligne par agent : nom, adresse, niveau d'accès, fonction, téléphone et périmètre. L'équipe sert au planning et à créer les pages de saisie ; elle servira aux règles d'accès et au suivi des actions.</p>
+        <p class="aide">Une ligne par agent : nom, adresse, fonction habituelle et téléphone. L'équipe sert au planning et à créer les pages de saisie ; elle servira aux règles d'accès et au suivi des actions.</p>
         <div class="boutons"><button class="primaire" id="eq-creer-table">Créer la table ${esc(table())}</button><span class="statut" id="eq-statut"></span></div></section>`;
       $("eq-creer-table").addEventListener("click", creerTable);
       return;
@@ -54,88 +53,56 @@
   }
 
   function carteEquipe() {
-    const crit = R.criteres(ref, config);
     const actifs = agents.filter(a => a.actif);
-    // couverture sur le premier critère, pour les agents de saisie
-    const c0 = crit[0], vals0 = c0 ? ref.valeurs[c0].map(x => x.v) : [];
-    const saisie = actifs.filter(a => fonctionDeSaisie(a.fonction));
-    const parVal = new Map(vals0.map(v => [v, saisie.filter(a => (a.perimetre[c0] || []).includes(v)).map(a => a.nom)]));
-    const sansAgent = saisie.length && !saisie.some(a => !(a.perimetre[c0] || []).length) ? vals0.filter(v => !parVal.get(v).length) : [];
-    const partagees = vals0.filter(v => parVal.get(v).length > 1);
     // pages de saisie : agent retrouvé, ou page orpheline à reprendre
     const pageDe = new Map(), orphelines = [];
     (pages || []).forEach(p => { const a = R.agentDePage(p, agents); if (a) { if (!pageDe.has(a.id)) pageDe.set(a.id, []); pageDe.get(a.id).push(p); } else if (p.libelle || /^Formulaire\s+\S/i.test(p.page)) orphelines.push(p); });
     const lignes = agents.map(a => {
       const pg = pageDe.get(a.id) || [];
-      const ecart = pg.some(p => !R.memePerimetre(R.perimetreObjet(ref, p.perimetre), a.perimetre));
-      const pageTxt = !pg.length ? `<span class="vide">—</span>` : `${pg.map(p => esc(p.page)).join("<br>")}${ecart ? `<br><span class="pastille manque">périmètre à reporter</span>` : ""}`;
       const fonctionConnue = fonctions().some(f => f.nom === a.fonction);
       return `<tr data-id="${a.id}" class="eq-ligne${a.actif ? "" : " inactif"}" tabindex="0">
         <td><strong>${esc(a.nom) || "<em>sans nom</em>"}</strong>${a.actif ? "" : ` <span class="pastille">inactif</span>`}</td>
-        <td>${a.acces ? esc(a.acces) : `<span class="pastille manque">à choisir</span>`}</td>
         <td>${fonctionConnue ? `<span class="pastille reco">${esc(a.fonction)}</span>` : `<span class="pastille manque">${esc(a.fonction || "à choisir")}</span>`}</td>
-        <td>${a.email ? esc(a.email) : `<span class="pastille manque">adresse manquante</span>`}${a.telephone ? `<br><small>${esc(a.telephone)}</small>` : ""}</td>
-        <td>${esc(R.resumePerimetre(a.perimetre)) || `<span class="vide">tous les établissements</span>`}</td>
-        <td>${pageTxt}</td></tr>`;
+        <td>${a.email ? esc(a.email) : `<span class="pastille manque">adresse manquante</span>`}</td>
+        <td>${a.telephone ? esc(a.telephone) : `<span class="vide">—</span>`}</td>
+        <td>${pg.length ? pg.map(p => esc(p.page)).join("<br>") : `<span class="vide">—</span>`}</td></tr>`;
     }).join("");
-    const parRole = fonctions().map(f => `${actifs.filter(a => a.fonction === f.nom).length} ${f.nom.toLowerCase()}`).join(" · ");
+    const parFonction = fonctions().map(f => `${actifs.filter(a => a.fonction === f.nom).length} ${f.nom.toLowerCase()}`).join(" · ");
     return `<section class="carte"><h2>Équipe de la cellule</h2>
-      <p class="aide">Une ligne par agent. La fonction et le périmètre sont ceux de l'agent par défaut ; un créneau du planning peut les changer. Le périmètre limite la page de saisie de l'agent (créée depuis l'onglet Formulaires). L'adresse et le niveau d'accès serviront aux règles d'accès ; ils ne restreignent encore rien.</p>
-      <div class="eq-criteres"><span class="eq-lib">Périmètres définis selon</span>
-        ${crit.map(c => `<span class="crit">${esc(R.libelleCritere(ref, c))}<button type="button" data-crit-retirer="${esc(c)}" title="Retirer ce critère" aria-label="Retirer ${esc(R.libelleCritere(ref, c))}">×</button></span>`).join("") || `<span class="vide">aucun critère : chaque agent couvre tous les établissements</span>`}
-        ${(() => { const aj = R.criteresAjoutables(ref, config); return aj.length ? `<select id="eq-crit-ajouter" aria-label="Ajouter un critère"><option value="">+ critère…</option>${aj.map(c => `<option value="${esc(c)}">${esc(R.libelleCritere(ref, c))} (${ref.valeurs[c].length})</option>`).join("")}</select>` : ""; })()}</div>
-      ${ref.absent ? `<p class="avert">Le référentiel « ${esc(ref.table)} » est introuvable : terminez l'installation pour définir des périmètres.</p>` : ""}
-      ${ref.erreur ? `<p class="avert">Référentiel illisible : ${esc(ref.erreur)}</p>` : ""}
-      ${agents.length ? `<table class="eq-table"><thead><tr><th>Agent</th><th>Accès</th><th>Fonction</th><th>Contact</th><th>Périmètre</th><th>Page de saisie</th></tr></thead><tbody>${lignes}</tbody></table>
-        <p class="aide" style="margin:6px 0 0">${actifs.length} agent${actifs.length > 1 ? "s" : ""} actif${actifs.length > 1 ? "s" : ""} : ${parRole}. Cliquez sur une ligne pour la modifier.</p>`
+      <p class="aide">Une ligne par agent. La fonction habituelle est reprise par défaut sur le planning. Le périmètre de chacun change d'un créneau à l'autre : il se règle dans l'onglet Planning.</p>
+      ${agents.length ? `<table class="eq-table"><thead><tr><th>Agent</th><th>Fonction habituelle</th><th>Adresse</th><th>Téléphone</th><th>Page de saisie</th></tr></thead><tbody>${lignes}</tbody></table>
+        <p class="aide" style="margin:6px 0 0">${actifs.length} agent${actifs.length > 1 ? "s" : ""} actif${actifs.length > 1 ? "s" : ""} : ${parFonction}. Cliquez sur une ligne pour la modifier.</p>`
         : `<p class="vide">Aucun agent pour l'instant.</p>`}
-      ${sansAgent.length ? `<p class="avert">${esc(R.libelleCritere(ref, c0))} sans agent de saisie (périmètres habituels) : ${sansAgent.map(esc).join(", ")}.</p>` : ""}
-      ${partagees.length ? `<p class="aide">Suivies par plusieurs agents : ${partagees.map(v => `${esc(v)} (${parVal.get(v).map(esc).join(", ")})`).join(" ; ")}.</p>` : ""}
       ${orphelines.length ? `<div class="eq-reprise"><strong>Pages de saisie sans agent dans l'équipe</strong>
         <ul>${orphelines.map(p => `<li>${esc(p.page)}</li>`).join("")}</ul>
-        <button class="secondaire" id="eq-reprendre">Ajouter ces agents à l'équipe (nom et périmètre repris des pages)</button></div>` : ""}
+        <button class="secondaire" id="eq-reprendre">Ajouter ces agents à l'équipe (nom repris des pages)</button></div>` : ""}
       <div class="boutons"><button class="primaire" id="eq-ajouter">+ Ajouter un agent</button><span class="statut" id="eq-statut"></span></div></section>`;
   }
 
   function carteFiche() {
-    const a = edition, crit = R.criteres(ref, config);
-    const horsCriteres = Object.keys(R.nettoyer(a.perimetre)).filter(c => !crit.includes(c));
+    const a = edition;
     return `<section class="carte" id="eq-fiche"><h2>${a.id ? `Modifier « ${esc(a.nom)} »` : "Nouvel agent"}</h2>
       <div class="grille">
         <label class="champ"><span>Nom</span><small>Prénom ou prénom et nom : il donne son nom à la page de saisie.</small><input type="text" id="eq-nom" value="${esc(a.nom)}" autocomplete="off"></label>
         <label class="champ"><span>Adresse électronique</span><small>Celle du compte Grist de l'agent : elle servira aux règles d'accès.</small><input type="text" id="eq-email" value="${esc(a.email)}" autocomplete="off" spellcheck="false"></label>
-        <label class="champ"><span>Téléphone</span><small>Facultatif.</small><input type="text" id="eq-tel" value="${esc(a.telephone)}" autocomplete="off"></label>
-        <label class="champ"><span>Statut</span><small>Un agent inactif garde son historique mais n'a plus de page à créer.</small>
-          <span class="eq-case"><input type="checkbox" id="eq-actif"${a.actif ? " checked" : ""}> Actif</span></label>
-      </div>
-      <div class="grille">
-        <div class="champ"><span class="eq-lib">Niveau d'accès</span>
-          ${S.ACCES_AGENT.map(r => `<label class="eq-role"><input type="radio" name="eq-acces" value="${esc(r.id)}"${a.acces === r.id ? " checked" : ""}> <strong>${esc(r.id)}</strong> — ${esc(r.detail)}</label>`).join("")}
-          <small class="aide">Servira aux règles d'accès, avec le périmètre.</small></div>
         <label class="champ"><span>Fonction habituelle dans la cellule</span><small>Reprise par défaut sur le planning ; la liste se règle dans l'onglet Planning.</small>
           <select id="eq-fonction">${[...fonctions().map(f => f.nom), ...(a.fonction && !fonctions().some(f => f.nom === a.fonction) ? [a.fonction] : [])].map(n => `<option${n === a.fonction ? " selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
+        <label class="champ"><span>Téléphone</span><small>Facultatif.</small><input type="text" id="eq-tel" value="${esc(a.telephone)}" autocomplete="off"></label>
+        <label class="champ"><span>Statut</span><small>Un agent inactif garde son historique mais n'est plus proposé sur le planning.</small>
+          <span class="eq-case"><input type="checkbox" id="eq-actif"${a.actif ? " checked" : ""}> Actif</span></label>
       </div>
-      <div class="champ"><span class="eq-lib">Périmètre</span>
-        ${crit.length ? crit.map(c => `<div class="eq-crit-lib">${esc(R.libelleCritere(ref, c))}</div><div class="eq-puces">${ref.valeurs[c].map(x => {
-          const on = (a.perimetre[c] || []).includes(x.v);
-          return `<button type="button" class="eq-puce${on ? " on" : ""}" data-col="${esc(c)}" data-val="${esc(x.v)}" aria-pressed="${on}" title="${x.n} établissement(s)">${esc(x.v)}</button>`;
-        }).join("")}</div>`).join("") : `<p class="vide">Aucun critère de répartition : ajoutez-en un dans la carte « Équipe de la cellule ».</p>`}
-        ${horsCriteres.length ? `<p class="aide">Aussi limité par : ${horsCriteres.map(c => `${esc(R.libelleCritere(ref, c))} = ${esc(a.perimetre[c].join(", "))}`).join(" ; ")}</p>` : ""}
-        <p class="aide" id="eq-resume">${resumeFiche()}</p></div>
+      <p class="aide" id="eq-resume">${resumeFiche()}</p>
       <div class="boutons"><button class="primaire" id="eq-enregistrer">${a.id ? "Enregistrer" : "Ajouter à l'équipe"}</button>
         <button class="secondaire" id="eq-annuler">Annuler</button>
         ${a.id ? `<button class="secondaire danger" id="eq-supprimer">Retirer de l'équipe…</button>` : ""}
         <span class="statut" id="eq-fiche-statut" role="status"></span></div></section>`;
   }
-  const resumeFiche = () => {
-    const r = R.resumePerimetre(edition.perimetre);
-    return `${r ? `Périmètre : ${esc(r)}.` : "Aucune valeur cochée : tous les établissements."} Page de saisie : « ${esc(R.nomPage(edition.nom || "…", edition.perimetre))} ».`;
-  };
+  const resumeFiche = () => `Page de saisie : « ${esc(R.nomPage(edition.nom || "…", {}))} ».`;
 
   function carteImport() {
     return `<section class="carte"><details id="eq-import"><summary><strong>Importer une liste d'agents</strong></summary>
-      <p class="aide">Une ligne par agent : <code>Nom ; adresse ; accès ; fonction ; téléphone</code>. Un copier-coller depuis un tableur (colonnes dans cet ordre) convient aussi. Un agent déjà présent (même adresse, sinon même nom) est mis à jour. Accès non reconnu : académique ; fonction non reconnue : ${esc(fonctionParDefaut())}. Le périmètre se règle ensuite agent par agent.</p>
-      <textarea id="eq-liste" rows="6" placeholder="Alice Martin ; alice.martin@education.gouv.fr ; académique ; ${esc(fonctionParDefaut())} ; 01 23 45 67 89&#10;Bruno Petit ; bruno.petit@education.gouv.fr ; national ; ${esc((fonctions()[0] || {}).nom || "")}"></textarea>
+      <p class="aide">Une ligne par agent : <code>Nom ; adresse ; fonction ; téléphone</code>. Un copier-coller depuis un tableur (colonnes dans cet ordre) convient aussi. Un agent déjà présent (même adresse, sinon même nom) est mis à jour. Fonction non reconnue : ${esc(fonctionParDefaut())}.</p>
+      <textarea id="eq-liste" rows="6" placeholder="Alice Martin ; alice.martin@education.gouv.fr ; ${esc(fonctionParDefaut())} ; 01 23 45 67 89&#10;Bruno Petit ; bruno.petit@education.gouv.fr ; ${esc((fonctions()[0] || {}).nom || "")}"></textarea>
       <div class="boutons"><button class="secondaire" id="eq-analyser">Vérifier</button><button class="primaire" id="eq-importer" disabled>Importer</button><span class="statut" id="eq-import-statut" role="status"></span></div>
       <div id="eq-import-bilan"></div></details></section>`;
   }
@@ -148,44 +115,23 @@
       tr.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ouvrir(); } });
     });
     $("eq-ajouter").addEventListener("click", () => {
-      edition = { id: null, nom: "", email: "", acces: "Académique", fonction: fonctionParDefaut(), telephone: "", perimetre: {}, actif: true };
+      edition = { id: null, nom: "", email: "", fonction: fonctionParDefaut(), telephone: "", actif: true };
       dessiner(); $("eq-fiche").scrollIntoView({ block: "nearest" }); $("eq-nom").focus();
     });
-    const sel = $("eq-crit-ajouter");
-    if (sel) sel.addEventListener("change", async () => { if (!sel.value) return; await changerCriteres([...R.criteres(ref, config), sel.value]); });
-    racine.querySelectorAll("[data-crit-retirer]").forEach(b => b.addEventListener("click", async () => {
-      const c = b.dataset.critRetirer, n = agents.filter(a => (a.perimetre[c] || []).length).length;
-      if (n && !confirm(`${n} agent(s) ont un périmètre fondé sur « ${R.libelleCritere(ref, c)} ». Le critère ne sera plus proposé, mais leur périmètre reste inchangé tant que vous ne le modifiez pas. Continuer ?`)) return;
-      await changerCriteres(R.criteres(ref, config).filter(k => k !== c));
-    }));
     if ($("eq-reprendre")) $("eq-reprendre").addEventListener("click", reprendrePages);
     if (edition) lierFiche();
     $("eq-analyser").addEventListener("click", () => analyserListe(false));
     $("eq-importer").addEventListener("click", () => analyserListe(true));
     $("eq-liste").addEventListener("input", () => { $("eq-importer").disabled = true; $("eq-import-bilan").innerHTML = ""; });
   }
-  async function changerCriteres(liste) {
-    try { config = await R.enregistrerCriteres(config, liste); } catch (e) { dire("eq-statut", `Critères non enregistrés : ${e.message || e}`, true); return; }
-    dessiner();
-  }
   function lierFiche() {
     const lireChamps = () => {
       edition.nom = $("eq-nom").value; edition.email = $("eq-email").value.trim(); edition.telephone = $("eq-tel").value.trim();
       edition.actif = $("eq-actif").checked;
-      const r = racine.querySelector('input[name="eq-acces"]:checked'); edition.acces = r ? r.value : edition.acces;
       edition.fonction = $("eq-fonction").value;
     };
     ["eq-nom", "eq-email", "eq-tel", "eq-actif"].forEach(id => $(id).addEventListener("input", () => { lireChamps(); $("eq-resume").innerHTML = resumeFiche(); }));
-    racine.querySelectorAll('input[name="eq-acces"]').forEach(x => x.addEventListener("change", lireChamps));
     $("eq-fonction").addEventListener("change", lireChamps);
-    racine.querySelectorAll(".eq-puce").forEach(b => b.addEventListener("click", () => {
-      const c = b.dataset.col, v = b.dataset.val, liste = edition.perimetre[c] || [];
-      edition.perimetre[c] = liste.includes(v) ? liste.filter(x => x !== v) : [...liste, v];
-      if (!edition.perimetre[c].length) delete edition.perimetre[c];
-      const on = (edition.perimetre[c] || []).includes(v);
-      b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on));
-      $("eq-resume").innerHTML = resumeFiche();
-    }));
     $("eq-annuler").addEventListener("click", () => { edition = null; dessiner(); });
     $("eq-enregistrer").addEventListener("click", () => { lireChamps(); enregistrer(); });
     if ($("eq-supprimer")) $("eq-supprimer").addEventListener("click", supprimer);
@@ -194,8 +140,8 @@
   const dire = (id, t, err) => { const st = $(id); if (st) { st.textContent = t; st.className = `statut${err ? " err" : " ok"}`; } };
 
   /* ---------- Écritures ---------- */
-  const champs = a => ({ Nom: a.nom.trim(), Email: a.email.trim(), Acces: a.acces, Fonction: a.fonction, Telephone: a.telephone.trim(),
-    Perimetre: JSON.stringify(R.nettoyer(a.perimetre)), Actif: !!a.actif, Modifie_le: maintenant() });
+  const champs = a => ({ Nom: a.nom.trim(), Email: a.email.trim(), Fonction: a.fonction, Telephone: a.telephone.trim(),
+    Actif: !!a.actif, Modifie_le: maintenant() });
   async function enregistrer() {
     const a = edition, nom = a.nom.trim();
     if (!nom) { dire("eq-fiche-statut", "Indiquez le nom de l'agent.", true); $("eq-nom").focus(); return; }
@@ -205,9 +151,9 @@
     try {
       await grist.docApi.applyUserActions([a.id ? ["UpdateRecord", table(), a.id, champs(a)] : ["AddRecord", table(), null, champs(a)]]);
       const ancien = a.id && agents.find(x => x.id === a.id);
-      const aReporter = ancien && (ancien.nom !== nom || !R.memePerimetre(ancien.perimetre, a.perimetre));
+      const aReporter = ancien && ancien.nom !== nom;
       edition = null; await charger(); dessiner();
-      dire("eq-statut", `« ${nom} » ${a.id ? "enregistré" : "ajouté à l'équipe"}.${aReporter ? " Pour reporter le nom ou le périmètre sur sa page de saisie : onglet Formulaires, « Créer et mettre à jour les pages »." : ""}${a.email ? "" : " Pensez à son adresse électronique."}`);
+      dire("eq-statut", `« ${nom} » ${a.id ? "enregistré" : "ajouté à l'équipe"}.${aReporter ? " Pour renommer sa page de saisie : onglet Formulaires, « Créer et mettre à jour les pages »." : ""}${a.email ? "" : " Pensez à son adresse électronique."}`);
     } catch (e) { dire("eq-fiche-statut", `Enregistrement refusé par Grist (${e.message || e}).`, true); }
   }
   async function supprimer() {
@@ -235,25 +181,17 @@
       const nom = (p.libelle || p.page.replace(/^Formulaire\s+/i, "").replace(/\s*\(.*\)\s*$/, "")).trim();
       if (!nom || vus.has(S.norm(nom))) continue;
       vus.add(S.norm(nom));
-      nouveaux.push({ nom, email: "", acces: "Académique", fonction: fonctionParDefaut(), telephone: "", perimetre: R.perimetreObjet(ref, p.perimetre), actif: true });
+      nouveaux.push({ nom, email: "", fonction: fonctionParDefaut(), telephone: "", actif: true });
     }
     if (!nouveaux.length) return;
     try {
       await grist.docApi.applyUserActions(nouveaux.map(a => ["AddRecord", table(), null, champs(a)]));
       await charger(); dessiner();
-      dire("eq-statut", `${nouveaux.length} agent(s) ajouté(s) : ${nouveaux.map(a => a.nom).join(", ")}. Complétez leur adresse électronique.`);
+      dire("eq-statut", `${nouveaux.length} agent(s) ajouté(s) : ${nouveaux.map(a => a.nom).join(", ")}. Complétez leur adresse électronique et leur fonction.`);
     } catch (e) { dire("eq-statut", `Ajout refusé par Grist (${e.message || e}).`, true); }
   }
 
   /* ---------- Import d'une liste ---------- */
-  function accesDepuis(t) {
-    const n = S.norm(t);
-    if (!n) return null;
-    if (/^nat/.test(n)) return "National";
-    if (/^acad|^rect|^reg/.test(n)) return "Académique";
-    if (/^dep|^dsden|^dasen/.test(n)) return "Départemental";
-    return null;
-  }
   function fonctionDepuis(t) {
     const n = S.norm(t);
     if (!n) return null;
@@ -265,13 +203,13 @@
     const lus = [], erreurs = [];
     lignes.forEach((l, i) => {
       const morceaux = (l.includes("\t") ? l.split("\t") : l.split(/\s*[;|]\s*/)).map(x => x.trim());
-      let [nom, email = "", acces = "", fonction = "", telephone = ""] = morceaux;
+      let [nom, email = "", fonction = "", telephone = ""] = morceaux;
       // tolère l'ordre « adresse ; nom »
       if (EMAIL.test(nom) && email && !EMAIL.test(email)) [nom, email] = [email, nom];
       if (/^nom$/i.test(nom)) return;   // ligne d'en-tête
       if (!nom) { erreurs.push(`ligne ${i + 1} : nom manquant`); return; }
       if (email && !EMAIL.test(email)) { erreurs.push(`ligne ${i + 1} : adresse « ${email} » invalide`); return; }
-      lus.push({ nom, email, acces: accesDepuis(acces), accesTexte: acces, fonction: fonctionDepuis(fonction), fonctionTexte: fonction, telephone });
+      lus.push({ nom, email, fonction: fonctionDepuis(fonction), fonctionTexte: fonction, telephone });
     });
     const ajouts = [], majs = [];
     for (const x of lus) {
@@ -283,19 +221,18 @@
     $("eq-import-bilan").innerHTML = `<ul class="journal">
       <li>${ajouts.length} agent(s) à ajouter${ajouts.length ? ` : ${ajouts.map(x => esc(x.nom)).join(", ")}` : ""}</li>
       <li>${majs.length} agent(s) déjà présent(s), mis à jour${majs.length ? ` : ${majs.map(m => esc(m.a.nom)).join(", ")}` : ""}</li>
-      ${lus.filter(x => x.accesTexte && !x.acces).map(x => `<li>Accès « ${esc(x.accesTexte)} » non reconnu pour ${esc(x.nom)} : académique retenu.</li>`).join("")}
       ${lus.filter(x => x.fonctionTexte && !x.fonction).map(x => `<li>Fonction « ${esc(x.fonctionTexte)} » non reconnue pour ${esc(x.nom)} : ${esc(fonctionParDefaut())} retenu (ajoutez-la à la liste dans l'onglet Planning si besoin).</li>`).join("")}
       ${erreurs.map(e => `<li class="err">${esc(e)}</li>`).join("")}</ul>`;
     $("eq-importer").disabled = !!erreurs.length || !(ajouts.length + majs.length);
     if (!importer || erreurs.length) return;
     const acts = [
-      ...ajouts.map(x => ["AddRecord", table(), null, champs({ ...x, acces: x.acces || "Académique", fonction: x.fonction || fonctionParDefaut(), perimetre: {}, actif: true })]),
-      ...majs.map(({ a, x }) => ["UpdateRecord", table(), a.id, { Nom: x.nom, ...(x.email ? { Email: x.email } : {}), ...(x.acces ? { Acces: x.acces } : {}), ...(x.fonction ? { Fonction: x.fonction } : {}), ...(x.telephone ? { Telephone: x.telephone } : {}), Modifie_le: maintenant() }]),
+      ...ajouts.map(x => ["AddRecord", table(), null, champs({ ...x, fonction: x.fonction || fonctionParDefaut(), actif: true })]),
+      ...majs.map(({ a, x }) => ["UpdateRecord", table(), a.id, { Nom: x.nom, ...(x.email ? { Email: x.email } : {}), ...(x.fonction ? { Fonction: x.fonction } : {}), ...(x.telephone ? { Telephone: x.telephone } : {}), Modifie_le: maintenant() }]),
     ];
     try {
       await grist.docApi.applyUserActions(acts);
       await charger(); dessiner();
-      dire("eq-statut", `${ajouts.length} agent(s) ajouté(s), ${majs.length} mis à jour. Réglez maintenant le périmètre de chacun.`);
+      dire("eq-statut", `${ajouts.length} agent(s) ajouté(s), ${majs.length} mis à jour. Affectez-les maintenant dans l'onglet Planning.`);
     } catch (e) { dire("eq-import-statut", `Import refusé par Grist (${e.message || e}).`, true); }
   }
 

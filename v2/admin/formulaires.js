@@ -2081,13 +2081,14 @@ function etatPages() {
   }
   return { parAgent, orphelines };
 }
-const pageAJour = (p, a) => p.page === R.nomPage(a.nom, a.perimetre) && p.libelle === a.nom && p.agent === a.id
-  && p.formulaire === courant.nom && R.memePerimetre(R.perimetreObjet(refInfo, p.perimetre), a.perimetre);
+// La page ne porte plus de périmètre fixe : celui du créneau en cours (onglet Planning) s'applique
+const pageAJour = (p, a) => p.page === R.nomPage(a.nom, {}) && p.libelle === a.nom && p.agent === a.id
+  && p.formulaire === courant.nom && !Object.keys(R.nettoyer(R.perimetreObjet(refInfo, p.perimetre))).length;
 // Pourquoi une page existante est à mettre à jour
 function raisonMaj(pg, a) {
-  const nom = R.nomPage(a.nom, a.perimetre), autres = pg.filter(p => p.page !== nom);
+  const nom = R.nomPage(a.nom, {}), autres = pg.filter(p => p.page !== nom);
   if (autres.length) return `actuellement « ${esc(autres.map(p => p.page).join(" », « "))} »`;
-  if (pg.some(p => !R.memePerimetre(R.perimetreObjet(refInfo, p.perimetre), a.perimetre))) return "périmètre à reporter";
+  if (pg.some(p => Object.keys(R.nettoyer(R.perimetreObjet(refInfo, p.perimetre))).length)) return "périmètre fixe à retirer : le planning le donne";
   if (pg.some(p => p.formulaire !== courant.nom)) return "formulaire à changer";
   return "page à relier à la fiche de l'agent";
 }
@@ -2112,7 +2113,7 @@ function groupePageHtml() {
   if (agentsEquipe === undefined) return `<div class="groupe">${titre}<p class="note">Lecture de l'équipe…</p></div>`;
   const publiees = new Set(formulaires.filter(f => typeof f.publie === "string" && f.publie.trim()).map(f => f.table));
   const malReliees = pagesSaisie.filter(x => !publiees.has(x.table) && x.table !== courant.table);
-  const lienEquipe = `<button type="button" class="secondaire petit" data-pg="equipe">Modifier l'équipe et les périmètres →</button>`;
+  const lienEquipe = `<button type="button" class="secondaire petit" data-pg="equipe">Modifier l'équipe →</button>`;
   if (agentsEquipe === null || !agentsEquipe.filter(avecPage).length) {
     const ici = pagesSaisie.filter(x => x.table === courant.table);
     return `<div class="groupe">${titre}
@@ -2123,17 +2124,16 @@ function groupePageHtml() {
   const { lignes, orphelines, aFaire } = planPages();
   const pastilles = { ok: `<span class="pastille-pg ok">à jour</span>`, modif: `<span class="pastille-pg modif">à mettre à jour</span>`, nouv: `<span class="pastille-pg nouv">à créer</span>`, sans: "" };
   const html = lignes.map(({ a, pg, etat }) => {
-    const r = R.resumePerimetre(a.perimetre);
     const autre = pg.find(p => p.formulaire && p.formulaire !== courant.nom);
     return `<div class="agent" data-id="${a.id}">
       <div class="agent-haut">${pg.length ? `<strong>${esc(a.nom)}</strong>` : `<label class="case" style="margin:0"><input type="checkbox" data-pg="inclure"${repartition.inclure.get(a.id) ? " checked" : ""}> <strong>${esc(a.nom)}</strong></label>`}
         <small class="note" style="margin-left:auto">${esc(a.fonction)}</small>${pastilles[etat]}</div>
-      <small class="note">${r ? esc(r) : "tous les établissements"} · page « ${esc(R.nomPage(a.nom, a.perimetre))} »${etat === "modif" ? ` (${raisonMaj(pg, a)})` : ""}</small>
+      <small class="note">page « ${esc(R.nomPage(a.nom, {}))} »${etat === "modif" ? ` (${raisonMaj(pg, a)})` : ""}</small>
       ${autre ? `<small class="note">affiche « ${esc(autre.formulaire)} » : sera basculée sur ce formulaire</small>` : ""}
     </div>`;
   }).join("");
   return `<div class="groupe">${titre}
-    <p class="note" style="margin:0 0 8px">Une page par agent de l'équipe qui saisit (les fonctions de saisie sont cochées d'office). La page applique le périmètre du créneau du planning en cours, à défaut celui de la fiche de l'agent ; il répartit le travail sans restreindre l'accès. Nom et périmètre habituel : onglet Équipe.</p>
+    <p class="note" style="margin:0 0 8px">Une page par agent de l'équipe qui saisit (les fonctions de saisie sont cochées d'office). La page applique le périmètre du créneau en cours (onglet Planning) ; hors créneau, elle montre tous les établissements. Le périmètre répartit le travail sans restreindre l'accès.</p>
     ${refInfo && refInfo.absent ? `<p class="avert">Le référentiel « ${esc(refInfo.table)} » est introuvable : terminez l'installation.</p>` : ""}
     ${malReliees.map(x => `<p class="avert">La page « ${esc(x.page)} » affiche le formulaire de saisie sur la table « ${esc(x.table)} », pour laquelle aucun formulaire n'est publié : elle reste vide.</p>`).join("")}
     <div id="pg-agents">${html}</div>
@@ -2178,10 +2178,10 @@ async function creerPagesAgents() {
     const sections = await grist.docApi.fetchTable("_grist_Views_section");
     const acts = [];
     for (const c of cibles) {
-      const i = sections.id.indexOf(c.ref), nom = R.nomPage(c.a.nom, c.a.perimetre);
+      const i = sections.id.indexOf(c.ref), nom = R.nomPage(c.a.nom, {});
       const { o, cv } = optionsVue(i >= 0 ? sections.options[i] : "");
       o.customView = JSON.stringify({ ...cv, mode: "url", url: cv.url || c.url || url, access: "full",
-        widgetOptions: { ...(cv.widgetOptions || {}), formulaire: courant.nom, libelle: c.a.nom, perimetre: R.nettoyer(c.a.perimetre), agent: c.a.id } });
+        widgetOptions: { ...(cv.widgetOptions || {}), formulaire: courant.nom, libelle: c.a.nom, perimetre: {}, agent: c.a.id } });
       acts.push(["UpdateRecord", "_grist_Views_section", c.ref, { options: JSON.stringify(o), title: nom }]);
       const vue = c.vue || (i >= 0 ? sections.parentId[i] : null);
       if (vue) acts.push(["UpdateRecord", "_grist_Views", vue, { name: nom }]);

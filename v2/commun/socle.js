@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0-alpha.11 (17/10/2026)";
+  const VERSION = "2.0.0-alpha.12 (17/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -239,18 +239,12 @@ return "".join(resultat)`;
   ];
 
   /* ---------- Équipe et planning ----------
-     Agents : la fiche de chaque agent. Deux notions distinctes :
-     - Acces : niveau d'accès (national, académique, départemental), stable, pour les règles d'accès ;
-     - Fonction : fonction habituelle dans la cellule (opérateur, rédacteur…), qu'un créneau peut changer.
-     Perimetre : JSON { <colonne du référentiel>: [valeurs] }, le même format que les pages de saisie.
+     Agents : la fiche de chaque agent, avec sa fonction habituelle dans la cellule (opérateur, rédacteur…).
      Creneaux : créneaux nommés de chaque jour (Debut et Fin datés : un créneau de nuit finit le lendemain).
-     Affectations : un agent sur un créneau, avec sa fonction et son périmètre pour ce créneau.
+     Affectations : un agent sur un créneau, avec sa fonction et son périmètre pour ce créneau
+     (Perimetre : JSON { <colonne du référentiel>: [valeurs] } ; vide = tous les établissements).
+     Le périmètre n'est pas fixé sur la fiche : il change d'un créneau à l'autre.
      Liste des fonctions et modèles de journée : clé « planning » de Config. */
-  const ACCES_AGENT = [
-    { id: "National", detail: "Tous les établissements." },
-    { id: "Académique", detail: "Les académies de son périmètre." },
-    { id: "Départemental", detail: "Les départements de son périmètre." },
-  ];
   const PLANNING_DEFAUT = {
     fonctions: [
       { nom: "Coordinateur", saisie: false },
@@ -273,9 +267,8 @@ return "".join(resultat)`;
   function colonnesAgents(config) {
     return [
       { id: "Nom", type: "Text" }, { id: "Email", type: "Text" },
-      { id: "Acces", type: "Choice", widgetOptions: choix(ACCES_AGENT.map(r => r.id)) },
       { id: "Fonction", type: "Choice", widgetOptions: choix(reglagesPlanning(config).fonctions.map(f => f.nom)) },
-      { id: "Telephone", type: "Text" }, { id: "Perimetre", type: "Text" }, { id: "Actif", type: "Bool" },
+      { id: "Telephone", type: "Text" }, { id: "Actif", type: "Bool" },
       { id: "Modifie_le", type: "DateTime:Europe/Paris" },
     ];
   }
@@ -441,7 +434,7 @@ return "".join(resultat)`;
     // 1. Tables techniques
     ajouterTableTechnique(TABLE_CONFIG, COLONNES_CONFIG, "Réglages du document, une ligne par clé (valeur en JSON).");
     ajouterTableTechnique(g.formulaires, COLONNES_FORMULAIRES, "Formulaires en brouillon et publiés.");
-    ajouterTableTechnique(g.agents, colonnesAgents(config), "Équipe de la cellule : nom, adresse, niveau d'accès, fonction, périmètre (onglet Équipe).");
+    ajouterTableTechnique(g.agents, colonnesAgents(config), "Équipe de la cellule : nom, adresse, fonction habituelle, téléphone (onglet Équipe).");
     ajouterTableTechnique(g.creneaux, COLONNES_CRENEAUX, "Planning : créneaux de chaque jour (onglet Planning).");
     ajouterTableTechnique(g.affectations, colonnesAffectations(g, config), "Planning : agents affectés à chaque créneau, avec leur fonction et leur périmètre.");
 
@@ -575,7 +568,7 @@ return "".join(resultat)`;
   window.Socle = {
     reglagesPointParDefaut,
     VERSION, TABLE_CONFIG, DEFAUTS_GENERAL, NATURES, ROLES,
-    ACCES_AGENT, PLANNING_DEFAUT, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
+    PLANNING_DEFAUT, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
     norm, cibleRef, lireMeta, lireConfig, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer,
     REGIONS_ACADEMIQUES, regionDeAcademie,
