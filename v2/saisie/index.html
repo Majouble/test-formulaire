@@ -458,6 +458,10 @@
   .champ-description:not(:focus-within) .barre-format { opacity: .45; }
   .bandeau-perimetre { margin: 0; font-size: .85rem; color: var(--gris, #666); flex: 1 1 auto; }
   .bandeau-perimetre .lien { background: none; border: 0; padding: 0; margin-left: 6px; color: var(--bleu, #000091); text-decoration: underline; cursor: pointer; font: inherit; }
+  .bandeau-perimetre .emargement { margin-left: 8px; padding-left: 8px; border-left: 1px solid #ccc; }
+  .bandeau-perimetre .emargement.en-service { color: #18753c; font-weight: 600; }
+  .bandeau-perimetre .emargement .lien { font-weight: normal; }
+  .bandeau-perimetre .err-emargement { color: #b34000; font-weight: normal; }
   .source.hors { background: #fff3cd; color: #8a4b00; }
 </style>
 </head>
@@ -1245,9 +1249,44 @@ async function majCreneau(redessiner) {
   let p = perimetreFiche;
   if (x && !x.horsChamp) { try { p = String(x.affectation.perimetre || "").trim() ? JSON.parse(x.affectation.perimetre) : {}; } catch (_) { p = {}; } }
   creneauPage = x; perimetreBrut = p;
+  await lireEmargementAgent();
   if (redessiner && avant !== JSON.stringify([x && x.affectation.id, perimetreBrut])) { afficherBandeauPerimetre(); majListeDossiers(); }
+  else if (redessiner) afficherBandeauPerimetre();
 }
 setInterval(() => { if (!document.hidden && agentPage != null) majCreneau(true).catch(() => {}); }, 60000);
+/* Émargement (table Emargements du socle) : « Je prends mon service » crée une ligne (agent de la page, créneau en cours,
+   heure de début) ; « Je termine » remplit l'heure de fin. L'auteur est noté par Grist (adresse du compte connecté) et,
+   avec les règles d'accès du socle, seul l'agent lui-même peut émarger. */
+let emargementsDispo = false, emargementOuvert = null, erreurEmargement = "";
+async function lireEmargementAgent() {
+  if (agentPage == null) { emargementsDispo = false; emargementOuvert = null; return; }
+  let l = null;
+  try { l = await window.Socle.lireEmargements(socleGeneral); } catch (_) { l = null; }
+  emargementsDispo = l !== null;
+  emargementOuvert = (l || []).filter(e => e.agent === agentPage && e.debut && !e.fin).pop() || null;
+}
+function htmlEmargement() {
+  if (!emargementsDispo || agentPage == null || modeEtab) return "";
+  const depuis = emargementOuvert ? (Date.now() / 1000 - emargementOuvert.debut) / 3600 : 0;
+  return ` <span class="emargement${emargementOuvert ? " en-service" : ""}">`
+    + (emargementOuvert ? `en service depuis ${heureCourte(emargementOuvert.debut)}${depuis > 14 ? " (oubli de fin de service ?)" : ""} <button type="button" class="lien" id="btn-service">Je termine mon service</button>`
+      : `<button type="button" class="lien" id="btn-service">Je prends mon service</button>`)
+    + (erreurEmargement ? ` <span class="err-emargement">${esc(erreurEmargement)}</span>` : "") + `</span>`;
+}
+async function basculerService() {
+  const t = window.Socle.general(socleConfig).emargements || "Emargements", maintenant = Date.now() / 1000;
+  erreurEmargement = "";
+  try {
+    if (emargementOuvert) await grist.docApi.applyUserActions([["UpdateRecord", t, emargementOuvert.id, { Fin: maintenant }]]);
+    else await grist.docApi.applyUserActions([["AddRecord", t, null, { Agent: agentPage, Creneau: (creneauPage && creneauPage.creneau.id) || 0, Debut: maintenant }]]);
+  } catch (e) {
+    erreurEmargement = /ACL|access|accès|denied|refus/i.test(String(e && e.message || e))
+      ? `émargement refusé : seul ${libellePage || "l'agent de cette page"} peut émarger ici, avec son propre compte`
+      : `émargement impossible (${e.message || e})`;
+  }
+  await lireEmargementAgent();
+  afficherBandeauPerimetre();
+}
 const heureCourte = sec => { const d = new Date(sec * 1000); return `${d.getHours()} h${d.getMinutes() ? ` ${String(d.getMinutes()).padStart(2, "0")}` : ""}`; };
 function texteCreneau() {
   if (agentPage == null) return "";
@@ -1281,8 +1320,11 @@ function afficherBandeauPerimetre() {
   b.innerHTML = [libellePage ? `<strong>${esc(libellePage)}</strong>` : "", cr ? esc(cr) : "",
       r ? `${propre ? "périmètre du créneau" : "périmètre"} : ${esc(r)}` : (agentPage != null ? "tous les établissements" : "")].filter(Boolean).join(" · ")
     + (r ? ` <button type="button" class="lien" id="btn-voir-tout">${voirToutPerimetre ? "Revenir à mon périmètre" : "Voir tous les signalements"}</button>` : "");
+  b.insertAdjacentHTML("beforeend", htmlEmargement());
   const btn = $("btn-voir-tout");
   if (btn) btn.addEventListener("click", () => { voirToutPerimetre = !voirToutPerimetre; afficherBandeauPerimetre(); majListeDossiers(); });
+  const bs = $("btn-service");
+  if (bs) bs.addEventListener("click", basculerService);
 }
 const etabDe = id => indexEtabs.get(id) || null;
 /* Établissement d'un signalement. Une cellule en rouge dans Grist (texte qui ne correspond à aucune ligne du référentiel,

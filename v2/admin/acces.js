@@ -102,6 +102,14 @@
       ], lignes: ["Agents mobilisés au planning (EN ou ESR) : lecture, ajout et modification (établissement absent de l'annuaire…).",
         "Autres agents actifs : lecture seule.", "Autres personnes : aucun accès."] });
     }
+    // Émargement : chacun crée, lit et complète ses propres lignes ; les propriétaires voient tout
+    const tE = general.emargements || "Emargements";
+    if (meta[tE]) out.push({ tableId: tE, colIds: "*", titre: `${tE} — émargement`, regles: [
+      { aclFormula: PROPRIETAIRE, permissionsText: "+CRUD", memo: `${MEMO} — propriétaires : tous les droits` },
+      { aclFormula: `${MEMBRE} and rec.Agent == user.${ATTRIBUT}.id and newRec.Agent == user.${ATTRIBUT}.id`, permissionsText: "+CRU-D", memo: `${MEMO} — émargement : chacun pour soi` },
+      { aclFormula: MEMBRE, permissionsText: "-CRUD", memo: `${MEMO} — émargement : chaque agent ne voit et ne modifie que le sien` },
+    ], lignes: ["Agent actif : il émarge pour lui-même et voit ses propres émargements ; pas de suppression.",
+      "Les autres émargements ne lui sont pas visibles (données personnelles).", "Propriétaires : tous les émargements, avec correction possible."] });
     return out;
   }
   const attributProposé = () => ({ name: ATTRIBUT, tableId: general.agents, lookupColId: "Email", charId: "Email" });

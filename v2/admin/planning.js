@@ -8,6 +8,8 @@
      et son périmètre pour ce créneau (vide = tous les établissements). La page de saisie de l'agent applique le
      périmètre du créneau en cours.
    - Cellule du jour, suivi individuel (créneaux et heures par agent).
+   - Émargement (table Emargements, bouton « Je prends mon service » de la page de saisie) : prévu / émargé dans la
+     cellule du jour et le suivi individuel ; clôture des services restés ouverts.
    - Réglages (clé « planning » de Config) : critères de périmètre, fonctions (lignes du tableau, ordre, affichage,
      saisie ; un renommage est reporté sur l'équipe et le planning), modèles de journée.
    Heures : celles du navigateur (la cellule travaille à l'heure de Paris).
@@ -21,6 +23,7 @@
   const MOIS = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
 
   let config, general, ref, agents, planning, reglages, racine;
+  let emargements = null;    // null : pas de table Emargements
   let lundi = null;          // premier jour de la semaine affichée (AAAA-MM-JJ)
   let edition = null;        // { mode: "cellule", jour, fonction, lignes, origine } ou { mode: "jour", jour, creneaux }
   let suivi = null;          // agent dont le détail est affiché
@@ -49,7 +52,7 @@
   const bornes = (iso, debut, fin) => { const d = instant(iso, debut); let f = instant(iso, fin); if (f <= d) f = instant(plusJours(iso, 1), fin); return [d, f]; };
 
   /* ---------- Lecture ---------- */
-  const T = () => ({ creneaux: general.creneaux || "Creneaux", affectations: general.affectations || "Affectations", agents: general.agents || "Agents" });
+  const T = () => ({ creneaux: general.creneaux || "Creneaux", affectations: general.affectations || "Affectations", agents: general.agents || "Agents", emargements: general.emargements || "Emargements" });
   async function charger() {
     config = await S.lireConfig();
     general = S.general(config);
@@ -57,10 +60,11 @@
     ref = await R.lireReferentiel(general, config);
     agents = await R.lireAgents(general, ref);
     planning = await S.lirePlanning(general);
+    emargements = await S.lireEmargements(general);
     // tables créées par une version antérieure : colonnes du socle manquantes (Champ…)
-    const meta = await S.lireMeta(), ids = [...[T().agents, T().creneaux, T().affectations].map(n => `cols-${n}`), `formule-${T().agents}`];
+    const meta = await S.lireMeta(), ids = [...[T().agents, T().creneaux, T().affectations, T().emargements].map(n => `cols-${n}`), `formule-${T().agents}`, `table-${T().emargements}`];
     manquantes = !meta[T().affectations] ? [] : S.planInstallation(meta, config).etapes.filter(e => ids.includes(e.id))
-      .map(e => e.id.startsWith("formule-") ? e.titre.replace(/^Ajouter /, "") : `${e.titre.replace(/^Compléter la table /, "")} : ${e.detail.replace(/^Colonnes ajoutées : /, "").replace(/\.$/, "")}`);
+      .map(e => e.id.startsWith("formule-") ? e.titre.replace(/^Ajouter /, "") : e.id.startsWith("table-") ? `table ${e.titre.replace(/^Créer la table /, "")}` : `${e.titre.replace(/^Compléter la table /, "")} : ${e.detail.replace(/^Colonnes ajoutées : /, "").replace(/\.$/, "")}`);
   }
   let manquantes = [];
   const agentDe = id => (agents || []).find(a => a.id === id) || null;
@@ -108,7 +112,7 @@
       $("pl-creer-tables").addEventListener("click", creerTables);
       return;
     }
-    racine.innerHTML = `${manquantes.length ? `<div class="bandeau alerte">Les tables du planning datent d'une version antérieure (colonnes à ajouter : ${esc(manquantes.join(", "))}). <button class="primaire" id="pl-completer" style="margin-left:8px">Compléter les tables</button></div>` : ""}${carteSemaine()}${edition ? carteEdition() : ""}${carteDuJour()}${carteSuivi()}${carteReglages()}`;
+    racine.innerHTML = `${manquantes.length ? `<div class="bandeau alerte">Les tables du planning datent d'une version antérieure (à ajouter : ${esc(manquantes.join(", "))}). <button class="primaire" id="pl-completer" style="margin-left:8px">Compléter les tables</button></div>` : ""}${carteSemaine()}${edition ? carteEdition() : ""}${carteDuJour()}${carteSuivi()}${carteReglages()}`;
     if ($("pl-completer")) $("pl-completer").addEventListener("click", creerTables);
     lier();
   }
@@ -243,6 +247,20 @@
         <span class="statut" id="pl-edition-statut" role="status"></span></div></section>`;
   }
 
+  /* ---------- Émargement ---------- */
+  const emargementsDe = agentId => (emargements || []).filter(e => e.agent === agentId && e.debut);
+  const finE = e => e.fin || Date.now() / 1000;
+  const heuresE = e => Math.max(0, finE(e) - e.debut) / 3600;
+  // Émargements d'un agent qui couvrent un créneau (même créneau noté, ou chevauchement des horaires)
+  const emargementsSur = (agentId, c) => emargementsDe(agentId).filter(e => e.creneau === c.id || (c.debut && c.fin && e.debut < c.fin && finE(e) > c.debut));
+  const plageE = e => `${heure(e.debut)}–${e.fin ? heure(e.fin) : "…"}`;
+  function etatEmargement(agentId, c) {
+    if (!emargements) return "";
+    const t = Date.now() / 1000, l = emargementsSur(agentId, c);
+    if (l.length) return l.map(e => e.fin ? `<span class="pastille">émargé ${esc(plageE(e))}</span>` : `<span class="pastille ok">en service depuis ${esc(heure(e.debut))}</span>`).join(" ");
+    if (c.debut <= t) return `<span class="pastille manque">non émargé</span>`;
+    return "";
+  }
   function carteDuJour() {
     const iso = aujourdhui(), t = Date.now() / 1000, cs = creneauxDu(iso);
     const html = cs.map(c => {
@@ -251,11 +269,20 @@
       const ordre = f => { const i = reglages.fonctions.findIndex(x => x.nom === f); return i < 0 ? 99 : i; };
       return `<div class="pl-jour-creneau${c.debut <= t && t < c.fin ? " en-cours" : ""}"><div><strong>${esc(c.nom)}</strong> ${esc(plage(c))} ${etat}</div>
         <ul>${affs.sort((x, y) => ordre(x.fonction) - ordre(y.fonction)).map(a => { const ag = agentDe(a.agent);
-          return `<li><strong>${esc(ag ? ag.nom : "?")}</strong> · ${esc(a.fonction || "fonction ?")} · ${esc(texteChamps(S.champsDe(a)))} · ${esc(resume(perimetreAff(a).perimetre))}${ag && ag.telephone ? ` · ${esc(ag.telephone)}` : ""}</li>`; }).join("")}</ul>
+          return `<li><strong>${esc(ag ? ag.nom : "?")}</strong> · ${esc(a.fonction || "fonction ?")} · ${esc(texteChamps(S.champsDe(a)))} · ${esc(resume(perimetreAff(a).perimetre))}${ag && ag.telephone ? ` · ${esc(ag.telephone)}` : ""} ${etatEmargement(a.agent, c)}</li>`; }).join("")}</ul>
         ${al.map(x => `<p class="avert">${esc(x)}</p>`).join("")}</div>`;
     }).join("");
+    // Services ouverts : hors planning du jour, ou restés ouverts (oubli de fin de service)
+    const ouverts = (emargements || []).filter(e => e.debut && !e.fin);
+    const prevus = new Set(cs.flatMap(c => affectationsDe(c.id).map(a => a.agent)));
+    const horsPlanning = ouverts.filter(e => !prevus.has(e.agent));
+    const anciens = ouverts.filter(e => t - e.debut > 14 * 3600);
     return `<section class="carte"><h2>Cellule du jour — ${esc(jourLong(iso))}</h2>
-      ${cs.length ? html : `<p class="vide">Aucun créneau aujourd'hui.</p>`}</section>`;
+      ${cs.length ? html : `<p class="vide">Aucun créneau aujourd'hui.</p>`}
+      ${horsPlanning.length ? `<p class="aide">En service hors planning du jour : ${horsPlanning.map(e => `${esc((agentDe(e.agent) || { nom: "?" }).nom)} (depuis ${esc(heure(e.debut))})`).join(", ")}.</p>` : ""}
+      ${anciens.length ? `<div class="avert">Services ouverts depuis plus de 14 h (fin de service oubliée ?) :
+        ${anciens.map(e => `${esc((agentDe(e.agent) || { nom: "?" }).nom)}, ${esc(jourLong(isoLocal(new Date(e.debut * 1000))))} ${esc(heure(e.debut))} <button type="button" class="lien" data-clore="${e.id}">clore à la fin du créneau</button>`).join(" ; ")}</div>` : ""}
+      ${emargements === null ? `<p class="aide">Émargement : la table ${esc(T().emargements)} n'existe pas encore (bandeau « Compléter les tables »).</p>` : ""}</section>`;
   }
 
   function carteSuivi() {
@@ -270,8 +297,11 @@
     const lignes = agents.filter(ag => ag.actif || parAgent.has(ag.id)).map(ag => {
       const l = parAgent.get(ag.id) || [], sem = l.filter(x => jours.has(jourDuCreneau(x.c)));
       const faits = l.filter(x => x.c.fin <= t), prochain = l.filter(x => x.c.fin > t).sort((x, y) => x.c.debut - y.c.debut)[0];
+      const emSem = emargementsDe(ag.id).filter(e => jours.has(isoLocal(new Date(e.debut * 1000))));
+      const manques = faits.filter(x => jours.has(jourDuCreneau(x.c)) && !emargementsSur(ag.id, x.c).length).length;
       return `<tr data-suivi="${ag.id}" class="eq-ligne${suivi === ag.id ? " choisi" : ""}" tabindex="0"><td><strong>${esc(ag.nom)}</strong></td><td>${esc(ag.fonction)}</td>
         <td>${sem.length}</td><td>${duree(sem.reduce((n, x) => n + heures(x.c), 0))}</td>
+        ${emargements ? `<td>${duree(emSem.reduce((n, e) => n + heuresE(e), 0))}${manques ? ` <span class="pastille manque">${manques} non émargé${manques > 1 ? "s" : ""}</span>` : ""}</td>` : ""}
         <td>${faits.length} · ${duree(faits.reduce((n, x) => n + heures(x.c), 0))}</td>
         <td>${prochain ? `${esc(jourCourt(jourDuCreneau(prochain.c)))} ${esc(prochain.c.nom)} (${esc(heure(prochain.c.debut))})` : `<span class="vide">—</span>`}</td></tr>`;
     }).join("");
@@ -279,14 +309,20 @@
     const ag = suivi != null ? agentDe(suivi) : null;
     if (ag) {
       const l = (parAgent.get(ag.id) || []).sort((x, y) => (y.c.debut || 0) - (x.c.debut || 0));
-      detail = `<div class="pl-detail"><h3>${esc(ag.nom)} — ${l.length} créneau${l.length > 1 ? "x" : ""}, ${duree(l.reduce((n, x) => n + heures(x.c), 0))}</h3>
-        ${l.length ? `<table><thead><tr><th>Jour</th><th>Créneau</th><th>Fonction</th><th>Périmètre</th><th>Durée</th></tr></thead><tbody>
-          ${l.map(({ a, c }) => { const p = perimetreAff(a); return `<tr${c.fin <= t ? "" : ` class="avenir"`}><td>${esc(jourLong(jourDuCreneau(c)))}</td><td>${esc(c.nom)} ${esc(plage(c))}</td><td>${esc(a.fonction)}</td>
-            <td>${esc(resume(p.perimetre))}</td><td>${duree(heures(c))}</td></tr>`; }).join("")}</tbody></table>` : `<p class="vide">Aucun créneau.</p>`}</div>`;
+      const ems = emargementsDe(ag.id), couverts = new Set(l.flatMap(({ c }) => emargementsSur(ag.id, c).map(e => e.id)));
+      const hors = ems.filter(e => !couverts.has(e.id)).sort((x, y) => y.debut - x.debut);
+      detail = `<div class="pl-detail"><h3>${esc(ag.nom)} — ${l.length} créneau${l.length > 1 ? "x" : ""}, ${duree(l.reduce((n, x) => n + heures(x.c), 0))} prévues${emargements ? `, ${duree(ems.reduce((n, e) => n + heuresE(e), 0))} émargées` : ""}</h3>
+        ${l.length ? `<table><thead><tr><th>Jour</th><th>Créneau</th><th>Fonction</th><th>Périmètre</th><th>Prévu</th>${emargements ? "<th>Émargé</th>" : ""}</tr></thead><tbody>
+          ${l.map(({ a, c }) => { const p = perimetreAff(a), em = emargementsSur(ag.id, c);
+            return `<tr${c.fin <= t ? "" : ` class="avenir"`}><td>${esc(jourLong(jourDuCreneau(c)))}</td><td>${esc(c.nom)} ${esc(plage(c))}</td><td>${esc(a.fonction)}</td>
+            <td>${esc(resume(p.perimetre))}</td><td>${duree(heures(c))}</td>
+            ${emargements ? `<td>${em.length ? em.map(e => `${esc(plageE(e))} (${duree(heuresE(e))})`).join("<br>") : c.debut <= t ? `<span class="pastille manque">non émargé</span>` : ""}</td>` : ""}</tr>`; }).join("")}</tbody></table>` : `<p class="vide">Aucun créneau.</p>`}
+        ${hors.length ? `<p class="aide">Émargements hors créneau prévu : ${hors.map(e => `${esc(jourLong(isoLocal(new Date(e.debut * 1000))))} ${esc(plageE(e))}`).join(" ; ")}.</p>` : ""}</div>`;
     }
     return `<section class="carte"><h2>Suivi individuel</h2>
-      <p class="aide">Créneaux et heures prévus au planning, par agent. « Effectués » compte les créneaux terminés. Cliquez sur un agent pour le détail.</p>
-      <table class="eq-table"><thead><tr><th>Agent</th><th>Fonction habituelle</th><th>Créneaux (semaine affichée)</th><th>Heures (semaine)</th><th>Effectués</th><th>Prochain créneau</th></tr></thead><tbody>${lignes}</tbody></table>
+      <p class="aide">Créneaux et heures prévus au planning, par agent ; heures émargées depuis les pages de saisie (« Je prends mon service »). « Effectués » compte les créneaux terminés. Cliquez sur un agent pour le détail.</p>
+      <table class="eq-table"><thead><tr><th>Agent</th><th>Fonction habituelle</th><th>Créneaux (semaine affichée)</th><th>Heures prévues (semaine)</th>${emargements ? "<th>Heures émargées (semaine)</th>" : ""}<th>Créneaux effectués</th><th>Prochain créneau</th></tr></thead><tbody>${lignes}</tbody></table>
+      ${emargements ? `<p class="aide">L'émargement est un traitement de données personnelles sur les agents : à inscrire au registre des traitements, avec une durée de conservation, et à porter à la connaissance des agents.</p>` : ""}
       ${detail}</section>`;
   }
 
@@ -336,6 +372,7 @@
       const f = () => { suivi = suivi === +tr.dataset.suivi ? null : +tr.dataset.suivi; dessiner(); };
       tr.addEventListener("click", f); tr.addEventListener("keydown", e => { if (e.key === "Enter") f(); });
     });
+    racine.querySelectorAll("[data-clore]").forEach(b => b.addEventListener("click", () => clore(+b.dataset.clore)));
     if (edition) edition.mode === "jour" ? lierJour() : lierCellule();
     lierReglages();
     lierCriteres();
@@ -459,7 +496,7 @@
   const dire = (id, t, err) => { const st = $(id); if (st) { st.textContent = t; st.className = `statut${err ? " err" : " ok"}`; } };
   const maintenant = () => Date.now() / 1000;
   async function actions(acts) { if (acts.length) return grist.docApi.applyUserActions(acts); }
-  async function recharger() { planning = await S.lirePlanning(general); dessiner(); }
+  async function recharger() { planning = await S.lirePlanning(general); emargements = await S.lireEmargements(general); dessiner(); }
 
   /* ---------- Écritures ---------- */
   const champsAff = (l, fonction) => ({ Creneau: l.creneau, Agent: l.agent, Fonction: fonction,
@@ -476,6 +513,17 @@
       edition = null; await recharger();
       dire("pl-statut", acts.length ? `${e.fonction}, ${jourLong(e.jour)} : enregistré.` : "Aucun changement.");
     } catch (err) { dire("pl-edition-statut", `Enregistrement refusé par Grist (${err.message || err}).`, true); }
+  }
+  // Service resté ouvert : clos à la fin de son créneau (ou 8 h après le début, à défaut de créneau)
+  async function clore(id) {
+    const e = (emargements || []).find(x => x.id === id); if (!e) return;
+    const c = planning.creneaux.find(x => x.id === e.creneau) || planning.creneaux.find(x => affectationsDe(x.id).some(a => a.agent === e.agent) && x.debut <= e.debut + 3600 && e.debut < x.fin);
+    const fin = c && c.fin > e.debut ? c.fin : e.debut + 8 * 3600;
+    try {
+      await actions([["UpdateRecord", T().emargements, id, { Fin: fin, Note: `${e.note ? `${e.note} ; ` : ""}clos par l'administration (${new Date().toLocaleString("fr-FR")})` }]]);
+      emargements = await S.lireEmargements(general); dessiner();
+      dire("pl-statut", "Service clos.");
+    } catch (err) { dire("pl-statut", `Clôture refusée par Grist (${err.message || err}).`, true); }
   }
   async function enregistrerJour() {
     const e = edition, garder = e.creneaux.filter(c => !c.suppr), suppr = e.creneaux.filter(c => c.suppr && c.id);
@@ -555,7 +603,7 @@
   }
   async function creerTables() {
     const meta = await S.lireMeta(), plan = S.planInstallation(meta, config);
-    const noms = [T().agents, T().creneaux, T().affectations];
+    const noms = [T().agents, T().creneaux, T().affectations, T().emargements];
     const etapes = plan.etapes.filter(e => noms.some(n => e.id === `table-${n}` || e.id === `cols-${n}`) || e.id === `formule-${T().agents}`);
     const res = await S.appliquer(etapes), ko = res.find(r => !r.ok);
     if (ko) { dire("pl-statut", `Création refusée par Grist (${ko.erreur}).`, true); return; }

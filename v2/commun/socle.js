@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0-alpha.15 (17/10/2026)";
+  const VERSION = "2.0.0-alpha.16 (17/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -25,6 +25,7 @@
     agents: "Agents",                      // équipe de la cellule (une ligne par agent)
     creneaux: "Creneaux",                  // planning : créneaux de chaque jour
     affectations: "Affectations",          // planning : agents affectés à chaque créneau
+    emargements: "Emargements",            // émargement : prises et fins de service
     retour_normale: ["RAS"],               // qualifications qui valent retour à la normale
   };
   const NATURES = ["Nouveau signalement", "Mise à jour"];
@@ -308,6 +309,23 @@ return sorted(champs)`;
       { id: "Note", type: "Text" }, { id: "Modifie_le", type: "DateTime:Europe/Paris" },
     ];
   }
+  // Émargement : une ligne par prise de service (Debut) ; Fin remplie à la fin du service.
+  // Auteur : adresse du compte Grist qui a créé la ligne (formule d'initialisation user.Email), non falsifiable.
+  function colonnesEmargements(g) {
+    return [
+      { id: "Agent", type: `Ref:${g.agents}` }, { id: "Creneau", type: `Ref:${g.creneaux}` },
+      { id: "Debut", type: "DateTime:Europe/Paris" }, { id: "Fin", type: "DateTime:Europe/Paris" },
+      { id: "Auteur", type: "Text", formula: "user.Email" }, { id: "Note", type: "Text" },
+    ];
+  }
+  // Émargements lus en une fois : [{ id, agent, creneau, debut, fin, auteur, note }] ; null si la table n'existe pas
+  async function lireEmargements(g) {
+    let t;
+    try { t = await grist.docApi.fetchTable(g.emargements || "Emargements"); } catch (_) { return null; }
+    const v = (k, i) => (t[k] || [])[i];
+    return (t.id || []).map((id, i) => ({ id, agent: v("Agent", i), creneau: v("Creneau", i) || null, debut: v("Debut", i) || null, fin: v("Fin", i) || null,
+      auteur: String(v("Auteur", i) || ""), note: String(v("Note", i) || "") })).sort((a, b) => (a.debut || 0) - (b.debut || 0));
+  }
   // Valeur d'une colonne ChoiceList (["L", "EN", …], texte « EN, ESR », ou vide) → liste
   const listeChoix = v => Array.isArray(v) ? v.filter(x => x !== "L").map(String) : (typeof v === "string" && v.trim() ? v.split(/\s*,\s*/) : []);
   // Champs couverts par une affectation : vide = les deux
@@ -446,18 +464,20 @@ return sorted(champs)`;
     const g = general(config);
     const assoc = (config && config.valeurs && config.valeurs.roles) || {};
     const etapes = [], infos = [];
+    // Colonne de données ; une formule sans isFormula est une formule d'initialisation (calculée à la création de la ligne)
+    const infoCol = c => ({ type: c.type, isFormula: false, ...(c.widgetOptions ? { widgetOptions: c.widgetOptions } : {}), ...(c.formula ? { formula: c.formula } : {}) });
     const ajouterTableTechnique = (nom, colonnes, titre) => {
       const t = meta[nom];
       if (!t) {
         etapes.push({ id: `table-${nom}`, groupe: "Tables", coche: true, titre: `Créer la table ${nom}`, detail: titre,
-          actions: [["AddRawTable", nom], ...colonnes.map(c => ["AddColumn", nom, c.id, { type: c.type, isFormula: false, ...(c.widgetOptions ? { widgetOptions: c.widgetOptions } : {}) }]),
+          actions: [["AddRawTable", nom], ...colonnes.map(c => ["AddColumn", nom, c.id, infoCol(c)]),
                     ["RemoveColumn", nom, "A"], ["RemoveColumn", nom, "B"], ["RemoveColumn", nom, "C"]] });
         return;
       }
       const manquantes = colonnes.filter(c => !t.colonnes[c.id]);
       if (manquantes.length) etapes.push({ id: `cols-${nom}`, groupe: "Tables", coche: true,
         titre: `Compléter la table ${nom}`, detail: `Colonnes ajoutées : ${manquantes.map(c => c.id).join(", ")}.`,
-        actions: manquantes.map(c => ["AddColumn", nom, c.id, { type: c.type, isFormula: false, ...(c.widgetOptions ? { widgetOptions: c.widgetOptions } : {}) }]) });
+        actions: manquantes.map(c => ["AddColumn", nom, c.id, infoCol(c)]) });
     };
 
     // 1. Tables techniques
@@ -467,6 +487,7 @@ return sorted(champs)`;
     ajouterTableTechnique(g.agents, colsAgents.filter(c => !c.isFormula), "Équipe de la cellule : nom, adresse, fonction habituelle, téléphone (onglet Équipe).");
     ajouterTableTechnique(g.creneaux, COLONNES_CRENEAUX, "Planning : créneaux de chaque jour (onglet Planning).");
     ajouterTableTechnique(g.affectations, colonnesAffectations(g, config), "Planning : agents affectés à chaque créneau, avec leur fonction et leur périmètre.");
+    ajouterTableTechnique(g.emargements, colonnesEmargements(g), "Émargement : prises et fins de service des agents (page de saisie, suivi dans l'onglet Planning).");
     // Formules de la table Agents : après Affectations, qu'elles lisent
     const formules = colsAgents.filter(c => c.isFormula && !(meta[g.agents] && meta[g.agents].colonnes[c.id]));
     if (formules.length) etapes.push({ id: `formule-${g.agents}`, groupe: "Tables", coche: true, titre: `Ajouter ${formules.map(c => `${g.agents}.${c.id}`).join(", ")}`,
@@ -603,6 +624,7 @@ return sorted(champs)`;
   window.Socle = {
     reglagesPointParDefaut,
     VERSION, TABLE_CONFIG, DEFAUTS_GENERAL, NATURES, ROLES,
+    colonnesEmargements, lireEmargements,
     PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
     norm, cibleRef, lireMeta, lireConfig, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer,
