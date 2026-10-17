@@ -9,6 +9,7 @@ Ce dossier contient la version 2 des widgets. La version 1 (`index.html` à la r
 | `https://majouble.github.io/test-formulaire/v2/admin/` | v2 | Administration : onglets Installation, Référentiel (annuaire EN), Équipe, Planning, Actions, Accès, Formulaires, Point de situation et Tableau de bord en test |
 | `https://majouble.github.io/test-formulaire/v2/point-situation/` | v2 | Production du point de situation, selon la configuration publiée dans l'administration (en test) |
 | `https://majouble.github.io/test-formulaire/v2/tableau-de-bord/` | v2 | Tableau de bord en lecture, selon la version publiée dans l'administration (en test) |
+| `https://majouble.github.io/test-formulaire/v2/cartographie/` | v2 | Cartographie : carte des signalements et export GeoJSON, KML, GPX, CSV (WKT), Shapefile (en test) |
 
 ## Organisation
 
@@ -19,6 +20,7 @@ v2/
 ├── saisie/              formulaire de saisie
 ├── admin/               administration : installation.js, referentiel.js, equipe.js, planning.js, actions.js, acces.js, repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css)
 ├── point-situation/     production du point de situation
+├── cartographie/        carte et export cartographique (reprise du widget « Export cartographique »)
 ├── tableau-de-bord/     tableau de bord : tableau.js (module partagé, édition dans l'administration, lecture dans le widget)
 └── modeles/             exemples de configuration à importer (à venir)
 ```
@@ -51,6 +53,8 @@ v2/
 - Émargement : table `Emargements` (agent, créneau, début, fin, auteur = adresse du compte Grist, notée par Grist à la création). Bouton « Je prends mon service / Je termine mon service » dans le bandeau de la page de saisie de l'agent. Onglet Planning : émargé ou non dans la cellule du jour, heures prévues / émargées dans le suivi individuel, clôture des services restés ouverts. Règles d'accès : chaque agent ne voit et ne modifie que ses propres émargements. Traitement de données personnelles à inscrire au registre.
 
 - Suivi des actions (onglet Actions, coordinateurs) : kanban inspiré du widget Grist Project Manager (isaytoo). Colonnes réglables (nom, couleur, emoji, ordre, colonne de clôture ; clé `actions` de Config, choix et couleurs de la colonne `Statut` synchronisés), ajout rapide de colonne ; regroupement par statut, priorité ou responsable ; glisser-déposer entre colonnes et, en tri manuel, dans la colonne (`Ordre`) ; tris A→Z, Z→A, échéance, priorité, création ; filtres (recherche, responsable, priorité, en retard) ; colonnes repliables, cartes dépliables, champs des cartes réglables ; archives (`Archivee`) avec restauration ; fenêtre de création, modification, duplication, suppression. Ni notification, ni actions types.
+
+- Cartographie (widget `cartographie/`, page créée depuis l'onglet Tableau de bord) : reprise du widget « Export cartographique » (formats GeoJSON, KML, GPX, CSV avec WKT, Shapefile ; choix des colonnes ; filtres par valeur et par période ; une entité par établissement avec nb_lignes et dates premier / dernier / nb_jours ; ajout des autres établissements d'une table de référence avec la colonne concerne pour calculer un taux). Sur la table des signalements du socle, chaque ligne reçoit les colonnes de son établissement (coordonnées, UAI, commune, académie…) : rien à régler dans le panneau ; option « dernière version de chaque dossier » ; carte Leaflet sur fond Plan IGN, points colorés selon une colonne (qualification par défaut, couleurs des choix Grist), fiche au clic. Le panneau de Grist (Latitude, Longitude ou Géométrie) reste prioritaire pour une autre table.
 
 ## Tester l'installation
 

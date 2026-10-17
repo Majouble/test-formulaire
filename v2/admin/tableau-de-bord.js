@@ -9,34 +9,45 @@
   const S = window.Socle;
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  let td = {}, module = null, table = null, recharger = null, minuterie = null, pages = [];
+  let td = {}, module = null, table = null, recharger = null, minuterie = null, pages = [], pagesCarte = [];
   const URL_TDB = /\/tableau-de-bord\/?(index\.html)?(\?.*)?$/i;
+  const URL_CARTE = /\/cartographie\/?(index\.html)?(\?.*)?$/i;
+  const MODULES = {
+    tdb: { dossier: "tableau-de-bord", nom: "Tableau de bord", re: URL_TDB },
+    carte: { dossier: "cartographie", nom: "Cartographie", re: URL_CARTE },
+  };
 
   /* ---------- Page dédiée : vue Grist affichant le widget du tableau de bord ---------- */
   const optionsVue = brut => { let o = {}, cv = {}; try { o = JSON.parse(brut || "{}") || {}; } catch (_) {} try { cv = typeof o.customView === "string" ? JSON.parse(o.customView || "{}") || {} : (o.customView || {}); } catch (_) {} return { o, cv }; };
   async function lirePages() {
     const [sec, vues] = await Promise.all([grist.docApi.fetchTable("_grist_Views_section"), grist.docApi.fetchTable("_grist_Views")]);
-    pages = sec.id.map((id, i) => {
+    const lire = re => sec.id.map((id, i) => {
       if (sec.parentKey[i] !== "custom") return null;
       const { cv } = optionsVue(sec.options[i]);
-      if (!URL_TDB.test(cv.url || "")) return null;
+      if (!re.test(cv.url || "")) return null;
       const v = vues.id.indexOf(sec.parentId[i]);
       return { section: id, vue: sec.parentId[i], nom: v >= 0 ? vues.name[v] : "" };
     }).filter(Boolean);
+    pages = lire(URL_TDB); pagesCarte = lire(URL_CARTE);
   }
   function dessinerPages() {
     const z = $("tdb-pages");
-    z.innerHTML = pages.length
+    z.innerHTML = (pages.length
       ? `Page${pages.length > 1 ? "s" : ""} dédiée${pages.length > 1 ? "s" : ""} : ${pages.map(p => `« ${esc(p.nom)} »`).join(", ")}
          <button class="lien" id="tdb-page-autre">+ une autre page</button>`
-      : `<button class="secondaire" id="tdb-page-creer">Créer la page dédiée</button>`;
-    const go = () => creerPage();
+      : `<button class="secondaire" id="tdb-page-creer">Créer la page dédiée</button>`)
+      + ` · Carte : ${pagesCarte.length ? `${pagesCarte.map(p => `« ${esc(p.nom)} »`).join(", ")} <button class="lien" id="carte-page-autre">+ une autre</button>`
+        : `<button class="secondaire" id="carte-page-creer" title="Page Grist avec le widget de cartographie (carte et export GeoJSON, KML, GPX, CSV, Shapefile)">Créer la page Cartographie</button>`}`;
+    const go = () => creerPage("tdb"), goC = () => creerPage("carte");
     if ($("tdb-page-creer")) $("tdb-page-creer").addEventListener("click", go);
     if ($("tdb-page-autre")) $("tdb-page-autre").addEventListener("click", go);
+    if ($("carte-page-creer")) $("carte-page-creer").addEventListener("click", goC);
+    if ($("carte-page-autre")) $("carte-page-autre").addEventListener("click", goC);
   }
-  async function creerPage() {
-    const nom = (prompt("Nom de la page du tableau de bord :", pages.length ? "Tableau de bord (2)" : "Tableau de bord") || "").trim();
-    if (!nom) return;
+  // Nom libre : « Tableau de bord », puis « Tableau de bord (2) »… (renommable ensuite dans Grist)
+  async function creerPage(type = "tdb") {
+    const m = MODULES[type], existantes = type === "tdb" ? pages : pagesCarte;
+    const nom = existantes.length ? `${m.nom} (${existantes.length + 1})` : m.nom;
     try {
       const T = await grist.docApi.fetchTable("_grist_Tables"), ref = T.id[T.tableId.indexOf(table)];
       if (ref == null) throw new Error(`table ${table} introuvable`);
@@ -45,14 +56,14 @@
       if (!rv.sectionRef) throw new Error("Grist n'a pas indiqué la vue créée");
       const sec = await grist.docApi.fetchTable("_grist_Views_section"), i = sec.id.indexOf(rv.sectionRef);
       const { o, cv } = optionsVue(i >= 0 ? sec.options[i] : "");
-      let url; try { url = new URL("../tableau-de-bord/", location.href).href; } catch (_) { url = "https://majouble.github.io/test-formulaire/v2/tableau-de-bord/"; }
-      if (!/^https?:/.test(url)) url = "https://majouble.github.io/test-formulaire/v2/tableau-de-bord/";
+      let url; try { url = new URL(`../${m.dossier}/`, location.href).href; } catch (_) { url = `https://majouble.github.io/test-formulaire/v2/${m.dossier}/`; }
+      if (!/^https?:/.test(url)) url = `https://majouble.github.io/test-formulaire/v2/${m.dossier}/`;
       o.customView = JSON.stringify({ ...cv, mode: "url", url, access: "full", widgetOptions: {} });
       const acts = [["UpdateRecord", "_grist_Views_section", rv.sectionRef, { options: JSON.stringify(o), title: "" }]];
       if (rv.viewRef) acts.push(["UpdateRecord", "_grist_Views", rv.viewRef, { name: nom }]);
       await grist.docApi.applyUserActions(acts);
       await lirePages(); dessinerPages();
-      statut(`Page « ${nom} » créée : elle apparaît dans la liste des pages de Grist, à gauche.${td.publie ? "" : " Publiez le tableau de bord pour qu'elle l'affiche."}`, "ok");
+      statut(`Page « ${nom} » créée : elle apparaît dans la liste des pages de Grist, à gauche (renommable dans Grist).${type === "tdb" && !td.publie ? " Publiez le tableau de bord pour qu'elle l'affiche." : ""}`, "ok");
     } catch (e) { statut(`Création de la page refusée par Grist : ${e.message || e}`, "err"); }
   }
 
@@ -82,7 +93,7 @@
     try {
       await ecrire(); dessinerEtat();
       statut(pages.length ? "Tableau de bord publié : les pages dédiées l'affichent dans la minute." : "Tableau de bord publié. Créez maintenant sa page dédiée.", "ok");
-      if (!pages.length && confirm("Tableau de bord publié. Créer maintenant sa page dédiée dans le document ?")) await creerPage();
+      if (!pages.length) statut("Tableau de bord publié. Créez maintenant sa page dédiée (bouton « Créer la page dédiée »).", "ok");
     }
     catch (e) { statut(`Publication impossible : ${e.message || e}`, "err"); }
   }
