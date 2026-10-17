@@ -503,6 +503,8 @@
 #formulaires .agent { border: 1px solid var(--trait); border-radius: 6px; padding: 8px; margin-bottom: 8px; background: #fff; }
 #formulaires .agent-haut { display: flex; align-items: center; gap: 8px; }
 #formulaires .agent-haut input { flex: 1; min-width: 0; }
+#formulaires .agent-haut input[type=checkbox] { flex: none; }
+#formulaires .agent-haut .case { flex: 1; }
 #formulaires .agent .puces { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 4px; }
 #formulaires .puce { font: inherit; font-size: .78rem; padding: 2px 9px; border-radius: 12px; border: 1px solid var(--trait); background: #fff; color: var(--gris); cursor: pointer; }
 #formulaires .puce.on { background: var(--bleu); border-color: var(--bleu); color: #fff; }

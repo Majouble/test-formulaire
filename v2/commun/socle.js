@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0-alpha.9 (15/10/2026)";
+  const VERSION = "2.0.0-alpha.10 (17/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -22,6 +22,7 @@
     reponses: "Reponses",                  // table des versions de signalements
     referentiel: "Etablissements",         // table des établissements (et des sites)
     formulaires: "Formulaires",            // table des formulaires
+    agents: "Agents",                      // équipe de la cellule (une ligne par agent)
     retour_normale: ["RAS"],               // qualifications qui valent retour à la normale
   };
   const NATURES = ["Nouveau signalement", "Mise à jour"];
@@ -235,6 +236,20 @@ return "".join(resultat)`;
     { id: "Type", type: "Text" }, { id: "Widget", type: "Text" },
   ];
 
+  // Équipe de la cellule. Perimetre : JSON { <colonne du référentiel>: [valeurs] }, le même format que les pages de saisie.
+  // Le rôle servira aux règles d'accès ; il ne restreint encore rien.
+  const ROLES_AGENT = [
+    { id: "Coordination", libelle: "Coordination", detail: "Pilote la cellule : administration, point de situation, validation." },
+    { id: "Saisie", libelle: "Saisie", detail: "Saisit et suit les signalements de son périmètre, sur sa page." },
+    { id: "Lecture", libelle: "Lecture", detail: "Consulte le tableau de bord et les points de situation." },
+  ];
+  const COLONNES_AGENTS = [
+    { id: "Nom", type: "Text" }, { id: "Email", type: "Text" },
+    { id: "Role", type: "Choice", widgetOptions: json({ choices: ROLES_AGENT.map(r => r.id) }) },
+    { id: "Telephone", type: "Text" }, { id: "Perimetre", type: "Text" }, { id: "Actif", type: "Bool" },
+    { id: "Modifie_le", type: "DateTime:Europe/Paris" },
+  ];
+
   /* ---------- Lecture des métadonnées Grist ---------- */
   async function lireMeta() {
     const [t, c] = await Promise.all([grist.docApi.fetchTable("_grist_Tables"), grist.docApi.fetchTable("_grist_Tables_column")]);
@@ -352,19 +367,20 @@ return "".join(resultat)`;
       const t = meta[nom];
       if (!t) {
         etapes.push({ id: `table-${nom}`, groupe: "Tables", coche: true, titre: `Créer la table ${nom}`, detail: titre,
-          actions: [["AddRawTable", nom], ...colonnes.map(c => ["AddColumn", nom, c.id, { type: c.type, isFormula: false }]),
+          actions: [["AddRawTable", nom], ...colonnes.map(c => ["AddColumn", nom, c.id, { type: c.type, isFormula: false, ...(c.widgetOptions ? { widgetOptions: c.widgetOptions } : {}) }]),
                     ["RemoveColumn", nom, "A"], ["RemoveColumn", nom, "B"], ["RemoveColumn", nom, "C"]] });
         return;
       }
       const manquantes = colonnes.filter(c => !t.colonnes[c.id]);
       if (manquantes.length) etapes.push({ id: `cols-${nom}`, groupe: "Tables", coche: true,
         titre: `Compléter la table ${nom}`, detail: `Colonnes ajoutées : ${manquantes.map(c => c.id).join(", ")}.`,
-        actions: manquantes.map(c => ["AddColumn", nom, c.id, { type: c.type, isFormula: false }]) });
+        actions: manquantes.map(c => ["AddColumn", nom, c.id, { type: c.type, isFormula: false, ...(c.widgetOptions ? { widgetOptions: c.widgetOptions } : {}) }]) });
     };
 
     // 1. Tables techniques
     ajouterTableTechnique(TABLE_CONFIG, COLONNES_CONFIG, "Réglages du document, une ligne par clé (valeur en JSON).");
     ajouterTableTechnique(g.formulaires, COLONNES_FORMULAIRES, "Formulaires en brouillon et publiés.");
+    ajouterTableTechnique(g.agents, COLONNES_AGENTS, "Équipe de la cellule : nom, adresse, rôle, périmètre (onglet Équipe).");
 
     // 2. Table des réponses : la référence Établissement indique, dans un document existant, la vraie table du référentiel
     const tRep = meta[g.reponses];
@@ -495,7 +511,7 @@ return "".join(resultat)`;
 
   window.Socle = {
     reglagesPointParDefaut,
-    VERSION, TABLE_CONFIG, DEFAUTS_GENERAL, NATURES, ROLES,
+    VERSION, TABLE_CONFIG, DEFAUTS_GENERAL, NATURES, ROLES, ROLES_AGENT, COLONNES_AGENTS,
     norm, cibleRef, lireMeta, lireConfig, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer,
     REGIONS_ACADEMIQUES, regionDeAcademie,

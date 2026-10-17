@@ -2048,239 +2048,141 @@ function devinerTableEtab() {
    l'accès complet et le formulaire présélectionné (option « formulaire » lue par grist.getOption).
    ========================================================= */
 let pagesSaisie = null;   // vues personnalisées du document qui affichent un formulaire de saisie
-function optionsVue(brut) {
-  let o = {}, cv = {};
-  try { o = JSON.parse(brut || "{}") || {}; } catch (_) { o = {}; }
-  try { cv = typeof o.customView === "string" ? JSON.parse(o.customView || "{}") || {} : (o.customView || {}); } catch (_) { cv = {}; }
-  return { o, cv };
-}
-async function lirePagesSaisie() {
-  try {
-    const [s, v] = await Promise.all([grist.docApi.fetchTable("_grist_Views_section"), grist.docApi.fetchTable("_grist_Views")]);
-    const t = (await grist.docApi.fetchTable("_grist_Tables"));
-    pagesSaisie = s.id.map((id, i) => {
-      if (s.parentKey[i] !== "custom" || !s.parentId[i]) return null;
-      const { cv } = optionsVue(s.options[i]), url = cv.url || (cv.widgetDef && cv.widgetDef.url) || "";
-      const wo = cv.widgetOptions || {};
-      if (!/signalement|\/saisie\/?/i.test(url) && !("formulaire" in wo)) return null;
-      const vi = v.id.indexOf(s.parentId[i]);
-      return { sectionRef: id, viewRef: s.parentId[i], page: vi >= 0 ? String(v.name[vi] || "") : "", table: t.tableId[t.id.indexOf(s.tableRef[i])] || "",
-        url, access: cv.access || "", formulaire: wo.formulaire || null, unique: URL_SAISIE_V2.test(url), esr: /signalement-esr/i.test(url),
-        perimetre: wo.perimetre || {}, libelle: wo.libelle || "" };
-    }).filter(Boolean);
-  } catch (_) { pagesSaisie = null; }
-}
+const R = window.Repartition;
+const optionsVue = R.optionsVue;
+async function lirePagesSaisie() { pagesSaisie = await R.lirePages(); }
 const estEsr = () => !!meta.Site || (!!tableEtab() && tableEtab() !== "Etablissements");
-// Adresse proposée : celle du widget unique déjà utilisée, sinon le dossier d'une adresse connue (ancien widget, ou ce widget d'administration)
 // Adresse proposée pour le widget de saisie : la v2, à côté de cette administration (…/v2/saisie/)
-const URL_SAISIE_V2 = /\/v2\/saisie\/?(index\.html)?(\?.*)?$/i;
+const URL_SAISIE_V2 = R.URL_SAISIE_V2;
 function urlWidgetProposee() {
   const deja = (pagesSaisie || []).map(x => x.url).find(u => URL_SAISIE_V2.test(u || ""));
   if (deja) return deja;
   try { return new URL("../saisie/", location.href).href; } catch (_) { return "https://majouble.github.io/test-formulaire/v2/saisie/"; }
 }
-// Pages de saisie : une par agent (« Formulaire Alice (Versailles, Créteil) »…), chacune avec son périmètre.
-// Le périmètre se définit selon un ou plusieurs critères du référentiel (académie, département, public/privé,
-// circonscription…) : un établissement est dans le périmètre s'il remplit chaque critère utilisé par la page.
-// Stocké dans les options du widget de la page : perimetre = { <colonne du référentiel>: [valeurs] }.
-// Les critères proposés pour le document sont mémorisés dans la clé « repartition » de Config.
-const PREFIXE_PAGE = "Formulaire ";
-const MAX_VALEURS_CRITERE = 200;      // au-delà, une colonne n'est pas proposée comme critère
-const ROLES_CRITERES = ["Academie", "Departement", "Statut_public_prive", "Libelle_nature", "Type", "Region_academique"];
-let repartition = null;               // brouillon : [{ ref, vue, page, url, formulaire, libelle, perimetre, origine }]
-let repartitionCle = null;
-let refInfo = null;                   // { table, cols: {colId: {label}}, roles: {role: colId}, valeurs: {colId: [{v, n}]} }
-
-async function lireReferentielRepartition() {
-  const S = window.Socle, table = socleGeneral.referentiel;
-  try {
-    const meta = await S.lireMeta(), tMeta = meta[table];
-    if (!tMeta) { refInfo = { table, absent: true }; return; }
-    const roles = S.resoudreRoles("referentiel", tMeta, { reponses: socleGeneral.reponses, referentiel: table },
-      ((socleConfig && socleConfig.valeurs.roles && socleConfig.valeurs.roles.referentiel) || {}), {});
-    const t = await grist.docApi.fetchTable(table), valeurs = {}, cols = {};
-    for (const c of Object.values(tMeta.colonnes)) {
-      if (!/^(Text|Choice|Ref)$/.test(c.type.split(":")[0]) || !t[c.colId]) continue;
-      let affiche = v => v;
-      const cible = S.cibleRef(c.type);
-      if (cible) {   // référence : on répartit sur le libellé affiché de la ligne visée
-        try {
-          const tc = await grist.docApi.fetchTable(cible), cTexte = Object.keys(tc).find(k => k !== "id" && k !== "manualSort" && (tc[k] || []).some(x => typeof x === "string"));
-          const lib = new Map(tc.id.map((id, i) => [id, cTexte ? tc[cTexte][i] : String(id)]));
-          affiche = v => lib.get(v);
-        } catch (_) { continue; }
-      }
-      const compte = new Map();
-      for (const brut of t[c.colId]) { const v = affiche(brut); if (typeof v === "string" && v.trim()) compte.set(v.trim(), (compte.get(v.trim()) || 0) + 1); }
-      if (!compte.size || compte.size > MAX_VALEURS_CRITERE) continue;
-      cols[c.colId] = { label: c.label || c.colId, ref: !!cible };
-      valeurs[c.colId] = [...compte.entries()].map(([v, n]) => ({ v, n })).sort((a, b) => a.v.localeCompare(b.v, "fr"));
-    }
-    // Académies : l'ordre et la liste de l'onglet Installation priment quand elles sont renseignées
-    const cAca = roles.Academie && roles.Academie.col;
-    if (cAca && valeurs[cAca] && (socleGeneral.academies || []).length) {
-      const n = new Map(valeurs[cAca].map(x => [x.v, x.n]));
-      valeurs[cAca] = socleGeneral.academies.map(a => ({ v: a, n: n.get(a) || 0 }));
-    }
-    refInfo = { table, cols, valeurs, roles: Object.fromEntries(Object.entries(roles).filter(([, r]) => r.col).map(([k, r]) => [k, r.col])) };
-  } catch (e) { refInfo = { table, erreur: e.message || String(e) }; }
+// Pages de saisie : une par agent de l'équipe (table Agents, onglet Équipe), nommée « Formulaire Alice (Versailles) ».
+// Le nom et le périmètre viennent de l'équipe ; ils sont recopiés dans les options du widget de la page
+// (formulaire, libelle, perimetre, agent), que lit le widget de saisie.
+let refInfo = null;                   // référentiel (valeurs des critères), lu par Repartition
+let agentsEquipe;                     // undefined : pas encore lu ; null : pas de table Agents
+let repartition = null;               // { cle, inclure: Map(id agent → bool) } : cases « créer sa page »
+async function lireEquipe() {
+  refInfo = await R.lireReferentiel(socleGeneral, socleConfig);
+  agentsEquipe = await R.lireAgents(socleGeneral, refInfo);
 }
-const libelleCritere = colId => {
-  const role = refInfo && Object.entries(refInfo.roles || {}).find(([, c]) => c === colId);
-  const noms = { Academie: "Académie", Departement: "Département", Statut_public_prive: "Public / privé", Libelle_nature: "Nature", Type: "Type", Region_academique: "Région académique" };
-  return role && noms[role[0]] ? noms[role[0]] : ((refInfo && refInfo.cols[colId] && refInfo.cols[colId].label) || colId);
-};
-function criteresDocument() {
-  const enr = socleConfig && socleConfig.valeurs.repartition && socleConfig.valeurs.repartition.criteres;
-  const dispo = c => refInfo && refInfo.valeurs && refInfo.valeurs[c];
-  if (Array.isArray(enr) && enr.length) return enr.filter(dispo);
-  const aca = refInfo && refInfo.roles && refInfo.roles.Academie;
-  return aca && dispo(aca) ? [aca] : [];
+const avecPage = a => a.actif && (a.role === "Saisie" || a.role === "Coordination");
+// Pages de la table du formulaire par agent, et pages sans agent actif
+function etatPages() {
+  const ici = (pagesSaisie || []).filter(x => x.table === courant.table);
+  const parAgent = new Map(), orphelines = [];
+  for (const p of ici) {
+    const a = R.agentDePage(p, agentsEquipe || []);
+    if (a && avecPage(a)) { if (!parAgent.has(a.id)) parAgent.set(a.id, []); parAgent.get(a.id).push(p); } else orphelines.push({ p, a });
+  }
+  return { parAgent, orphelines };
 }
-// Ancien format (liste d'académies) → { colonne académie: liste }
-function perimetreObjet(p) {
-  if (Array.isArray(p)) { const aca = (refInfo && refInfo.roles && refInfo.roles.Academie) || "Academie"; return p.length ? { [aca]: [...p] } : {}; }
-  return p && typeof p === "object" ? JSON.parse(JSON.stringify(p)) : {};
+const pageAJour = (p, a) => p.page === R.nomPage(a.nom, a.perimetre) && p.libelle === a.nom && p.agent === a.id
+  && p.formulaire === courant.nom && R.memePerimetre(R.perimetreObjet(refInfo, p.perimetre), a.perimetre);
+// Pourquoi une page existante est à mettre à jour
+function raisonMaj(pg, a) {
+  const nom = R.nomPage(a.nom, a.perimetre), autres = pg.filter(p => p.page !== nom);
+  if (autres.length) return `actuellement « ${esc(autres.map(p => p.page).join(" », « "))} »`;
+  if (pg.some(p => !R.memePerimetre(R.perimetreObjet(refInfo, p.perimetre), a.perimetre))) return "périmètre à reporter";
+  if (pg.some(p => p.formulaire !== courant.nom)) return "formulaire à changer";
+  return "page à relier à la fiche de l'agent";
 }
-const nettoyer = p => Object.fromEntries(Object.entries(p).filter(([, v]) => Array.isArray(v) && v.length));
-const resumePerimetre = p => Object.values(nettoyer(p)).map(v => v.join(", ")).join(" – ");
-const nomPageAgent = l => { const r = resumePerimetre(l.perimetre); return `${PREFIXE_PAGE}${l.libelle.trim()}${r ? ` (${r})` : ""}`; };
-function preparerRepartition() {
+function planPages() {
   const cle = `${courant.id}|${courant.table}`;
-  if (repartition && repartitionCle === cle) return;
-  repartitionCle = cle;
-  repartition = (pagesSaisie || []).filter(x => x.table === courant.table).map(x => {
-    const perimetre = perimetreObjet(x.perimetre);
-    const libelle = x.libelle || x.page.replace(/^Formulaire\s+/i, "").replace(/\s*\(.*\)\s*$/, "");
-    return { ref: x.sectionRef, vue: x.viewRef, page: x.page, url: x.url, formulaire: x.formulaire, libelle, perimetre,
-      origine: JSON.stringify([x.libelle, x.perimetre, x.formulaire]) };
+  if (!repartition || repartition.cle !== cle) repartition = { cle, inclure: new Map() };
+  const { parAgent, orphelines } = etatPages();
+  const lignes = (agentsEquipe || []).filter(avecPage).map(a => {
+    const pg = parAgent.get(a.id) || [];
+    if (!repartition.inclure.has(a.id)) repartition.inclure.set(a.id, a.role === "Saisie");
+    const etat = pg.length ? (pg.every(p => pageAJour(p, a)) ? "ok" : "modif") : (repartition.inclure.get(a.id) ? "nouv" : "sans");
+    return { a, pg, etat };
   });
-  if (!repartition.length) repartition.push({ ref: null, libelle: "", perimetre: {} });
+  return { lignes, orphelines, aFaire: lignes.filter(l => l.etat === "nouv" || l.etat === "modif") };
 }
-const ligneModifiee = l => !l.ref || l.page !== nomPageAgent(l) || l.origine !== JSON.stringify([l.libelle.trim(), nettoyer(l.perimetre), courant.nom]);
+const allerEquipe = () => { const b = document.querySelector('nav button[data-onglet="equipe"]'); if (b) b.click(); };
 
 function groupePageHtml() {
   if (courant.type !== "etablissement") return "";
-  if (pagesSaisie === null) return `<div class="groupe"><div class="t">Pages de saisie</div><p class="note" style="margin:0">Les pages du document ne sont pas lisibles (accès complet requis).</p></div>`;
-  if (!refInfo) return `<div class="groupe"><div class="t">Pages de saisie par agent</div><p class="note">Lecture du référentiel…</p></div>`;
-  preparerRepartition();
-  const criteres = criteresDocument();
+  const titre = `<div class="t">Pages de saisie par agent</div>`;
+  if (pagesSaisie === null) return `<div class="groupe">${titre}<p class="note" style="margin:0">Les pages du document ne sont pas lisibles (accès complet requis).</p></div>`;
+  if (agentsEquipe === undefined) return `<div class="groupe">${titre}<p class="note">Lecture de l'équipe…</p></div>`;
   const publiees = new Set(formulaires.filter(f => typeof f.publie === "string" && f.publie.trim()).map(f => f.table));
   const malReliees = pagesSaisie.filter(x => !publiees.has(x.table) && x.table !== courant.table);
-  const actives = repartition.filter(l => l.libelle.trim());
-  const aFaire = actives.filter(ligneModifiee).length;
-  // critères disponibles : rôles connus d'abord, puis les autres colonnes du référentiel
-  const dispo = Object.keys(refInfo.valeurs || {});
-  const ordre = [...ROLES_CRITERES.map(r => refInfo.roles[r]).filter(c => c && dispo.includes(c)), ...dispo.filter(c => !Object.values(refInfo.roles).includes(c))];
-  const ajoutables = [...new Set(ordre)].filter(c => !criteres.includes(c));
-  // contrôle sur le premier critère : valeurs sans agent, ou suivies par plusieurs
-  const c0 = criteres[0], vals0 = c0 ? refInfo.valeurs[c0].map(x => x.v) : [];
-  const parVal = new Map(vals0.map(v => [v, actives.filter(l => (l.perimetre[c0] || []).includes(v)).map(l => l.libelle.trim())]));
-  const sansAgent = actives.length && !actives.some(l => !(l.perimetre[c0] || []).length) ? vals0.filter(v => !parVal.get(v).length) : [];
-  const partagees = vals0.filter(v => parVal.get(v).length > 1);
-  const lignes = repartition.map((l, i) => {
-    const etat = !l.ref ? `<span class="pastille-pg nouv">nouvelle</span>` : ligneModifiee(l) ? `<span class="pastille-pg modif">modifiée</span>` : `<span class="pastille-pg ok">à jour</span>`;
-    const autre = l.ref && l.formulaire && l.formulaire !== courant.nom ? `<small class="note">affiche « ${esc(l.formulaire)} » : sera basculée sur ce formulaire</small>` : "";
-    const horsCriteres = Object.keys(nettoyer(l.perimetre)).filter(c => !criteres.includes(c));
-    return `<div class="agent" data-i="${i}">
-      <div class="agent-haut"><input type="text" data-pg="libelle" value="${esc(l.libelle)}" placeholder="Prénom de l'agent" aria-label="Agent">
-        ${etat}${l.ref ? "" : `<button type="button" class="danger" data-pg="retirer" title="Retirer cette ligne">×</button>`}</div>
-      ${criteres.map(c => `<div class="crit-lib">${esc(libelleCritere(c))}</div><div class="puces">${refInfo.valeurs[c].map(x => {
-        const on = (l.perimetre[c] || []).includes(x.v);
-        return `<button type="button" class="puce${on ? " on" : ""}" data-pg="val" data-col="${esc(c)}" data-val="${esc(x.v)}" aria-pressed="${on}" title="${x.n} établissement(s)">${esc(x.v)}</button>`;
-      }).join("")}</div>`).join("")}
-      ${horsCriteres.length ? `<small class="note">Aussi limitée par : ${horsCriteres.map(c => `${esc(libelleCritere(c))} = ${esc(l.perimetre[c].join(", "))}`).join(" ; ")}</small>` : ""}
-      <small class="note">${l.libelle.trim() ? `Page « ${esc(nomPageAgent(l))} »` : "Nom de page : « Formulaire », le prénom puis le périmètre"}${Object.keys(nettoyer(l.perimetre)).length ? "" : " · tous les établissements"}</small>${autre}
+  const lienEquipe = `<button type="button" class="secondaire petit" data-pg="equipe">Modifier l'équipe et les périmètres →</button>`;
+  if (agentsEquipe === null || !agentsEquipe.filter(avecPage).length) {
+    const ici = pagesSaisie.filter(x => x.table === courant.table);
+    return `<div class="groupe">${titre}
+      <p class="note" style="margin:0 0 8px">Une page par agent de l'équipe, limitée à son périmètre. ${agentsEquipe === null ? "La table de l'équipe n'existe pas encore" : "L'équipe ne compte aucun agent actif de saisie ou de coordination"} : commencez par l'onglet Équipe${ici.length ? ", qui peut reprendre les pages existantes" : ""}.</p>
+      ${ici.length ? `<ul class="liste-cols">${ici.map(x => `<li><span class="present">✓</span> ${esc(x.page)}</li>`).join("")}</ul>` : ""}
+      ${lienEquipe}</div>`;
+  }
+  const { lignes, orphelines, aFaire } = planPages();
+  const pastilles = { ok: `<span class="pastille-pg ok">à jour</span>`, modif: `<span class="pastille-pg modif">à mettre à jour</span>`, nouv: `<span class="pastille-pg nouv">à créer</span>`, sans: "" };
+  const html = lignes.map(({ a, pg, etat }) => {
+    const r = R.resumePerimetre(a.perimetre);
+    const autre = pg.find(p => p.formulaire && p.formulaire !== courant.nom);
+    return `<div class="agent" data-id="${a.id}">
+      <div class="agent-haut">${pg.length ? `<strong>${esc(a.nom)}</strong>` : `<label class="case" style="margin:0"><input type="checkbox" data-pg="inclure"${repartition.inclure.get(a.id) ? " checked" : ""}> <strong>${esc(a.nom)}</strong></label>`}
+        <small class="note" style="margin-left:auto">${esc(a.role)}</small>${pastilles[etat]}</div>
+      <small class="note">${r ? esc(r) : "tous les établissements"} · page « ${esc(R.nomPage(a.nom, a.perimetre))} »${etat === "modif" ? ` (${raisonMaj(pg, a)})` : ""}</small>
+      ${autre ? `<small class="note">affiche « ${esc(autre.formulaire)} » : sera basculée sur ce formulaire</small>` : ""}
     </div>`;
   }).join("");
-  return `<div class="groupe"><div class="t">Pages de saisie par agent</div>
-    <p class="note" style="margin:0 0 8px">Une page par agent. Son périmètre limite la liste des dossiers et la recherche d'établissements : un établissement en fait partie s'il remplit chaque critère coché (rien de coché = tous). Cela répartit le travail, sans restreindre l'accès.</p>
-    ${refInfo.absent ? `<p class="avert">Le référentiel « ${esc(refInfo.table)} » est introuvable : terminez l'installation.</p>` : ""}
-    ${refInfo.erreur ? `<p class="avert">Référentiel illisible : ${esc(refInfo.erreur)}</p>` : ""}
-    <div class="l">Répartir selon</div>
-    <div class="criteres">${criteres.map(c => `<span class="crit">${esc(libelleCritere(c))}<button type="button" data-pg="crit-retirer" data-col="${esc(c)}" title="Retirer ce critère" aria-label="Retirer ${esc(libelleCritere(c))}">×</button></span>`).join("")}
-      ${ajoutables.length ? `<select data-pg="crit-ajouter" aria-label="Ajouter un critère"><option value="">+ critère…</option>${ajoutables.map(c => `<option value="${esc(c)}">${esc(libelleCritere(c))} (${refInfo.valeurs[c].length})</option>`).join("")}</select>` : ""}</div>
-    ${criteres.length ? "" : `<p class="note">Aucun critère : chaque page couvre tous les établissements.</p>`}
+  return `<div class="groupe">${titre}
+    <p class="note" style="margin:0 0 8px">Une page par agent de l'équipe (saisie et coordination). Son périmètre limite la liste des dossiers et la recherche d'établissements ; il répartit le travail sans restreindre l'accès. Le nom et le périmètre se règlent dans l'onglet Équipe.</p>
+    ${refInfo && refInfo.absent ? `<p class="avert">Le référentiel « ${esc(refInfo.table)} » est introuvable : terminez l'installation.</p>` : ""}
     ${malReliees.map(x => `<p class="avert">La page « ${esc(x.page)} » affiche le formulaire de saisie sur la table « ${esc(x.table)} », pour laquelle aucun formulaire n'est publié : elle reste vide.</p>`).join("")}
-    <div id="pg-agents">${lignes}</div>
-    <button type="button" class="secondaire petit" data-pg="ajouter" style="margin:6px 0 10px">+ Ajouter un agent</button>
-    ${sansAgent.length ? `<p class="avert">${esc(libelleCritere(c0))} sans agent : ${sansAgent.map(esc).join(", ")}.</p>` : ""}
-    ${partagees.length ? `<p class="note">Suivies par plusieurs agents : ${partagees.map(v => `${esc(v)} (${parVal.get(v).map(esc).join(", ")})`).join(" ; ")}.</p>` : ""}
-    <label class="l" for="pg-url">Adresse du widget de saisie (nouvelles pages)</label><input type="text" id="pg-url" value="${esc(urlWidgetProposee())}" spellcheck="false">
-    <button type="button" class="primaire petit" id="pg-creer" style="margin-top:8px"${aFaire ? "" : " disabled"}>${aFaire ? `Créer et mettre à jour les pages (${aFaire})` : "Pages à jour"}</button>
+    <div id="pg-agents">${html}</div>
+    ${orphelines.length ? `<p class="note">Pages sans agent actif dans l'équipe : ${orphelines.map(({ p, a }) => `« ${esc(p.page)} »${a ? ` (${esc(a.nom)} : ${a.actif ? esc(a.role) : "inactif"})` : ""}`).join(", ")}. Elles restent telles quelles ; supprimez-les dans Grist si elles ne servent plus.</p>` : ""}
+    ${lienEquipe}
+    <label class="l" for="pg-url" style="margin-top:10px">Adresse du widget de saisie (nouvelles pages)</label><input type="text" id="pg-url" value="${esc(urlWidgetProposee())}" spellcheck="false">
+    <button type="button" class="primaire petit" id="pg-creer" style="margin-top:8px"${aFaire.length ? "" : " disabled"}>${aFaire.length ? `Créer et mettre à jour les pages (${aFaire.length})` : "Pages à jour"}</button>
     <p class="statut" id="pg-statut" role="status"></p>${courant.publie ? "" : `<p class="note">Publiez le formulaire pour que les pages l'affichent.</p>`}</div>`;
 }
-async function enregistrerCriteres(liste) {
-  try {
-    await window.Socle.ecrireConfig("repartition", { ...((socleConfig && socleConfig.valeurs.repartition) || {}), criteres: liste });
-    socleConfig = await window.Socle.lireConfig();
-  } catch (e) { message(`Critères non enregistrés : ${e.message || e}`, "err"); }
-}
-// Événements du groupe (le groupe est redessiné à chaque changement)
 function lierPages(p) {
-  if (!refInfo) { lireReferentielRepartition().then(() => { if (courant && !choisi && !modeTest) dessinerPanneau(); }); return; }
+  if (agentsEquipe === undefined) { lireEquipe().then(() => { if (courant && !choisi && !modeTest) dessinerPanneau(); }); return; }
+  p.querySelectorAll('[data-pg="equipe"]').forEach(b => b.addEventListener("click", allerEquipe));
   const zone = p.querySelector("#pg-agents");
   if (!zone) return;
-  const redessiner = focus => {
+  zone.addEventListener("change", ev => {
+    const a = ev.target.closest(".agent");
+    if (!a || ev.target.dataset.pg !== "inclure") return;
+    repartition.inclure.set(+a.dataset.id, ev.target.checked);
     const url = $("pg-url").value, haut = p.scrollTop;
-    dessinerPanneau();
-    p.scrollTop = haut;
-    if ($("pg-url")) $("pg-url").value = url;
-    if (focus != null) { const el = document.querySelector(`#pg-agents .agent[data-i="${focus}"] input[data-pg=libelle]`); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
-  };
-  zone.addEventListener("input", ev => { const a = ev.target.closest(".agent"); if (a && ev.target.dataset.pg === "libelle") repartition[+a.dataset.i].libelle = ev.target.value; });
-  zone.addEventListener("change", ev => { const a = ev.target.closest(".agent"); if (a && ev.target.dataset.pg === "libelle") redessiner(); });
-  zone.addEventListener("click", ev => {
-    const b = ev.target.closest("[data-pg]"), a = ev.target.closest(".agent");
-    if (!b || !a) return;
-    const l = repartition[+a.dataset.i];
-    if (b.dataset.pg === "val") {
-      const c = b.dataset.col, v = b.dataset.val, liste = l.perimetre[c] || [];
-      l.perimetre[c] = liste.includes(v) ? liste.filter(x => x !== v) : [...liste, v];
-      if (!l.perimetre[c].length) delete l.perimetre[c];
-      redessiner();
-    }
-    if (b.dataset.pg === "retirer") { repartition.splice(+a.dataset.i, 1); if (!repartition.length) repartition.push({ ref: null, libelle: "", perimetre: {} }); redessiner(); }
+    dessinerPanneau(); p.scrollTop = haut; if ($("pg-url")) $("pg-url").value = url;
   });
-  p.querySelector('[data-pg="ajouter"]').addEventListener("click", () => { repartition.push({ ref: null, libelle: "", perimetre: {} }); redessiner(repartition.length - 1); });
-  const sel = p.querySelector('[data-pg="crit-ajouter"]');
-  if (sel) sel.addEventListener("change", async () => { if (!sel.value) return; await enregistrerCriteres([...criteresDocument(), sel.value]); redessiner(); });
-  p.querySelectorAll('[data-pg="crit-retirer"]').forEach(x => x.addEventListener("click", async () => {
-    const c = x.dataset.col, utilise = repartition.filter(l => (l.perimetre[c] || []).length).length;
-    if (utilise && !confirm(`${utilise} page(s) utilisent le critère « ${libelleCritere(c)} ». Le retirer efface ce critère de leur périmètre (à enregistrer ensuite). Continuer ?`)) return;
-    repartition.forEach(l => { delete l.perimetre[c]; });
-    await enregistrerCriteres(criteresDocument().filter(k => k !== c)); redessiner();
-  }));
   $("pg-creer").addEventListener("click", creerPagesAgents);
 }
 async function creerPagesAgents() {
   const st = $("pg-statut"), btn = $("pg-creer"), url = $("pg-url").value.trim();
   const dire = (t, err) => { st.textContent = t; st.className = `statut${err ? " err" : " ok"}`; };
-  const actives = repartition.filter(l => l.libelle.trim());
-  const noms = actives.map(l => l.libelle.trim().toLowerCase());
-  const doublon = noms.find((n, i) => noms.indexOf(n) !== i);
-  if (doublon) { dire(`Deux lignes portent le même agent (« ${doublon} »).`, true); return; }
-  const nouvelles = actives.filter(l => !l.ref), modifiees = actives.filter(l => l.ref && ligneModifiee(l));
+  const { aFaire } = planPages();
+  const nouvelles = aFaire.filter(l => l.etat === "nouv"), modifiees = aFaire.filter(l => l.etat === "modif");
   if (nouvelles.length && !/^https?:\/\/\S+$/i.test(url)) { dire("Indiquez l'adresse complète du widget de saisie (https://…).", true); $("pg-url").focus(); return; }
-  if (!nouvelles.length && !modifiees.length) { dire("Rien à faire : les pages sont à jour."); return; }
+  if (!aFaire.length) { dire("Rien à faire : les pages sont à jour."); return; }
   btn.disabled = true; dire("Création et mise à jour des pages…");
   try {
+    const cibles = [];   // { a, ref, vue, url }
     if (nouvelles.length) {
       const [t] = metaTables, tref = t.id[t.tableId.indexOf(courant.table)];
       if (tref == null) throw new Error(`table ${courant.table} introuvable`);
       const res = await actions(nouvelles.map(() => ["CreateViewSection", tref, 0, "custom", null, null]));
       const rvs = (res && res.retValues) || [];
-      nouvelles.forEach((l, i) => { const rv = rvs[i] || {}; l.ref = rv.sectionRef; l.vue = rv.viewRef; l.url = url; if (!l.ref) throw new Error("Grist n'a pas indiqué la vue créée"); });
+      nouvelles.forEach((l, i) => { const rv = rvs[i] || {}; if (!rv.sectionRef) throw new Error("Grist n'a pas indiqué la vue créée"); cibles.push({ a: l.a, ref: rv.sectionRef, vue: rv.viewRef, url }); });
     }
+    modifiees.forEach(l => l.pg.filter(p => !pageAJour(p, l.a)).forEach(p => cibles.push({ a: l.a, ref: p.sectionRef, vue: p.viewRef, url: p.url })));
     const sections = await grist.docApi.fetchTable("_grist_Views_section");
     const acts = [];
-    for (const l of [...nouvelles, ...modifiees]) {
-      const i = sections.id.indexOf(l.ref), nom = nomPageAgent(l);
+    for (const c of cibles) {
+      const i = sections.id.indexOf(c.ref), nom = R.nomPage(c.a.nom, c.a.perimetre);
       const { o, cv } = optionsVue(i >= 0 ? sections.options[i] : "");
-      o.customView = JSON.stringify({ ...cv, mode: "url", url: cv.url || l.url || url, access: "full",
-        widgetOptions: { ...(cv.widgetOptions || {}), formulaire: courant.nom, libelle: l.libelle.trim(), perimetre: nettoyer(l.perimetre) } });
-      acts.push(["UpdateRecord", "_grist_Views_section", l.ref, { options: JSON.stringify(o), title: nom }]);
-      const vue = l.vue || (i >= 0 ? sections.parentId[i] : null);
+      o.customView = JSON.stringify({ ...cv, mode: "url", url: cv.url || c.url || url, access: "full",
+        widgetOptions: { ...(cv.widgetOptions || {}), formulaire: courant.nom, libelle: c.a.nom, perimetre: R.nettoyer(c.a.perimetre), agent: c.a.id } });
+      acts.push(["UpdateRecord", "_grist_Views_section", c.ref, { options: JSON.stringify(o), title: nom }]);
+      const vue = c.vue || (i >= 0 ? sections.parentId[i] : null);
       if (vue) acts.push(["UpdateRecord", "_grist_Views", vue, { name: nom }]);
     }
     await actions(acts);
@@ -2289,7 +2191,6 @@ async function creerPagesAgents() {
       await actions([["UpdateRecord", TABLE_FORMULAIRES, courant.id, { Widget: url }]]);
       courant.widget = url; const f = formulaires.find(x => x.id === courant.id); if (f) f.widget = url;
     } catch (_) { /* mémorisation facultative */ }
-    repartition = null;
     await lirePagesSaisie(); dessinerPanneau();
     const pl = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
     message([nouvelles.length ? `${pl(nouvelles.length, "page créée", "pages créées")} (liste des pages de Grist, à gauche)` : "",
@@ -2297,7 +2198,7 @@ async function creerPagesAgents() {
   } catch (e) {
     btn.disabled = false;
     dire(`Opération refusée par Grist (${e.message || e}). Les pages déjà créées apparaissent dans la liste : relancez pour terminer.`, true);
-    repartition = null; await lirePagesSaisie(); dessinerPanneau();
+    await lirePagesSaisie(); dessinerPanneau();
   }
 }
 
@@ -2640,7 +2541,7 @@ async function lireSocle() {
   TABLE_FORMULAIRES = socleGeneral.formulaires || "Formulaires";
 }
 async function afficher() {
-  if (demarre) { await lireSocle(); refInfo = null; repartition = null; await lirePagesSaisie(); if (courant) dessinerPanneau(); return; }
+  if (demarre) { await lireSocle(); agentsEquipe = undefined; repartition = null; await lirePagesSaisie(); if (courant) dessinerPanneau(); return; }
   demarre = true;
   await lireSocle();
   try {

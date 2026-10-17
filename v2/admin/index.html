@@ -28,43 +28,66 @@
   main[hidden] { display: none; }
   main#formulaires { padding: 0; max-width: none; }
   #formulaires .app { height: calc(100vh - 80px); }
-  :is(#installation, #referentiel, #point-situation) .carte { background: var(--carte); border: 1px solid var(--trait); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-  :is(#installation, #referentiel, #point-situation) .carte h2 { font-size: 15px; margin: 0 0 4px; }
-  :is(#installation, #referentiel, #point-situation) .carte > p.aide { color: var(--doux); margin: 0 0 12px; }
-  :is(#installation, #referentiel, #point-situation) .bandeau { border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-weight: 600; }
-  :is(#installation, #referentiel, #point-situation) .bandeau.ok { background: var(--ok-clair); color: var(--ok); }
-  :is(#installation, #referentiel, #point-situation) .bandeau.alerte { background: var(--alerte-clair); color: var(--alerte); }
-  :is(#installation, #referentiel, #point-situation) .bandeau.info { background: var(--info-clair); color: var(--accent); }
-  :is(#installation, #referentiel, #point-situation) table { width: 100%; border-collapse: collapse; }
-  :is(#installation, #referentiel, #point-situation) th, :is(#installation, #referentiel, #point-situation) td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--trait); vertical-align: top; }
-  :is(#installation, #referentiel, #point-situation) th { font-size: 12px; color: var(--doux); font-weight: 600; }
-  :is(#installation, #referentiel, #point-situation) select, :is(#installation, #referentiel, #point-situation) input[type="text"], :is(#installation, #referentiel, #point-situation) textarea { font: inherit; padding: 5px 8px; border: 1px solid #bbb; border-radius: 4px; width: 100%; background: #fff; }
-  :is(#installation, #referentiel, #point-situation) textarea { min-height: 64px; resize: vertical; }
-  :is(#installation, #referentiel, #point-situation) label.champ { display: block; margin-bottom: 10px; }
-  :is(#installation, #referentiel, #point-situation) label.champ span { display: block; font-weight: 600; margin-bottom: 3px; }
-  :is(#installation, #referentiel, #point-situation) label.champ small { display: block; color: var(--doux); font-weight: normal; }
-  :is(#installation, #referentiel, #point-situation) .grille { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
-  @media (max-width: 640px) { :is(#installation, #referentiel, #point-situation) .grille { grid-template-columns: 1fr; } }
-  :is(#installation, #referentiel, #point-situation) .pastille { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: #eee; color: var(--doux); white-space: nowrap; }
-  :is(#installation, #referentiel, #point-situation) .pastille.manque { background: var(--alerte-clair); color: var(--alerte); }
-  :is(#installation, #referentiel, #point-situation) .pastille.reco { background: var(--info-clair); color: var(--accent); }
-  :is(#installation, #referentiel, #point-situation) .pastille.ok { background: var(--ok-clair); color: var(--ok); }
-  :is(#installation, #referentiel, #point-situation) .groupe { font-size: 12px; font-weight: 600; color: var(--doux); text-transform: uppercase; letter-spacing: .03em; margin: 14px 0 6px; }
-  :is(#installation, #referentiel, #point-situation) .etape { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--trait); }
-  :is(#installation, #referentiel, #point-situation) .etape input { margin-top: 3px; }
-  :is(#installation, #referentiel, #point-situation) .etape .detail { color: var(--doux); font-size: 13px; }
-  :is(#installation, #referentiel, #point-situation) .boutons { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
-  :is(#installation, #referentiel, #point-situation) button.primaire, :is(#installation, #referentiel, #point-situation) button.secondaire { font: inherit; padding: 7px 14px; border-radius: 4px; cursor: pointer; }
-  :is(#installation, #referentiel, #point-situation) button.primaire { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
-  :is(#installation, #referentiel, #point-situation) button.secondaire { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
-  :is(#installation, #referentiel, #point-situation) button:disabled { opacity: .5; cursor: default; }
-  :is(#installation, #referentiel, #point-situation) .statut { font-size: 13px; }
-  :is(#installation, #referentiel, #point-situation) .statut.ok { color: var(--ok); }
-  :is(#installation, #referentiel, #point-situation) .statut.err { color: var(--alerte); }
-  :is(#installation, #referentiel, #point-situation) ul.journal { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
-  :is(#installation, #referentiel, #point-situation) ul.journal li.err { color: var(--alerte); }
-  :is(#installation, #referentiel, #point-situation) .vide { color: var(--doux); font-style: italic; }
-  :is(#installation, #referentiel, #point-situation) code { background: #f0f0f0; padding: 0 4px; border-radius: 3px; font-size: 12.5px; }
+  :is(#installation, #referentiel, #equipe, #point-situation) .carte { background: var(--carte); border: 1px solid var(--trait); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  :is(#installation, #referentiel, #equipe, #point-situation) .carte h2 { font-size: 15px; margin: 0 0 4px; }
+  :is(#installation, #referentiel, #equipe, #point-situation) .carte > p.aide { color: var(--doux); margin: 0 0 12px; }
+  :is(#installation, #referentiel, #equipe, #point-situation) .bandeau { border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-weight: 600; }
+  :is(#installation, #referentiel, #equipe, #point-situation) .bandeau.ok { background: var(--ok-clair); color: var(--ok); }
+  :is(#installation, #referentiel, #equipe, #point-situation) .bandeau.alerte { background: var(--alerte-clair); color: var(--alerte); }
+  :is(#installation, #referentiel, #equipe, #point-situation) .bandeau.info { background: var(--info-clair); color: var(--accent); }
+  :is(#installation, #referentiel, #equipe, #point-situation) table { width: 100%; border-collapse: collapse; }
+  :is(#installation, #referentiel, #equipe, #point-situation) th, :is(#installation, #referentiel, #equipe, #point-situation) td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--trait); vertical-align: top; }
+  :is(#installation, #referentiel, #equipe, #point-situation) th { font-size: 12px; color: var(--doux); font-weight: 600; }
+  :is(#installation, #referentiel, #equipe, #point-situation) select, :is(#installation, #referentiel, #equipe, #point-situation) input[type="text"], :is(#installation, #referentiel, #equipe, #point-situation) textarea { font: inherit; padding: 5px 8px; border: 1px solid #bbb; border-radius: 4px; width: 100%; background: #fff; }
+  :is(#installation, #referentiel, #equipe, #point-situation) textarea { min-height: 64px; resize: vertical; }
+  :is(#installation, #referentiel, #equipe, #point-situation) label.champ { display: block; margin-bottom: 10px; }
+  :is(#installation, #referentiel, #equipe, #point-situation) label.champ span { display: block; font-weight: 600; margin-bottom: 3px; }
+  :is(#installation, #referentiel, #equipe, #point-situation) label.champ small { display: block; color: var(--doux); font-weight: normal; }
+  :is(#installation, #referentiel, #equipe, #point-situation) .grille { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  @media (max-width: 640px) { :is(#installation, #referentiel, #equipe, #point-situation) .grille { grid-template-columns: 1fr; } }
+  :is(#installation, #referentiel, #equipe, #point-situation) .pastille { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: #eee; color: var(--doux); white-space: nowrap; }
+  :is(#installation, #referentiel, #equipe, #point-situation) .pastille.manque { background: var(--alerte-clair); color: var(--alerte); }
+  :is(#installation, #referentiel, #equipe, #point-situation) .pastille.reco { background: var(--info-clair); color: var(--accent); }
+  :is(#installation, #referentiel, #equipe, #point-situation) .pastille.ok { background: var(--ok-clair); color: var(--ok); }
+  :is(#installation, #referentiel, #equipe, #point-situation) .groupe { font-size: 12px; font-weight: 600; color: var(--doux); text-transform: uppercase; letter-spacing: .03em; margin: 14px 0 6px; }
+  :is(#installation, #referentiel, #equipe, #point-situation) .etape { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--trait); }
+  :is(#installation, #referentiel, #equipe, #point-situation) .etape input { margin-top: 3px; }
+  :is(#installation, #referentiel, #equipe, #point-situation) .etape .detail { color: var(--doux); font-size: 13px; }
+  :is(#installation, #referentiel, #equipe, #point-situation) .boutons { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+  :is(#installation, #referentiel, #equipe, #point-situation) button.primaire, :is(#installation, #referentiel, #equipe, #point-situation) button.secondaire { font: inherit; padding: 7px 14px; border-radius: 4px; cursor: pointer; }
+  :is(#installation, #referentiel, #equipe, #point-situation) button.primaire { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
+  :is(#installation, #referentiel, #equipe, #point-situation) button.secondaire { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+  :is(#installation, #referentiel, #equipe, #point-situation) button:disabled { opacity: .5; cursor: default; }
+  :is(#installation, #referentiel, #equipe, #point-situation) .statut { font-size: 13px; }
+  :is(#installation, #referentiel, #equipe, #point-situation) .statut.ok { color: var(--ok); }
+  :is(#installation, #referentiel, #equipe, #point-situation) .statut.err { color: var(--alerte); }
+  :is(#installation, #referentiel, #equipe, #point-situation) ul.journal { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
+  :is(#installation, #referentiel, #equipe, #point-situation) ul.journal li.err { color: var(--alerte); }
+  :is(#installation, #referentiel, #equipe, #point-situation) .vide { color: var(--doux); font-style: italic; }
+  :is(#installation, #referentiel, #equipe, #point-situation) code { background: #f0f0f0; padding: 0 4px; border-radius: 3px; font-size: 12.5px; }
+  /* onglet Équipe */
+  #equipe .eq-table tr.eq-ligne { cursor: pointer; }
+  #equipe .eq-table tr.eq-ligne:hover, #equipe .eq-table tr.eq-ligne:focus { background: var(--accent-clair); outline: none; }
+  #equipe .eq-table tr.inactif td { color: var(--doux); }
+  #equipe .eq-criteres { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
+  #equipe .eq-criteres select { width: auto; }
+  #equipe .eq-lib { display: block; font-weight: 600; margin-bottom: 4px; }
+  #equipe .eq-criteres .eq-lib { display: inline; margin: 0 4px 0 0; }
+  #equipe .crit { display: inline-flex; align-items: center; gap: 2px; background: var(--accent-clair); color: var(--accent); border-radius: 12px; padding: 2px 4px 2px 10px; font-size: 13px; }
+  #equipe .crit button { border: 0; background: none; color: inherit; cursor: pointer; font: inherit; padding: 0 4px; }
+  #equipe .eq-crit-lib { font-size: 12px; color: var(--doux); margin: 8px 0 4px; }
+  #equipe .eq-puces { display: flex; flex-wrap: wrap; gap: 4px; }
+  #equipe .eq-puce { font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 14px; border: 1px solid var(--trait); background: #fff; cursor: pointer; }
+  #equipe .eq-puce.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  #equipe .eq-role { display: block; margin: 4px 0; }
+  #equipe .eq-case { display: flex; gap: 6px; align-items: center; font-weight: normal !important; }
+  #equipe div.champ { margin-bottom: 12px; }
+  #equipe .avert { background: var(--alerte-clair); color: var(--alerte); padding: 8px 12px; border-radius: 6px; margin: 10px 0 0; }
+  #equipe .eq-reprise { background: var(--info-clair); border-radius: 6px; padding: 10px 12px; margin-top: 12px; }
+  #equipe .eq-reprise ul { margin: 6px 0 8px; padding-left: 18px; }
+  #equipe button.danger { color: var(--alerte); border-color: var(--alerte); }
+  #equipe details summary { cursor: pointer; }
+  #equipe details[open] summary { margin-bottom: 8px; }
   /* onglet Point de situation : éditeur à gauche, aperçu en direct à droite */
   main#point-situation { max-width: none; }
   #point-situation .ps-mise { display: grid; grid-template-columns: minmax(420px, 1fr) minmax(380px, 1fr); gap: 16px; align-items: start; }
@@ -139,6 +162,7 @@
   <nav role="tablist">
     <button role="tab" aria-selected="true" data-onglet="installation">Installation</button>
     <button role="tab" aria-selected="false" data-onglet="referentiel">Référentiel</button>
+    <button role="tab" aria-selected="false" data-onglet="equipe">Équipe</button>
     <button role="tab" aria-selected="false" data-onglet="formulaires">Formulaires</button>
     <button role="tab" aria-selected="false" data-onglet="point-situation">Point de situation</button>
     <button role="tab" aria-selected="false" data-onglet="onglet-tdb">Tableau de bord</button>
@@ -220,6 +244,7 @@
   </section>
   <p class="statut" id="ref-statut"></p>
 </main>
+<main id="equipe" hidden></main>
 <main id="formulaires" hidden>
 <div class="app" id="app">
   <header class="haut">
@@ -261,18 +286,21 @@
 </main>
 <main id="point-situation" hidden></main>
 <main id="onglet-tdb" hidden></main>
+<script src="repartition.js"></script>
 <script src="installation.js"></script>
 <script src="point-situation.js"></script>
 <script src="../tableau-de-bord/tableau.js"></script>
 <script src="tableau-de-bord.js"></script>
 <script src="formulaires.js"></script>
 <script src="referentiel.js"></script>
+<script src="equipe.js"></script>
 <script>
   // Onglets
   document.querySelectorAll("nav button[data-onglet]").forEach(b => b.addEventListener("click", () => {
     document.querySelectorAll("nav button[data-onglet]").forEach(x => x.setAttribute("aria-selected", String(x === b)));
     document.querySelectorAll("main").forEach(m => { m.hidden = m.id !== b.dataset.onglet; });
     if (b.dataset.onglet === "referentiel") window.OngletReferentiel.afficher();
+    if (b.dataset.onglet === "equipe") window.OngletEquipe.afficher();
     if (b.dataset.onglet === "formulaires") window.OngletFormulaires.afficher();
     if (b.dataset.onglet === "point-situation") window.OngletPointSituation.afficher();
     if (b.dataset.onglet === "onglet-tdb") window.OngletTableauDeBord.afficher();
