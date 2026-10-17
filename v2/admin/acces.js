@@ -173,9 +173,10 @@
         <details><summary>Formules Grist</summary><table class="ac-formules"><tbody>${p.regles.map(r => `<tr><td><code>${esc(r.aclFormula || "Tous les autres")}</code></td><td><code>${esc(r.permissionsText)}</code></td></tr>`).join("")}</tbody></table></details></div>`).join("")}
       ${!formulaires.length ? `<p class="avert">Aucun formulaire publié : seules la règle par défaut et le référentiel sont proposés. Publiez les formulaires puis revenez ici.</p>` : ""}
       <div class="boutons">
-        <button class="primaire" id="ac-appliquer"${acl === null || sansFormule ? " disabled" : ""}>${ok ? "Réappliquer les règles" : "Appliquer les règles"}</button>
+        <button class="primaire" id="ac-appliquer">${ok ? "Réappliquer les règles" : "Appliquer les règles"}</button>
         ${acl && acl.regles.some(r => r.memo.startsWith(MEMO)) ? `<button class="secondaire" id="ac-retirer">Retirer les règles du socle…</button>` : ""}
         <span class="statut" id="ac-statut" role="status"></span></div>
+      <div id="ac-confirmation" class="ac-confirmation" hidden></div>
       ${remplacees.length ? `<p class="aide">${remplacees.length} règle(s) en place sur ces tables seront remplacées (détail ci-dessous). Les règles des autres tables ne sont pas modifiées.</p>` : ""}</section>`;
   }
 
@@ -222,12 +223,27 @@
   }
   async function ajouterFormule() {
     const plan = S.planInstallation(meta, config), e = plan.etapes.find(x => x.id === `formule-${general.agents}`);
-    if (e) { const [r] = await S.appliquer([e]); if (!r.ok) { alert(`Ajout refusé par Grist (${r.erreur}).`); return; } }
+    if (e) { const [r] = await S.appliquer([e]); if (!r.ok) { dire(`Ajout de la colonne refusé par Grist (${r.erreur}).`, true); return; } }
     await charger(); dessiner();
   }
-  async function appliquer() {
-    const propose = reglesProposees(), remplacees = aRemplacer(propose);
-    if (!confirm(`Appliquer les règles d'accès du socle ?${remplacees.length ? `\n${remplacees.length} règle(s) en place sur ces tables seront remplacées.` : ""}\nLes personnes absentes de l'équipe ne verront plus rien ; vérifiez ensuite avec « Voir en tant que ».`)) return;
+  // Confirmation dans la page (pas de boîte de dialogue : certains navigateurs les bloquent dans les widgets)
+  function confirmer(texte, libelle, action) {
+    const z = $("ac-confirmation");
+    z.hidden = false;
+    z.innerHTML = `<p>${esc(texte)}</p><div class="boutons"><button class="primaire" id="ac-oui">${esc(libelle)}</button><button class="secondaire" id="ac-non">Annuler</button></div>`;
+    $("ac-non").addEventListener("click", () => { z.hidden = true; z.innerHTML = ""; dire(""); });
+    $("ac-oui").addEventListener("click", () => { z.hidden = true; action().catch(e => dire(`Erreur : ${e.message || e}`, true)); });
+    z.scrollIntoView({ block: "nearest" });
+  }
+  function appliquer() {
+    if (acl === null) { dire("Impossible : les règles d'accès ne sont lisibles et modifiables que par un propriétaire du document. Vérifiez votre rôle dans le partage du document.", true); return; }
+    if (!meta[general.agents] || !meta[general.agents].colonnes.Champs_acces) { dire("Ajoutez d'abord la colonne Champs_acces (bouton « Ajouter la colonne » dans le bandeau en haut de l'onglet).", true); return; }
+    const remplacees = aRemplacer(reglesProposees());
+    confirmer(`Appliquer les règles d'accès du socle ?${remplacees.length ? ` ${remplacees.length} règle(s) en place sur ces tables seront remplacées.` : ""} Les personnes absentes de l'équipe ne verront plus rien ; vérifiez ensuite avec « Voir en tant que ».`,
+      "Oui, appliquer les règles", executerApplication);
+  }
+  async function executerApplication() {
+    const propose = reglesProposees();
     $("ac-appliquer").disabled = true; dire("Application des règles…");
     try {
       // 1. ressources manquantes
@@ -252,9 +268,12 @@
       dire(`Règles refusées par Grist (${e.message || e}). Seul un propriétaire peut modifier les règles d'accès.`, true);
     }
   }
-  async function retirer() {
+  function retirer() {
     const socle = acl.regles.filter(r => r.memo.startsWith(MEMO) || (r.userAttributes && (() => { try { return JSON.parse(r.userAttributes).name === ATTRIBUT; } catch (_) { return false; } })()));
-    if (!confirm(`Retirer les ${socle.length} règle(s) du socle ? Les droits redeviendront ceux du partage du document (éditeurs : tout ; lecteurs : lecture).`)) return;
+    confirmer(`Retirer les ${socle.length} règle(s) du socle ? Les droits redeviendront ceux du partage du document (éditeurs : tout ; lecteurs : lecture).`,
+      "Oui, retirer les règles", () => executerRetrait(socle));
+  }
+  async function executerRetrait(socle) {
     try {
       await grist.docApi.applyUserActions([["BulkRemoveRecord", "_grist_ACLRules", socle.map(r => r.id)]]);
       await charger(); dessiner(); dire("Règles du socle retirées.");
