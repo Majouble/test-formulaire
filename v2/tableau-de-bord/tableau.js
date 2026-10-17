@@ -1219,41 +1219,56 @@ function renderMap(b, d, bi) {
 // ---- Carte des établissements : un point par ligne du bloc, placé d'après la latitude et la longitude du référentiel ----
 const cibleDe = type => (/^Ref:(.+)$/.exec(type || "") || [])[1] || "";
 const colDeBloc = (b, col) => col ? refColumns(isMainSrc(b) ? mainTable : b.source).find(c => c.id === col) : null;
-// table des établissements : choisie dans le bloc, sinon celle que vise la colonne des lignes (référence)
-function ptsTable(b) {
+const SELF = "__self";   // coordonnées lues dans la table du bloc (colonnes Latitude et Longitude recopiées de l'établissement)
+const tableDeBloc = b => isMainSrc(b) ? mainTable : b.source;
+const aCoordonnees = table => { const rc = refColumns(table); return rc.some(c => /^lat/i.test(c.id)) && rc.some(c => /^(lon|lng)/i.test(c.id)); };
+// où lire les coordonnées : table choisie dans le bloc ; sinon celle que vise la colonne des lignes (référence) ;
+// sinon la table du bloc elle-même si elle a des colonnes de latitude et de longitude (lignes par UAI, par exemple)
+function ptsMode(b) {
   const p = b.pts || {}; if (p.table) return p.table;
-  const c = colDeBloc(b, b.rows && b.rows.col); return c ? cibleDe(c.type) : "";
+  const c = colDeBloc(b, b.rows && b.rows.col), cible = c ? cibleDe(c.type) : "";
+  return cible || (aCoordonnees(tableDeBloc(b)) ? SELF : "");
 }
+const ptsTable = b => { const m = ptsMode(b); return m === SELF ? "" : m; };   // table à lire en plus des données du bloc
 function ptsCols(b) {
-  const p = b.pts || {}, table = ptsTable(b), rc = refColumns(table), a = id => id && rc.some(c => c.id === id) ? id : "";
+  const p = b.pts || {}, mode = ptsMode(b), self = mode === SELF, table = self ? tableDeBloc(b) : mode;
+  const rc = refColumns(table), a = id => id && rc.some(c => c.id === id) ? id : "";
   const find = re => (rc.find(c => re.test(c.id)) || rc.find(c => re.test(c.label)) || {}).id || "";
-  const lignes = colDeBloc(b, b.rows && b.rows.col), parRef = !!lignes && cibleDe(lignes.type) === table;
-  return { table, parRef,
-    key: parRef ? "id" : (a(p.key) || find(/^(uai|code_?uai|numero_?uai|identifiant)/i)),
+  const lignes = colDeBloc(b, b.rows && b.rows.col), parRef = !self && !!lignes && cibleDe(lignes.type) === table;
+  return { table, self, parRef,
+    key: self ? (b.rows && b.rows.col) || "" : parRef ? "id" : (a(p.key) || find(/^(uai|code_?uai|numero_?uai|identifiant)/i)),
     lat: a(p.lat) || find(/^lat/i), lon: a(p.lon) || find(/^(lon|lng)/i),
-    name: a(p.name) || find(/^(nom|appellation|libell|d[ée]nomination)/i) };
+    name: a(p.name) || (self ? find(/^nom_?etab/i) : find(/^(nom|appellation|libell|d[ée]nomination)/i)) };
 }
 function pointsEditor(b, i) {
-  const p = b.pts || {}, P = ptsCols(b), rc = refColumns(P.table), auto = ptsTable({ ...b, pts: {} });
+  const p = b.pts || {}, P = ptsCols(b), rc = refColumns(P.table), auto = ptsMode({ ...b, pts: {} });
   const cols = (k, val, vide) => `<select data-b="${i}" data-k="pts.${k}">${opt([["", vide], ...rc.map(c => [c.id, c.label])], val || "")}</select>`;
-  return `<select data-b="${i}" data-k="pts.table" title="Table qui porte les coordonnées des établissements">${opt([["", auto ? `établissements : ${auto}` : "Table des établissements…"], ...refTables().map(t => [t, "Table " + t])], p.table || "")}</select>
-    ${P.table && !P.parRef ? cols("key", p.key || P.key, "Correspondance avec les lignes…") : ""}
+  return `<select data-b="${i}" data-k="pts.table" title="Table qui porte les coordonnées des établissements">${opt([["", auto === SELF ? "coordonnées : cette table" : auto ? `établissements : ${auto}` : "Table des établissements…"], ...(aCoordonnees(tableDeBloc(b)) ? [[SELF, "Coordonnées de cette table"]] : []), ...refTables().map(t => [t, "Table " + t])], p.table || "")}</select>
+    ${P.table && !P.parRef && !P.self ? cols("key", p.key || P.key, "Correspondance avec les lignes…") : ""}
     ${P.table ? `${cols("lat", p.lat || P.lat, "Latitude…")}${cols("lon", p.lon || P.lon, "Longitude…")}${cols("name", p.name || P.name, "Nom affiché : valeur de la ligne")}` : ""}
     <select data-b="${i}" data-k="pts.size">${opt([["value", "taille : selon la valeur"], ["fixed", "taille fixe"]], p.size || "value")}</select>
     <select data-b="${i}" data-k="pts.color">${opt([["classes", "couleur : classes de valeur"], ["unie", "couleur unie"]], p.color || "classes")}</select>
-    <span class="hint">Lignes du bloc : la colonne de l'établissement${P.parRef ? " (référence : coordonnées lues dans « " + esc(P.table) + " »)" : " ; choisissez la colonne du référentiel qui lui correspond (UAI…)"}. Dans Word : image.</span>`;
+    <span class="hint">Lignes du bloc : la colonne de l'établissement${P.self ? " (UAI, par exemple) ; coordonnées lues sur les lignes de cette table" : P.parRef ? " (référence : coordonnées lues dans « " + esc(P.table) + " »)" : " ; choisissez la colonne du référentiel qui lui correspond (UAI…)"}. Dans Word : image.</span>`;
 }
 function renderPoints(b, d, bi) {
   const p = b.pts || {}, P = ptsCols(b), G = window.Geo;
   const msg = t => `<div class="chart"><p class="hint">${esc(t)}</p></div>`;
   if (!P.table) return msg("Carte des établissements : choisissez la table des établissements (réglage « Graphique »), ou prenez pour lignes la colonne de l'établissement.");
-  const c = refCache.get(P.table);
-  if (!c || !c.data) return msg(c && c.error ? `Table « ${P.table} » illisible : ${c.error}` : "Lecture de la table des établissements…");
+  let data;
+  if (P.self) {          // lignes de la table du bloc, en colonnes
+    data = {}; [P.key, P.lat, P.lon, P.name].filter(Boolean).forEach(k => { data[k] = records.map(r => r[k]); });
+  } else {
+    const c = refCache.get(P.table);
+    if (!c || !c.data) return msg(c && c.error ? `Table « ${P.table} » illisible : ${c.error}` : "Lecture de la table des établissements…");
+    data = c.data;
+  }
   if (!P.lat || !P.lon) return msg(`La table « ${P.table} » n'a pas de colonnes de latitude et de longitude reconnues : choisissez-les dans le réglage « Graphique ».`);
   if (!P.key) return msg("Choisissez la colonne du référentiel qui correspond aux lignes du bloc.");
-  const data = c.data, idx = new Map();
+  const idx = new Map(), coord = j => isFinite(G.nombre(data[P.lat][j])) && isFinite(G.nombre(data[P.lon][j]));
   if (P.key === "id") (data.id || []).forEach((id, j) => { idx.set(refNorm(String(id)), j); idx.set(refNorm(textOf(id)), j); });
-  else (data[P.key] || []).forEach((v, j) => { const t = textOf(v); if (t !== null && !idx.has(refNorm(t))) idx.set(refNorm(t), j); });
+  else (data[P.key] || []).forEach((v, j) => {   // première ligne qui a des coordonnées
+    (Array.isArray(v) ? (v[0] === "L" ? v.slice(1) : v) : [v]).forEach(x => { const t = textOf(x); if (t !== null && (!idx.has(refNorm(t)) || (!coord(idx.get(refNorm(t))) && coord(j)))) idx.set(refNorm(t), j); });
+  });
   const pts = []; let sansRef = 0, sansCoord = 0, valSans = 0;
   d.rowKeys.forEach(rk => {
     if (rk === EMPTY) return;
@@ -1527,8 +1542,9 @@ RACINE.addEventListener("change", e => {
     inSrc(b, () => {
     if (t.dataset.k === "measure.agg" && v === "cover" && (!b.measure.col || isNumCol(b.measure.col))) b.measure.col = (columns.find(c => !isNumCol(c.id) && !isDate(c.id) && !isBool(c.id)) || {}).id || "";
     else if (t.dataset.k === "measure.agg" && v !== "count" && !b.measure.col) b.measure.col = (columns.find(c => isNumCol(c.id)) || {}).id || "";
-    if (t.dataset.k === "chart" && v === "points" && !cibleDe((colDeBloc(b, b.rows.col) || {}).type)) {   // lignes : la colonne de l'établissement
-      const etab = columns.find(c => cibleDe(c.type) && refColumns(cibleDe(c.type)).some(x => /^lat/i.test(x.id)));
+    if (t.dataset.k === "chart" && v === "points" && !cibleDe((colDeBloc(b, b.rows.col) || {}).type) && !/uai/i.test(b.rows.col || "")) {   // lignes : l'établissement
+      const uai = aCoordonnees(tableDeBloc(b)) && columns.find(c => /^uai$/i.test(c.id)) || columns.find(c => /uai/i.test(c.id) && aCoordonnees(tableDeBloc(b)));
+      const etab = uai || columns.find(c => cibleDe(c.type) && refColumns(cibleDe(c.type)).some(x => /^lat/i.test(x.id)));
       if (etab) { b.rows.col = etab.id; delete b.rows.grain; delete b.rows.ref; }
     }
     if (/\.ref\.table$/.test(t.dataset.k)) {                            // colonne de la liste devinée d'après la colonne des réponses

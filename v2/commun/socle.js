@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0-alpha.20 (17/10/2026)";
+  const VERSION = "2.0.0-alpha.21 (17/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -156,6 +156,17 @@
           widgetOptions: json({ choices: ["Annuaire EN", "Annuaire ESR", "OAD", "Manuel"] }) }) },
     ],
   };
+
+  // Colonnes formules de la table des réponses, recopiées de l'établissement (rôle du référentiel → colonne)
+  const COLONNES_ETABLISSEMENT = [
+    { id: "UAI", role: "UAI", type: "Text", label: "UAI" },
+    { id: "Nom_etablissement", role: "Nom", type: "Text", label: "Nom de l'établissement" },
+    { id: "Commune", role: "Commune", type: "Text", label: "Commune" },
+    { id: "Departement", role: "Departement", type: "Text", label: "Département" },
+    { id: "Academie", role: "Academie", type: "Text", label: "Académie" },
+    { id: "Latitude", role: "Latitude", type: "Numeric", label: "Latitude" },
+    { id: "Longitude", role: "Longitude", type: "Numeric", label: "Longitude" },
+  ];
 
   // Formule de la dernière version, décidée le 15/10/2026 : un dossier = un établissement un jour donné ;
   // la dernière version est la plus récente par date de saisie, puis par numéro de ligne.
@@ -612,6 +623,18 @@ return sorted(champs)`;
       }
     }
 
+    // 4 bis. Colonnes de l'établissement (formules) : lignes par UAI, cartes par département, académie ou point, exports CSV
+    const colEtab = (rolesRep.Etablissement && rolesRep.Etablissement.col) || (!tRep || etapes.some(e => e.id === "rep-Etablissement") ? "Etablissement" : null);
+    const colRef = role => !tRef ? role : (rolesRef[role] && rolesRef[role].col) || (etapes.some(e => e.id === `ref-${role}`) ? role : null);
+    if (colEtab) {
+      const ajout = COLONNES_ETABLISSEMENT.filter(c => colRef(c.role) && !(tRep && tRep.colonnes[c.id]))
+        .map(c => ({ ...c, formula: `$${colEtab}.${colRef(c.role)}` }));
+      if (ajout.length) etapes.push({ id: "rep-etablissement", groupe: "Colonnes", coche: true,
+        titre: `Ajouter à ${g.reponses} les colonnes de l'établissement : ${ajout.map(c => c.id).join(", ")}`,
+        detail: `Formules qui recopient le référentiel (${ajout.map(c => c.formula).join(", ")}) : lignes par UAI, cartes par département, académie ou établissement, exports CSV.`,
+        actions: ajout.map(c => ["AddColumn", g.reponses, c.id, { type: c.type, isFormula: true, formula: c.formula, label: c.label, untieColIdFromLabel: true }]) });
+    }
+
     // 5. Config : réglages généraux et associations reconnues
     const aEcrire = {};
     // Préréglage deviné pour un document existant : colonne Site ou référentiel autre que « Etablissements » → ESR
@@ -673,7 +696,7 @@ return sorted(champs)`;
     colonnesEmargements, lireEmargements, STATUTS_ACTION, PRIORITES_ACTION, ACTIONS_DEFAUT, reglagesActions, optionsStatuts, colonnesActions, lireActions,
     PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
     norm, cibleRef, lireMeta, lireConfig, general, actionConfig, ecrireConfig,
-    resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer,
+    resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer, COLONNES_ETABLISSEMENT,
     REGIONS_ACADEMIQUES, regionDeAcademie,
   };
 })();

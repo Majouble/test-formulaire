@@ -59,6 +59,8 @@ v2/
 
 - Répartition des cartes (17/10) : les cartes par département ou par académie (aplats de couleur) restent dans le tableau de bord ; le tableau de bord gagne le graphique « Carte des établissements (points) » (un point par établissement, taille et couleur selon la valeur, encart agrandi pour Paris et la petite couronne, détail au clic, image dans Word), sur le même fond embarqué, sans service extérieur. La cartographie sert à l'export et à l'analyse fine sur fond IGN. Le fond de carte et les correspondances département / académie sont dans `commun/geo.js`, partagé par les deux widgets.
 
+- Colonnes de l'établissement (17/10) : l'installation ajoute à la table des réponses des colonnes formules recopiées du référentiel : `UAI`, `Nom_etablissement`, `Commune`, `Departement`, `Academie`, `Latitude`, `Longitude` (`$Etablissement.UAI`…, selon les colonnes du référentiel). Elles servent aux lignes par UAI et aux cartes du tableau de bord, et rendent les exports CSV lisibles. Document déjà installé : étape « Ajouter à Reponses les colonnes de l'établissement » de l'onglet Installation, ou bandeau de l'onglet Tableau de bord. La carte des établissements lit les coordonnées sur la table elle-même quand les lignes sont l'UAI ; la cartographie reprend ces colonnes sans les dupliquer.
+
 ## Tester l'installation
 
 1. Créer un document Grist vierge.

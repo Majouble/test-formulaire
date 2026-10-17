@@ -119,8 +119,10 @@
         <button class="primaire" id="tdb-publier">Publier</button></div>
       <p class="tdb-aide">Modifiez les blocs ci-dessous : le brouillon s'enregistre au fil de l'eau, sur les signalements de la table <b>${esc(table)}</b>. Le widget du tableau de bord n'affiche que la version publiée.
         Pour reprendre un tableau de bord existant (document v1), utilisez « Récupérer d'un autre widget… ».</p>
+      <p class="tdb-aide" id="tdb-etab" hidden></p>
       <div id="tableau-de-bord"></div>`;
     dessinerEtat();
+    proposerColonnesEtab(config);
     try { await lirePages(); } catch (_) { pages = []; }
     dessinerPages();
     $("tdb-publier").addEventListener("click", publier);
@@ -135,6 +137,24 @@
       configuration: () => td.brouillon || td.publie || null,
       enregistrer,
     });
+  }
+  // Colonnes de l'établissement (UAI, nom, département, académie, coordonnées) absentes de la table des réponses : ajout en un clic
+  async function proposerColonnesEtab(config) {
+    const p = $("tdb-etab");
+    try {
+      const etape = S.planInstallation(await S.lireMeta(), config).etapes.find(e => e.id === "rep-etablissement");
+      if (!etape) { p.hidden = true; return; }
+      const cols = etape.actions.map(a => a[2]);
+      p.innerHTML = `Pour des lignes par UAI, des cartes par département, académie ou établissement et des exports lisibles, la table <b>${esc(table)}</b> peut recopier les informations de l'établissement : ${cols.map(esc).join(", ")}.
+        <button class="secondaire" id="tdb-etab-ajouter">Ajouter ces colonnes</button> <span class="statut" id="tdb-etab-statut"></span>`;
+      p.hidden = false;
+      $("tdb-etab-ajouter").addEventListener("click", async () => {
+        const [r] = await S.appliquer([etape]);
+        if (!r.ok) { $("tdb-etab-statut").textContent = `Ajout refusé par Grist (${r.erreur}).`; return; }
+        p.hidden = true;
+        if (recharger) await recharger();
+      });
+    } catch (_) { p.hidden = true; }
   }
   window.OngletTableauDeBord = { afficher };
 })();

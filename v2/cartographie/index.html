@@ -1062,9 +1062,12 @@ async function enrichirSocle(records) {
     if (!c("Latitude") || !c("Longitude")) return records;
     const data = await grist.docApi.fetchTable(refTable);
     const idx = new Map((data.id || []).map((id, i) => [id, i]));
-    const refCols = Object.keys(data).filter(k => k !== "id" && k !== "manualSort" && !k.startsWith("gristHelper_"));
+    // colonnes déjà recopiées par formule dans la table ($Etablissement.UAI…) : reprises telles quelles, sans doublon
+    const deja = new Map();
+    Object.values(tMeta.colonnes).forEach(x => { const m = x.isFormula && /^\s*(?:return\s+)?\$(\w+)\.(\w+)\s*$/.exec(x.formula || ""); if (m && m[1] === etabCol) deja.set(m[2], x.colId); });
+    const refCols = Object.keys(data).filter(k => k !== "id" && k !== "manualSort" && !k.startsWith("gristHelper_") && !deja.has(k));
     const present = new Set(); records.forEach(r => Object.keys(r).forEach(k => present.add(k)));
-    const nom = col => present.has(col) ? `Etab_${col}` : col;
+    const nom = col => deja.get(col) || (present.has(col) ? `Etab_${col}` : col);
     await loadMeta(); const refTypes = typesOfTable(refTable);
     refCols.forEach(col => { colTypes[nom(col)] = refTypes[col]; });
     // département et académie déduits des coordonnées (fond de carte du socle) quand le référentiel ne les donne pas
