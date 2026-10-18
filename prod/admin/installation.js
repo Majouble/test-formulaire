@@ -119,6 +119,9 @@
     $("g-retour").value = (g.retour_normale || []).join(", ");
     optionsTables($("g-reponses"), g.reponses);
     optionsTables($("g-referentiel"), g.referentiel);
+    const autre = (g.autres_champs || [])[0];
+    $("g-second").checked = !!autre;
+    majSecond(autre);
     const sansConfig = !config;
     $("btn-general").disabled = sansConfig;
     statut("statut-general", sansConfig ? "Appliquez d'abord la création de la table Config." : "");
@@ -175,6 +178,19 @@
     statut("statut-actions", ko ? `${ko} action(s) en échec, voir le journal.` : "Actions appliquées.", ko ? "err" : "ok");
   });
 
+  // Second champ : l'autre que celui du préréglage (EN ↔ ESR), noms de tables proposés
+  const champSecond = () => ($("g-preset").value === "esr" ? "EN" : "ESR");
+  function majSecond(autre) {
+    const c = champSecond(), d = S.AUTRE_CHAMP_DEFAUT[c];
+    $("g-second-lib").textContent = c === "ESR" ? "Suivre aussi l'enseignement supérieur et la recherche (MESRE)" : "Suivre aussi l'éducation nationale (MEN)";
+    if (autre && autre.champ === c) { $("g-second-rep").value = autre.reponses; $("g-second-ref").value = autre.referentiel; }
+    else if (!$("g-second-rep").dataset.touche) { $("g-second-rep").value = d.reponses; $("g-second-ref").value = d.referentiel; }
+    $("g-second-tables").hidden = !$("g-second").checked;
+  }
+  $("g-second").addEventListener("change", () => majSecond(null));
+  $("g-preset").addEventListener("change", () => { delete $("g-second-rep").dataset.touche; majSecond(null); });
+  ["g-second-rep", "g-second-ref"].forEach(id => $(id).addEventListener("input", () => { $("g-second-rep").dataset.touche = "1"; }));
+
   $("btn-general").addEventListener("click", async () => {
     const valeur = {
       ...((config && config.valeurs.general) || S.DEFAUTS_GENERAL),
@@ -183,8 +199,10 @@
       retour_normale: $("g-retour").value.split(",").map(s => s.trim()).filter(Boolean),
       reponses: $("g-reponses").value,
       referentiel: $("g-referentiel").value,
+      autres_champs: $("g-second").checked ? [{ champ: champSecond(), reponses: $("g-second-rep").value.trim().replace(/[^A-Za-z0-9_]/g, "_"), referentiel: $("g-second-ref").value.trim().replace(/[^A-Za-z0-9_]/g, "_") }].filter(e => e.reponses && e.referentiel) : [],
     };
-    try { await S.ecrireConfig("general", valeur); await charger(); statut("statut-general", "Réglages enregistrés.", "ok"); }
+    if (valeur.autres_champs.some(e => e.reponses === valeur.reponses || e.referentiel === valeur.referentiel)) { statut("statut-general", "Le second champ doit avoir ses propres tables (réponses et référentiel).", "err"); return; }
+    try { await S.ecrireConfig("general", valeur); await charger(); statut("statut-general", valeur.autres_champs.length && plan.etapes.some(e => /@/.test(e.id)) ? "Réglages enregistrés : appliquez les actions proposées en haut de l'onglet pour créer les tables du second champ." : "Réglages enregistrés.", "ok"); }
     catch (e) { statut("statut-general", `Échec : ${e.message || e}`, "err"); }
   });
 

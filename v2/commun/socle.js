@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.3 (18/10/2026)";
+  const VERSION = "2.0.4 (18/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -273,6 +273,21 @@ return "".join(resultat)`;
     { id: "EN", version: "en", libelle: "Éducation nationale" },
     { id: "ESR", version: "esr", libelle: "Enseignement supérieur et recherche" },
   ];
+  /* Champs suivis par le document (ex. MEN et MESRE) : chacun a sa table de réponses et son référentiel, pour que
+     les données ne se mêlent pas. Le premier est celui du préréglage (general.reponses, general.referentiel) ;
+     les suivants sont dans general.autres_champs : [{ champ: "ESR", reponses, referentiel }]. */
+  const AUTRE_CHAMP_DEFAUT = { EN: { reponses: "Reponses_EN", referentiel: "Etablissements_EN" }, ESR: { reponses: "Reponses_ESR", referentiel: "Etablissements_ESR" } };
+  function espaces(g) {
+    g = g || DEFAUTS_GENERAL;
+    const premier = g.preset === "esr" ? "ESR" : "EN";
+    const out = [{ champ: premier, reponses: g.reponses || DEFAUTS_GENERAL.reponses, referentiel: g.referentiel || DEFAUTS_GENERAL.referentiel }];
+    (Array.isArray(g.autres_champs) ? g.autres_champs : []).forEach(e => {
+      if (e && CHAMPS.some(c => c.id === e.champ) && e.reponses && !out.some(x => x.champ === e.champ || x.reponses === e.reponses))
+        out.push({ champ: e.champ, reponses: e.reponses, referentiel: e.referentiel || (AUTRE_CHAMP_DEFAUT[e.champ] || {}).referentiel || out[0].referentiel });
+    });
+    return out.map(e => ({ ...e, version: (CHAMPS.find(c => c.id === e.champ) || CHAMPS[0]).version, libelle: (CHAMPS.find(c => c.id === e.champ) || {}).libelle || e.champ }));
+  }
+  const espaceDeTable = (g, table) => espaces(g).find(e => e.reponses === table) || null;
   // fonctions : une ligne du tableau du planning chacune, dans cet ordre ; ligne: false = non affichée ; saisie: page de saisie
   const PLANNING_DEFAUT = {
     fonctions: [
@@ -643,98 +658,107 @@ return sorted(champs)`;
       detail: "Champs (EN, ESR) de chaque agent d'après le planning, lus par les règles d'accès.",
       actions: formules.map(c => ["AddColumn", g.agents, c.id, { type: c.type, isFormula: true, formula: c.formula, widgetOptions: c.widgetOptions || "" }]) });
 
-    // 2. Table des réponses : la référence Établissement indique, dans un document existant, la vraie table du référentiel
-    const tRep = meta[g.reponses];
-    let referentiel = g.referentiel;
-    if (tRep) {
-      const r0 = resoudreRoles("reponses", tRep, { reponses: g.reponses, referentiel }, assoc.reponses || {}, {});
-      const cible = r0.Etablissement && r0.Etablissement.col ? cibleRef(tRep.colonnes[r0.Etablissement.col].type) : null;
-      if (cible && cible !== referentiel && meta[cible]) {
-        infos.push(`La colonne « ${r0.Etablissement.col} » renvoie vers la table « ${cible} » : elle est retenue comme référentiel.`);
-        referentiel = cible;
+    // 2 à 4 bis : tables d'un champ (réponses et référentiel) ; sfx distingue les étapes du second champ
+    const planEspace = (rep, refDefaut, assocRep, assocRef, sfx, choixRef, version) => {
+      const voulu = def => def.obligatoire || def.parDefaut || (def.role === "Site" && version === "esr");
+      // 2. Table des réponses : la référence Établissement indique, dans un document existant, la vraie table du référentiel
+      const tRep = meta[rep];
+      let referentiel = refDefaut;
+      if (tRep) {
+        const r0 = resoudreRoles("reponses", tRep, { reponses: rep, referentiel }, assocRep, {});
+        const cible = r0.Etablissement && r0.Etablissement.col ? cibleRef(tRep.colonnes[r0.Etablissement.col].type) : null;
+        if (cible && cible !== referentiel && meta[cible]) {
+          infos.push(`La colonne « ${r0.Etablissement.col} » renvoie vers la table « ${cible} » : elle est retenue comme référentiel.`);
+          referentiel = cible;
+        }
       }
-    }
-    if (choix.referentiel) referentiel = choix.referentiel;
+      if (choixRef) referentiel = choixRef;
 
-    // 3. Référentiel
-    const tRef = meta[referentiel];
-    const ctxRef = { reponses: g.reponses, referentiel };
-    let rolesRef = {};
-    if (!tRef) {
-      const defs = ROLES.referentiel;
-      etapes.push({ id: "table-referentiel", groupe: "Tables", coche: true, titre: `Créer la table ${referentiel}`,
-        detail: `Référentiel des établissements : ${defs.map(d => d.role).join(", ")}. À remplir ensuite par l'annuaire ou l'import OAD.`,
-        actions: actionsNouvelleTable(referentiel, defs.map(d => ({ id: d.role, ...d.creer(ctxRef) }))) });
-    } else {
-      rolesRef = resoudreRoles("referentiel", tRef, ctxRef, assoc.referentiel || {}, {});
-      for (const def of ROLES.referentiel) {
-        const r = rolesRef[def.role];
-        if (r && r.col) continue;
-        if (!def.obligatoire && !def.parDefaut && !choix[`ref:${def.role}`]) continue;
-        if (tRef.colonnes[def.role]) { infos.push(`${referentiel}.${def.role} existe mais son type ne convient pas au rôle « ${def.libelle} ».`); continue; }
-        etapes.push({ id: `ref-${def.role}`, groupe: "Colonnes", coche: def.obligatoire || !!def.parDefaut,
-          titre: `Ajouter ${referentiel}.${def.role}`, detail: `Aucune colonne ne joue le rôle « ${def.libelle} ».`,
-          actions: [["AddColumn", referentiel, def.role, def.creer(ctxRef)]] });
+      // 3. Référentiel
+      const tRef = meta[referentiel];
+      const ctxRef = { reponses: rep, referentiel };
+      let rolesRef = {};
+      if (!tRef) {
+        const defs = ROLES.referentiel;
+        etapes.push({ id: `table-referentiel${sfx}`, groupe: "Tables", coche: true, titre: `Créer la table ${referentiel}`,
+          detail: `Référentiel des établissements : ${defs.map(d => d.role).join(", ")}. À remplir ensuite par l'annuaire ou l'import OAD.`,
+          actions: actionsNouvelleTable(referentiel, defs.map(d => ({ id: d.role, ...d.creer(ctxRef) }))) });
+      } else {
+        rolesRef = resoudreRoles("referentiel", tRef, ctxRef, assocRef, {});
+        for (const def of ROLES.referentiel) {
+          const r = rolesRef[def.role];
+          if (r && r.col) continue;
+          if (!def.obligatoire && !def.parDefaut && !choix[`ref:${def.role}`]) continue;
+          if (tRef.colonnes[def.role]) { infos.push(`${referentiel}.${def.role} existe mais son type ne convient pas au rôle « ${def.libelle} ».`); continue; }
+          etapes.push({ id: `ref-${def.role}${sfx}`, groupe: "Colonnes", coche: def.obligatoire || !!def.parDefaut,
+            titre: `Ajouter ${referentiel}.${def.role}`, detail: `Aucune colonne ne joue le rôle « ${def.libelle} ».`,
+            actions: [["AddColumn", referentiel, def.role, def.creer(ctxRef)]] });
+        }
       }
-    }
 
-    // 4. Réponses
-    const ctx = { reponses: g.reponses, referentiel, cols: {}, general: g };
-    let rolesRep = {};
-    if (!tRep) {
-      // Colonnes simples avec la table, références et formule ensuite (la table doit exister pour s'y référer)
-      const defs = ROLES.reponses.filter(d => d.obligatoire || d.parDefaut);
-      const apres = ["Etablissement", "Dossier", "Derniere_version", "Description_Word_", "Auteur"];   // références et formules : une fois la table créée
-      const simples = defs.filter(d => !apres.includes(d.role));
-      etapes.push({ id: "table-reponses", groupe: "Tables", coche: true, titre: `Créer la table ${g.reponses}`,
-        detail: `Une ligne par version de signalement : ${defs.map(d => d.role).join(", ")}.`,
-        actions: [...actionsNouvelleTable(g.reponses, simples.map(d => ({ id: d.role, ...d.creer(ctx) }))),
-                  ...apres.map(role =>
-                    ["AddColumn", g.reponses, role, ROLES.reponses.find(d => d.role === role).creer(ctx)])] });
-    } else {
-      rolesRep = resoudreRoles("reponses", tRep, ctx, assoc.reponses || {}, {});
-      Object.entries(rolesRep).forEach(([role, r]) => { if (r.col) ctx.cols[role] = r.col; });
-      for (const def of ROLES.reponses) {
-        const r = rolesRep[def.role];
-        if (r && r.col) continue;
-        if (!def.obligatoire && !def.parDefaut && !choix[`rep:${def.role}`]) continue;
-        if (tRep.colonnes[def.role]) { infos.push(`${g.reponses}.${def.role} existe mais son type ne convient pas au rôle « ${def.libelle} ».`); continue; }
-        etapes.push({ id: `rep-${def.role}`, groupe: "Colonnes", coche: def.obligatoire || !!def.parDefaut,
-          titre: `Ajouter ${g.reponses}.${def.role}`, detail: `Aucune colonne ne joue le rôle « ${def.libelle} ».`,
-          actions: [["AddColumn", g.reponses, def.role, def.creer({ ...ctx, cols: { ...ctx.cols, [def.role]: def.role } })]] });
+      // 4. Réponses
+      const ctx = { reponses: rep, referentiel, cols: {}, general: g };
+      let rolesRep = {};
+      if (!tRep) {
+        // Colonnes simples avec la table, références et formule ensuite (la table doit exister pour s'y référer)
+        const defs = ROLES.reponses.filter(voulu);
+        const apres = ["Etablissement", "Dossier", "Derniere_version", "Description_Word_", "Auteur"];   // références et formules : une fois la table créée
+        const simples = defs.filter(d => !apres.includes(d.role));
+        etapes.push({ id: `table-reponses${sfx}`, groupe: "Tables", coche: true, titre: `Créer la table ${rep}`,
+          detail: `Une ligne par version de signalement : ${defs.map(d => d.role).join(", ")}.`,
+          actions: [...actionsNouvelleTable(rep, simples.map(d => ({ id: d.role, ...d.creer(ctx) }))),
+                    ...apres.map(role =>
+                      ["AddColumn", rep, role, ROLES.reponses.find(d => d.role === role).creer(ctx)])] });
+      } else {
+        rolesRep = resoudreRoles("reponses", tRep, ctx, assocRep, {});
+        Object.entries(rolesRep).forEach(([role, r]) => { if (r.col) ctx.cols[role] = r.col; });
+        for (const def of ROLES.reponses) {
+          const r = rolesRep[def.role];
+          if (r && r.col) continue;
+          if (!voulu(def) && !choix[`rep:${def.role}`]) continue;
+          if (tRep.colonnes[def.role]) { infos.push(`${rep}.${def.role} existe mais son type ne convient pas au rôle « ${def.libelle} ».`); continue; }
+          etapes.push({ id: `rep-${def.role}${sfx}`, groupe: "Colonnes", coche: voulu(def),
+            titre: `Ajouter ${rep}.${def.role}`, detail: `Aucune colonne ne joue le rôle « ${def.libelle} ».`,
+            actions: [["AddColumn", rep, def.role, def.creer({ ...ctx, cols: { ...ctx.cols, [def.role]: def.role } })]] });
+        }
+        // Auteur : formule d'initialisation à jour (compte Grist, invité, établissement)
+        const au = rolesRep.Auteur;
+        if (au && au.col && auteurAMettreAJour(tRep.colonnes[au.col])) {
+          const vide = !String(tRep.colonnes[au.col].formula || "").trim();
+          etapes.push({ id: `rep-formule-auteur${sfx}`, groupe: "Colonnes", coche: true,
+            titre: `${vide ? "Remplir" : "Mettre à jour"} la formule de ${rep}.${au.col}`,
+            detail: "Formule d'initialisation : adresse du compte Grist, « Invité : <nom> » pour le lien d'un agent, « Établissement : <UAI> <nom> » pour le lien d'un établissement. Les lignes existantes ne changent pas.",
+            actions: [["ModifyColumn", rep, au.col, { formula: formuleAuteur(g, (rolesRep.Etablissement && rolesRep.Etablissement.col) || null), isFormula: false }]] });
+        }
+        // Formule de la dernière version : signalée, jamais remplacée d'office (bascule à l'étape 6)
+        const dv = rolesRep.Derniere_version;
+        if (dv && dv.col && rolesRep.Dossier && rolesRep.Dossier.col && rolesRep.Cree_le && rolesRep.Cree_le.col) {
+          const attendue = formuleDerniereVersion(ctx), actuelle = tRep.colonnes[dv.col].formula;
+          if (actuelle.replace(/\s+/g, " ").trim() !== attendue.replace(/\s+/g, " ").trim())
+            etapes.push({ id: `rep-formule-dv${sfx}`, groupe: "Règles métier", coche: false,
+              titre: `Remplacer la formule de ${rep}.${dv.col}`,
+              detail: "La formule actuelle diffère de la règle décidée le 15/10/2026 (dernière saisie du dossier). À ne cocher qu'au moment de la bascule : les dossiers étalés sur plusieurs jours changeraient de dernière version.",
+              actions: [["ModifyColumn", rep, dv.col, { formula: attendue, isFormula: true }]] });
+        }
       }
-      // Auteur : formule d'initialisation à jour (compte Grist, invité, établissement)
-      const au = rolesRep.Auteur;
-      if (au && au.col && auteurAMettreAJour(tRep.colonnes[au.col])) {
-        const vide = !String(tRep.colonnes[au.col].formula || "").trim();
-        etapes.push({ id: "rep-formule-auteur", groupe: "Colonnes", coche: true,
-          titre: `${vide ? "Remplir" : "Mettre à jour"} la formule de ${g.reponses}.${au.col}`,
-          detail: "Formule d'initialisation : adresse du compte Grist, « Invité : <nom> » pour le lien d'un agent, « Établissement : <UAI> <nom> » pour le lien d'un établissement. Les lignes existantes ne changent pas.",
-          actions: [["ModifyColumn", g.reponses, au.col, { formula: formuleAuteur(g, (rolesRep.Etablissement && rolesRep.Etablissement.col) || null), isFormula: false }]] });
-      }
-      // Formule de la dernière version : signalée, jamais remplacée d'office (bascule à l'étape 6)
-      const dv = rolesRep.Derniere_version;
-      if (dv && dv.col && rolesRep.Dossier && rolesRep.Dossier.col && rolesRep.Cree_le && rolesRep.Cree_le.col) {
-        const attendue = formuleDerniereVersion(ctx), actuelle = tRep.colonnes[dv.col].formula;
-        if (actuelle.replace(/\s+/g, " ").trim() !== attendue.replace(/\s+/g, " ").trim())
-          etapes.push({ id: "rep-formule-dv", groupe: "Règles métier", coche: false,
-            titre: `Remplacer la formule de ${g.reponses}.${dv.col}`,
-            detail: "La formule actuelle diffère de la règle décidée le 15/10/2026 (dernière saisie du dossier). À ne cocher qu'au moment de la bascule : les dossiers étalés sur plusieurs jours changeraient de dernière version.",
-            actions: [["ModifyColumn", g.reponses, dv.col, { formula: attendue, isFormula: true }]] });
-      }
-    }
 
-    // 4 bis. Colonnes de l'établissement (formules) : lignes par UAI, cartes par département, académie ou point, exports CSV
-    const colEtab = (rolesRep.Etablissement && rolesRep.Etablissement.col) || (!tRep || etapes.some(e => e.id === "rep-Etablissement") ? "Etablissement" : null);
-    const colRef = role => !tRef ? role : (rolesRef[role] && rolesRef[role].col) || (etapes.some(e => e.id === `ref-${role}`) ? role : null);
-    if (colEtab) {
-      const ajout = COLONNES_ETABLISSEMENT.filter(c => colRef(c.role) && !(tRep && tRep.colonnes[c.id]))
-        .map(c => ({ ...c, formula: `$${colEtab}.${colRef(c.role)}` }));
-      if (ajout.length) etapes.push({ id: "rep-etablissement", groupe: "Colonnes", coche: true,
-        titre: `Ajouter à ${g.reponses} les colonnes de l'établissement : ${ajout.map(c => c.id).join(", ")}`,
-        detail: `Formules qui recopient le référentiel (${ajout.map(c => c.formula).join(", ")}) : lignes par UAI, cartes par département, académie ou établissement, exports CSV.`,
-        actions: ajout.map(c => ["AddColumn", g.reponses, c.id, { type: c.type, isFormula: true, formula: c.formula, label: c.label, untieColIdFromLabel: true }]) });
-    }
+      // 4 bis. Colonnes de l'établissement (formules) : lignes par UAI, cartes par département, académie ou point, exports CSV
+      const colEtab = (rolesRep.Etablissement && rolesRep.Etablissement.col) || (!tRep || etapes.some(e => e.id === `rep-Etablissement${sfx}`) ? "Etablissement" : null);
+      const colRef = role => !tRef ? role : (rolesRef[role] && rolesRef[role].col) || (etapes.some(e => e.id === `ref-${role}${sfx}`) ? role : null);
+      if (colEtab) {
+        const ajout = COLONNES_ETABLISSEMENT.filter(c => colRef(c.role) && !(tRep && tRep.colonnes[c.id]))
+          .map(c => ({ ...c, formula: `$${colEtab}.${colRef(c.role)}` }));
+        if (ajout.length) etapes.push({ id: `rep-etablissement${sfx}`, groupe: "Colonnes", coche: true,
+          titre: `Ajouter à ${rep} les colonnes de l'établissement : ${ajout.map(c => c.id).join(", ")}`,
+          detail: `Formules qui recopient le référentiel (${ajout.map(c => c.formula).join(", ")}) : lignes par UAI, cartes par département, académie ou établissement, exports CSV.`,
+          actions: ajout.map(c => ["AddColumn", rep, c.id, { type: c.type, isFormula: true, formula: c.formula, label: c.label, untieColIdFromLabel: true }]) });
+      }
+      return { referentiel, rolesRep, rolesRef, tRep };
+    };
+    const principal = planEspace(g.reponses, g.referentiel, assoc.reponses || {}, assoc.referentiel || {}, "", choix.referentiel, g.preset);
+    const { referentiel, rolesRep, rolesRef, tRep } = principal;
+    // Champs suivants (ex. MESRE à côté du MEN) : leurs propres tables de réponses et référentiel, mêmes rôles, noms par défaut
+    for (const e of espaces(g).slice(1)) planEspace(e.reponses, e.referentiel, {}, {}, `@${e.reponses}`, null, e.version);
 
     // 5. Config : réglages généraux et associations reconnues
     const aEcrire = {};
@@ -838,7 +862,7 @@ return sorted(champs)`;
 
   window.Socle = {
     reglagesPointParDefaut,
-    VERSION, TABLE_CONFIG, TABLE_ADMIN, TABLE_CELLULE, STYLE_LIEN, formuleLienInvite, ANCIENNE_FORMULE_LIEN_INVITE, DEFAUTS_GENERAL, NATURES, ROLES,
+    espaces, espaceDeTable, AUTRE_CHAMP_DEFAUT, VERSION, TABLE_CONFIG, TABLE_ADMIN, TABLE_CELLULE, STYLE_LIEN, formuleLienInvite, ANCIENNE_FORMULE_LIEN_INVITE, DEFAUTS_GENERAL, NATURES, ROLES,
     colonnesEmargements, lireEmargements, STATUTS_ACTION, PRIORITES_ACTION, ACTIONS_DEFAUT, reglagesActions, optionsStatuts, colonnesActions, lireActions,
     PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
     norm, cibleRef, lireMeta, lireConfig, activerCacheLecture, viderCacheLecture, surEcriture, general, actionConfig, ecrireConfig,

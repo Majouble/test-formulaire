@@ -77,10 +77,11 @@
   async function contexte() {
     const meta = await S.lireMeta(), config = await S.lireConfig(meta);
     if (!config) throw new Error("La table Config n'existe pas : terminez d'abord l'installation.");
-    const g = S.general(config), table = g.referentiel, tMeta = meta[table];
+    // annuaire de l'éducation nationale : importé dans le référentiel du champ EN (premier ou second champ du document)
+    const g = S.general(config), table = (S.espaces(g).find(e => e.champ === "EN") || { referentiel: g.referentiel }).referentiel, tMeta = meta[table];
     if (!tMeta) throw new Error(`La table du référentiel « ${table} » n'existe pas : terminez d'abord l'installation.`);
     const roles = S.resoudreRoles("referentiel", tMeta, { reponses: g.reponses, referentiel: table },
-      ((config.valeurs.roles || {}).referentiel) || {}, {});
+      table === g.referentiel ? ((config.valeurs.roles || {}).referentiel) || {} : {}, {});
     const reglages = config.valeurs.annuaire_en || {};
     return { meta, config, g, table, tMeta, roles, reglages };
   }

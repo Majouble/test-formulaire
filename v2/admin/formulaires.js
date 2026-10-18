@@ -1617,6 +1617,8 @@ async function publier() {
   const manquantes = blocs().filter(b => b.genre === "question" && !meta[b.colonne]);
   if (manquantes.length && !confirm(`${manquantes.length} question(s) renvoient à une colonne absente et seront ignorées. Publier quand même ?`)) return;
   const conf = copie(courant.conf);
+  // document à deux champs : la version du formulaire est fixée d'après sa table (le widget n'a plus à la deviner)
+  if (!(conf.saisie && PRESETS[conf.saisie.version]) && espaceCourant() && window.Socle.espaces(window.Socle.general(socleConfig)).length > 1) conf.saisie = { ...(conf.saisie || {}), version: espaceCourant().version };
   const json = JSON.stringify(conf);
   try {
     // les libellés modifiés passent aussi dans Grist (en-têtes de colonnes), sans changer les identifiants
@@ -2265,7 +2267,9 @@ const ENTETES = [["**{nom}**, **{commune}**", "Nom, commune"], ["**{nom}** ({sit
 const ROLES_ETAB = { nom: "Nom", uai: "UAI", commune: "Commune", type: "Type", academie: "Académie", departement: "Département", mail: "Mail" };
 const ROLES_FICHE = { ...ROLES_ETAB, nom: "Établissement", region: "Région académique" };
 const confSaisie = () => (courant && courant.conf.saisie) || {};
-const versionForm = () => PRESETS[confSaisie().version] ? confSaisie().version : (estEsr() ? "esr" : "en");
+// version : réglée dans le formulaire, sinon celle du champ dont c'est la table (document à deux champs), sinon devinée
+const espaceCourant = () => { try { return courant && window.Socle.espaceDeTable(window.Socle.general(socleConfig), courant.table); } catch (_) { return null; } };
+const versionForm = () => PRESETS[confSaisie().version] ? confSaisie().version : espaceCourant() ? espaceCourant().version : (estEsr() ? "esr" : "en");
 function saisieEff() {
   const v = versionForm(), c = confSaisie(), r = { ...copie(PRESETS[v]), version: v };
   if (typeof c.marque === "string" && c.marque.trim()) r.marque = c.marque.trim();

@@ -63,7 +63,8 @@
   }
 
   /* ---------- Règles proposées ---------- */
-  const champDe = f => (S.CHAMPS.find(c => c.version === ((f.conf.saisie && f.conf.saisie.version) || general.preset)) || S.CHAMPS[0]).id;
+  // champ d'un formulaire : version réglée dans le formulaire, sinon celle du champ dont c'est la table de réponses
+  const champDe = f => (S.CHAMPS.find(c => c.version === ((f.conf.saisie && f.conf.saisie.version) || (S.espaceDeTable(general, f.table) || {}).version || general.preset)) || S.CHAMPS[0]).id;
   // Tables de saisie (et leurs sous-tables) avec les champs qui y saisissent ; référentiels qu'elles visent
   function tablesGerees() {
     const saisie = new Map(), referentiels = new Set();
@@ -75,7 +76,7 @@
       const cols = meta[f.table] ? Object.values(meta[f.table].colonnes) : [];
       cols.forEach(c => { const cible = S.cibleRef(c.type); if (cible && cible !== f.table && /etab|site|referentiel/i.test(`${c.colId} ${cible}`)) referentiels.add(cible); });
     }
-    if (meta[general.referentiel]) referentiels.add(general.referentiel);
+    S.espaces(general).forEach(e => { if (meta[e.referentiel]) referentiels.add(e.referentiel); });
     (groupes || []).forEach(g => referentiels.add(g.table));
     [...saisie.keys()].forEach(t => referentiels.delete(t));
     return { saisie, referentiels: [...referentiels].filter(t => meta[t]) };

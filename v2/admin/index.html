@@ -448,6 +448,13 @@
       <label class="champ"><span>Table des réponses</span><select id="g-reponses"></select></label>
       <label class="champ"><span>Table du référentiel</span><select id="g-referentiel"></select></label>
     </div>
+    <div class="groupe" style="margin-top:12px">Second champ</div>
+    <p class="aide" style="margin:0 0 6px">Pour suivre aussi l'autre champ dans ce document, avec ses propres tables : les signalements ne se mêlent pas. Équipe, planning et règles d'accès restent communs (un agent saisit sur un champ s'il y est mobilisé au planning).</p>
+    <label class="eq-case"><input type="checkbox" id="g-second"> <span id="g-second-lib">Suivre aussi l'enseignement supérieur (MESRE)</span></label>
+    <div class="grille" id="g-second-tables" hidden>
+      <label class="champ"><span>Table des réponses du second champ</span><small>Créée par l'installation si elle n'existe pas.</small><input type="text" id="g-second-rep" autocomplete="off" spellcheck="false"></label>
+      <label class="champ"><span>Référentiel du second champ</span><small>Établissements du second champ (table créée si besoin).</small><input type="text" id="g-second-ref" autocomplete="off" spellcheck="false"></label>
+    </div>
     <div class="boutons">
       <button class="primaire" id="btn-general">Enregistrer les réglages</button>
       <span class="statut" id="statut-general"></span>

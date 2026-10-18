@@ -1012,6 +1012,8 @@ function versionSaisie() {
   const f = decodeURIComponent(location.pathname || "").toLowerCase();
   if (/signalement-esr/.test(f)) return "esr";
   if (/signalement-sans-commentaire|widget-signalement\.html$/.test(f)) return "en";
+  // document à deux champs (MEN et MESRE) : la table de réponses dit le champ
+  try { const e = window.Socle.espaceDeTable(socleGeneral, tableId); if (e && window.Socle.espaces(socleGeneral).length > 1) return e.version; } catch (_) { /* socle indisponible */ }
   return (col("Site") || (ETAB.table && ETAB.table !== TABLE_ETAB_DEFAUT)) ? "esr" : "en";
 }
 function S() {

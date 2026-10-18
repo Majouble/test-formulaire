@@ -117,7 +117,7 @@
   }
   // tables proposées : réponses du socle et tables des formulaires publiés
   async function tablesPossibles() {
-    const meta = await S.lireMeta(), out = new Set([general.reponses]);
+    const meta = await S.lireMeta(), out = new Set(S.espaces(general).map(e => e.reponses));
     try { const t = await grist.docApi.fetchTable(general.formulaires); (t.Table || []).forEach(x => { if (x && meta[x]) out.add(x); }); } catch (_) { /* pas de formulaires */ }
     return [...out].filter(x => meta[x]);
   }

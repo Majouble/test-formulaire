@@ -34,7 +34,7 @@
   /* ---------- Export ---------- */
   // tables de réponses et sous-tables (tableaux) des formulaires, et table des réponses du socle
   function tablesDesFormulaires(formulaires, general, meta) {
-    const out = new Set([general.reponses]);
+    const out = new Set(window.Socle.espaces(general).flatMap(e => [e.reponses, e.referentiel]));
     formulaires.forEach(f => {
       if (f.Table) out.add(f.Table);
       for (const brut of [f.Publie, f.Brouillon]) {

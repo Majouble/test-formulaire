@@ -228,8 +228,11 @@
   async function auteurPourInvites() {
     try {
       const meta = await S.lireMeta(), cfg = await S.lireConfig(), g = S.general(cfg), acts = [];
-      const rr = meta[g.reponses] ? S.resoudreRoles("reponses", meta[g.reponses], { reponses: g.reponses, referentiel: g.referentiel }, (cfg.valeurs.roles || {}).reponses || {}, {}) : {};
-      const cibles = [[g.reponses, rr.Auteur && rr.Auteur.col, rr.Etablissement && rr.Etablissement.col], [g.emargements, meta[g.emargements] && meta[g.emargements].colonnes.Auteur ? "Auteur" : null, null]];
+      const cibles = S.espaces(g).filter(e => meta[e.reponses]).map(e => {
+        const rr = S.resoudreRoles("reponses", meta[e.reponses], { reponses: e.reponses, referentiel: e.referentiel }, e.reponses === g.reponses ? (cfg.valeurs.roles || {}).reponses || {} : {}, {});
+        return [e.reponses, rr.Auteur && rr.Auteur.col, rr.Etablissement && rr.Etablissement.col];
+      });
+      cibles.push([g.emargements, meta[g.emargements] && meta[g.emargements].colonnes.Auteur ? "Auteur" : null, null]);
       for (const [t, c, e] of cibles) if (t && c && meta[t] && S.auteurAMettreAJour(meta[t].colonnes[c])) acts.push(["ModifyColumn", t, c, { formula: S.formuleAuteur(g, e) }]);
       if (acts.length) await grist.docApi.applyUserActions(acts);
     } catch (_) { /* facultatif : l'auteur d'un invité resterait vide */ }
