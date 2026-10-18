@@ -115,7 +115,7 @@
     const g = { ...plan.general, referentiel: plan.referentiel };
     $("g-situation").value = g.situation || "";
     $("g-preset").value = g.preset || "en";
-    $("g-academies").value = (g.academies || []).join("\n");
+    $("g-academies").textContent = (g.academies || []).length ? g.academies.join(", ") : "toutes (aucune choisie)";
     $("g-retour").value = (g.retour_normale || []).join(", ");
     optionsTables($("g-reponses"), g.reponses);
     optionsTables($("g-referentiel"), g.referentiel);
@@ -180,7 +180,6 @@
       ...((config && config.valeurs.general) || S.DEFAUTS_GENERAL),
       situation: $("g-situation").value.trim(),
       preset: $("g-preset").value,
-      academies: $("g-academies").value.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean),
       retour_normale: $("g-retour").value.split(",").map(s => s.trim()).filter(Boolean),
       reponses: $("g-reponses").value,
       referentiel: $("g-referentiel").value,

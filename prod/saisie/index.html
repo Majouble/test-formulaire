@@ -2072,7 +2072,9 @@ function finaliserReferentiel(err, alertes) {
   const liste = [...alertes];
   const liens = alerteLiensEtab(); if (liens && !modeEtab) liste.push(liens);
   if (alerteTableRef && !modeEtab) liste.push(alerteTableRef);
-  if (err) liste.push(`Table « ${ETAB.table} » inaccessible (${err.message || err}).`);
+  if (err) liste.push(/access|acc[eè]s|blocked|denied|refus|permission/i.test(String(err.message || err))
+    ? `Accès refusé à la table « ${ETAB.table} ». Si vous êtes arrivé par un lien personnel, il n'est plus valable (lien renouvelé ou expiré, agent retiré de l'équipe) : demandez un nouveau lien à la cellule.`
+    : `Table « ${ETAB.table} » inaccessible (${err.message || err}).`);
   $("alerte").textContent = liste.join(" ");
   $("alerte").hidden = !liste.length;
   $("btn-config").hidden = modeEtab;
@@ -2224,6 +2226,21 @@ async function ecrireCacheReferentiel(t, sensibles) {
     db.close();
   } catch (e) { console.warn("Référentiel non conservé dans le navigateur", e); }
 }
+// La copie du navigateur n'est reprise que si elle correspond encore à ce que ce compte peut lire :
+// au moins deux lignes visibles (pas d'accès par lien d'établissement, qui ne voit que la sienne)
+// et aucune colonne apparue depuis (ex. UUID et Lien ajoutés par la mise en place des liens).
+async function copieEncoreValable(copie) {
+  try {
+    if (!grist.docApi.getAccessToken) return true;
+    const j = await grist.docApi.getAccessToken({ readOnly: true });
+    const r = await fetch(`${j.baseUrl}/tables/${encodeURIComponent(ETAB.table)}/records?limit=2&auth=${encodeURIComponent(j.token)}`);
+    if (!r.ok) return false;
+    const recs = (await r.json()).records || [];
+    if (recs.length < 2) return false;
+    const cols = new Set(Object.keys(copie.table || {}));
+    return recs.every(x => Object.keys(x.fields || {}).every(k => cols.has(k)));
+  } catch (_) { return false; }
+}
 async function oublierCacheReferentiel() {
   try { const cle = await cleCacheReferentiel(); const db = await ouvrirBaseCache(); db.transaction("referentiels", "readwrite").objectStore("referentiels").delete(cle); db.close(); } catch (_) {}
 }
@@ -2261,7 +2278,8 @@ async function lireEtabs(avecCache) {
   dernierChargementEtabs = Date.now();
   // tables visées par les colonnes Référence du référentiel (académies…) : lues en parallèle, pas après lui
   metaColonnes(ETAB.table).then(m => { for (const c of Object.values(m || {})) { const x = String(c.type || "").match(/^Ref:(.+)$/); if (x && x[1] !== ETAB.table) lireTableReference(x[1]).catch(() => {}); } }).catch(() => {});
-  const copie = avecCache ? await lireCacheReferentiel() : null;
+  let copie = avecCache ? await lireCacheReferentiel() : null;
+  if (copie && !(await copieEncoreValable(copie))) { copie = null; oublierCacheReferentiel(); }
   referentielDuCache = copie ? copie.t : null;
   liensDemandes.clear();
   const t = copie ? copie.table : await lireTableRapide(ETAB.table);

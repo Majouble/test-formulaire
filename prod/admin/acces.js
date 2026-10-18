@@ -22,8 +22,9 @@
   const MEMO = "Socle v2";
   const ATTRIBUT = "Agent";
   const PROPRIETAIRE = "user.Access == OWNER";
-  // « tous les autres » écrit en toutes lettres : Grist refuse une condition vide qui n'est pas la dernière d'un ensemble,
-  // et il range la permission S (structure) à part ; aucune règle du socle n'a donc de condition vide ni de S
+  // « Tous les autres » écrit en toutes lettres. Grist ajoute ses propres règles après la règle par défaut
+  // (éditeurs et propriétaires : tout ; lecteurs : lecture) : une condition vide n'y est donc jamais la dernière,
+  // et sa page « Règles d'accès » la refuse (« Condition cannot be blank »). Aucune règle du socle n'a de condition vide.
   const NON_PROPRIETAIRE = "user.Access != OWNER";
   // Identité d'agent : compte Grist (attribut « Agent », par adresse) ou lien d'agent invité (attribut « Invite », par clé)
   const INVITE = S.INVITE.attribut;
@@ -86,14 +87,14 @@
   function reglesProposees() {
     const { saisie, referentiels } = tablesGerees(), out = [];
     out.push({ tableId: "*", colIds: "*", titre: "Toutes les autres tables (réglages, équipe, planning…)", regles: [
+      // structure (tables, colonnes, formules) : propriétaires seulement. Forme exacte de Grist pour la case
+      // « Autoriser les éditeurs à modifier la structure » décochée (rangée par Grist sur la règle par défaut)
+      { aclFormula: NON_PROPRIETAIRE, permissionsText: "-S", memo: `${MEMO} — structure réservée aux propriétaires` },
       { aclFormula: PROPRIETAIRE, permissionsText: "+CRUD", memo: `${MEMO} — propriétaires : tous les droits` },
       { aclFormula: membre(), permissionsText: "+R-CUD", memo: `${MEMO} — équipe : lecture seule` },
       { aclFormula: NON_PROPRIETAIRE, permissionsText: "-CRUD", memo: `${MEMO} — réservé aux agents actifs de l'équipe de la cellule (onglet Équipe)` },
-    ], lignes: ["Propriétaires : tous les droits.", "Agents actifs de l'équipe : lecture seule.", "Autres personnes : aucun accès."] });
-    // Structure (tables, colonnes, formules) : propriétaires seulement — case « Autoriser les éditeurs à modifier la structure » décochée
-    out.push({ tableId: "*SPECIAL", colIds: "SchemaEdit", titre: "Modification de la structure", regles: [
-      { aclFormula: "user.Access == EDITOR", permissionsText: "-S", memo: `${MEMO} — structure réservée aux propriétaires` },
-    ], lignes: ["Tables, colonnes et formules : propriétaires seulement (les éditeurs, dont les liens, ne peuvent pas les modifier)."] });
+    ], lignes: ["Propriétaires : tous les droits.", "Agents actifs de l'équipe : lecture seule.", "Autres personnes : aucun accès.",
+      "Structure (tables, colonnes, formules) : propriétaires seulement — case « Autoriser les éditeurs à modifier la structure » décochée."] });
     // Page d'administration : portée par la table Administration, invisible de tous sauf des propriétaires
     if (meta[S.TABLE_ADMIN]) out.push({ tableId: S.TABLE_ADMIN, colIds: "*", titre: `${S.TABLE_ADMIN} — page d'administration`, regles: [
       { aclFormula: PROPRIETAIRE, permissionsText: "+CRUD", memo: `${MEMO} — propriétaires : administration` },
@@ -212,6 +213,7 @@
       const res = acl.ressources.get(r.resource);
       if (!res) return false;
       if (r.userAttributes) return estAttributSocle(r);
+      if (r.memo.startsWith(MEMO)) return true;   // règle du socle, où qu'elle soit (ex. *SPECIAL:SchemaEdit de la 2.0.1)
       if (res.tableId === "*SPECIAL") return speciales.has(res.colIds);
       return tables.has(res.tableId);
     });
@@ -233,6 +235,39 @@
     });
   }
 
+  /* ---------- Contrôle des règles comme la page « Règles d'accès » de Grist ----------
+     Grist range la permission S de la règle par défaut dans « modifier la structure », ajoute ses règles
+     intégrées après la règle par défaut et après la structure, et refuse une condition vide qui n'est pas
+     la dernière d'un ensemble (« Condition cannot be blank »). */
+  const bits = t => { t = String(t || "").trim(); if (t === "all") return { plus: "CRUDS", moins: "" }; if (t === "none") return { plus: "", moins: "CRUDS" };
+    const p = /\+([A-Z]*)/.exec(t), m = /-([A-Z]*)/.exec(t); return { plus: p ? p[1] : "", moins: m ? m[1] : "" }; };
+  function problemesGrist() {
+    if (!acl) return [];
+    const parRes = new Map();
+    acl.regles.forEach(r => { if (r.userAttributes) return; const res = acl.ressources.get(r.resource); if (!res || !res.tableId) return;
+      if (!parRes.has(res.id)) parRes.set(res.id, { res, l: [] }); parRes.get(res.id).l.push(r); });
+    const out = [];
+    for (const { res, l } of parRes.values()) {
+      const nom = res.tableId === "*" ? "Règles par défaut" : res.tableId === "*SPECIAL" ? `Règle spéciale ${res.colIds}` : `${res.tableId}${res.colIds !== "*" ? ` (colonnes ${res.colIds})` : ""}`;
+      if (res.tableId === "*" && res.colIds === "*") {
+        // deux ensembles, chacun suivi des règles intégrées de Grist : toute condition vide y est refusée
+        l.forEach(r => { if (r.aclFormula.trim()) return; const b = bits(r.permissionsText);
+          if (b.plus.replace("S", "") || b.moins.replace("S", "")) out.push({ nom, r, ou: "règles par défaut" });
+          if (b.plus.includes("S") || b.moins.includes("S")) out.push({ nom, r, ou: "modification de la structure" }); });
+      } else if (!(res.tableId === "*SPECIAL" && res.colIds === "SchemaEdit")) {
+        l.forEach((r, i) => { if (!r.aclFormula.trim() && i < l.length - 1 && r.permissionsText.trim()) out.push({ nom, r, ou: "" }); });
+      }
+      if (res.tableId === "*SPECIAL" && res.colIds === "SchemaEdit") l.forEach(r => out.push({ nom, r, ou: "ressource inconnue du serveur Grist" }));
+    }
+    return out;
+  }
+  function bandeauProblemes() {
+    const p = problemesGrist(); if (!p.length) return "";
+    return `<div class="bandeau alerte"><strong>La page « Règles d'accès » de Grist refusera d'enregistrer ces règles</strong> (condition vide qui n'est pas la dernière de son ensemble) :
+      <ul style="margin:6px 0 0">${p.map(x => `<li>${esc(x.nom)}${x.ou ? ` › ${esc(x.ou)}` : ""} : <code>${esc(x.r.aclFormula || "condition vide")}</code> <code>${esc(x.r.permissionsText)}</code>${x.r.memo ? ` <small>(${esc(x.r.memo)})</small>` : ""}</li>`).join("")}</ul>
+      ${p.some(x => x.r.memo.startsWith(MEMO)) ? "« Appliquer les règles » ci-dessous les remplace par des règles valides." : "Ce ne sont pas des règles du socle : corrigez-les dans Grist (donnez-leur une condition, par exemple <code>user.Access != OWNER</code>)."}</div>`;
+  }
+
   /* ---------- Rendu ---------- */
   function dessiner() {
     if (!config) { racine.innerHTML = `<div class="bandeau alerte">La table Config est absente : lancez d'abord l'installation.</div>`; return; }
@@ -248,6 +283,7 @@
       ${sansFormule ? `<div class="bandeau alerte">Il manque la colonne ${esc(general.agents)}.Champs_acces, qui calcule les champs de chaque agent d'après le planning.
         <button class="primaire" id="ac-formule" style="margin-left:8px">Ajouter la colonne</button></div>` : ""}
       ${acl !== null ? `<div class="bandeau ${ok ? "ok" : "info"}">${ok ? "Les règles d'accès du socle sont en place et à jour." : "Les règles d'accès du socle ne sont pas appliquées, ou ont changé : voir ci-dessous."}</div>` : ""}
+      ${bandeauProblemes()}
       ${carteQui()}
       ${carteRegles(propose, remplacees, ok, sansFormule)}
       ${carteActuelles(remplacees)}
@@ -380,7 +416,11 @@
         const res = trouver(p.tableId, p.colIds);
         p.regles.forEach(r => ajouts.push(["AddRecord", "_grist_ACLRules", null, { resource: res.id, aclFormula: r.aclFormula, permissionsText: r.permissionsText, memo: r.memo, rulePos: pos++ }]));
       }
-      await grist.docApi.applyUserActions([...(ids.length ? [["BulkRemoveRecord", "_grist_ACLRules", ids]] : []), ...ajouts]);
+      // ressource « *SPECIAL:SchemaEdit » écrite par la 2.0.1 : Grist ne la connaît que dans sa page, pas sur le serveur
+      const restantes = new Set(acl.regles.filter(r => !ids.includes(r.id)).map(r => r.resource));
+      const fantomes = [...acl.ressources.values()].filter(x => x.tableId === "*SPECIAL" && x.colIds === "SchemaEdit" && !restantes.has(x.id)).map(x => x.id);
+      await grist.docApi.applyUserActions([...(ids.length ? [["BulkRemoveRecord", "_grist_ACLRules", ids]] : []), ...ajouts,
+        ...(fantomes.length ? [["BulkRemoveRecord", "_grist_ACLResources", fantomes]] : [])]);
       await R.majSchemaPublic(meta, config, general, formulaires);
     }
   }

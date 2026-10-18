@@ -443,7 +443,7 @@
       <label class="champ"><span>Situation suivie</span><input type="text" id="g-situation" placeholder="Mouvements, octobre 2026"></label>
       <label class="champ"><span>Préréglage</span>
         <select id="g-preset"><option value="en">Établissements scolaires (EN)</option><option value="esr">Enseignement supérieur (ESR)</option></select></label>
-      <label class="champ"><span>Académies couvertes</span><small>Une par ligne. Vide = toutes.</small><textarea id="g-academies"></textarea></label>
+      <div class="champ"><span>Académies couvertes</span><small>Se choisissent dans l'onglet Référentiel, d'après la liste de l'annuaire.</small><div id="g-academies" class="aide" style="margin:4px 0 0"></div></div>
       <label class="champ"><span>Qualifications valant retour à la normale</span><small>Séparées par des virgules. Exclues du décompte des jours de mobilisation.</small><input type="text" id="g-retour"></label>
       <label class="champ"><span>Table des réponses</span><select id="g-reponses"></select></label>
       <label class="champ"><span>Table du référentiel</span><select id="g-referentiel"></select></label>
@@ -477,6 +477,7 @@
     <h2>Annuaire de l'éducation nationale</h2>
     <p class="aide">Import depuis l'open data (data.education.gouv.fr), limité aux académies du document. Les établissements sont rapprochés par UAI : les existants sont mis à jour, les nouveaux ajoutés. Rien n'est supprimé : les établissements saisis à la main et ceux sortis de l'annuaire restent, car des signalements peuvent y renvoyer.</p>
     <div id="ref-contexte"></div>
+    <div id="ref-academies-choix"></div>
     <div id="ref-etape1">
       <label class="etape" style="border:0"><input type="checkbox" id="ref-ouverts" checked><span>Établissements ouverts seulement</span></label>
       <div class="boutons"><button class="primaire" id="btn-ref-apercu">1. Interroger l'annuaire</button></div>

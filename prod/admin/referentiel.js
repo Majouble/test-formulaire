@@ -97,19 +97,61 @@
     const { g, table, roles, reglages } = ctx;
     const manquants = ["UAI", "Nom", "Academie"].filter(r => !(roles[r] && roles[r].col));
     $("ref-contexte").innerHTML = `
-      <p>Table cible : <strong>${esc(table)}</strong>. Académies du document :
-        ${g.academies.length ? g.academies.map(a => `<span class="pastille ok">${esc(a)}</span>`).join(" ")
-          : `<span class="pastille manque">aucune</span> — renseignez-les dans l'onglet Installation, sinon c'est toute la France (environ 65 000 établissements).`}</p>
+      <p>Table cible : <strong>${esc(table)}</strong>.</p>
       ${manquants.length ? `<p class="statut err">Rôles introuvables dans ${esc(table)} : ${manquants.join(", ")}. Corrigez-les dans l'onglet Installation.</p>` : ""}
       ${reglages.derniere_mise_a_jour ? `<p class="aide">Dernier import : ${esc(new Date(reglages.derniere_mise_a_jour * 1000).toLocaleString("fr-FR"))}, ${nf(reglages.nb)} établissement(s) de l'annuaire.</p>` : ""}`;
     $("ref-ouverts").checked = reglages.ouverts_seulement !== false;
+    dessinerAcademies(ctx);
     $("btn-ref-apercu").disabled = !!manquants.length;
+  }
+
+  /* ---------- Académies couvertes (clé « general » de Config) ----------
+     Liste lue dans l'annuaire (orthographe exacte, nombre d'établissements ouverts) ; cases cochées = académies du document. */
+  let academiesAnnuaire = null, academiesChoisies = null;
+  async function dessinerAcademies(ctx) {
+    const z = $("ref-academies-choix");
+    if (academiesChoisies === null) academiesChoisies = new Set(ctx.g.academies || []);
+    if (!academiesAnnuaire) {
+      z.innerHTML = `<p class="aide">Lecture de la liste des académies dans l'annuaire…</p>`;
+      try { academiesAnnuaire = (await compterPar(CHAMPS_ROLES.Academie, "")).filter(a => a.valeur).sort((a, b) => S.norm(a.valeur).localeCompare(S.norm(b.valeur))); }
+      catch (e) { academiesAnnuaire = []; }
+    }
+    // académies enregistrées absentes de l'annuaire (orthographe) : affichées pour pouvoir les décocher
+    const liste = [...academiesAnnuaire.map(a => ({ v: a.valeur, n: a.n })), ...[...academiesChoisies].filter(a => !academiesAnnuaire.some(x => x.valeur === a)).map(a => ({ v: a, n: null }))];
+    const enregistrees = new Set(ctx.g.academies || []), modifie = liste.some(a => academiesChoisies.has(a.v) !== enregistrees.has(a.v));
+    z.innerHTML = `<div class="groupe">Académies couvertes par le document</div>
+      <p class="aide" style="margin:0 0 6px">Elles limitent l'import, les cartes et les critères de répartition. Aucune cochée = toute la France (environ 65 000 établissements).</p>
+      ${liste.length ? `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:2px 12px">${liste.map((a, i) => `<label class="etape" style="padding:2px 0;border:0"><input type="checkbox" data-aca="${i}"${academiesChoisies.has(a.v) ? " checked" : ""}>
+          <span>${esc(a.v)}${a.n != null ? ` <span class="pastille">${nf(a.n)}</span>` : ` <span class="pastille manque">absente de l'annuaire</span>`}</span></label>`).join("")}</div>`
+        : `<p class="statut err">Annuaire injoignable : liste des académies indisponible.</p>`}
+      <div class="boutons"><button class="secondaire" id="ref-aca-enregistrer"${modifie ? "" : " disabled"}>Enregistrer les académies</button>
+        <button class="lien-btn" id="ref-aca-aucune" type="button">Tout décocher</button><span class="statut" id="ref-aca-statut" role="status"></span></div>`;
+    z.querySelectorAll("[data-aca]").forEach(c => c.addEventListener("change", () => {
+      const v = liste[+c.dataset.aca].v; if (c.checked) academiesChoisies.add(v); else academiesChoisies.delete(v);
+      $("ref-aca-enregistrer").disabled = !liste.some(a => academiesChoisies.has(a.v) !== enregistrees.has(a.v));
+    }));
+    $("ref-aca-aucune").addEventListener("click", () => { academiesChoisies.clear(); dessinerAcademies(ctx); });
+    $("ref-aca-enregistrer").addEventListener("click", async () => { if (await enregistrerAcademies()) { const c2 = await contexte(); dessinerAcademies(c2); } });
+  }
+  // Enregistre les académies cochées si elles diffèrent de Config ; renvoie true si c'est fait (ou rien à faire)
+  async function enregistrerAcademies() {
+    if (academiesChoisies === null) return true;
+    const ctx = await contexte(), avant = ctx.g.academies || [];
+    const ordre = academiesAnnuaire ? academiesAnnuaire.map(a => a.valeur) : [];
+    const apres = [...academiesChoisies].sort((a, b) => (ordre.indexOf(a) + 1 || 999) - (ordre.indexOf(b) + 1 || 999));
+    if (apres.length === avant.length && apres.every(a => avant.includes(a))) return true;
+    try {
+      await S.ecrireConfig("general", { ...((ctx.config.valeurs.general) || S.DEFAUTS_GENERAL), academies: apres });
+      const st = $("ref-aca-statut"); if (st) { st.textContent = `Académies enregistrées (${apres.length || "toutes"}).`; st.className = "statut ok"; }
+      return true;
+    } catch (e) { statut(`Académies non enregistrées (${e.message || e}).`, "err"); return false; }
   }
 
   // Étape 1 : aperçu des volumes par type et par académie, sans rien télécharger d'autre
   async function etapeApercu() {
     statut("Interrogation de l'annuaire…"); $("btn-ref-apercu").disabled = true;
     try {
+      if (!(await enregistrerAcademies())) { $("btn-ref-apercu").disabled = false; return; }
       const ctx = await contexte();
       await lireChampsJeu();
       const where = clauseWhere(ctx.g.academies, null, $("ref-ouverts").checked);
@@ -126,7 +168,7 @@
           <span>${esc(f.label)} <code>${esc(f.name)}</code></span></label>`).join("");
       $("ref-colonnes").innerHTML = tableauColonnes(ctx);
       $("ref-academies").innerHTML = academies.map(a => `<span class="pastille ok">${esc(a.valeur)} : ${nf(a.n)}</span>`).join(" ")
-        + (absentes.length ? `<p class="statut err">Aucun établissement pour : ${absentes.map(esc).join(", ")}. Vérifiez l'orthographe exacte dans l'onglet Installation (ex. « Orléans-Tours », « Aix-Marseille »).</p>` : "");
+        + (absentes.length ? `<p class="statut err">Aucun établissement pour : ${absentes.map(esc).join(", ")}. Décochez-les dans la liste des académies ci-dessus.</p>` : "");
       $("ref-etape2").hidden = false; $("ref-etape3").hidden = true;
       statut("");
     } catch (e) { statut(e.message, "err"); }

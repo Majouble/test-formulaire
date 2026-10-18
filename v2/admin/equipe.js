@@ -69,7 +69,7 @@
     const lignes = agents.map(a => {
       const pg = pageDe.get(a.id) || [];
       return `<tr data-id="${a.id}" class="eq-ligne${a.actif ? "" : " inactif"}" tabindex="0">
-        <td><strong>${esc(a.nom) || "<em>sans nom</em>"}</strong>${a.actif ? "" : ` <span class="pastille">inactif</span>`}${a.cle ? ` <span class="pastille reco" title="Accès par lien personnel, sans compte Grist">invité</span> ${etatLien(a)}
+        <td><strong>${esc(a.nom) || "<em>sans nom</em>"}</strong>${a.actif ? "" : ` <span class="pastille">inactif</span>`} ${etatSaisie(a)}${a.cle ? ` <span class="pastille reco" title="Accès par lien personnel, sans compte Grist">invité</span> ${etatLien(a)}
           <button class="lien-btn" data-renouveler="${a.id}" title="Nouvelle clé : l'ancien lien cesse de fonctionner">Nouveau lien</button>` : ""}</td>
         <td>${a.email ? esc(a.email) : a.cle ? `<span class="vide">accès par lien</span>` : `<span class="pastille manque">adresse manquante</span>`}</td>
         <td>${a.telephone ? esc(a.telephone) : `<span class="vide">—</span>`}</td>
@@ -117,6 +117,10 @@
   const expire = a => !!(a.lienExpire && a.lienExpire <= maintenant());
   const etatLien = a => !a.cle ? "" : expire(a) ? `<span class="pastille manque" title="Le lien ne donne plus accès : créez un nouveau lien">lien expiré</span>`
     : a.lienExpire ? `<span class="pastille ok">lien valable jusqu'au ${esc(dateCourte(a.lienExpire))}</span>` : `<span class="pastille">lien sans limite</span>`;
+  // Droit de saisie du moment : d'après le planning (Champs_acces, créneau à 7 jours) ; sans créneau, lecture seule
+  const etatSaisie = a => !a.actif || a.champsAcces === null ? ""
+    : a.champsAcces.length ? `<span class="pastille ok" title="Mobilisé au planning entre 7 jours avant et 7 jours après aujourd'hui">saisie ${esc(a.champsAcces.join(", "))}</span>`
+    : `<span class="pastille manque" title="Pour saisir, l'agent doit avoir un créneau au planning entre 7 jours avant et 7 jours après aujourd'hui">lecture seule : aucun créneau</span>`;
   // Accès par lien personnel (agent invité, sans compte Grist)
   function blocInvite(a) {
     const possible = agents && (agents.invitesPossibles || (agents[0] && agents[0].invitesPossibles) || !colonnesManquantes.includes(S.INVITE.cle));
@@ -124,7 +128,7 @@
     const lien = a.id ? (agents.find(x => x.id === a.id) || {}).lienAcces || "" : "";
     return `<div class="eq-invite">
       <label class="eq-case"><input type="checkbox" id="eq-invite"${a.invite ? " checked" : ""}> <strong>Invité : accès par lien personnel</strong>, sans compte Grist</label>
-      <p class="aide">À réserver à un agent qui ne peut pas se connecter à Grist avec son adresse. Le lien ouvre sa page de saisie avec les droits d'un agent de l'équipe (saisie selon le planning, émargement).
+      <p class="aide">À réserver à un agent qui ne peut pas se connecter à Grist avec son adresse. Le lien ouvre sa page de saisie avec les droits d'un agent de l'équipe : lecture des signalements, émargement, et <strong>saisie seulement s'il a un créneau au planning</strong> (entre 7 jours avant et 7 jours après aujourd'hui), comme tout agent.
         <strong>Il vaut mot de passe</strong> : quiconque le détient agit en son nom.${avecExpiration() ? ` Chaque lien expire au bout de <strong>${esc(libelleDuree(dureeInvite()))}</strong> (réglage de l'équipe, ci-dessus) ; un lien transmis à d'autres cesse donc vite de fonctionner.` : ""}
         « Nouveau lien » remplace le lien : l'ancien ne fonctionne plus.</p>
       ${a.invite && a.cle ? `<div class="eq-lien">${lien && !expire(a) ? `<input type="text" id="eq-lien" readonly value="${esc(lien)}"><button class="secondaire" id="eq-copier-lien">Copier le lien</button>`
