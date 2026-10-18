@@ -1619,6 +1619,7 @@ async function publier() {
     await lireMeta(); meta = metaCourante();
     dessinerApercu(); dessinerPanneau();
     await lirePagesSaisie(); dessinerPanneau();
+    try { const S = window.Socle, cfg = await S.lireConfig(), g = S.general(cfg); await R.majSchemaPublic(await S.lireMeta(), cfg, g, await R.lireFormulairesPublies(g)); } catch (_) { /* copie pour les liens : facultative */ }
     const sansPage = pagesSaisie && !pagesSaisie.some(x => x.table === courant.table);
     message(sansPage ? "Formulaire publié. Aucune page de Grist ne l'affiche encore : utilisez « Créer la page de saisie » dans le panneau de droite."
       : "Formulaire publié : les pages qui l'affichent le prennent en compte dans les 30 secondes (ou au rechargement).", sansPage ? "" : "ok");

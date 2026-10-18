@@ -1482,8 +1482,33 @@ grist.onNewRecord(() => enFile(async () => {
 let promesseMeta = null;   // réinitialisée à chaque nouvelle configuration
 function lireMeta() {
   if (!promesseMeta) promesseMeta = Promise.all([
-    grist.docApi.fetchTable("_grist_Tables"), grist.docApi.fetchTable("_grist_Tables_column")]);
+    grist.docApi.fetchTable("_grist_Tables"), grist.docApi.fetchTable("_grist_Tables_column")])
+    .catch(async e => { const m = await metaDeSecours(); if (!m) throw e; return m; });
   return promesseMeta;
+}
+// Métadonnées illisibles (accès par lien d'établissement : les règles d'accès cachent les tables _grist_) :
+// copie des colonnes utiles rangée par l'administration dans la clé « schema » de Config, au même format.
+let metaCopie = false;
+async function metaDeSecours() {
+  try {
+    const t = await grist.docApi.fetchTable("Config"), i = (t.Cle || []).indexOf("schema");
+    const sch = i >= 0 && t.Valeur[i] ? JSON.parse(t.Valeur[i]) : null;
+    if (!sch || !sch.tables) return null;
+    const tables = { id: [], tableId: [] }, cols = { id: [], parentId: [], colId: [], label: [], type: [], widgetOptions: [], isFormula: [], formula: [], description: [], visibleCol: [], parentPos: [] };
+    let n = 0;
+    Object.entries(sch.tables).forEach(([tid, liste], k) => {
+      tables.id.push(k + 1); tables.tableId.push(tid);
+      const base = n;
+      liste.forEach((c, j) => {
+        n++; cols.id.push(n); cols.parentId.push(k + 1); cols.colId.push(c.colId); cols.label.push(c.label || c.colId); cols.type.push(c.type || "Any");
+        cols.widgetOptions.push(c.widgetOptions || ""); cols.isFormula.push(!!c.isFormula); cols.formula.push(c.formula || ""); cols.description.push(c.description || "");
+        cols.parentPos.push(j + 1); cols.visibleCol.push(0);
+      });
+      liste.forEach((c, j) => { if (c.visibleCol) { const v = liste.findIndex(x => x.colId === c.visibleCol); if (v >= 0) cols.visibleCol[base + j] = base + v + 1; } });
+    });
+    metaCopie = true;
+    return [tables, cols];
+  } catch (_) { return null; }
 }
 async function metaColonnes(tid) {
   const [tables, cols] = await lireMeta();
@@ -1857,7 +1882,8 @@ async function chargerConfiguration() {
   const pReglages = chargerReglages();
   try {
     tableId = await grist.getTable().getTableId();
-    metaSig = await metaColonnes(tableId) || {};
+    metaSig = await metaColonnes(tableId).catch(() => null) || {};
+    if (!Object.keys(metaSig).length) alertes.push("La structure du document n'est pas lisible depuis cette page. Responsable du document : ouvrez l'onglet « Établissements » de l'administration (ou republiez le formulaire) pour la mettre à disposition des liens d'accès.");
     await choisirFormulaire();
     // Aucun formulaire publié pour la table liée : on indique ceux qui existent, et la table à choisir
     if (!formulaireActif) {

@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0-alpha.22 (17/10/2026)";
+  const VERSION = "2.0.0-alpha.23 (18/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -660,6 +660,35 @@ return sorted(champs)`;
     return { etapes, infos, referentiel, rolesRep, rolesRef, general: aEcrire.general ? { ...g, ...aEcrire.general } : g };
   }
 
+  /* ---------- Schéma public (accès par lien) ----------
+     Une personne ouverte par un lien d'établissement ne peut pas lire les métadonnées de Grist (_grist_Tables_column…) :
+     le widget de saisie lit alors une copie des colonnes utiles, rangée dans la clé « schema » de Config (lisible par les
+     établissements). La copie est rafraîchie à la publication d'un formulaire, à l'ouverture de l'onglet Établissements
+     et à l'application des règles d'accès. */
+  async function instantaneSchema(tables) {
+    const [T, C] = await Promise.all([grist.docApi.fetchTable("_grist_Tables"), grist.docApi.fetchTable("_grist_Tables_column")]);
+    const out = {};
+    for (const tid of [...new Set(tables)].filter(Boolean).sort()) {
+      const ref = T.id[T.tableId.indexOf(tid)]; if (ref == null) continue;
+      out[tid] = C.id.map((_, i) => i).filter(i => C.parentId[i] === ref && C.colId[i] !== "manualSort" && !String(C.colId[i]).startsWith("gristHelper"))
+        .sort((a, b) => ((C.parentPos || [])[a] || 0) - ((C.parentPos || [])[b] || 0))
+        .map(i => { const v = (C.visibleCol || [])[i], vi = v ? C.id.indexOf(v) : -1;
+          return { colId: C.colId[i], label: C.label[i] || "", type: C.type[i] || "Any", widgetOptions: C.widgetOptions[i] || "", isFormula: !!C.isFormula[i],
+            formula: C.formula[i] || "", description: (C.description || [])[i] || "", visibleCol: vi >= 0 ? C.colId[vi] : "" }; });
+    }
+    return out;
+  }
+  // Écrit la copie si elle a changé ; renvoie true si écrite. Sans droit d'écriture : silencieux.
+  async function majSchemaPublic(tables) {
+    try {
+      const config = await lireConfig(), schema = await instantaneSchema(tables);
+      const avant = config && config.valeurs.schema && config.valeurs.schema.tables;
+      if (JSON.stringify(avant || null) === JSON.stringify(schema)) return false;
+      await ecrireConfig("schema", { tables: schema, maj: new Date().toISOString() });
+      return true;
+    } catch (_) { return false; }
+  }
+
   // Applique les étapes cochées, une par une ; renvoie [{ etape, ok, erreur }]
   async function appliquer(etapes) {
     const resultats = [];
@@ -697,6 +726,7 @@ return sorted(champs)`;
     PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
     norm, cibleRef, lireMeta, lireConfig, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer, COLONNES_ETABLISSEMENT,
+    instantaneSchema, majSchemaPublic,
     REGIONS_ACADEMIQUES, regionDeAcademie,
   };
 })();

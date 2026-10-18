@@ -37,6 +37,7 @@
     groupes = R.groupesLiens(meta, config, general, formulaires);
     pages = (await R.lirePagesEtab()) || [];
     attributs = await lireAttributs();
+    if (await R.majSchemaPublic(meta, config, general, formulaires)) config = await S.lireConfig();   // copie des colonnes pour les liens
     message = { ...MESSAGE_DEFAUT, ...((config && config.valeurs.liens && config.valeurs.liens.message) || {}) };
     if (choix >= groupes.length) choix = 0;
     await chargerDonnees();

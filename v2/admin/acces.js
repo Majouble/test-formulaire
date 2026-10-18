@@ -343,6 +343,7 @@
         p.regles.forEach(r => ajouts.push(["AddRecord", "_grist_ACLRules", null, { resource: res.id, aclFormula: r.aclFormula, permissionsText: r.permissionsText, memo: r.memo, rulePos: pos++ }]));
       }
       await grist.docApi.applyUserActions([...(ids.length ? [["BulkRemoveRecord", "_grist_ACLRules", ids]] : []), ...ajouts]);
+      await R.majSchemaPublic(meta, config, general, formulaires);
       await charger(); dessiner();
       dire("Règles appliquées. Vérifiez-les avec « Voir en tant que » dans la page Règles d'accès de Grist.");
     } catch (e) {

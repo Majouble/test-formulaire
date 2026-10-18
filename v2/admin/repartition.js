@@ -170,6 +170,23 @@
     });
     return liste;
   }
+  // Tables que lit le widget de saisie ouvert par un lien : réponses, référentiel, sous-tables (tableaux), listes de choix
+  function tablesPubliques(meta, general, groupes) {
+    const out = new Set(), technique = new Set([general.agents, general.creneaux, general.affectations, general.emargements, general.actions, S().TABLE_CONFIG, general.formulaires]);
+    for (const g of groupes) {
+      out.add(g.table);
+      for (const f of g.formulaires) {
+        out.add(f.table);
+        (f.conf.blocs || []).forEach(b => { const st = b && b.reglages && b.reglages.tableau && b.reglages.tableau.table; if (st && meta[st]) out.add(st); });
+        Object.values(meta[f.table].colonnes).forEach(c => { const x = S().cibleRef(c.type) || (/^RefList:(.+)$/.exec(c.type) || [])[1]; if (x && meta[x] && !technique.has(x)) out.add(x); });
+      }
+    }
+    return [...out];
+  }
+  async function majSchemaPublic(meta, config, general, formulaires) {
+    const groupes = groupesLiens(meta, config, general, formulaires);
+    return groupes.length ? S().majSchemaPublic(tablesPubliques(meta, general, groupes)) : false;
+  }
   const formuleLien = (attribut, page) => `SELF_HYPERLINK(${page ? `page=${page}, ` : ""}LinkKey_${attribut}=$${LIEN.cle})`;
   // Pages des établissements : vues personnalisées dont l'option « etablissements » nomme le référentiel
   async function lirePagesEtab() {
@@ -190,6 +207,6 @@
     lireReferentiel, libelleCritere, criteres, criteresAjoutables, enregistrerCriteres,
     perimetreObjet, nettoyer, memePerimetre, resumePerimetre, nomPage,
     lireAgents, optionsVue, lirePages, agentDePage,
-    LIEN, lireFormulairesPublies, groupesLiens, formuleLien, lirePagesEtab,
+    LIEN, lireFormulairesPublies, groupesLiens, formuleLien, lirePagesEtab, tablesPubliques, majSchemaPublic,
   };
 })();
