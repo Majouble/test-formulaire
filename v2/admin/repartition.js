@@ -103,6 +103,8 @@
       fonction: String(col("Fonction", i) || "").trim() || FONCTION_ANCIEN_ROLE[String(col("Role", i) || "").trim()] || "",
       telephone: String(col("Telephone", i) || "").trim(), actif: col("Actif", i) !== false,
       champsAcces: t.Champs_acces ? S().listeChoix(col("Champs_acces", i)) : null,   // null : colonne absente
+      cle: String(col("Cle_acces", i) || "").trim(), pageSaisie: col("Page_saisie", i) || null,   // invité : accès par lien
+      lienAcces: typeof col("Lien_acces", i) === "string" ? col("Lien_acces", i) : "", invitesPossibles: !!t.Cle_acces,
     })).sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
   }
 
@@ -183,9 +185,15 @@
     }
     return [...out];
   }
+  // Copie des colonnes lue par le widget de saisie quand les règles d'accès cachent les métadonnées de Grist
+  // (établissements par lien, agents invités, et agents dont les droits ne couvrent pas tout le document) :
+  // tables de tous les formulaires publiés, leurs sous-tables, listes de choix et référentiels.
   async function majSchemaPublic(meta, config, general, formulaires) {
     const groupes = groupesLiens(meta, config, general, formulaires);
-    return groupes.length ? S().majSchemaPublic(tablesPubliques(meta, general, groupes)) : false;
+    const tous = formulaires.filter(f => meta[f.table]).map(f => ({ ...f, colEtab: null }));
+    const tables = new Set(tablesPubliques(meta, general, [...groupes, { table: general.referentiel, formulaires: tous }].filter(g => meta[g.table] || g.formulaires.length)));
+    if (!meta[general.referentiel]) tables.delete(general.referentiel);
+    return tables.size ? S().majSchemaPublic([...tables].filter(t => meta[t])) : false;
   }
   const formuleLien = (attribut, page) => `SELF_HYPERLINK(${page ? `page=${page}, ` : ""}LinkKey_${attribut}=$${LIEN.cle})`;
   // Pages des établissements : vues personnalisées dont l'option « etablissements » nomme le référentiel

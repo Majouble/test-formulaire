@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0-alpha.31 (18/10/2026)";
+  const VERSION = "2.0.0-alpha.32 (18/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -109,7 +109,7 @@
       { role: "Auteur", libelle: "Auteur", obligatoire: false,
         accepte: () => true,
         motifs: [/^auteur/, /saisi_?par|redacteur|createur/],
-        creer: () => ({ type: "Text", isFormula: false, formula: "user.Email" }) },
+        creer: () => ({ type: "Text", isFormula: false, formula: formuleAuteur() }) },
     ],
     referentiel: [
       { role: "Nom", libelle: "Nom de l'établissement", obligatoire: true, accepte: c => typeBase(c.type) !== "Bool",
@@ -302,6 +302,24 @@ for a in ${g.affectations}.lookupRecords(Agent=$id):
   if c and c.Debut and c.Fin and c.Fin >= maintenant - timedelta(days=7) and c.Debut <= maintenant + timedelta(days=7):
     champs.update(a.Champ or ${json(CHAMPS.map(c => c.id))})
 return sorted(champs)`;
+  /* ---------- Agents invités : accès par lien personnel, sans compte Grist ----------
+     Clé dans Agents.Cle_acces, page de saisie dans Agents.Page_saisie, lien dans Agents.Lien_acces (?Invite_=<clé>).
+     Attribut utilisateur « Invite » (onglet Accès) : l'invité a les droits d'un agent actif de l'équipe. */
+  const INVITE = { attribut: "Invite", cle: "Cle_acces", page: "Page_saisie", lien: "Lien_acces" };
+  // Auteur d'une ligne (formule d'initialisation) : adresse du compte Grist, sinon « Invité : <nom> » pour un lien d'agent
+  function formuleAuteur(g) {
+    const t = (g && g.agents) || DEFAUTS_GENERAL.agents;
+    return [
+      `email = user.Email`,
+      `if email and email != "anon@getgrist.com":`,
+      `  return email`,
+      `cle = getattr(user.LinkKey, "${INVITE.attribut}", None) if hasattr(user, "LinkKey") else None`,
+      `if cle:`,
+      `  a = ${t}.lookupOne(${INVITE.cle}=cle)`,
+      `  return ("Invité : " + a.Nom) if a else "Invité"`,
+      `return email or ""`,
+    ].join("\n");
+  }
   function colonnesAgents(config) {
     const g = general(config);
     return [
@@ -309,7 +327,9 @@ return sorted(champs)`;
       { id: "Fonction", type: "Choice", widgetOptions: choix(reglagesPlanning(config).fonctions.map(f => f.nom)) },
       { id: "Telephone", type: "Text" }, { id: "Actif", type: "Bool" },
       { id: "Modifie_le", type: "DateTime:Europe/Paris" },
+      { id: INVITE.cle, type: "Text" }, { id: INVITE.page, type: "Int" },
       { id: "Champs_acces", type: "ChoiceList", isFormula: true, formula: formuleChampsAcces(g), widgetOptions: choix(CHAMPS.map(c => c.id)) },
+      { id: INVITE.lien, type: "Text", isFormula: true, formula: `SELF_HYPERLINK(page=$${INVITE.page} or None, LinkKey_${INVITE.attribut}=$${INVITE.cle}) if $${INVITE.cle} else ""` },
     ];
   }
   const COLONNES_CRENEAUX = [
@@ -330,7 +350,7 @@ return sorted(champs)`;
     return [
       { id: "Agent", type: `Ref:${g.agents}` }, { id: "Creneau", type: `Ref:${g.creneaux}` },
       { id: "Debut", type: "DateTime:Europe/Paris" }, { id: "Fin", type: "DateTime:Europe/Paris" },
-      { id: "Auteur", type: "Text", formula: "user.Email" }, { id: "Note", type: "Text" },
+      { id: "Auteur", type: "Text", formula: formuleAuteur(g) }, { id: "Note", type: "Text" },
     ];
   }
   // Émargements lus en une fois : [{ id, agent, creneau, debut, fin, auteur, note }] ; null si la table n'existe pas
@@ -745,7 +765,7 @@ return sorted(champs)`;
     PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
     norm, cibleRef, lireMeta, lireConfig, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer, COLONNES_ETABLISSEMENT,
-    instantaneSchema, majSchemaPublic, tableauxDeBord, valeurTableauxDeBord,
+    instantaneSchema, majSchemaPublic, tableauxDeBord, valeurTableauxDeBord, INVITE, formuleAuteur,
     REGIONS_ACADEMIQUES, regionDeAcademie,
   };
 })();

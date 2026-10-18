@@ -71,6 +71,8 @@ v2/
 
 - Export et import de la configuration (18/10, onglet Installation, carte « Sauvegarder ou reprendre une configuration ») : fichier JSON `socle-signalements-configuration` avec les clés de Config (sauf `schema` et le modèle Word), les formulaires (brouillon et version publiée), la structure des tables de réponses et de leurs sous-tables (colonnes, types, formules, réglages, colonne affichée des références) et, en option, l'équipe. Import dans un document installé : analyse (créé, remplacé, identique), puis application des éléments cochés ; jamais de suppression ni de changement de type. Non repris : signalements, référentiel, clés d'accès, règles d'accès, pages, modèle Word. « Coller… » remplace le choix de fichier s'il est bloqué.
 
+- Agents invités (18/10) : pour un agent qui ne peut pas se connecter à Grist avec son adresse, fiche Équipe « Invité : accès par lien personnel ». Colonnes Agents `Cle_acces` (clé), `Page_saisie` (sa page de saisie, tenue à jour) et `Lien_acces` (`SELF_HYPERLINK(page=$Page_saisie, LinkKey_Invite=$Cle_acces)`). Règles (onglet Accès) : attribut « Invite » (clé du lien → ligne d'Agents) ; partout où les règles disent « agent actif », elles acceptent l'agent connecté par son adresse ou par son lien (saisie selon le planning, émargement pour lui seul) ; clé et lien lisibles par les propriétaires seulement. Auteur des signalements et des émargements : formule d'initialisation qui écrit « Invité : <nom> » pour un invité (au lieu de l'adresse anonyme). « Nouvelle clé » ou décocher l'option retire le lien. La copie des colonnes (clé `schema`) couvre désormais tous les formulaires publiés.
+
 ## Tester l'installation
 
 1. Créer un document Grist vierge.

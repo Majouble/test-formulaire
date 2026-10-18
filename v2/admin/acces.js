@@ -22,7 +22,11 @@
   const MEMO = "Socle v2";
   const ATTRIBUT = "Agent";
   const PROPRIETAIRE = "user.Access == OWNER";
-  const MEMBRE = `user.${ATTRIBUT}.Actif`;
+  // Identité d'agent : compte Grist (attribut « Agent », par adresse) ou lien d'agent invité (attribut « Invite », par clé)
+  const INVITE = S.INVITE.attribut;
+  let avecInvites = false;   // colonne Agents.Cle_acces présente
+  const agentSi = build => avecInvites ? `(${build(`user.${ATTRIBUT}`)}) or (user.LinkKey.${INVITE} and ${build(`user.${INVITE}`)})` : build(`user.${ATTRIBUT}`);
+  const membre = () => agentSi(u => `${u}.Actif`);
 
   let config, general, meta, agents, formulaires, groupes, acl, racine;
 
@@ -35,6 +39,7 @@
     formulaires = await R.lireFormulairesPublies(general);
     groupes = R.groupesLiens(meta, config, general, formulaires).filter(g => g.cle);   // accès par lien : clés en place
     acl = await lireAcl();
+    avecInvites = !!(meta[general.agents] && meta[general.agents].colonnes[S.INVITE.cle]);
   }
   // null si les règles ne sont pas lisibles (non propriétaire)
   async function lireAcl() {
@@ -70,15 +75,14 @@
     return { saisie, referentiels: [...referentiels].filter(t => meta[t]) };
   }
   const condChamps = champs => {
-    const l = [...champs].sort().map(ch => `"${ch}" in user.${ATTRIBUT}.Champs_acces`);
-    return `${MEMBRE} and ${l.length > 1 ? `(${l.join(" or ")})` : l[0]}`;
+    return agentSi(u => { const l = [...champs].sort().map(ch => `"${ch}" in ${u}.Champs_acces`); return `${u}.Actif and ${l.length > 1 ? `(${l.join(" or ")})` : l[0]}`; });
   };
   // [{ tableId, colIds, regles: [{ aclFormula, permissionsText, memo }], description }]
   function reglesProposees() {
     const { saisie, referentiels } = tablesGerees(), out = [];
     out.push({ tableId: "*", colIds: "*", titre: "Toutes les autres tables (réglages, équipe, planning…)", regles: [
       { aclFormula: PROPRIETAIRE, permissionsText: "+CRUDS", memo: `${MEMO} — propriétaires : tous les droits` },
-      { aclFormula: MEMBRE, permissionsText: "+R-CUDS", memo: `${MEMO} — équipe : lecture seule` },
+      { aclFormula: membre(), permissionsText: "+R-CUDS", memo: `${MEMO} — équipe : lecture seule` },
       { aclFormula: "", permissionsText: "-CRUDS", memo: `${MEMO} — réservé aux agents actifs de l'équipe de la cellule (onglet Équipe)` },
     ], lignes: ["Propriétaires : tous les droits, y compris la structure.", "Agents actifs de l'équipe : lecture seule.", "Autres personnes : aucun accès."] });
     for (const [t, x] of saisie) {
@@ -86,14 +90,14 @@
       out.push({ tableId: t, colIds: "*", titre: `${t} — signalements ${ch} (${[...x.formulaires].join(", ")})`, regles: [
         { aclFormula: PROPRIETAIRE, permissionsText: "+CRUD", memo: `${MEMO} — propriétaires : tous les droits` },
         { aclFormula: condChamps(x.champs), permissionsText: "+CRU-D", memo: `${MEMO} — saisie : agents mobilisés ${ch} au planning (7 jours avant ou après)` },
-        { aclFormula: MEMBRE, permissionsText: "+R-CUD", memo: `${MEMO} — saisie réservée aux agents mobilisés ${ch} au planning ; lecture pour le reste de l'équipe` },
+        { aclFormula: membre(), permissionsText: "+R-CUD", memo: `${MEMO} — saisie réservée aux agents mobilisés ${ch} au planning ; lecture pour le reste de l'équipe` },
       ], lignes: [`Agents mobilisés ${ch} au planning (7 jours avant ou après) : lecture, ajout et modification ; pas de suppression.`,
         "Autres agents actifs de l'équipe : lecture seule.", "Autres personnes : aucun accès."] });
     }
     for (const t of referentiels) {
       out.push({ tableId: t, colIds: "*", titre: `${t} — référentiel`, regles: [
         { aclFormula: PROPRIETAIRE, permissionsText: "+CRUD", memo: `${MEMO} — propriétaires : tous les droits` },
-        { aclFormula: `${MEMBRE} and user.${ATTRIBUT}.Champs_acces`, permissionsText: "+CRU-D", memo: `${MEMO} — ajout d'établissements : agents mobilisés au planning` },
+        { aclFormula: agentSi(u => `${u}.Actif and ${u}.Champs_acces`), permissionsText: "+CRU-D", memo: `${MEMO} — ajout d'établissements : agents mobilisés au planning` },
       ], lignes: ["Agents mobilisés au planning (EN ou ESR) : lecture, ajout et modification (établissement absent de l'annuaire…).",
         "Autres agents actifs : lecture seule.", "Autres personnes : aucun accès."] });
     }
@@ -101,10 +105,14 @@
     const tE = general.emargements || "Emargements";
     if (meta[tE]) out.push({ tableId: tE, colIds: "*", titre: `${tE} — émargement`, regles: [
       { aclFormula: PROPRIETAIRE, permissionsText: "+CRUD", memo: `${MEMO} — propriétaires : tous les droits` },
-      { aclFormula: `${MEMBRE} and rec.Agent == user.${ATTRIBUT}.id and newRec.Agent == user.${ATTRIBUT}.id`, permissionsText: "+CRU-D", memo: `${MEMO} — émargement : chacun pour soi` },
-      { aclFormula: MEMBRE, permissionsText: "-CRUD", memo: `${MEMO} — émargement : chaque agent ne voit et ne modifie que le sien` },
+      { aclFormula: agentSi(u => `${u}.Actif and rec.Agent == ${u}.id and newRec.Agent == ${u}.id`), permissionsText: "+CRU-D", memo: `${MEMO} — émargement : chacun pour soi` },
+      { aclFormula: membre(), permissionsText: "-CRUD", memo: `${MEMO} — émargement : chaque agent ne voit et ne modifie que le sien` },
     ], lignes: ["Agent actif : il émarge pour lui-même et voit ses propres émargements ; pas de suppression.",
       "Les autres émargements ne lui sont pas visibles (données personnelles).", "Propriétaires : tous les émargements, avec correction possible."] });
+    if (avecInvites) out.push({ tableId: general.agents, colIds: [S.INVITE.cle, S.INVITE.lien].filter(c => meta[general.agents].colonnes[c]).sort().join(","), titre: `${general.agents} — clés et liens des invités`, regles: [
+      { aclFormula: PROPRIETAIRE, permissionsText: "+RU", memo: `${MEMO} — propriétaires : clés et liens des invités` },
+      { aclFormula: "", permissionsText: "-RU", memo: `${MEMO} — clés et liens des invités réservés aux propriétaires` },
+    ], lignes: ["Clé et lien personnel des agents invités : lisibles par les propriétaires seulement (le lien vaut mot de passe)."] });
     reglesEtablissements(out);
     return out;
   }
@@ -176,8 +184,9 @@
       ["Établissement ouvert par son lien : lecture (réglages, formulaires, listes de choix)."]);
   }
   const attributsProposes = () => [{ name: ATTRIBUT, tableId: general.agents, lookupColId: "Email", charId: "Email" },
+    ...(avecInvites ? [{ name: INVITE, tableId: general.agents, lookupColId: S.INVITE.cle, charId: `LinkKey.${INVITE}` }] : []),
     ...(groupes || []).map(g => ({ name: g.attribut, tableId: g.table, lookupColId: R.LIEN.cle, charId: `LinkKey.${g.attribut}` }))];
-  const estAttributSocle = r => { try { const n = JSON.parse(r.userAttributes).name; return n === ATTRIBUT || /^Etab(_|$)/.test(n); } catch (_) { return false; } };
+  const estAttributSocle = r => { try { const n = JSON.parse(r.userAttributes).name; return n === ATTRIBUT || n === S.INVITE.attribut || /^Etab(_|$)/.test(n); } catch (_) { return false; } };
 
   // Règles en place qui seront remplacées : tables gérées (toutes colonnes), règle par défaut, attribut « Agent »
   function aRemplacer(propose) {
@@ -233,10 +242,10 @@
     const lignes = (agents || []).map(a => {
       const champs = a.champsAcces || [];
       const droits = !a.actif ? `<span class="pastille">inactif : aucun accès</span>`
-        : !a.email ? `<span class="pastille manque">sans adresse : aucun accès</span>`
+        : !a.email && !a.cle ? `<span class="pastille manque">sans adresse : aucun accès</span>`
         : champs.length ? `<span class="pastille ok">saisie ${esc(champs.join(" et "))}</span>${champs.length < S.CHAMPS.length ? ` <span class="pastille">lecture ${esc(S.CHAMPS.map(c => c.id).filter(c => !champs.includes(c)).join(", "))}</span>` : ""}`
         : `<span class="pastille">lecture seule (aucun créneau à 7 jours)</span>`;
-      return `<tr${a.actif ? "" : ` class="inactif"`}><td><strong>${esc(a.nom)}</strong></td><td>${a.email ? esc(a.email) : "—"}</td><td>${esc(a.fonction)}</td><td>${droits}</td></tr>`;
+      return `<tr${a.actif ? "" : ` class="inactif"`}><td><strong>${esc(a.nom)}</strong>${a.cle ? ` <span class="pastille reco">invité</span>` : ""}</td><td>${a.email ? esc(a.email) : a.cle ? "lien personnel" : "—"}</td><td>${esc(a.fonction)}</td><td>${droits}</td></tr>`;
     }).join("");
     return `<section class="carte"><h2>Qui aura accès à quoi</h2>
       <p class="aide">D'après l'équipe et le planning. Un agent saisit sur les formulaires d'un champ (EN, ESR) s'il y est mobilisé sur un créneau entre 7 jours avant et 7 jours après aujourd'hui ; Grist recalcule ces champs environ toutes les heures et à chaque modification du planning. Les personnes absentes de l'équipe ne voient rien ; les propriétaires du document voient et modifient tout.</p>
@@ -246,7 +255,7 @@
 
   function carteRegles(propose, remplacees, ok, sansFormule) {
     return `<section class="carte"><h2>Règles proposées</h2>
-      <p class="aide">Attribut utilisateur « ${ATTRIBUT} » : la ligne de la table ${esc(general.agents)} dont l'adresse (colonne Email) est celle du compte Grist connecté.${(groupes || []).map(g => ` Attribut « ${esc(g.attribut)} » : la ligne de ${esc(g.table)} dont la clé (${esc(R.LIEN.cle)}) est celle du lien (paramètre ${esc(g.attribut)}_).`).join("")}</p>
+      <p class="aide">Attribut utilisateur « ${ATTRIBUT} » : la ligne de la table ${esc(general.agents)} dont l'adresse (colonne Email) est celle du compte Grist connecté.${avecInvites ? ` Attribut « ${INVITE} » : la ligne de ${esc(general.agents)} dont la clé (${esc(S.INVITE.cle)}) est celle du lien d'un agent invité (paramètre ${INVITE}_) ; l'invité a les droits d'un agent.` : ""}${(groupes || []).map(g => ` Attribut « ${esc(g.attribut)} » : la ligne de ${esc(g.table)} dont la clé (${esc(R.LIEN.cle)}) est celle du lien (paramètre ${esc(g.attribut)}_).`).join("")}</p>
       ${propose.map(p => `<div class="ac-table"><strong>${esc(p.titre)}</strong><ul>${p.lignes.map(l => `<li>${esc(l)}</li>`).join("")}</ul>
         <details><summary>Formules Grist</summary><table class="ac-formules"><tbody>${p.regles.map(r => `<tr><td><code>${esc(r.aclFormula || "Tous les autres")}</code></td><td><code>${esc(r.permissionsText)}</code></td></tr>`).join("")}</tbody></table></details></div>`).join("")}
       ${!formulaires.length ? `<p class="avert">Aucun formulaire publié : seules la règle par défaut et le référentiel sont proposés. Publiez les formulaires puis revenez ici.</p>` : ""}
@@ -283,6 +292,7 @@
         <li>Les personnes hors équipe peuvent rester invitées : elles ne verront rien. Ajoutez-les à l'équipe pour leur ouvrir la lecture.</li>
         <li>Le compte utilisé par n8n (clé d'API) doit être <strong>propriétaire</strong> du document, ou figurer dans l'équipe avec les bons créneaux, pour continuer à lire et écrire.</li>
         <li>Vérifier : page « Règles d'accès » de Grist, bouton « Voir en tant que », en choisissant un agent.</li>
+        ${avecInvites && (agents || []).some(a => a.cle) ? `<li>Agents invités (lien personnel) : comme pour les établissements, le document doit être partagé publiquement en <strong>Éditeur</strong> ; testez le lien dans une fenêtre de navigation privée.</li>` : ""}
         <li>${(groupes || []).length ? `Accès des établissements par lien : vérifiez avec un compte qui n'est ni propriétaire ni dans l'équipe, en ouvrant un lien de l'onglet Établissements ; ouvrez ensuite le partage public du document en <strong>Éditeur</strong> (bouton « Partager » de Grist).`
           : "Accès des établissements par lien personnel : à mettre en place dans l'onglet Établissements (clés, page, publipostage) ; les règles s'ajoutent ensuite ici."}</li>
       </ol></section>`;

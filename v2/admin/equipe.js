@@ -6,6 +6,8 @@
    - Le périmètre n'est pas sur la fiche : il change d'un créneau à l'autre et se règle dans l'onglet Planning.
    - L'adresse servira aux règles d'accès.
    - Une liste peut être collée depuis un tableur ; les pages de saisie existantes peuvent être reprises.
+   - Agent invité (sans compte Grist) : clé Cle_acces et lien personnel Lien_acces vers sa page de saisie
+     (paramètre ?Invite_=<clé>) ; les règles d'accès (onglet Accès) lui donnent les droits d'un agent actif.
    ===================================================================== */
 (function () {
   "use strict";
@@ -33,6 +35,16 @@
     pages = await R.lirePages();
     const meta = await S.lireMeta(), t = meta[table()];
     colonnesManquantes = t ? S.colonnesAgents(config).filter(c => !c.isFormula).map(c => c.id).filter(c => !t.colonnes[c]) : [];
+    if (t && !t.colonnes[S.INVITE.lien]) colonnesManquantes.push(S.INVITE.lien);
+    await majPagesInvites();
+  }
+  // page de saisie de chaque invité (n° de page Grist) : le lien l'ouvre directement
+  const pageDeAgent = a => { const p = (pages || []).find(x => { const ag = R.agentDePage(x, agents); return ag && ag.id === a.id; }); return p ? p.viewRef : null; };
+  async function majPagesInvites() {
+    if (!agents || !agents.some(a => a.cle)) return;
+    const acts = agents.filter(a => a.cle && pageDeAgent(a) && pageDeAgent(a) !== a.pageSaisie).map(a => ["UpdateRecord", table(), a.id, { [S.INVITE.page]: pageDeAgent(a) }]);
+    if (!acts.length) return;
+    try { await grist.docApi.applyUserActions(acts); agents = await R.lireAgents(general, ref); } catch (_) { /* droits insuffisants : lien vers la page d'accueil */ }
   }
 
   /* ---------- Rendu ---------- */
@@ -61,9 +73,9 @@
       const pg = pageDe.get(a.id) || [];
       const fonctionConnue = fonctions().some(f => f.nom === a.fonction);
       return `<tr data-id="${a.id}" class="eq-ligne${a.actif ? "" : " inactif"}" tabindex="0">
-        <td><strong>${esc(a.nom) || "<em>sans nom</em>"}</strong>${a.actif ? "" : ` <span class="pastille">inactif</span>`}</td>
+        <td><strong>${esc(a.nom) || "<em>sans nom</em>"}</strong>${a.actif ? "" : ` <span class="pastille">inactif</span>`}${a.cle ? ` <span class="pastille reco" title="Accès par lien personnel, sans compte Grist">invité</span>` : ""}</td>
         <td>${fonctionConnue ? `<span class="pastille reco">${esc(a.fonction)}</span>` : `<span class="pastille manque">${esc(a.fonction || "à choisir")}</span>`}</td>
-        <td>${a.email ? esc(a.email) : `<span class="pastille manque">adresse manquante</span>`}</td>
+        <td>${a.email ? esc(a.email) : a.cle ? `<span class="vide">accès par lien</span>` : `<span class="pastille manque">adresse manquante</span>`}</td>
         <td>${a.telephone ? esc(a.telephone) : `<span class="vide">—</span>`}</td>
         <td>${pg.length ? pg.map(p => esc(p.page)).join("<br>") : `<span class="vide">—</span>`}</td></tr>`;
     }).join("");
@@ -91,11 +103,27 @@
         <label class="champ"><span>Statut</span><small>Un agent inactif garde son historique mais n'est plus proposé sur le planning.</small>
           <span class="eq-case"><input type="checkbox" id="eq-actif"${a.actif ? " checked" : ""}> Actif</span></label>
       </div>
+      ${blocInvite(a)}
       <p class="aide" id="eq-resume">${resumeFiche()}</p>
       <div class="boutons"><button class="primaire" id="eq-enregistrer">${a.id ? "Enregistrer" : "Ajouter à l'équipe"}</button>
         <button class="secondaire" id="eq-annuler">Annuler</button>
         ${a.id ? `<button class="secondaire danger" id="eq-supprimer">Retirer de l'équipe…</button>` : ""}
         <span class="statut" id="eq-fiche-statut" role="status"></span></div></section>`;
+  }
+  // Accès par lien personnel (agent invité, sans compte Grist)
+  function blocInvite(a) {
+    const possible = agents && (agents.invitesPossibles || (agents[0] && agents[0].invitesPossibles) || !colonnesManquantes.includes(S.INVITE.cle));
+    if (!possible) return `<p class="aide">Accès par lien personnel (agent sans compte Grist) : complétez d'abord la table (bandeau en haut de l'onglet).</p>`;
+    const lien = a.id ? (agents.find(x => x.id === a.id) || {}).lienAcces || "" : "";
+    return `<div class="eq-invite">
+      <label class="eq-case"><input type="checkbox" id="eq-invite"${a.invite ? " checked" : ""}> <strong>Invité : accès par lien personnel</strong>, sans compte Grist</label>
+      <p class="aide">À réserver à un agent qui ne peut pas se connecter à Grist avec son adresse. Le lien ouvre sa page de saisie avec les droits d'un agent de l'équipe (saisie selon le planning, émargement).
+        <strong>Il vaut mot de passe</strong> : quiconque le détient agit en son nom. Retirez-le (« Nouvelle clé » ou décocher) dès que la personne n'est plus mobilisée.</p>
+      ${a.invite && a.cle ? `<div class="eq-lien">${lien ? `<input type="text" id="eq-lien" readonly value="${esc(lien)}"><button class="secondaire" id="eq-copier-lien">Copier le lien</button>`
+          : `<span class="vide">Lien en cours de calcul par Grist : rechargez l'onglet dans un instant.</span>`}
+        <button class="secondaire" id="eq-nouvelle-cle" title="L'ancien lien cesse de fonctionner">Nouvelle clé</button></div>` : ""}
+      ${a.invite && !a.cle ? `<p class="aide">Le lien sera créé à l'enregistrement.</p>` : ""}
+    </div>`;
   }
   const resumeFiche = () => `Page de saisie : « ${esc(R.nomPage(edition.nom || "…", {}))} ».`;
 
@@ -110,7 +138,7 @@
   /* ---------- Événements ---------- */
   function lier() {
     racine.querySelectorAll(".eq-ligne").forEach(tr => {
-      const ouvrir = () => { const a = agents.find(x => x.id === +tr.dataset.id); if (a) { edition = JSON.parse(JSON.stringify(a)); dessiner(); $("eq-fiche").scrollIntoView({ block: "nearest" }); $("eq-nom").focus(); } };
+      const ouvrir = () => { const a = agents.find(x => x.id === +tr.dataset.id); if (a) { edition = JSON.parse(JSON.stringify(a)); edition.invite = !!a.cle; dessiner(); $("eq-fiche").scrollIntoView({ block: "nearest" }); $("eq-nom").focus(); } };
       tr.addEventListener("click", ouvrir);
       tr.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ouvrir(); } });
     });
@@ -129,7 +157,15 @@
       edition.nom = $("eq-nom").value; edition.email = $("eq-email").value.trim(); edition.telephone = $("eq-tel").value.trim();
       edition.actif = $("eq-actif").checked;
       edition.fonction = $("eq-fonction").value;
+      if ($("eq-invite")) edition.invite = $("eq-invite").checked;
     };
+    if ($("eq-invite")) $("eq-invite").addEventListener("change", () => { lireChamps(); const y = window.scrollY; dessiner(); window.scrollTo(0, y); });
+    if ($("eq-copier-lien")) $("eq-copier-lien").addEventListener("click", async () => {
+      const o = $("eq-lien"); o.select();
+      try { await navigator.clipboard.writeText(o.value); } catch (_) { try { document.execCommand("copy"); } catch (_) { /* sélection laissée */ } }
+      $("eq-copier-lien").textContent = "Lien copié";
+    });
+    if ($("eq-nouvelle-cle")) $("eq-nouvelle-cle").addEventListener("click", () => { lireChamps(); edition.cle = nouvelleCle(); enregistrer("Nouvelle clé : l'ancien lien ne fonctionne plus. Envoyez le nouveau."); });
     ["eq-nom", "eq-email", "eq-tel", "eq-actif"].forEach(id => $(id).addEventListener("input", () => { lireChamps(); $("eq-resume").innerHTML = resumeFiche(); }));
     $("eq-fonction").addEventListener("change", lireChamps);
     $("eq-annuler").addEventListener("click", () => { edition = null; dessiner(); });
@@ -140,19 +176,42 @@
   const dire = (id, t, err) => { const st = $(id); if (st) { st.textContent = t; st.className = `statut${err ? " err" : " ok"}`; } };
 
   /* ---------- Écritures ---------- */
-  const champs = a => ({ Nom: a.nom.trim(), Email: a.email.trim(), Fonction: a.fonction, Telephone: a.telephone.trim(),
-    Actif: !!a.actif, Modifie_le: maintenant() });
-  async function enregistrer() {
+  const nouvelleCle = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join("");
+  const champs = a => {
+    const c = { Nom: a.nom.trim(), Email: a.email.trim(), Fonction: a.fonction, Telephone: a.telephone.trim(), Actif: !!a.actif, Modifie_le: maintenant() };
+    if (!colonnesManquantes.includes(S.INVITE.cle) && a.invite !== undefined) {
+      c[S.INVITE.cle] = a.invite ? (a.cle || nouvelleCle()) : "";
+      if (a.invite && a.id) { const p = pageDeAgent(a); if (p) c[S.INVITE.page] = p; }
+    }
+    return c;
+  };
+  // Auteur des signalements et des émargements : formule qui reconnaît aussi les invités (« Invité : <nom> »)
+  async function auteurPourInvites() {
+    try {
+      const meta = await S.lireMeta(), cfg = await S.lireConfig(), g = S.general(cfg), acts = [], f = S.formuleAuteur(g);
+      const rr = meta[g.reponses] ? S.resoudreRoles("reponses", meta[g.reponses], { reponses: g.reponses, referentiel: g.referentiel }, (cfg.valeurs.roles || {}).reponses || {}, {}) : {};
+      const cibles = [[g.reponses, rr.Auteur && rr.Auteur.col], [g.emargements, meta[g.emargements] && meta[g.emargements].colonnes.Auteur ? "Auteur" : null]];
+      for (const [t, c] of cibles) if (t && c && meta[t] && !meta[t].colonnes[c].isFormula && String(meta[t].colonnes[c].formula).trim() === "user.Email") acts.push(["ModifyColumn", t, c, { formula: f }]);
+      if (acts.length) await grist.docApi.applyUserActions(acts);
+    } catch (_) { /* facultatif : l'auteur d'un invité resterait vide */ }
+  }
+  async function enregistrer(messageCle) {
     const a = edition, nom = a.nom.trim();
     if (!nom) { dire("eq-fiche-statut", "Indiquez le nom de l'agent.", true); $("eq-nom").focus(); return; }
     if (agents.some(x => x.id !== a.id && S.norm(x.nom) === S.norm(nom))) { dire("eq-fiche-statut", `Un agent s'appelle déjà « ${nom} » : ajoutez l'initiale du nom pour distinguer les pages.`, true); $("eq-nom").focus(); return; }
     if (a.email && !EMAIL.test(a.email)) { dire("eq-fiche-statut", "L'adresse électronique n'est pas valide.", true); $("eq-email").focus(); return; }
     if (a.email && agents.some(x => x.id !== a.id && x.email.toLowerCase() === a.email.toLowerCase())) { dire("eq-fiche-statut", "Cette adresse est déjà celle d'un autre agent.", true); $("eq-email").focus(); return; }
     try {
+      const ancienInvite = a.id && !!(agents.find(x => x.id === a.id) || {}).cle;
       await grist.docApi.applyUserActions([a.id ? ["UpdateRecord", table(), a.id, champs(a)] : ["AddRecord", table(), null, champs(a)]]);
+      if (a.invite) await auteurPourInvites();
       const ancien = a.id && agents.find(x => x.id === a.id);
       const aReporter = ancien && ancien.nom !== nom;
-      edition = null; await charger(); dessiner();
+      const resteOuverte = a.invite && (!ancienInvite || messageCle);
+      edition = null; await charger();
+      if (resteOuverte) { const n = agents.find(x => S.norm(x.nom) === S.norm(nom)); if (n) { edition = JSON.parse(JSON.stringify(n)); edition.invite = true; } }
+      dessiner();
+      if (resteOuverte) { dire("eq-fiche-statut", messageCle || "Lien personnel créé : copiez-le et transmettez-le à l'agent. Les règles d'accès doivent inclure les invités : onglet Accès, « Appliquer les règles »."); return; }
       dire("eq-statut", `« ${nom} » ${a.id ? "enregistré" : "ajouté à l'équipe"}.${aReporter ? " Pour renommer sa page de saisie : onglet Formulaires, « Créer et mettre à jour les pages »." : ""}${a.email ? "" : " Pensez à son adresse électronique."}`);
     } catch (e) { dire("eq-fiche-statut", `Enregistrement refusé par Grist (${e.message || e}).`, true); }
   }
