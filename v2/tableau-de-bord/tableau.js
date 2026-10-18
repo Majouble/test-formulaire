@@ -4,8 +4,19 @@
    { mode: "edition" | "lecture", table, abonner(cb), configuration(), enregistrer(config) }
    ===================================================================== */
 (function () {
+  // adresse de ce fichier : pour charger le fond de carte commun s'il manque (page hôte plus ancienne, en cache)
+  const ICI = (document.currentScript && document.currentScript.src) || location.href;
   const BALISAGE = "<div class=\"tdb-header\">\n  <div class=\"bar\">\n    <h1>Tableau de bord</h1>\n    <span class=\"sub\" id=\"source\">En attente des donn\u00e9es Grist\u2026</span>\n    <span class=\"sp\"></span>\n    <button class=\"edit-only\" id=\"saveCfg\" title=\"T\u00e9l\u00e9charger la configuration des blocs (fichier .json)\">Sauvegarder la configuration</button>\n    <button class=\"edit-only\" id=\"loadCfg\" title=\"Recharger une configuration sauvegard\u00e9e\">Restaurer\u2026</button>\n    <button class=\"edit-only\" id=\"findCfg\" title=\"Chercher les configurations enregistr\u00e9es dans les autres widgets de ce document\">R\u00e9cup\u00e9rer d'un autre widget\u2026</button>\n    <input type=\"file\" id=\"cfgFile\" accept=\".json,application/json\" style=\"display:none\">\n    <button class=\"edit-only\" id=\"addTile\">+ Chiffre cl\u00e9</button>\n    <button class=\"edit-only\" id=\"addCross\">+ Tableau crois\u00e9</button>\n    <button class=\"edit-only ghost\" id=\"openAll\" title=\"D\u00e9plier les r\u00e9glages de tous les blocs\">Tout d\u00e9plier</button>\n    <button class=\"edit-only ghost\" id=\"closeAll\" title=\"Replier les r\u00e9glages de tous les blocs\">Tout replier</button>\n    <button class=\"view-only\" id=\"exportWord\" title=\"Tous les blocs dans un document Word : chiffres cl\u00e9s, graphiques et tableaux\">Exporter en Word</button>\n    <button class=\"primary\" id=\"toggleEdit\">Modifier le tableau de bord</button>\n  </div>\n  <div id=\"quickBar\" class=\"view-only quickbar\" role=\"toolbar\" aria-label=\"Filtres rapides\"></div>\n</div>\n<div class=\"tdb-main\">\n  <div id=\"globalBox\"></div>\n  <div id=\"messages\"></div>\n  <div id=\"recover\"></div>\n  <div class=\"tiles\" id=\"tiles\"></div>\n  <div id=\"blocks\" style=\"display:grid;gap:12px\"></div>\n  <p class=\"hint\" id=\"diag\"></p>\n</div>\n<div id=\"tip\"></div>\n<div id=\"qpop\" class=\"qpop\" hidden></div>\n<div id=\"drill\" class=\"drill-overlay\" hidden></div>";
   function monter(RACINE, CTX) {
+    if (!window.Geo) {        // commun/geo.js absent de la page : chargé ici, puis le tableau de bord est monté
+      let module = null;
+      const s = document.createElement("script");
+      s.src = new URL("../commun/geo.js", ICI).href;
+      s.onload = () => { module = monter(RACINE, CTX); };
+      s.onerror = () => { RACINE.innerHTML = `<p style="margin:16px;color:#b42318">Fond de carte introuvable (${s.src}) : rechargez la page.</p>`; };
+      document.head.appendChild(s);
+      return { remplacer: c => module && module.remplacer(c), configuration: () => module && module.configuration() };
+    }
     RACINE.innerHTML = BALISAGE;
 
 "use strict";
@@ -2605,6 +2616,13 @@ function buildColumns(order) {
 // ---------- Démarrage (v2) : la page hôte fournit les lignes et la configuration ----------
 accessLevel = "full";
 CTX.abonner(async rows => {
+  try { await recevoir(rows); }
+  catch (e) {     // erreur visible plutôt qu'une attente sans fin
+    console.error(e);
+    const src = $("source"); if (src) src.textContent = `Erreur d'affichage : ${e && e.message ? e.message : e}`;
+  }
+});
+async function recevoir(rows) {
   records = rows || [];
   const meta = await loadMeta();
   diagSource = CTX.mode === "edition" ? "table " + CTX.table : "widget";
@@ -2617,7 +2635,7 @@ CTX.abonner(async rows => {
     else if (!config.blocks.length) { config = defaultConfig(); if (CTX.mode === "edition") saveConfig(); }
   }
   render();
-});
+}
 return {
   remplacer(c) { config = JSON.parse(JSON.stringify(c)); configLoaded = true; render(); },
   configuration: () => config,
