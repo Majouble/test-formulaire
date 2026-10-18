@@ -58,8 +58,24 @@
       const roles = ref.roles || {};
       const col = (role, defaut) => roles[role] || (t[defaut] ? defaut : null);
       donnees = { table: g.table, t, ref, cols: { nom: col("Nom", "Nom"), uai: col("UAI", "UAI"), commune: col("Commune", "Commune"), mail: col("Mail", "Mail") } };
+      donnees.valeurs = valeursColonnes(g.table, t);
     } catch (e) { donnees = { table: g.table, erreur: e.message || String(e) }; }
   }
+  // Valeurs de chaque colonne texte ou liste de choix du référentiel, sans plafond : { colId: [{ v, n }] }
+  const valeursCellule = v => (Array.isArray(v) ? (v[0] === "L" ? v.slice(1) : v) : [v]).map(x => (x == null ? "" : String(x).trim())).filter(Boolean);
+  function valeursColonnes(table, t) {
+    const out = {}, cols = (meta[table] && meta[table].colonnes) || {};
+    for (const c of Object.values(cols)) {
+      if (!/^(Text|Choice|ChoiceList|Any)$/.test(String(c.type).split(":")[0]) || !t[c.colId] || /^(lat|lon|lng)/i.test(c.colId)) continue;
+      const compte = new Map();
+      t[c.colId].forEach(v => valeursCellule(v).forEach(x => compte.set(x, (compte.get(x) || 0) + 1)));
+      if (c.type === "Any" && [...compte.keys()].some(x => x.length > 120)) continue;   // formules au texte long
+      out[c.colId] = [...compte.entries()].map(([v, n]) => ({ v, n })).sort((a, b) => a.v.localeCompare(b.v, "fr", { numeric: true }));
+    }
+    return out;
+  }
+  const libelleColonne = c => { const r = Object.entries(donnees.ref.roles || {}).find(([, x]) => x === c); const m = meta[donnees.table] && meta[donnees.table].colonnes[c];
+    return r ? R.libelleCritere(donnees.ref, c) : (m && m.label) || c; };
   const pageDe = g => pages.find(p => p.referentiel === g.table) || null;
   const formuleAttendue = g => R.formuleLien(g.attribut, pageDe(g) ? pageDe(g).viewRef : null);
   const memeFormule = (a, b) => String(a || "").replace(/\s+/g, "") === String(b || "").replace(/\s+/g, "");
@@ -121,7 +137,7 @@
     return t.id.map((id, i) => i).filter(i => {
       if (filtre.avecMail && cols.mail && !String(t[cols.mail][i] || "").trim()) return false;
       if (filtre.sansCle && lisible((t[CLE] || [])[i])) return false;
-      for (const [c, vals] of crit) if (!vals.has(String(t[c] ? t[c][i] ?? "" : "").trim())) return false;
+      for (const [c, vals] of crit) if (!valeursCellule(t[c] ? t[c][i] : null).some(x => vals.has(x))) return false;
       if (q) { const txt = S.norm([cols.nom, cols.uai, cols.commune].filter(Boolean).map(c => t[c][i]).join(" ")); if (!q.split(/\s+/).every(m => txt.includes(m))) return false; }
       return true;
     });
@@ -132,8 +148,8 @@
   const ROLES_FILTRES = ["Academie", "Departement", "Nom_circonscription", "Type", "Statut_public_prive", "Libelle_nature"];
   const MAX_PUCES = 30;
   function filtresDisponibles() {
-    const { ref, cols } = donnees, exclues = new Set([CLE, LIEN, cols.mail, cols.nom, cols.uai].filter(Boolean));
-    return Object.keys(ref.valeurs || {}).filter(c => !exclues.has(c) && !(ref.cols[c] && ref.cols[c].ref));
+    const { cols } = donnees, exclues = new Set([CLE, LIEN, cols.mail, cols.nom, cols.uai].filter(Boolean));
+    return Object.keys(donnees.valeurs || {}).filter(c => !exclues.has(c));
   }
   function filtresAffiches() {
     const dispo = filtresDisponibles(), enr = config && config.valeurs.liens && config.valeurs.liens.filtres;
@@ -161,11 +177,14 @@
     const sansLien = lignes.filter(i => !lienDe(i)).length;
     // un filtre par colonne : boutons si peu de valeurs, sinon liste déroulante et valeurs choisies
     const puces = c => {
-      const vals = ref.valeurs[c] || [], pris = filtre.crit[c] || new Set();
+      const vals = donnees.valeurs[c] || [], pris = filtre.crit[c] || new Set();
       const bouton = x => `<button type="button" class="puce-ps${pris.has(x.v) ? " on" : ""}" data-crit="${esc(c)}" data-val="${esc(x.v)}">${esc(x.v)} <small>${x.n}</small></button>`;
-      const corps = vals.length <= MAX_PUCES ? vals.map(bouton).join("")
-        : `${vals.filter(x => pris.has(x.v)).map(bouton).join("")}<select data-crit-liste="${esc(c)}"><option value="">${pris.size ? "Ajouter une valeur…" : `Choisir parmi ${vals.length} valeurs…`}</option>${vals.filter(x => !pris.has(x.v)).map(x => `<option value="${esc(x.v)}">${esc(x.v)} (${x.n})</option>`).join("")}</select>`;
-      return `<div class="li-crit"><span class="li-crit-nom">${esc(R.libelleCritere(ref, c))}</span><div class="puces-ps">${corps}</div>
+      // au-delà de 30 valeurs : saisie avec suggestions (on tape quelques lettres), valeurs choisies en boutons
+      const corps = !vals.length ? `<span class="vide">colonne vide${c === "Nom_circonscription" ? " : relancez l'import de l'annuaire (onglet Référentiel) pour la remplir" : ""}</span>`
+        : vals.length <= MAX_PUCES ? vals.map(bouton).join("")
+        : `${vals.filter(x => pris.has(x.v)).map(bouton).join("")}<input type="text" list="li-dl-${esc(c)}" data-crit-saisie="${esc(c)}" placeholder="${pris.size ? "Ajouter une valeur…" : `Taper pour choisir parmi ${vals.length} valeurs…`}">
+          <datalist id="li-dl-${esc(c)}">${vals.filter(x => !pris.has(x.v)).map(x => `<option value="${esc(x.v)}">${x.n} établissement(s)</option>`).join("")}</datalist>`;
+      return `<div class="li-crit"><span class="li-crit-nom">${esc(libelleColonne(c))}</span><div class="puces-ps">${corps}</div>
         <button type="button" class="lien-btn li-retirer" data-retirer-filtre="${esc(c)}" title="Retirer ce filtre">×</button></div>`;
     };
     const apercu = lignes.slice(0, MAX_LIGNES).map(i => {
@@ -181,7 +200,9 @@
       <p class="aide">Choisissez les établissements, ajustez le message, puis téléchargez le fichier CSV pour une fusion de courriels (Word et Outlook, ou un flux n8n) : une ligne par établissement, avec son adresse, son lien et le message déjà rempli. Pour quelques envois, ✉ ouvre le message dans votre messagerie.</p>
       ${sel}
       ${criteres.map(puces).join("")}
-      ${ajoutables.length ? `<div class="li-crit"><span class="li-crit-nom"></span><select id="li-ajout-filtre"><option value="">+ Ajouter un filtre…</option>${ajoutables.map(c => `<option value="${esc(c)}">${esc(R.libelleCritere(ref, c))}</option>`).join("")}</select>
+      ${g.table === general.referentiel && meta[g.table] && !meta[g.table].colonnes.Nom_circonscription && !(ref.roles || {}).Nom_circonscription
+        ? `<div class="li-crit"><span class="li-crit-nom">Circonscription</span><span class="vide">colonne Nom_circonscription absente du référentiel : relancez l'import de l'annuaire (onglet Référentiel), qui la crée et la remplit.</span></div>` : ""}
+      ${ajoutables.length ? `<div class="li-crit"><span class="li-crit-nom"></span><select id="li-ajout-filtre"><option value="">+ Ajouter un filtre…</option>${ajoutables.map(c => `<option value="${esc(c)}">${esc(libelleColonne(c))}</option>`).join("")}</select>
         ${(config.valeurs.liens || {}).filtres ? `<button type="button" class="lien-btn" id="li-filtres-defaut">Filtres par défaut</button>` : ""}</div>` : ""}
       <div class="li-filtres">
         <input type="text" id="li-recherche" placeholder="Nom, UAI ou commune" value="${esc(filtre.recherche)}">
@@ -312,8 +333,11 @@
       if (s.has(v)) s.delete(v); else s.add(v);
       dessiner();
     }));
-    racine.querySelectorAll("[data-crit-liste]").forEach(sel => sel.addEventListener("change", () => {
-      if (!sel.value) return; const c = sel.dataset.critListe; (filtre.crit[c] || (filtre.crit[c] = new Set())).add(sel.value); dessiner();
+    racine.querySelectorAll("[data-crit-saisie]").forEach(inp => inp.addEventListener("change", () => {
+      const c = inp.dataset.critSaisie, v = (donnees.valeurs[c] || []).find(x => S.norm(x.v) === S.norm(inp.value));
+      if (!v) { inp.value = ""; inp.placeholder = "Valeur inconnue : choisissez dans la liste"; return; }
+      (filtre.crit[c] || (filtre.crit[c] = new Set())).add(v.v); dessiner();
+      const n = racine.querySelector(`[data-crit-saisie="${CSS.escape(c)}"]`); if (n) n.focus();
     }));
     racine.querySelectorAll("[data-retirer-filtre]").forEach(b => b.addEventListener("click", async () => {
       const c = b.dataset.retirerFiltre; delete filtre.crit[c];
