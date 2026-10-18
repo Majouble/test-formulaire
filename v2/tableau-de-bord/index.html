@@ -21,6 +21,10 @@
 /* Widget du tableau de bord (v2) : affiche la version publiée dans l'administration (clé tableau_de_bord de Config).
    Les données sont celles de la table à laquelle le widget est relié (normalement la table des réponses). */
 (async () => {
+  // Abonnement aux lignes AVANT grist.ready et avant toute attente : Grist envoie les lignes dès que le widget
+  // est prêt ; un abonnement posé plus tard manque ce premier envoi et le tableau de bord attend sans fin.
+  let lignes = null, destinataire = null;
+  grist.onRecords(rows => { lignes = rows; if (destinataire) destinataire(rows); }, { includeColumns: "normal" });
   grist.ready({ requiredAccess: "full", allowSelectBy: true });
   const msg = t => { const p = document.getElementById("tdb-message"); p.textContent = t; p.hidden = !t; };
   const lirePublie = async () => {
@@ -34,7 +38,15 @@
   try { table = await grist.getTable().getTableId(); } catch (_) {}
   const tdb = window.TableauDeBord.monter(document.getElementById("tableau-de-bord"), {
     mode: "lecture", table,
-    abonner: cb => grist.onRecords(rows => cb(rows), { includeColumns: "normal" }),
+    abonner: cb => {
+      destinataire = cb;
+      if (lignes) { cb(lignes); return; }
+      // filet : lecture directe des lignes si rien n'est arrivé
+      setTimeout(async () => {
+        if (lignes) return;
+        try { const r = await grist.fetchSelectedTable({ format: "rows", includeColumns: "normal" }); if (!lignes && Array.isArray(r)) { lignes = r; cb(r); } } catch (_) { /* attente de l'envoi de Grist */ }
+      }, 1500);
+    },
     configuration: () => publie,
   });
   // nouvelle publication : prise en compte sans recharger la page
