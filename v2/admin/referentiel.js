@@ -24,7 +24,7 @@
   };
   // Rôles facultatifs du socle, remplis si le champ existe dans le jeu de données
   const CHAMPS_ROLES_OPTION = {
-    Statut_public_prive: "statut_public_prive", Libelle_nature: "libelle_nature", Latitude: "latitude", Longitude: "longitude",
+    Statut_public_prive: "statut_public_prive", Libelle_nature: "libelle_nature", Nom_circonscription: "nom_circonscription", Latitude: "latitude", Longitude: "longitude",
   };
   const CHAMP_ETAT = "etat";                // « OUVERT » / « FERME » … (si présent dans le jeu de données)
   const TAILLE_LOT = 400;                   // lignes par envoi à Grist
@@ -161,14 +161,18 @@
       const ctx = await contexte();
       const extras = champsCoches();
       const col = r => ctx.roles[r] && ctx.roles[r].col;
+      // rôles facultatifs sans colonne (ex. Nom_circonscription) : colonne créée à l'import, au nom du rôle
+      const optionsNeuves = Object.entries(CHAMPS_ROLES_OPTION).filter(([r, champ]) => !col(r) && !ctx.tMeta.colonnes[r] && champsJeu.some(f => f.name === champ));
+      optionsNeuves.forEach(([r]) => { ctx.roles[r] = { col: r }; });
       const options = Object.entries(CHAMPS_ROLES_OPTION).filter(([r, champ]) => col(r) && champsJeu.some(f => f.name === champ));
       const champs = [...Object.values(CHAMPS_ROLES), ...options.map(([, champ]) => champ), ...extras];
       const lignes = await telecharger(clauseWhere(ctx.g.academies, types, $("ref-ouverts").checked), champs);
       statut(`${nf(lignes.length)} établissements téléchargés, comparaison avec ${ctx.table}…`);
 
       // colonnes cibles : rôles résolus + colonnes supplémentaires (créées si besoin)
-      const aCreer = extras.filter(c => !ctx.tMeta.colonnes[nomColonne(c)])
-        .map(c => ({ id: nomColonne(c), type: TYPES_GRIST[champsJeu.find(f => f.name === c).type] || "Text" }));
+      const aCreer = [...optionsNeuves.map(([r, champ]) => ({ id: r, type: TYPES_GRIST[champsJeu.find(f => f.name === champ).type] || "Text" })),
+        ...extras.filter(c => !ctx.tMeta.colonnes[nomColonne(c)] && !optionsNeuves.some(([r]) => r === nomColonne(c)))
+          .map(c => ({ id: nomColonne(c), type: TYPES_GRIST[champsJeu.find(f => f.name === c).type] || "Text" }))];
       const cibles = [
         ...Object.entries(CHAMPS_ROLES).filter(([r]) => col(r)).map(([r, champ]) => ({ colonne: col(r), lire: l => l[champ] })),
         ...options.map(([r, champ]) => ({ colonne: col(r), lire: l => l[champ] })),

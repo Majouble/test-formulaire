@@ -126,6 +126,25 @@
       return true;
     });
   }
+  // Filtres du publipostage : colonnes du référentiel aux valeurs peu nombreuses (au plus 200), hors références,
+  // clé, lien et adresse. Par défaut : académie, département, circonscription, type, public / privé, nature ;
+  // la liste choisie est gardée dans la clé « liens » de Config (filtres).
+  const ROLES_FILTRES = ["Academie", "Departement", "Nom_circonscription", "Type", "Statut_public_prive", "Libelle_nature"];
+  const MAX_PUCES = 30;
+  function filtresDisponibles() {
+    const { ref, cols } = donnees, exclues = new Set([CLE, LIEN, cols.mail, cols.nom, cols.uai].filter(Boolean));
+    return Object.keys(ref.valeurs || {}).filter(c => !exclues.has(c) && !(ref.cols[c] && ref.cols[c].ref));
+  }
+  function filtresAffiches() {
+    const dispo = filtresDisponibles(), enr = config && config.valeurs.liens && config.valeurs.liens.filtres;
+    if (Array.isArray(enr)) return enr.filter(c => dispo.includes(c));
+    const roles = donnees.ref.roles || {};
+    const parDefaut = [...ROLES_FILTRES.map(r => roles[r] || (dispo.includes(r) ? r : null)), ...R.criteres(donnees.ref, config)].filter(c => c && dispo.includes(c));
+    return [...new Set(parDefaut)];
+  }
+  async function enregistrerFiltres(liste) {
+    try { await S.ecrireConfig("liens", { ...((config && config.valeurs.liens) || {}), filtres: liste }); config = await S.lireConfig(); } catch (_) { /* droits insuffisants : réglage non gardé */ }
+  }
   const valeur = (c, i) => (c && donnees.t[c] ? String(donnees.t[c][i] ?? "") : "");
   const lienDe = i => donnees.t[LIEN] && lisible(donnees.t[LIEN][i]) ? String(donnees.t[LIEN][i]) : "";
   const remplir = (modele, i) => String(modele || "").replace(/\{(nom|uai|commune|lien|situation)\}/g, (_, k) =>
@@ -137,11 +156,18 @@
     const g = groupes[choix];
     if (!g.cle || !g.lien) return `<section class="carte"><h2>Publipostage</h2>${sel}<p class="vide">Ajoutez d'abord les clés et les liens (étape 1 ci-dessus).</p></section>`;
     const { ref, cols } = donnees;
-    const criteres = R.criteres(ref, config).filter(c => !(ref.cols[c] && ref.cols[c].ref));
+    const criteres = filtresAffiches(), ajoutables = filtresDisponibles().filter(c => !criteres.includes(c));
     const lignes = lignesFiltrees(), total = donnees.t.id.length;
     const sansLien = lignes.filter(i => !lienDe(i)).length;
-    const puces = c => `<div class="li-crit"><span class="li-crit-nom">${esc(R.libelleCritere(ref, c))}</span><div class="puces-ps">${(ref.valeurs[c] || []).map(x =>
-      `<button type="button" class="puce-ps${filtre.crit[c] && filtre.crit[c].has(x.v) ? " on" : ""}" data-crit="${esc(c)}" data-val="${esc(x.v)}">${esc(x.v)} <small>${x.n}</small></button>`).join("")}</div></div>`;
+    // un filtre par colonne : boutons si peu de valeurs, sinon liste déroulante et valeurs choisies
+    const puces = c => {
+      const vals = ref.valeurs[c] || [], pris = filtre.crit[c] || new Set();
+      const bouton = x => `<button type="button" class="puce-ps${pris.has(x.v) ? " on" : ""}" data-crit="${esc(c)}" data-val="${esc(x.v)}">${esc(x.v)} <small>${x.n}</small></button>`;
+      const corps = vals.length <= MAX_PUCES ? vals.map(bouton).join("")
+        : `${vals.filter(x => pris.has(x.v)).map(bouton).join("")}<select data-crit-liste="${esc(c)}"><option value="">${pris.size ? "Ajouter une valeur…" : `Choisir parmi ${vals.length} valeurs…`}</option>${vals.filter(x => !pris.has(x.v)).map(x => `<option value="${esc(x.v)}">${esc(x.v)} (${x.n})</option>`).join("")}</select>`;
+      return `<div class="li-crit"><span class="li-crit-nom">${esc(R.libelleCritere(ref, c))}</span><div class="puces-ps">${corps}</div>
+        <button type="button" class="lien-btn li-retirer" data-retirer-filtre="${esc(c)}" title="Retirer ce filtre">×</button></div>`;
+    };
     const apercu = lignes.slice(0, MAX_LIGNES).map(i => {
       const mail = valeur(cols.mail, i), lien = lienDe(i);
       const href = mail && lien ? `mailto:${encodeURIComponent(mail)}?subject=${encodeURIComponent(remplir(message.objet, i))}&body=${encodeURIComponent(remplir(message.corps, i))}` : "";
@@ -155,6 +181,8 @@
       <p class="aide">Choisissez les établissements, ajustez le message, puis téléchargez le fichier CSV pour une fusion de courriels (Word et Outlook, ou un flux n8n) : une ligne par établissement, avec son adresse, son lien et le message déjà rempli. Pour quelques envois, ✉ ouvre le message dans votre messagerie.</p>
       ${sel}
       ${criteres.map(puces).join("")}
+      ${ajoutables.length ? `<div class="li-crit"><span class="li-crit-nom"></span><select id="li-ajout-filtre"><option value="">+ Ajouter un filtre…</option>${ajoutables.map(c => `<option value="${esc(c)}">${esc(R.libelleCritere(ref, c))}</option>`).join("")}</select>
+        ${(config.valeurs.liens || {}).filtres ? `<button type="button" class="lien-btn" id="li-filtres-defaut">Filtres par défaut</button>` : ""}</div>` : ""}
       <div class="li-filtres">
         <input type="text" id="li-recherche" placeholder="Nom, UAI ou commune" value="${esc(filtre.recherche)}">
         ${cols.mail ? `<label><input type="checkbox" id="li-avec-mail"${filtre.avecMail ? " checked" : ""}> Avec une adresse seulement</label>` : ""}
@@ -284,6 +312,19 @@
       if (s.has(v)) s.delete(v); else s.add(v);
       dessiner();
     }));
+    racine.querySelectorAll("[data-crit-liste]").forEach(sel => sel.addEventListener("change", () => {
+      if (!sel.value) return; const c = sel.dataset.critListe; (filtre.crit[c] || (filtre.crit[c] = new Set())).add(sel.value); dessiner();
+    }));
+    racine.querySelectorAll("[data-retirer-filtre]").forEach(b => b.addEventListener("click", async () => {
+      const c = b.dataset.retirerFiltre; delete filtre.crit[c];
+      await enregistrerFiltres(filtresAffiches().filter(x => x !== c)); dessiner();
+    }));
+    if ($("li-ajout-filtre")) $("li-ajout-filtre").addEventListener("change", async e => { if (!e.target.value) return; await enregistrerFiltres([...filtresAffiches(), e.target.value]); dessiner(); });
+    if ($("li-filtres-defaut")) $("li-filtres-defaut").addEventListener("click", async () => {
+      const l = { ...((config && config.valeurs.liens) || {}) }; delete l.filtres;
+      try { await S.ecrireConfig("liens", l); config = await S.lireConfig(); } catch (_) { /* droits insuffisants */ }
+      dessiner();
+    });
     const r = $("li-recherche");
     if (r) r.addEventListener("input", () => { filtre.recherche = r.value; clearTimeout(lier.t); lier.t = setTimeout(() => { const pos = r.selectionStart; dessiner(); const n = $("li-recherche"); n.focus(); n.setSelectionRange(pos, pos); }, 250); });
     if ($("li-avec-mail")) $("li-avec-mail").addEventListener("change", e => { filtre.avecMail = e.target.checked; dessiner(); });

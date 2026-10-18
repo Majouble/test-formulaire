@@ -10,8 +10,8 @@
   "use strict";
   const S = () => window.Socle;
   const MAX_VALEURS_CRITERE = 200;      // au-delà, une colonne n'est pas proposée comme critère
-  const ROLES_CRITERES = ["Academie", "Departement", "Statut_public_prive", "Libelle_nature", "Type", "Region_academique"];
-  const NOMS_CRITERES = { Academie: "Académie", Departement: "Département", Statut_public_prive: "Public / privé", Libelle_nature: "Nature", Type: "Type", Region_academique: "Région académique" };
+  const ROLES_CRITERES = ["Academie", "Departement", "Nom_circonscription", "Statut_public_prive", "Libelle_nature", "Type", "Region_academique"];
+  const NOMS_CRITERES = { Academie: "Académie", Departement: "Département", Nom_circonscription: "Circonscription", Statut_public_prive: "Public / privé", Libelle_nature: "Nature", Type: "Type", Region_academique: "Région académique" };
   const PREFIXE_PAGE = "Formulaire ";
   const URL_SAISIE_V2 = /\/v2\/saisie\/?(index\.html)?(\?.*)?$/i;
 

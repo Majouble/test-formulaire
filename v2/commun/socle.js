@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0-alpha.24 (18/10/2026)";
+  const VERSION = "2.0.0-alpha.25 (18/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -143,6 +143,9 @@
         creer: () => ({ type: "Choice", isFormula: false, widgetOptions: json({ choices: ["Public", "Privé"] }) }) },
       { role: "Libelle_nature", libelle: "Nature (libellé)", obligatoire: false, parDefaut: true, accepte: c => /^(Text|Choice)$/.test(typeBase(c.type)),
         motifs: [/libelle_?nature/, /nature_?libelle/, /^nature$/], sauf: /code|^id/,
+        creer: () => ({ type: "Text", isFormula: false }) },
+      { role: "Nom_circonscription", libelle: "Circonscription", obligatoire: false, parDefaut: true, accepte: c => typeBase(c.type) !== "Bool",
+        motifs: [/^nom_circonscription$/, /circonscription/], sauf: /code|^id|numero/,
         creer: () => ({ type: "Text", isFormula: false }) },
       { role: "Latitude", libelle: "Latitude", obligatoire: false, parDefaut: true, accepte: c => /^(Numeric|Any)$/.test(typeBase(c.type)),
         motifs: [/^latitude/, /^lat$/, /latitude/], sauf: /^id/,
