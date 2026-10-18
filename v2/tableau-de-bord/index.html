@@ -27,13 +27,21 @@
   grist.onRecords(rows => { lignes = rows; if (destinataire) destinataire(rows); }, { includeColumns: "normal" });
   grist.ready({ requiredAccess: "full", allowSelectBy: true });
   const msg = t => { const p = document.getElementById("tdb-message"); p.textContent = t; p.hidden = !t; };
+  // tableau de bord de cette page : option « tableau » (posée par l'administration), sinon le premier
+  let voulu = null;
+  try { voulu = await grist.getOption("tableau"); } catch (_) { voulu = null; }
+  let nomTableau = "";
   const lirePublie = async () => {
-    const c = await window.Socle.lireConfig();
-    return c && c.valeurs.tableau_de_bord && c.valeurs.tableau_de_bord.publie;
+    const c = await window.Socle.lireConfig(); if (!c) return null;
+    const liste = window.Socle.tableauxDeBord(c.valeurs.tableau_de_bord, window.Socle.general(c));
+    const t = (voulu && liste.find(x => x.id === voulu)) || (!voulu && liste[0]) || null;
+    nomTableau = t ? t.nom : "";
+    return t && t.publie;
   };
   let publie = null;
   try { publie = await lirePublie(); } catch (e) { msg(`Configuration illisible : ${e.message || e}`); return; }
-  if (!publie) { msg("Aucun tableau de bord publié : réglez-le dans l'administration (onglet Tableau de bord), puis « Publier »."); return; }
+  if (!publie) { msg(voulu && !nomTableau ? "Le tableau de bord de cette page a été supprimé dans l'administration : choisissez-en un autre ou supprimez la page."
+    : `Le tableau de bord${nomTableau ? ` « ${nomTableau} »` : ""} n'est pas publié : réglez-le dans l'administration (onglet Tableau de bord), puis « Publier ».`); return; }
   let table = null;
   try { table = await grist.getTable().getTableId(); } catch (_) {}
   const tdb = window.TableauDeBord.monter(document.getElementById("tableau-de-bord"), {

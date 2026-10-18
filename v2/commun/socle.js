@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0-alpha.28 (18/10/2026)";
+  const VERSION = "2.0.0-alpha.29 (18/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -663,6 +663,22 @@ return sorted(champs)`;
     return { etapes, infos, referentiel, rolesRep, rolesRef, general: aEcrire.general ? { ...g, ...aEcrire.general } : g };
   }
 
+  /* ---------- Tableaux de bord (clé « tableau_de_bord » de Config) ----------
+     Plusieurs tableaux de bord (ex. MEN et MESRE) : { tableaux: [{ id, nom, table, brouillon, publie, publie_le, modifie_le }] }.
+     Ancienne forme (un seul) : { brouillon, publie, publie_le, modifie_le } → premier tableau, id « principal ». */
+  function tableauxDeBord(valeur, general) {
+    const v = valeur || {}, g = general || DEFAUTS_GENERAL;
+    if (Array.isArray(v.tableaux)) return v.tableaux.map(t => ({ ...t, table: t.table || g.reponses }));
+    if (!v.brouillon && !v.publie) return [];
+    const c = v.brouillon || v.publie;
+    return [{ id: "principal", nom: (c && c.name) || "Tableau de bord", table: g.reponses, brouillon: v.brouillon || null, publie: v.publie || null, publie_le: v.publie_le || null, modifie_le: v.modifie_le || null }];
+  }
+  // valeur à enregistrer ; le premier tableau reste aussi en tête (publie, brouillon) pour les pages d'avant la v2.0.0-alpha.29
+  function valeurTableauxDeBord(liste) {
+    const p = liste[0] || {};
+    return { tableaux: liste, brouillon: p.brouillon || null, publie: p.publie || null, publie_le: p.publie_le || null };
+  }
+
   /* ---------- Schéma public (accès par lien) ----------
      Une personne ouverte par un lien d'établissement ne peut pas lire les métadonnées de Grist (_grist_Tables_column…) :
      le widget de saisie lit alors une copie des colonnes utiles, rangée dans la clé « schema » de Config (lisible par les
@@ -729,7 +745,7 @@ return sorted(champs)`;
     PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
     norm, cibleRef, lireMeta, lireConfig, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer, COLONNES_ETABLISSEMENT,
-    instantaneSchema, majSchemaPublic,
+    instantaneSchema, majSchemaPublic, tableauxDeBord, valeurTableauxDeBord,
     REGIONS_ACADEMIQUES, regionDeAcademie,
   };
 })();

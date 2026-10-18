@@ -364,6 +364,16 @@
   #onglet-tdb .pastille.ok { background: var(--ok-clair); color: var(--ok); } #onglet-tdb .pastille.reco { background: var(--info-clair); color: var(--accent); } #onglet-tdb .pastille.manque { background: var(--alerte-clair); color: var(--alerte); }
   #onglet-tdb .statut { font-size: 13px; } #onglet-tdb .statut.ok { color: var(--ok); } #onglet-tdb .statut.err { color: var(--alerte); }
   #onglet-tdb .tdb-pages { font-size: 13px; color: var(--doux); }
+  #onglet-tdb .tdb-barre-admin select { font: inherit; font-weight: 600; padding: 5px 8px; border: 1px solid var(--trait); border-radius: 4px; max-width: 320px; }
+  #onglet-tdb .tdb-barre-admin .lien { background: none; border: 0; color: var(--accent); text-decoration: underline; padding: 0 4px; }
+  #onglet-tdb .tdb-panneau { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 16px; background: #f5f5fe; border-bottom: 1px solid var(--trait); font-size: 13.5px; }
+  #onglet-tdb .tdb-panneau[hidden] { display: none; }
+  #onglet-tdb .tdb-panneau input[type="text"], #onglet-tdb .tdb-panneau select { font: inherit; padding: 4px 8px; border: 1px solid var(--trait); border-radius: 4px; }
+  #onglet-tdb .tdb-panneau button { font: inherit; padding: 5px 12px; border-radius: 4px; cursor: pointer; }
+  #onglet-tdb .tdb-panneau .primaire { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
+  #onglet-tdb .tdb-panneau .secondaire { background: #fff; color: var(--accent); border: 1px solid var(--accent); }
+  #onglet-tdb .tdb-panneau .danger { color: var(--alerte); border-color: var(--alerte); }
+  #onglet-tdb .tdb-panneau .aide { flex-basis: 100%; margin: 0; color: var(--doux); }
   #onglet-tdb .tdb-pages .lien { background: none; border: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; padding: 0 4px; }
   #onglet-tdb .tdb-aide { margin: 8px 16px 0; font-size: 13px; color: var(--doux); }
 </style>

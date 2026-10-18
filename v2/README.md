@@ -65,6 +65,8 @@ v2/
 
 - Circonscription (18/10) : rôle `Nom_circonscription` du référentiel (colonne créée par l'installation, remplie par l'import de l'annuaire, champ `nom_circonscription` ; créée aussi à l'import si elle manque), critère de répartition et filtre du publipostage.
 
+- Plusieurs tableaux de bord (18/10) : clé `tableau_de_bord` de Config = `{ tableaux: [{ id, nom, table, brouillon, publie, publie_le }] }` (l'ancienne forme à un seul tableau est reprise comme premier tableau, qui reste aussi recopié en tête de la clé). Onglet Tableau de bord : liste déroulante du tableau à modifier, « + Nouveau » (nom, table des signalements, reprise facultative des blocs), « Renommer, table… », suppression. Chaque page dédiée porte l'option `tableau` (identifiant) ; une page sans option affiche le premier tableau.
+
 ## Tester l'installation
 
 1. Créer un document Grist vierge.

@@ -532,6 +532,7 @@ function defaultConfig() {
 let saveTimer = null;
 function saveConfig() {
   clearTimeout(saveTimer);
+  if (!RACINE.isConnected) return;
   saveTimer = setTimeout(async () => {
     try { if (CTX.enregistrer) await CTX.enregistrer(config); }
     catch (e) { showMsg("warn", "Configuration non enregistrée : " + (e && e.message ? e.message : e)); }
@@ -2570,7 +2571,7 @@ RACINE.addEventListener("keydown", e => {
   openDrill = withI(openDrill); drillRows = withI(drillRows);
   renderDrill = withDrill(renderDrill); drillCsv = withDrill(drillCsv);
   const _df = drillFilter; drillFilter = () => { inSrc(drillState && config.blocks[drillState.i], () => { const keep = render; render = () => {}; try { _df(); } finally { render = keep; } }); render(); };
-  const _render = render; render = () => inSrc(null, _render);
+  const _render = render; render = () => { if (!RACINE.isConnected) return; inSrc(null, _render); };   // tableau de bord démonté (autre tableau choisi) : plus d'affichage
 }
 // autres tables : relues au retour sur l'onglet et toutes les 2 minutes (hors mode modification)
 function refreshSources() {
