@@ -19,7 +19,7 @@ v2/
 ├── commun/socle.js      code partagé : lecture de Config, rôles, plan d'installation
 ├── commun/geo.js        fond de carte commun : départements et académies (Lambert-93, encarts), placement d'un point latitude / longitude
 ├── saisie/              formulaire de saisie
-├── admin/               administration : installation.js, referentiel.js, equipe.js, planning.js, actions.js, acces.js, liens.js, repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css)
+├── admin/               administration : installation.js, configuration.js, referentiel.js, equipe.js, planning.js, actions.js, acces.js, liens.js, repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css)
 ├── point-situation/     production du point de situation
 ├── cartographie/        carte et export cartographique (reprise du widget « Export cartographique »)
 ├── tableau-de-bord/     tableau de bord : tableau.js (module partagé, édition dans l'administration, lecture dans le widget)
@@ -68,6 +68,8 @@ v2/
 - Plusieurs tableaux de bord (18/10) : clé `tableau_de_bord` de Config = `{ tableaux: [{ id, nom, table, brouillon, publie, publie_le }] }` (l'ancienne forme à un seul tableau est reprise comme premier tableau, qui reste aussi recopié en tête de la clé). Onglet Tableau de bord : liste déroulante du tableau à modifier, « + Nouveau » (nom, table des signalements, reprise facultative des blocs), « Renommer, table… », suppression. Chaque page dédiée porte l'option `tableau` (identifiant) ; une page sans option affiche le premier tableau.
 
 - Atelier du tableau de bord (18/10) : dans l'administration, le tableau de bord s'affiche tel que le lecteur le verra ; un clic sur un bloc ouvre ses réglages dans un panneau à droite (onglets Données, Présentation, Détail ; monter, descendre, dupliquer, supprimer). Fenêtres « + Ajouter un bloc » (chiffre clé, tableau, barres, histogramme, courbe, anneau, carte par territoire, carte des établissements, chacun préréglé) et « ⚙ Réglages du tableau » (nom, Word, filtres rapides, filtres communs). Une seule barre : tableau choisi, ajout, réglages, état, Publier, menu « ⋯ » (nouveau tableau, renommer, pages de Grist, relire, revenir à la version publiée, sauvegarder, restaurer, récupérer d'un widget v1). Le widget de lecture est inchangé.
+
+- Export et import de la configuration (18/10, onglet Installation, carte « Sauvegarder ou reprendre une configuration ») : fichier JSON `socle-signalements-configuration` avec les clés de Config (sauf `schema` et le modèle Word), les formulaires (brouillon et version publiée), la structure des tables de réponses et de leurs sous-tables (colonnes, types, formules, réglages, colonne affichée des références) et, en option, l'équipe. Import dans un document installé : analyse (créé, remplacé, identique), puis application des éléments cochés ; jamais de suppression ni de changement de type. Non repris : signalements, référentiel, clés d'accès, règles d'accès, pages, modèle Word. « Coller… » remplace le choix de fichier s'il est bloqué.
 
 ## Tester l'installation
 
