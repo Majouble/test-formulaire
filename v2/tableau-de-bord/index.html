@@ -5,12 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tableau de bord</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="../commun/theme.js"></script>
 <script src="../commun/socle.js"></script>
 <script src="../commun/geo.js"></script>
 <link rel="stylesheet" href="tableau.css">
 <style>
   body { margin: 0; }
   #tdb-message { font: 14px/1.45 system-ui, sans-serif; margin: 16px; padding: 12px 16px; border-radius: 8px; background: #e8edff; color: #000091; }
+  :root[data-theme="dark"] body { background: #0d0d0d; }
+  :root[data-theme="dark"] #tdb-message { background: #1b1b35; color: #8585f6; }
 </style>
 </head>
 <body>

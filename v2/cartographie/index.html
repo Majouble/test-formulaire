@@ -7,6 +7,7 @@
 <!-- API des widgets Grist. Sur une instance auto-hébergée, vous pouvez remplacer
      cette adresse par https://VOTRE-GRIST/grist-plugin-api.js -->
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="../commun/theme.js"></script>
 <!-- Socle v2 : rôles des colonnes (établissement, coordonnées du référentiel, dernière version, qualification) -->
 <script src="../commun/socle.js"></script>
 <script src="../commun/geo.js"></script>
@@ -18,13 +19,11 @@
     --accent: #16b378; --accent-fg: #ffffff; --warn: #b45309; --warn-bg: #fff7e6; --err: #b42318; --err-bg: #fdecea;
     --pt: #1d4ed8; --pt2: #a3a3b2;
   }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
+  :root[data-theme="dark"] {
       --bg: #1f1f28; --fg: #ececf2; --muted: #a0a0b2; --line: #3a3a48; --soft: #2a2a36;
       --accent: #1fc98a; --accent-fg: #0d1a14; --warn: #f5b454; --warn-bg: #3a2e14; --err: #ff8a80; --err-bg: #3a1c1c;
       --pt: #7aa2ff; --pt2: #6b6b80;
     }
-  }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--fg);
     font: 10pt/1.45 Marianne, Arial, -apple-system, "Segoe UI", sans-serif; }
@@ -499,9 +498,10 @@ function renderPreviewFond() {
   const places = state.features.map(f => ({ f, p: G.placer(f.geometry.coordinates[1], f.geometry.coordinates[0]) }));
   if (places.some(x => !x.p)) return false;
   const pal = legendeCouleurs(), k = 1;
+  const sombre = document.documentElement.getAttribute("data-theme") === "dark";
   svg.style.height = "auto"; svg.style.aspectRatio = `${G.GEO.w} / ${G.GEO.h}`;
   svg.setAttribute("viewBox", `0 0 ${G.GEO.w} ${G.GEO.h}`);
-  const cadres = G.GEO.frames.map(f => `<rect x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" fill="none" stroke="#c3c2b7" stroke-width="1.5" rx="4"></rect><text x="${f.x + 6}" y="${f.y + 18}" font-size="15" fill="#666">${esc(f.t)}</text>`).join("");
+  const cadres = G.GEO.frames.map(f => `<rect x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" fill="none" stroke="${sombre ? "#4a4a58" : "#c3c2b7"}" stroke-width="1.5" rx="4"></rect><text x="${f.x + 6}" y="${f.y + 18}" font-size="15" fill="${sombre ? "#a0a0b2" : "#666"}">${esc(f.t)}</text>`).join("");
   let ronds = "";
   [...places].sort((a, b) => !!b.f._ref - !!a.f._ref).forEach(({ f, p }) => {
     const coul = f._ref ? "#a3a3b2" : pal ? (pal.get(valeurCouleur(f)) || "#000091") : "#000091", r = f._ref ? 6 : 10;
@@ -510,7 +510,7 @@ function renderPreviewFond() {
     ronds += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" ${att}>${titre}</circle>`;
     if (p.paris) ronds += `<circle cx="${p.paris.x.toFixed(1)}" cy="${p.paris.y.toFixed(1)}" ${att}>${titre}</circle>`;
   });
-  svg.innerHTML = G.fondSvg(k, { fond: "#eef0f5", trait: "#ffffff", traitAcademie: "#8a8fa3" }) + cadres + ronds;
+  svg.innerHTML = G.fondSvg(k, sombre ? { fond: "#3a3a48", trait: "#1f1f28", traitAcademie: "#8a8aa0" } : { fond: "#eef0f5", trait: "#ffffff", traitAcademie: "#8a8fa3" }) + cadres + ronds;
   $("couleurs").innerHTML = pal && pal.size ? [...pal.entries()].map(([v, c]) => `<span><i style="background:${c}"></i>${esc(v)}</span>`).join("") : "";
   return true;
 }
@@ -615,6 +615,7 @@ $("copy").addEventListener("click", async () => {
 $("format").addEventListener("change", render);
 $("withId").addEventListener("change", () => recompute());
 window.addEventListener("resize", () => { if (window.L && carte) carte.invalidateSize(); else renderCarte(); });
+document.addEventListener("socle-theme", () => { if (!window.L) renderCarte(); });
 
 // ---------------------------------------------------------------------------
 // Branchement Grist
