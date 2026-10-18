@@ -322,9 +322,20 @@
       "Oui, appliquer les règles", executerApplication);
   }
   async function executerApplication() {
-    const propose = reglesProposees();
     $("ac-appliquer").disabled = true; dire("Application des règles…");
     try {
+      await appliquerRegles();
+      await charger(); dessiner();
+      dire("Règles appliquées. Vérifiez-les avec « Voir en tant que » dans la page Règles d'accès de Grist.");
+    } catch (e) {
+      await charger(); dessiner();
+      dire(`Règles refusées par Grist (${e.message || e}). Seul un propriétaire peut modifier les règles d'accès.`, true);
+    }
+  }
+  // Écrit les règles proposées (sans interface) ; lève une erreur si Grist refuse
+  async function appliquerRegles() {
+    const propose = reglesProposees();
+    {
       // 0. sous-tables : colonne d'aide (établissement du signalement parent), lue par les règles
       const aides = propose.filter(p => p.sousTable && !p.sousTable.acces);
       if (aides.length) await grist.docApi.applyUserActions(aides.map(p => ["AddColumn", p.tableId, COL_ACCES, { type: p.sousTable.type, isFormula: true, formula: p.sousTable.formule }]));
@@ -344,12 +355,23 @@
       }
       await grist.docApi.applyUserActions([...(ids.length ? [["BulkRemoveRecord", "_grist_ACLRules", ids]] : []), ...ajouts]);
       await R.majSchemaPublic(meta, config, general, formulaires);
-      await charger(); dessiner();
-      dire("Règles appliquées. Vérifiez-les avec « Voir en tant que » dans la page Règles d'accès de Grist.");
-    } catch (e) {
-      await charger(); dessiner();
-      dire(`Règles refusées par Grist (${e.message || e}). Seul un propriétaire peut modifier les règles d'accès.`, true);
     }
+  }
+  // Après la publication d'un formulaire (nouvelle sous-table, nouvelles questions de visa…) : si les règles du socle
+  // sont en place mais ne correspondent plus, elles sont réappliquées. Rien n'est fait si le document n'utilise pas
+  // ces règles. Renvoie { etat: "sans-regles" | "a-jour" | "reappliquees" | "illisibles" | "incomplet" | "refusees", texte }.
+  async function reappliquerSiBesoin() {
+    try { await charger(); } catch (e) { return { etat: "illisibles", texte: "" }; }
+    if (acl === null) return { etat: "illisibles", texte: "Si le document utilise les règles d'accès du socle, un propriétaire doit les réappliquer (onglet Accès)." };
+    const enPlace = acl.regles.some(r => r.memo.startsWith(MEMO) || (r.userAttributes && estAttributSocle(r)));
+    if (!enPlace) return { etat: "sans-regles", texte: "" };
+    if (aJour(reglesProposees())) return { etat: "a-jour", texte: "Règles d'accès à jour." };
+    if (!meta[general.agents] || !meta[general.agents].colonnes.Champs_acces) return { etat: "incomplet", texte: "Les règles d'accès ne correspondent plus au formulaire : réappliquez-les dans l'onglet Accès." };
+    try {
+      await appliquerRegles();
+      await charger(); if (racine && !racine.hidden) dessiner();
+      return { etat: "reappliquees", texte: "Règles d'accès réappliquées pour tenir compte du formulaire." };
+    } catch (e) { return { etat: "refusees", texte: `Les règles d'accès n'ont pas pu être réappliquées (${e.message || e}) : faites-le dans l'onglet Accès.` }; }
   }
   function retirer() {
     const socle = acl.regles.filter(r => r.memo.startsWith(MEMO) || (r.userAttributes && estAttributSocle(r)));
@@ -369,5 +391,5 @@
     try { await charger(); } catch (e) { racine.innerHTML = `<div class="bandeau alerte">Lecture impossible : ${esc(e.message || e)}</div>`; return; }
     dessiner();
   }
-  window.OngletAcces = { afficher };
+  window.OngletAcces = { afficher, reappliquerSiBesoin };
 })();

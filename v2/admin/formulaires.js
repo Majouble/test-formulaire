@@ -1620,9 +1620,14 @@ async function publier() {
     dessinerApercu(); dessinerPanneau();
     await lirePagesSaisie(); dessinerPanneau();
     try { const S = window.Socle, cfg = await S.lireConfig(), g = S.general(cfg); await R.majSchemaPublic(await S.lireMeta(), cfg, g, await R.lireFormulairesPublies(g)); } catch (_) { /* copie pour les liens : facultative */ }
+    // règles d'accès du socle : réappliquées si le formulaire publié les a rendues incomplètes (nouvelle sous-table…)
+    let acces = { etat: "", texte: "" };
+    try { if (window.OngletAcces && window.OngletAcces.reappliquerSiBesoin) acces = await window.OngletAcces.reappliquerSiBesoin(); } catch (_) { /* facultatif */ }
+    const suite = acces.etat === "reappliquees" || ["incomplet", "refusees", "illisibles"].includes(acces.etat) ? ` ${acces.texte}` : "";
+    const alerteAcces = ["incomplet", "refusees"].includes(acces.etat);
     const sansPage = pagesSaisie && !pagesSaisie.some(x => x.table === courant.table);
-    message(sansPage ? "Formulaire publié. Aucune page de Grist ne l'affiche encore : utilisez « Créer la page de saisie » dans le panneau de droite."
-      : "Formulaire publié : les pages qui l'affichent le prennent en compte dans les 30 secondes (ou au rechargement).", sansPage ? "" : "ok");
+    message((sansPage ? "Formulaire publié. Aucune page de Grist ne l'affiche encore : utilisez « Créer la page de saisie » dans le panneau de droite."
+      : "Formulaire publié : les pages qui l'affichent le prennent en compte dans les 30 secondes (ou au rechargement).") + suite, alerteAcces ? "err" : sansPage ? "" : "ok");
   } catch (e) { message(`Publication refusée : ${e.message || e}`, "err"); }
 }
 async function supprimerFormulaire() {
