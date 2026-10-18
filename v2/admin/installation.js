@@ -28,6 +28,56 @@
       return;
     }
     dessinerBandeau(); dessinerActions(); dessinerGeneral(); dessinerRoles(); dessinerRemarques();
+    dessinerPageAdmin();
+  }
+
+  /* ---------- Page d'administration protégée ----------
+     La page qui porte ce widget est visible de quiconque lit sa table. Liée à la table Administration
+     (réservée aux propriétaires par les règles d'accès), elle disparaît pour les agents, les invités et les établissements. */
+  const adresseAdmin = () => { try { const u = new URL("./", location.href); return u.href; } catch (_) { return ""; } };
+  const estUrlAdmin = url => /\/admin\/?(index\.html)?(\?.*)?$/i.test(url || "");
+  async function pagesAdmin() {
+    const [s, v, t] = await Promise.all(["_grist_Views_section", "_grist_Views", "_grist_Tables"].map(x => grist.docApi.fetchTable(x)));
+    return s.id.map((id, i) => {
+      if (s.parentKey[i] !== "custom" || !s.parentId[i]) return null;
+      let cv = {}; try { const o = JSON.parse(s.options[i] || "{}") || {}; cv = typeof o.customView === "string" ? JSON.parse(o.customView || "{}") : (o.customView || {}); } catch (_) { cv = {}; }
+      const url = cv.url || (cv.widgetDef && cv.widgetDef.url) || "";
+      if (!estUrlAdmin(url)) return null;
+      const vi = v.id.indexOf(s.parentId[i]);
+      return { sectionRef: id, viewRef: s.parentId[i], page: vi >= 0 ? String(v.name[vi] || "") : "", table: t.tableId[t.id.indexOf(s.tableRef[i])] || "" };
+    }).filter(Boolean);
+  }
+  async function dessinerPageAdmin() {
+    const z = $("page-admin"); if (!z) return;
+    z.innerHTML = "";
+    if (!meta || !meta[S.TABLE_ADMIN]) return;
+    let pages; try { pages = await pagesAdmin(); } catch (_) { return; }
+    const protegees = pages.filter(p => p.table === S.TABLE_ADMIN), autres = pages.filter(p => p.table !== S.TABLE_ADMIN);
+    if (!autres.length) return;
+    z.innerHTML = `<div class="bandeau alerte" style="margin-top:8px">
+      ${protegees.length
+        ? `La page « ${esc(protegees[0].page)} » est protégée. Supprimez l'ancienne page d'administration (${autres.map(p => `« ${esc(p.page)} », liée à ${esc(p.table)}`).join(", ")}) : clic droit sur son nom › Supprimer.`
+        : `Cette page d'administration est liée à la table ${autres.map(p => esc(p.table)).filter((x, i, a) => a.indexOf(x) === i).join(", ")} : toute personne qui lit cette table la voit, y compris les invités et les établissements.
+           <button class="primaire" id="btn-page-admin" style="margin-left:8px">Créer la page protégée</button>
+           <span class="aide" style="display:block;margin-top:4px">Une page « Administration » est créée, liée à la table ${S.TABLE_ADMIN} que les règles d'accès réservent aux propriétaires. Ouvrez-la, puis supprimez celle-ci.</span>`}
+      <span class="statut" id="page-admin-statut" role="status"></span></div>`;
+    if ($("btn-page-admin")) $("btn-page-admin").addEventListener("click", creerPageAdmin);
+  }
+  async function creerPageAdmin() {
+    const b = $("btn-page-admin"); b.disabled = true;
+    try {
+      const tref = meta[S.TABLE_ADMIN].ref;
+      const res = await grist.docApi.applyUserActions([["CreateViewSection", tref, 0, "custom", null, null]]);
+      const rv = (res && res.retValues && res.retValues[0]) || {};
+      if (!rv.sectionRef) throw new Error("Grist n'a pas indiqué la vue créée");
+      const sec = await grist.docApi.fetchTable("_grist_Views_section"), i = sec.id.indexOf(rv.sectionRef);
+      let o = {}; try { o = JSON.parse((i >= 0 && sec.options[i]) || "{}") || {}; } catch (_) { o = {}; }
+      o.customView = JSON.stringify({ mode: "url", url: adresseAdmin(), access: "full", widgetOptions: {} });
+      await grist.docApi.applyUserActions([
+        ["UpdateRecord", "_grist_Views_section", rv.sectionRef, { options: JSON.stringify(o), title: "Administration" }],
+        ["UpdateRecord", "_grist_Views", rv.viewRef, { name: "Administration" }]]);
+      statut("page-admin-statut", "Page « Administration » créée : ouvrez-la (liste des pages, à gauche), puis supprimez celle-ci. Appliquez ensuite les règles (onglet Accès).", "ok");
+    } catch (e) { b.disabled = false; statut("page-admin-statut", `Création refusée par Grist (${e.message || e}).`, "err"); }
   }
 
   function dessinerBandeau() {
@@ -110,7 +160,7 @@
   }
 
   /* ---------- Événements ---------- */
-  $("btn-relire").addEventListener("click", charger);
+  $("btn-relire").addEventListener("click", () => { S.viderCacheLecture(); charger(); });
 
   $("btn-appliquer").addEventListener("click", async () => {
     const coches = [...document.querySelectorAll("#liste-actions input[type=checkbox]")].filter(c => c.checked).map(c => plan.etapes[+c.dataset.i]);

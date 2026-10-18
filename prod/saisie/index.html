@@ -480,6 +480,7 @@
     <p class="bandeau-perimetre" id="bandeau-perimetre" hidden></p>
     <button type="button" class="secondaire petit" id="btn-config" title="Réglages du formulaire" hidden>⚙ Réglages</button>
   </div>
+  <div class="bandeau" id="alerte-page-etab" hidden></div>
   <div class="bandeau" id="alerte" hidden></div>
 
   <!-- ===== Configuration du résumé automatique (ouverte depuis le panneau de Grist) ===== -->
@@ -1219,6 +1220,8 @@ let etabs = [];               // lignes visibles de la table Etablissements
 let colsEtab = [];
 let alerteStructure = "";
 let modeEtab = false;         // true = accès par lien d'établissement
+let pageEtab = null;          // option « etablissements » : page ouverte par les liens des établissements (référentiel visé)
+let referentielLu = false;    // le référentiel a été lu (modeEtab est alors connu)
 let dossierId = null;         // null = création
 let versions = [], initiale = null, derniere = null;
 let etabCourant = null;       // ligne Etablissements du dossier ou choisie à la création
@@ -1646,6 +1649,8 @@ async function choisirFormulaire() {
   try { perimetreBrut = grist.getOption ? await grist.getOption("perimetre") : null; } catch (_) { perimetreBrut = null; }
   try { libellePage = grist.getOption ? (await grist.getOption("libelle")) || "" : ""; } catch (_) { libellePage = ""; }
   try { agentPage = grist.getOption ? await grist.getOption("agent") : null; } catch (_) { agentPage = null; }
+  try { pageEtab = grist.getOption ? (await grist.getOption("etablissements")) || null : null; } catch (_) { pageEtab = null; }
+  majAlertePageEtab();
   if (agentPage != null && typeof agentPage !== "number") agentPage = Number(agentPage) || null;
   perimetreFiche = perimetreBrut;
   const publies = formulairesDispo.filter(f => typeof f.publie === "string" && f.publie.trim());
@@ -2051,7 +2056,19 @@ function alerteLiensEtab() {
   const perdus = avec.filter(l => !etabDeLigne(l));
   return perdus.length > avec.length / 2 ? `${perdus.length} signalement(s) sur ${avec.length} renvoient à des établissements absents de la table « ${ETAB.table} » : la colonne « ${col("Etablissement")} » vise sans doute une autre table. Vérifiez ⚙ Réglages › « Colonnes et référentiel utilisés ».` : "";
 }
+// Page des établissements ouverte par un compte de la cellule (propriétaire, agent) : tout le référentiel est visible,
+// pas de préremplissage ; un établissement, lui, arrive par son lien et ne voit que sa ligne.
+function majAlertePageEtab() {
+  const z = $("alerte-page-etab"); if (!z) return;
+  if (!pageEtab || !referentielLu || modeEtab) { z.hidden = true; return; }
+  const sansCle = !(colsEtab || []).includes(E.cle);
+  z.innerHTML = `<strong>Page des établissements, vue avec votre compte</strong> : vous voyez tous les établissements, le formulaire n'est donc pas prérempli.
+    Un établissement arrive par son lien personnel et ne voit que sa fiche. Pour le vérifier, ouvrez un lien dans une <strong>fenêtre de navigation privée</strong> (sans être connecté à Grist).
+    ${sansCle ? `<br><span style="color:var(--erreur)">Les liens n'existent pas encore dans ${esc(ETAB.table)} (colonne « ${esc(E.cle)} » absente) : administration, onglet Établissements, terminer la mise en place.</span>` : ""}`;
+  z.hidden = false;
+}
 function finaliserReferentiel(err, alertes) {
+  referentielLu = true; majAlertePageEtab();
   const liste = [...alertes];
   const liens = alerteLiensEtab(); if (liens && !modeEtab) liste.push(liens);
   if (alerteTableRef && !modeEtab) liste.push(alerteTableRef);
@@ -2271,7 +2288,7 @@ async function lireEtabs(avecCache) {
     (!modeEtab && !cols.includes(E.nom))
       ? `Aucune colonne de nom d'établissement reconnue dans la table « ${ETAB.table} »${cols.includes(E.uai) ? "" : " (ni d'UAI)"} : la recherche porte sur toutes ses colonnes texte. Nommez la colonne du nom « Nom »${cols.includes(E.uai) ? "" : " et celle de l'UAI « UAI »"} pour une recherche fiable. Colonnes trouvées : ${colsLisibles}.` : "",
     (!modeEtab && !cols.includes(E.cle))
-      ? `Colonne « ${E.cle} » introuvable dans ${ETAB.table} : les liens d'accès ne pourront pas être générés.${cols.includes(E.nom) ? ` Colonnes trouvées : ${colsLisibles}.` : ""}` : "",
+      ? `Colonne « ${E.cle} » introuvable dans ${ETAB.table} : les liens d'accès des établissements n'existent pas encore. Mise en place : administration, onglet Établissements.${cols.includes(E.nom) ? ` Colonnes trouvées : ${colsLisibles}.` : ""}` : "",
   ].filter(Boolean).join(" ");
   // copie conservée dans le navigateur (jamais en accès par lien d'établissement), sans clé ni lien d'accès
   if (!copie && !modeEtab && etabs.length > 1)

@@ -1,4 +1,4 @@
-# Signalements Grist — production (2.0.0 (18/10/2026))
+# Signalements Grist — production (2.0.1 (18/10/2026))
 
 Copie figée de `v2/`, produite par `outils/publier-prod.sh`. Ne pas modifier ce dossier à la main :
 les changements se font dans `v2/`, puis on republie.
@@ -59,7 +59,7 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 
 ## Décisions (17/10/2026)
 
-- L'équipe de la cellule est une table du socle, `Agents` (onglet Équipe) : nom, adresse, fonction habituelle dans la cellule (`Fonction` : opérateur, rédacteur, coordinateur…, liste réglable dans l'onglet Planning, clé `planning` de Config), téléphone, actif. Pas de niveau d'accès, pas de périmètre sur la fiche.
+- L'équipe de la cellule est une table du socle, `Agents` (onglet Équipe) : nom, adresse, téléphone, actif. La fonction (opérateur, rédacteur, coordinateur…, liste réglable dans l'onglet Planning, clé `planning` de Config) se choisit par créneau sur le planning, pas sur la fiche. Pas de niveau d'accès, pas de périmètre sur la fiche.
 - Le planning (onglet Planning) : tables `Creneaux` (créneaux nommés de chaque jour, début et fin datés) et `Affectations` (agent, fonction, champ EN et/ou ESR, et périmètre pour le créneau ; périmètre vide = tous les établissements). Le périmètre se règle créneau par créneau ; à défaut, le dernier périmètre de l'agent est proposé.
 - Les lignes du tableau sont les fonctions des réglages (ordre, ligne affichée ou non, fonction qui saisit) ; renommer une fonction met à jour l'équipe et le planning.
 - Le champ (EN, ESR) dit sur quels formulaires l'agent est mobilisé : l'onglet Formulaires coche d'office les agents mobilisés sur le champ du formulaire ; la page de saisie de l'autre champ prévient l'agent pendant le créneau. Les règles d'accès s'appuieront dessus.
@@ -89,12 +89,16 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 - Export et import de la configuration (18/10, onglet Installation, carte « Sauvegarder ou reprendre une configuration ») : fichier JSON `socle-signalements-configuration` avec les clés de Config (sauf `schema` et le modèle Word), les formulaires (brouillon et version publiée), la structure des tables de réponses et de leurs sous-tables (colonnes, types, formules, réglages, colonne affichée des références) et, en option, l'équipe. Import dans un document installé : analyse (créé, remplacé, identique), puis application des éléments cochés ; jamais de suppression ni de changement de type. Non repris : signalements, référentiel, clés d'accès, règles d'accès, pages, modèle Word. « Coller… » remplace le choix de fichier s'il est bloqué.
 
 - Agents invités (18/10) : pour un agent qui ne peut pas se connecter à Grist avec son adresse, fiche Équipe « Invité : accès par lien personnel ». Colonnes Agents `Cle_acces` (clé), `Page_saisie` (sa page de saisie, tenue à jour) et `Lien_acces` (`SELF_HYPERLINK(page=$Page_saisie, LinkKey_Invite=$Cle_acces)`). Règles (onglet Accès) : attribut « Invite » (clé du lien → ligne d'Agents) ; partout où les règles disent « agent actif », elles acceptent l'agent connecté par son adresse ou par son lien (saisie selon le planning, émargement pour lui seul) ; clé et lien lisibles par les propriétaires seulement. Auteur des signalements et des émargements : formule d'initialisation qui écrit « Invité : <nom> » pour un invité (au lieu de l'adresse anonyme). « Nouvelle clé » ou décocher l'option retire le lien. La copie des colonnes (clé `schema`) couvre désormais tous les formulaires publiés. Durée de validité des liens d'invités (clé `acces_invites` de Config, onglet Équipe : 24 heures par défaut, 3, 7, 30 jours ou sans limite) : colonnes `Lien_expire_le` et `Lien_valide` (formule, recalculée par Grist au moins toutes les heures) ; les règles exigent un lien valide. « Nouveau lien » (par agent, dans la liste ou la fiche) et « Nouveau lien pour tous les invités » remplacent les clés ; « Prolonger » garde le lien.
+- Version 2.0.1 (18/10) : colonne `Auteur` créée d'office (formule d'initialisation : adresse du compte, « Invité : <nom> », « Établissement : <UAI> <nom> » ; une ancienne formule est proposée à la mise à jour par l'installation). Fonction habituelle retirée de la fiche agent (la fonction se choisit par créneau au planning). Import de l'annuaire : tableau des colonnes reprises d'office. Lecture plus rapide des onglets (cache de lecture de l'administration, référentiel non relu par l'onglet Équipe). Règles d'accès sans condition vide ni permission S dans les règles par défaut ; structure réservée aux propriétaires par la règle spéciale `SchemaEdit` ; table `Administration` réservée aux propriétaires, qui porte la page d'administration.
 
 - Thème sombre (18/10) : `commun/theme.js`, chargé par chaque widget, pose `data-theme="light"` ou `"dark"` sur `<html>` d'après, dans l'ordre, le choix de la personne (bouton ◐ de l'administration : automatique, clair, sombre ; gardé dans le navigateur, commun à tous les widgets), le thème transmis par Grist, puis le réglage du navigateur. Couleurs des feuilles de style ramenées à des variables (`--x-<couleur>`), avec des équivalents sombres (fonds gris foncés, texte clair, bleu France éclairci #8585f6, à la manière du DSFR) ; l'aperçu du point de situation reste une page blanche.
 
 ## Tester l'installation
 
+Pour vérifier ce que voit un établissement ou un invité, ouvrir son lien dans une fenêtre de navigation privée : connecté avec un compte propriétaire, on voit tout le référentiel et le formulaire n'est pas prérempli.
+
 1. Créer un document Grist vierge.
 2. Ajouter une page avec un widget « Personnalisé », lié à n'importe quelle table.
 3. Adresse : `https://majouble.github.io/test-formulaire/prod/admin/`, accès « complet au document ».
-4. Vérifier les actions proposées, puis « Appliquer la sélection ».
+4. Vérifier les actions proposées, puis « Appliquer la sélection ». L'installation crée notamment la table `Administration` et la colonne `Auteur` des signalements.
+5. Cliquer sur « Créer la page protégée » (bandeau de l'onglet Installation) : la page « Administration » est liée à la table `Administration`, que les règles d'accès réservent aux propriétaires. Ouvrir cette page, supprimer la page d'origine, puis appliquer les règles (onglet Accès). Les agents, les invités et les établissements ne voient plus l'administration.

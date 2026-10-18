@@ -7,6 +7,7 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="../commun/theme.js"></script>
 <script src="../commun/socle.js"></script>
+<script>window.Socle.activerCacheLecture();</script>
 <script src="../commun/geo.js"></script>
 <script src="../commun/point-moteur.js"></script>
 <link rel="stylesheet" href="formulaires.css">
@@ -421,6 +422,7 @@
 </header>
 <main id="installation">
   <div id="bandeau" class="bandeau info">Lecture du document…</div>
+  <div id="page-admin"></div>
 
   <section class="carte" id="carte-actions">
     <h2>Actions proposées</h2>
@@ -484,6 +486,9 @@
     <h2>Périmètre</h2>
     <p class="aide">Nombre d'établissements par académie, puis par type. Décochez les types à ne pas importer.</p>
     <div id="ref-academies" style="margin-bottom:12px"></div>
+    <div class="groupe">Colonnes reprises d'office</div>
+    <p class="aide" style="margin:0 0 6px">Remplies à chaque import, sans rien cocher. Une colonne absente du référentiel est créée à l'import.</p>
+    <div id="ref-colonnes" style="margin-bottom:14px"></div>
     <div class="grille">
       <div><div class="groupe">Types d'établissements</div><div id="ref-types"></div></div>
       <div><div class="groupe">Informations supplémentaires (facultatif)</div><p class="aide" style="margin:0 0 6px">Chaque champ coché devient une colonne du référentiel.</p><div id="ref-champs" style="max-height:320px;overflow:auto"></div></div>
@@ -572,6 +577,11 @@
     if (b.dataset.onglet === "point-situation") window.OngletPointSituation.afficher();
     if (b.dataset.onglet === "onglet-tdb") window.OngletTableauDeBord.afficher();
   }));
+  // Référentiel lu en arrière-plan peu après l'ouverture (plusieurs dizaines de milliers de lignes) :
+  // les onglets Planning, Formulaires et Établissements le trouvent ensuite déjà prêt (cache de lecture)
+  setTimeout(async () => {
+    try { const S = window.Socle, c = await S.lireConfig(); if (c) await window.Repartition.lireReferentiel(S.general(c), c); } catch (_) { /* lu plus tard, à la demande */ }
+  }, 1500);
 </script>
 </body>
 </html>

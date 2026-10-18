@@ -124,12 +124,34 @@
       $("ref-champs").innerHTML = champsJeu.filter(f => !pris.has(f.name) && TYPES_GRIST[f.type]).map(f =>
         `<label class="etape" style="padding:2px 0"><input type="checkbox" data-champ="${esc(f.name)}" ${dejaChamps.has(f.name) ? "checked" : ""}>
           <span>${esc(f.label)} <code>${esc(f.name)}</code></span></label>`).join("");
+      $("ref-colonnes").innerHTML = tableauColonnes(ctx);
       $("ref-academies").innerHTML = academies.map(a => `<span class="pastille ok">${esc(a.valeur)} : ${nf(a.n)}</span>`).join(" ")
         + (absentes.length ? `<p class="statut err">Aucun établissement pour : ${absentes.map(esc).join(", ")}. Vérifiez l'orthographe exacte dans l'onglet Installation (ex. « Orléans-Tours », « Aix-Marseille »).</p>` : "");
       $("ref-etape2").hidden = false; $("ref-etape3").hidden = true;
       statut("");
     } catch (e) { statut(e.message, "err"); }
     $("btn-ref-apercu").disabled = false;
+  }
+
+  // Colonnes remplies d'office : rôle du socle → colonne du référentiel ← champ de l'annuaire
+  const LIBELLES_ROLES = { UAI: "UAI", Nom: "Nom", Type: "Type", Commune: "Commune", Academie: "Académie", Departement: "Département", Mail: "Courriel",
+    Statut_public_prive: "Public / privé", Libelle_nature: "Nature (libellé)", Nom_circonscription: "Circonscription", Latitude: "Latitude", Longitude: "Longitude" };
+  function tableauColonnes(ctx) {
+    const col = r => ctx.roles[r] && ctx.roles[r].col;
+    const ligne = (r, champ, oblig) => {
+      const f = champsJeu.find(x => x.name === champ), c = col(r) || (ctx.tMeta.colonnes[r] ? r : null);
+      const etat = !f ? `<span class="pastille manque">absent de l'annuaire</span>`
+        : c ? `<span class="pastille ok">colonne ${esc(c)}</span>` : oblig ? `<span class="pastille manque">rôle introuvable</span>` : `<span class="pastille">créée : ${esc(r)}</span>`;
+      return `<tr><td>${esc(LIBELLES_ROLES[r] || r)}</td><td><code>${esc(champ)}</code>${f && f.label ? ` <span class="aide">${esc(f.label)}</span>` : ""}</td><td>${etat}</td></tr>`;
+    };
+    const rg = col("Region_academique"), or = col("Origine");
+    return `<table class="eq-table"><thead><tr><th>Information</th><th>Champ de l'annuaire</th><th>Colonne du référentiel</th></tr></thead><tbody>
+      ${Object.entries(CHAMPS_ROLES).map(([r, c]) => ligne(r, c, true)).join("")}
+      ${Object.entries(CHAMPS_ROLES_OPTION).map(([r, c]) => ligne(r, c, false)).join("")}
+      <tr><td>Région académique</td><td><span class="aide">déduite de l'académie</span></td><td>${rg ? `<span class="pastille ok">colonne ${esc(rg)}</span>` : `<span class="pastille">non remplie (pas de colonne)</span>`}</td></tr>
+      <tr><td>Origine</td><td><span class="aide">« ${esc(ORIGINE)} »</span></td><td>${or ? `<span class="pastille ok">colonne ${esc(or)}</span>` : `<span class="pastille">non remplie (pas de colonne)</span>`}</td></tr>
+      ${$("ref-ouverts").checked ? `<tr><td colspan="3" class="aide">Établissements fermés exclus (champ <code>${CHAMP_ETAT}</code>).</td></tr>` : ""}
+    </tbody></table>`;
   }
 
   const typesCoches = () => [...document.querySelectorAll("#ref-types input:checked")].map(c => apercu.types[+c.dataset.type].valeur);

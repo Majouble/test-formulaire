@@ -166,7 +166,7 @@
       if (!confirm("Abandonner les modifications non publiées ?")) return;
       td = { ...td, brouillon: JSON.parse(JSON.stringify(td.publie)) }; await ecrire(); module.remplacer(td.publie); dessinerEtat();
     });
-    $("tdb-recharger").addEventListener("click", () => { fermerMenu(); if (recharger) recharger(); });
+    $("tdb-recharger").addEventListener("click", () => { fermerMenu(); window.Socle.viderCacheLecture(); if (recharger) recharger(); });
     $("tdb-choix").addEventListener("change", e => monterTableau(e.target.value));
     $("tdb-ajouter").addEventListener("click", () => module && module.action && module.action("ajouter"));
     $("tdb-reglages").addEventListener("click", () => module && module.action && module.action("reglages"));

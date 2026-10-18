@@ -17,7 +17,19 @@
 
   /* ---------- Référentiel : valeurs des critères possibles ---------- */
   // { table, cols: {colId: {label, ref}}, roles: {role: colId}, valeurs: {colId: [{v, n}]} } ou { absent } / { erreur }
+  // Valeurs des critères du référentiel : calcul coûteux sur un gros référentiel, gardé 5 min tant que la table n'est pas modifiée
+  const memoRef = new Map();
+  S().surEcriture(cibles => { for (const k of [...memoRef.keys()]) if (!cibles.size || cibles.has(k.split("|")[0]) || [...cibles].some(c => c.startsWith("_grist"))) memoRef.delete(k); });
   async function lireReferentiel(general, config) {
+    const cle = [general.referentiel, general.reponses, JSON.stringify((config && config.valeurs.roles && config.valeurs.roles.referentiel) || {}), JSON.stringify(general.academies || [])].join("|");
+    const m = memoRef.get(cle);
+    if (m && Date.now() - m.t < 300000) return m.p;
+    const p = lireReferentielSansCache(general, config);
+    memoRef.set(cle, { t: Date.now(), p });
+    p.then(r => { if (!r || r.erreur) memoRef.delete(cle); }, () => memoRef.delete(cle));
+    return p;
+  }
+  async function lireReferentielSansCache(general, config) {
     const table = general.referentiel;
     try {
       const meta = await S().lireMeta(), tMeta = meta[table];

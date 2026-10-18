@@ -22,6 +22,9 @@
   const MEMO = "Socle v2";
   const ATTRIBUT = "Agent";
   const PROPRIETAIRE = "user.Access == OWNER";
+  // « tous les autres » écrit en toutes lettres : Grist refuse une condition vide qui n'est pas la dernière d'un ensemble,
+  // et il range la permission S (structure) à part ; aucune règle du socle n'a donc de condition vide ni de S
+  const NON_PROPRIETAIRE = "user.Access != OWNER";
   // Identité d'agent : compte Grist (attribut « Agent », par adresse) ou lien d'agent invité (attribut « Invite », par clé)
   const INVITE = S.INVITE.attribut;
   let avecInvites = false;   // colonne Agents.Cle_acces présente
@@ -83,10 +86,19 @@
   function reglesProposees() {
     const { saisie, referentiels } = tablesGerees(), out = [];
     out.push({ tableId: "*", colIds: "*", titre: "Toutes les autres tables (réglages, équipe, planning…)", regles: [
-      { aclFormula: PROPRIETAIRE, permissionsText: "+CRUDS", memo: `${MEMO} — propriétaires : tous les droits` },
-      { aclFormula: membre(), permissionsText: "+R-CUDS", memo: `${MEMO} — équipe : lecture seule` },
-      { aclFormula: "", permissionsText: "-CRUDS", memo: `${MEMO} — réservé aux agents actifs de l'équipe de la cellule (onglet Équipe)` },
-    ], lignes: ["Propriétaires : tous les droits, y compris la structure.", "Agents actifs de l'équipe : lecture seule.", "Autres personnes : aucun accès."] });
+      { aclFormula: PROPRIETAIRE, permissionsText: "+CRUD", memo: `${MEMO} — propriétaires : tous les droits` },
+      { aclFormula: membre(), permissionsText: "+R-CUD", memo: `${MEMO} — équipe : lecture seule` },
+      { aclFormula: NON_PROPRIETAIRE, permissionsText: "-CRUD", memo: `${MEMO} — réservé aux agents actifs de l'équipe de la cellule (onglet Équipe)` },
+    ], lignes: ["Propriétaires : tous les droits.", "Agents actifs de l'équipe : lecture seule.", "Autres personnes : aucun accès."] });
+    // Structure (tables, colonnes, formules) : propriétaires seulement — case « Autoriser les éditeurs à modifier la structure » décochée
+    out.push({ tableId: "*SPECIAL", colIds: "SchemaEdit", titre: "Modification de la structure", regles: [
+      { aclFormula: "user.Access == EDITOR", permissionsText: "-S", memo: `${MEMO} — structure réservée aux propriétaires` },
+    ], lignes: ["Tables, colonnes et formules : propriétaires seulement (les éditeurs, dont les liens, ne peuvent pas les modifier)."] });
+    // Page d'administration : portée par la table Administration, invisible de tous sauf des propriétaires
+    if (meta[S.TABLE_ADMIN]) out.push({ tableId: S.TABLE_ADMIN, colIds: "*", titre: `${S.TABLE_ADMIN} — page d'administration`, regles: [
+      { aclFormula: PROPRIETAIRE, permissionsText: "+CRUD", memo: `${MEMO} — propriétaires : administration` },
+      { aclFormula: NON_PROPRIETAIRE, permissionsText: "-CRUD", memo: `${MEMO} — administration invisible des agents, invités et établissements` },
+    ], lignes: ["Propriétaires seulement : la page d'administration, liée à cette table, n'apparaît pas aux agents, aux invités ni aux établissements."] });
     for (const [t, x] of saisie) {
       const ch = [...x.champs].sort().join(" ou ");
       out.push({ tableId: t, colIds: "*", titre: `${t} — signalements ${ch} (${[...x.formulaires].join(", ")})`, regles: [
@@ -113,7 +125,7 @@
       "Les autres émargements ne lui sont pas visibles (données personnelles).", "Propriétaires : tous les émargements, avec correction possible."] });
     if (avecInvites) out.push({ tableId: general.agents, colIds: [S.INVITE.cle, S.INVITE.lien].filter(c => meta[general.agents].colonnes[c]).sort().join(","), titre: `${general.agents} — clés et liens des invités`, regles: [
       { aclFormula: PROPRIETAIRE, permissionsText: "+RU", memo: `${MEMO} — propriétaires : clés et liens des invités` },
-      { aclFormula: "", permissionsText: "-RU", memo: `${MEMO} — clés et liens des invités réservés aux propriétaires` },
+      { aclFormula: NON_PROPRIETAIRE, permissionsText: "-RU", memo: `${MEMO} — clés et liens des invités réservés aux propriétaires` },
     ], lignes: ["Clé et lien personnel des agents invités : lisibles par les propriétaires seulement (le lien vaut mot de passe)."] });
     reglesEtablissements(out);
     return out;
@@ -193,11 +205,14 @@
   // Règles en place qui seront remplacées : tables gérées (toutes colonnes), règle par défaut, attribut « Agent »
   function aRemplacer(propose) {
     if (!acl) return [];
-    const tables = new Set(propose.map(p => p.tableId));
+    // tables gérées : toutes leurs règles ; règles spéciales (*SPECIAL) : seulement celles que le socle propose (SchemaEdit)
+    const tables = new Set(propose.filter(p => p.tableId !== "*SPECIAL").map(p => p.tableId));
+    const speciales = new Set(propose.filter(p => p.tableId === "*SPECIAL").map(p => p.colIds));
     return acl.regles.filter(r => {
       const res = acl.ressources.get(r.resource);
       if (!res) return false;
       if (r.userAttributes) return estAttributSocle(r);
+      if (res.tableId === "*SPECIAL") return speciales.has(res.colIds);
       return tables.has(res.tableId);
     });
   }
@@ -247,11 +262,11 @@
         : !a.email && !a.cle ? `<span class="pastille manque">sans adresse : aucun accès</span>`
         : champs.length ? `<span class="pastille ok">saisie ${esc(champs.join(" et "))}</span>${champs.length < S.CHAMPS.length ? ` <span class="pastille">lecture ${esc(S.CHAMPS.map(c => c.id).filter(c => !champs.includes(c)).join(", "))}</span>` : ""}`
         : `<span class="pastille">lecture seule (aucun créneau à 7 jours)</span>`;
-      return `<tr${a.actif ? "" : ` class="inactif"`}><td><strong>${esc(a.nom)}</strong>${a.cle ? ` <span class="pastille reco">invité</span>` : ""}</td><td>${a.email ? esc(a.email) : a.cle ? "lien personnel" : "—"}</td><td>${esc(a.fonction)}</td><td>${droits}</td></tr>`;
+      return `<tr${a.actif ? "" : ` class="inactif"`}><td><strong>${esc(a.nom)}</strong>${a.cle ? ` <span class="pastille reco">invité</span>` : ""}</td><td>${a.email ? esc(a.email) : a.cle ? "lien personnel" : "—"}</td><td>${droits}</td></tr>`;
     }).join("");
     return `<section class="carte"><h2>Qui aura accès à quoi</h2>
       <p class="aide">D'après l'équipe et le planning. Un agent saisit sur les formulaires d'un champ (EN, ESR) s'il y est mobilisé sur un créneau entre 7 jours avant et 7 jours après aujourd'hui ; Grist recalcule ces champs environ toutes les heures et à chaque modification du planning. Les personnes absentes de l'équipe ne voient rien ; les propriétaires du document voient et modifient tout.</p>
-      ${agents && agents.length ? `<table class="eq-table"><thead><tr><th>Agent</th><th>Adresse (compte Grist)</th><th>Fonction habituelle</th><th>Droits</th></tr></thead><tbody>${lignes}</tbody></table>` : `<p class="vide">Aucun agent dans l'équipe.</p>`}
+      ${agents && agents.length ? `<table class="eq-table"><thead><tr><th>Agent</th><th>Adresse (compte Grist)</th><th>Droits</th></tr></thead><tbody>${lignes}</tbody></table>` : `<p class="vide">Aucun agent dans l'équipe.</p>`}
       ${agents && agents.some(a => a.champsAcces === null) ? `<p class="avert">Champs non calculés : ajoutez la colonne Champs_acces (bandeau ci-dessus).</p>` : ""}</section>`;
   }
 

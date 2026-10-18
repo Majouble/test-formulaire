@@ -465,7 +465,7 @@
       liaison();
       $("ps-ap-periode").addEventListener("change", e => { apercuReglages.periode = e.target.value; calculerApercu(); });
       $("ps-ap-academie").addEventListener("change", e => { apercuReglages.academie = e.target.value; calculerApercu(); });
-      $("ps-ap-actualiser").addEventListener("click", async () => { await chargerDonnees(); dessinerEditeur(); calculerApercu(); });
+      $("ps-ap-actualiser").addEventListener("click", async () => { window.Socle.viderCacheLecture(); await chargerDonnees(); dessinerEditeur(); calculerApercu(); });
     }
     try { if (await charger()) { dessinerEditeur(); calculerApercu(); } }
     catch (e) { $("ps-editeur").innerHTML = `<p class="statut err">Lecture impossible : ${esc(e.message || e)}</p>`; }

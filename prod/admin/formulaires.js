@@ -2090,6 +2090,11 @@ async function lireEquipe() {
   planningEquipe = await window.Socle.lirePlanning(socleGeneral);
 }
 const avecPage = a => a.actif;
+// Page de saisie cochée d'office : agent mobilisé au planning dans une fonction qui saisit (tous les agents tant que le planning est vide)
+function aUneFonctionDeSaisie(id) {
+  const l = ((planningEquipe && planningEquipe.affectations) || []).filter(a => a.agent === id);
+  return !l.length || l.some(a => fonctionDeSaisie(a.fonction));
+}
 const fonctionDeSaisie = nom => !!(window.Socle.reglagesPlanning(socleConfig).fonctions.find(f => f.nom === nom) || {}).saisie;
 // Pages de la table du formulaire par agent, et pages sans agent actif
 function etatPages() {
@@ -2119,7 +2124,7 @@ function planPages() {
   const lignes = (agentsEquipe || []).filter(avecPage).map(a => {
     const pg = parAgent.get(a.id) || [];
     const ch = champsAgent(a.id);
-    if (!repartition.inclure.has(a.id)) repartition.inclure.set(a.id, fonctionDeSaisie(a.fonction) && (!ch || ch.includes(champForm())));
+    if (!repartition.inclure.has(a.id)) repartition.inclure.set(a.id, aUneFonctionDeSaisie(a.id) && (!ch || ch.includes(champForm())));
     const etat = pg.length ? (pg.every(p => pageAJour(p, a)) ? "ok" : "modif") : (repartition.inclure.get(a.id) ? "nouv" : "sans");
     return { a, pg, etat };
   });
@@ -2148,7 +2153,7 @@ function groupePageHtml() {
     const autre = pg.find(p => p.formulaire && p.formulaire !== courant.nom);
     return `<div class="agent" data-id="${a.id}">
       <div class="agent-haut">${pg.length ? `<strong>${esc(a.nom)}</strong>` : `<label class="case" style="margin:0"><input type="checkbox" data-pg="inclure"${repartition.inclure.get(a.id) ? " checked" : ""}> <strong>${esc(a.nom)}</strong></label>`}
-        <small class="note" style="margin-left:auto">${esc(a.fonction)}</small>${pastilles[etat]}</div>
+        <span style="margin-left:auto"></span>${pastilles[etat]}</div>
       <small class="note">page « ${esc(nomPageAgent(a))} »${etat === "modif" ? ` (${raisonMaj(pg, a)})` : ""}${(() => { const ch = champsAgent(a.id);
         return !ch ? " · pas encore au planning" : ch.includes(champForm()) ? ` · mobilisé ${esc(ch.join(" et "))}` : ` · <strong>jamais mobilisé ${esc(champForm())}</strong> (${esc(ch.join(", "))} seulement)`; })()}</small>
       ${autre ? `<small class="note">affiche « ${esc(autre.formulaire)} » : sera basculée sur ce formulaire</small>` : ""}

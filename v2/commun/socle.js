@@ -11,10 +11,11 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0 (18/10/2026)";
+  const VERSION = "2.0.1 (18/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
+  const TABLE_ADMIN = "Administration";   // table vide qui porte la page d'administration : réservée aux propriétaires par les règles d'accès
   const DEFAUTS_GENERAL = {
     situation: "",                         // nom de la situation suivie (« Mouvements octobre 2026 »…)
     preset: "en",                          // « en » (établissements scolaires) ou « esr »
@@ -106,10 +107,10 @@
         accepte: c => c.type === "Bool" && !c.isFormula,
         motifs: [/^clos/, /cloture|termine/],
         creer: () => ({ type: "Bool", isFormula: false }) },
-      { role: "Auteur", libelle: "Auteur", obligatoire: false,
+      { role: "Auteur", libelle: "Auteur (compte Grist, invité ou établissement)", obligatoire: false, parDefaut: true,
         accepte: () => true,
         motifs: [/^auteur/, /saisi_?par|redacteur|createur/],
-        creer: () => ({ type: "Text", isFormula: false, formula: formuleAuteur() }) },
+        creer: ctx => ({ type: "Text", isFormula: false, formula: formuleAuteur(ctx && ctx.general, (ctx && ctx.cols && ctx.cols.Etablissement) || "Etablissement") }) },
     ],
     referentiel: [
       { role: "Nom", libelle: "Nom de l'établissement", obligatoire: true, accepte: c => typeBase(c.type) !== "Bool",
@@ -255,7 +256,7 @@ return "".join(resultat)`;
   ];
 
   /* ---------- Équipe et planning ----------
-     Agents : la fiche de chaque agent, avec sa fonction habituelle dans la cellule (opérateur, rédacteur…).
+     Agents : la fiche de chaque agent (nom, adresse, téléphone) ; sa fonction se règle par créneau dans le planning.
      Creneaux : créneaux nommés de chaque jour (Debut et Fin datés : un créneau de nuit finit le lendemain).
      Affectations : un agent sur un créneau, avec sa fonction et son périmètre pour ce créneau
      (Perimetre : JSON { <colonne du référentiel>: [valeurs] } ; vide = tous les établissements).
@@ -308,25 +309,39 @@ return sorted(champs)`;
   const INVITE = { attribut: "Invite", cle: "Cle_acces", page: "Page_saisie", lien: "Lien_acces", expire: "Lien_expire_le", valide: "Lien_valide" };
   // Durées de validité d'un lien d'invité (clé « acces_invites » de Config, réglée dans l'onglet Équipe)
   const DUREES_INVITE = [["24h", "24 heures", 24], ["72h", "3 jours", 72], ["7j", "7 jours", 168], ["30j", "30 jours", 720], ["illimite", "sans limite", 0]];
-  // Auteur d'une ligne (formule d'initialisation) : adresse du compte Grist, sinon « Invité : <nom> » pour un lien d'agent
-  function formuleAuteur(g) {
+  // Auteur d'une ligne (formule d'initialisation) : adresse du compte Grist, sinon « Invité : <nom> » pour le lien d'un agent,
+  // sinon « Établissement : <UAI> <nom> » pour le lien d'un établissement (colEtab : colonne Réf. de l'établissement de la ligne).
+  // La première ligne sert de marque de version : une formule qui ne la porte pas est proposée à la mise à jour.
+  const MARQUE_AUTEUR = "# Auteur (socle v2.1)";
+  function formuleAuteur(g, colEtab) {
     const t = (g && g.agents) || DEFAUTS_GENERAL.agents;
-    return [
+    const l = [
+      MARQUE_AUTEUR,
       `email = user.Email`,
       `if email and email != "anon@getgrist.com":`,
       `  return email`,
-      `cle = getattr(user.LinkKey, "${INVITE.attribut}", None) if hasattr(user, "LinkKey") else None`,
-      `if cle:`,
-      `  a = ${t}.lookupOne(${INVITE.cle}=cle)`,
+      `lk = vars(user.LinkKey) if getattr(user, "LinkKey", None) is not None else {}`,
+      `if lk.get("${INVITE.attribut}"):`,
+      `  a = ${t}.lookupOne(${INVITE.cle}=lk["${INVITE.attribut}"])`,
       `  return ("Invité : " + a.Nom) if a else "Invité"`,
-      `return email or ""`,
-    ].join("\n");
+    ];
+    if (colEtab) l.push(
+      `if any(k.startswith("Etab") and v for k, v in lk.items()):`,
+      `  e = $${colEtab}`,
+      `  return ("Établissement : " + " ".join(str(x) for x in (getattr(e, "UAI", ""), getattr(e, "Nom", "")) if x)) if e else "Établissement"`);
+    l.push(`return "Lien anonyme" if email == "anon@getgrist.com" else (email or "")`);
+    return l.join("\n");
+  }
+  // Formule d'auteur à remplacer : vide, ancienne (user.Email seul) ou d'une version antérieure du socle — jamais une formule écrite à la main
+  function auteurAMettreAJour(c) {
+    if (!c || c.isFormula) return false;
+    const f = String(c.formula || "").trim();
+    return f === "" || f === "user.Email" || (/^# Auteur \(socle/.test(f) && !f.startsWith(MARQUE_AUTEUR)) || (/user\.LinkKey/.test(f) && /Invité/.test(f) && !f.startsWith("#"));
   }
   function colonnesAgents(config) {
     const g = general(config);
     return [
       { id: "Nom", type: "Text" }, { id: "Email", type: "Text" },
-      { id: "Fonction", type: "Choice", widgetOptions: choix(reglagesPlanning(config).fonctions.map(f => f.nom)) },
       { id: "Telephone", type: "Text" }, { id: "Actif", type: "Bool" },
       { id: "Modifie_le", type: "DateTime:Europe/Paris" },
       { id: INVITE.cle, type: "Text" }, { id: INVITE.page, type: "Int" }, { id: INVITE.expire, type: "DateTime:Europe/Paris" },
@@ -433,6 +448,47 @@ return sorted(champs)`;
     return planning.affectations.filter(a => a.agent === agentId).map(a => ({ affectation: a, creneau: parId.get(a.creneau) }))
       .filter(x => x.creneau && x.creneau.debut <= t && t < x.creneau.fin);
   }
+
+  /* ---------- Cache de lecture (administration) ----------
+     Les onglets relisent souvent les mêmes tables (métadonnées, Config, Agents, référentiel de plusieurs dizaines de milliers de lignes).
+     fetchTable est mis en cache : 15 s pour une table ordinaire, 1 min pour une grosse table (> 5 000 lignes).
+     Toute écriture par applyUserActions vide le cache, sauf les grosses tables qu'elle ne touche pas.
+     Chaque lecture rend une copie (les colonnes sont des tableaux neufs) : un module qui modifie ce qu'il lit ne gâte pas le cache. */
+  const ecouteursEcriture = [];
+  function surEcriture(fn) { ecouteursEcriture.push(fn); }
+  function activerCacheLecture() {
+    const api = window.grist && grist.docApi;
+    if (!api || api.__socleCache) return !!(api && api.__socleCache);
+    const fetchOrig = api.fetchTable && api.fetchTable.bind(api), applyOrig = api.applyUserActions && api.applyUserActions.bind(api);
+    if (!fetchOrig || !applyOrig) return false;
+    const cache = new Map(), TTL = 15000, TTL_GROS = 60000, GROS = 5000;
+    const copie = t => { const r = {}; for (const [k, v] of Object.entries(t || {})) r[k] = Array.isArray(v) ? v.slice() : v; return r; };
+    const lire = tableId => {
+      const e = cache.get(tableId), now = Date.now();
+      if (e && now - e.t < (e.gros ? TTL_GROS : TTL)) return e.p.then(copie);
+      const ent = { t: now, gros: false };
+      ent.p = fetchOrig(tableId);
+      cache.set(tableId, ent);
+      ent.p.then(r => { ent.gros = !!(r && r.id && r.id.length > GROS); }, () => { if (cache.get(tableId) === ent) cache.delete(tableId); });
+      return ent.p.then(copie);
+    };
+    const invalider = actions => {
+      const cibles = new Set();
+      for (const a of actions || []) if (Array.isArray(a) && typeof a[1] === "string") cibles.add(a[1]);
+      for (const [k, e] of [...cache]) if (!e.gros || cibles.has(k) || k.startsWith("_grist")) cache.delete(k);
+      ecouteursEcriture.forEach(fn => { try { fn(cibles); } catch (_) { /* écouteur fautif ignoré */ } });
+    };
+    const ecrire = async (actions, opts) => { try { return await applyOrig(actions, opts); } finally { invalider(actions); } };
+    try { api.fetchTable = lire; api.applyUserActions = ecrire; } catch (_) { return false; }
+    if (api.fetchTable !== lire || api.applyUserActions !== ecrire) {
+      // objet de Grist non modifiable : on remet tout en l'état, sans cache
+      try { api.fetchTable = fetchOrig; api.applyUserActions = applyOrig; } catch (_) { /* rien */ }
+      return false;
+    }
+    api.__socleCache = { vider: () => { cache.clear(); invalider([]); } };
+    return true;
+  }
+  const viderCacheLecture = () => { const c = window.grist && grist.docApi && grist.docApi.__socleCache; if (c) c.vider(); };
 
   /* ---------- Lecture des métadonnées Grist ---------- */
   async function lireMeta() {
@@ -565,9 +621,10 @@ return sorted(champs)`;
 
     // 1. Tables techniques
     ajouterTableTechnique(TABLE_CONFIG, COLONNES_CONFIG, "Réglages du document, une ligne par clé (valeur en JSON).");
+    ajouterTableTechnique(TABLE_ADMIN, [{ id: "Note", type: "Text" }], "Table vide qui porte la page d'administration : les règles d'accès la réservent aux propriétaires, la page est ainsi invisible des agents, des invités et des établissements.");
     ajouterTableTechnique(g.formulaires, COLONNES_FORMULAIRES, "Formulaires en brouillon et publiés.");
     const colsAgents = colonnesAgents(config);
-    ajouterTableTechnique(g.agents, colsAgents.filter(c => !c.isFormula), "Équipe de la cellule : nom, adresse, fonction habituelle, téléphone (onglet Équipe).");
+    ajouterTableTechnique(g.agents, colsAgents.filter(c => !c.isFormula), "Équipe de la cellule : nom, adresse, téléphone (onglet Équipe).");
     ajouterTableTechnique(g.creneaux, COLONNES_CRENEAUX, "Planning : créneaux de chaque jour (onglet Planning).");
     ajouterTableTechnique(g.affectations, colonnesAffectations(g, config), "Planning : agents affectés à chaque créneau, avec leur fonction et leur périmètre.");
     ajouterTableTechnique(g.actions, colonnesActions(g, config), "Suivi des actions de la cellule : kanban des coordinateurs (onglet Actions).");
@@ -614,12 +671,12 @@ return sorted(champs)`;
     }
 
     // 4. Réponses
-    const ctx = { reponses: g.reponses, referentiel, cols: {} };
+    const ctx = { reponses: g.reponses, referentiel, cols: {}, general: g };
     let rolesRep = {};
     if (!tRep) {
       // Colonnes simples avec la table, références et formule ensuite (la table doit exister pour s'y référer)
       const defs = ROLES.reponses.filter(d => d.obligatoire || d.parDefaut);
-      const apres = ["Etablissement", "Dossier", "Derniere_version", "Description_Word_"];   // références et formules : une fois la table créée
+      const apres = ["Etablissement", "Dossier", "Derniere_version", "Description_Word_", "Auteur"];   // références et formules : une fois la table créée
       const simples = defs.filter(d => !apres.includes(d.role));
       etapes.push({ id: "table-reponses", groupe: "Tables", coche: true, titre: `Créer la table ${g.reponses}`,
         detail: `Une ligne par version de signalement : ${defs.map(d => d.role).join(", ")}.`,
@@ -637,6 +694,15 @@ return sorted(champs)`;
         etapes.push({ id: `rep-${def.role}`, groupe: "Colonnes", coche: def.obligatoire || !!def.parDefaut,
           titre: `Ajouter ${g.reponses}.${def.role}`, detail: `Aucune colonne ne joue le rôle « ${def.libelle} ».`,
           actions: [["AddColumn", g.reponses, def.role, def.creer({ ...ctx, cols: { ...ctx.cols, [def.role]: def.role } })]] });
+      }
+      // Auteur : formule d'initialisation à jour (compte Grist, invité, établissement)
+      const au = rolesRep.Auteur;
+      if (au && au.col && auteurAMettreAJour(tRep.colonnes[au.col])) {
+        const vide = !String(tRep.colonnes[au.col].formula || "").trim();
+        etapes.push({ id: "rep-formule-auteur", groupe: "Colonnes", coche: true,
+          titre: `${vide ? "Remplir" : "Mettre à jour"} la formule de ${g.reponses}.${au.col}`,
+          detail: "Formule d'initialisation : adresse du compte Grist, « Invité : <nom> » pour le lien d'un agent, « Établissement : <UAI> <nom> » pour le lien d'un établissement. Les lignes existantes ne changent pas.",
+          actions: [["ModifyColumn", g.reponses, au.col, { formula: formuleAuteur(g, (rolesRep.Etablissement && rolesRep.Etablissement.col) || null), isFormula: false }]] });
       }
       // Formule de la dernière version : signalée, jamais remplacée d'office (bascule à l'étape 6)
       const dv = rolesRep.Derniere_version;
@@ -764,12 +830,12 @@ return sorted(champs)`;
 
   window.Socle = {
     reglagesPointParDefaut,
-    VERSION, TABLE_CONFIG, DEFAUTS_GENERAL, NATURES, ROLES,
+    VERSION, TABLE_CONFIG, TABLE_ADMIN, DEFAUTS_GENERAL, NATURES, ROLES,
     colonnesEmargements, lireEmargements, STATUTS_ACTION, PRIORITES_ACTION, ACTIONS_DEFAUT, reglagesActions, optionsStatuts, colonnesActions, lireActions,
     PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
-    norm, cibleRef, lireMeta, lireConfig, general, actionConfig, ecrireConfig,
+    norm, cibleRef, lireMeta, lireConfig, activerCacheLecture, viderCacheLecture, surEcriture, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer, COLONNES_ETABLISSEMENT,
-    instantaneSchema, majSchemaPublic, tableauxDeBord, valeurTableauxDeBord, INVITE, DUREES_INVITE, formuleAuteur,
+    instantaneSchema, majSchemaPublic, tableauxDeBord, valeurTableauxDeBord, INVITE, DUREES_INVITE, formuleAuteur, auteurAMettreAJour,
     REGIONS_ACADEMIQUES, regionDeAcademie,
   };
 })();

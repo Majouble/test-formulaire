@@ -73,7 +73,7 @@
       const ids = [...new Set(actions.filter(a => !a.archivee && a.responsable).map(a => a.responsable))];
       const liste = agents.filter(a => a.actif || ids.includes(a.id)).filter(a => ids.includes(a.id) || a.actif);
       return [{ cle: "", libelle: "Sans responsable", couleur: "#94a3b8", champ: "responsable" },
-        ...liste.map(a => ({ cle: String(a.id), libelle: a.nom, couleur: "#000091", champ: "responsable", sous: a.fonction }))];
+        ...liste.map(a => ({ cle: String(a.id), libelle: a.nom, couleur: "#000091", champ: "responsable" }))];
     }
     const cols = reglages.statuts.map(x => ({ cle: x.nom, libelle: x.nom, couleur: x.couleur, emoji: x.emoji, clos: x.clos, champ: "statut" }));
     const inconnus = [...new Set(actions.filter(a => !a.archivee && !statutDef(a.statut)).map(a => a.statut))];
@@ -198,7 +198,7 @@
       <div class="ak-grille">
         <label class="champ"><span>Statut</span><select id="ak-statut-f">${statuts.map(x => `<option${x === e.statut ? " selected" : ""}>${esc(x)}</option>`).join("")}</select></label>
         <label class="champ"><span>Priorité</span><select id="ak-priorite">${S.PRIORITES_ACTION.map(x => `<option${x === e.priorite ? " selected" : ""}>${esc(x)}</option>`).join("")}</select></label>
-        <label class="champ"><span>Responsable</span><select id="ak-responsable"><option value="">—</option>${respOpts.map(a => `<option value="${a.id}"${a.id === e.responsable ? " selected" : ""}>${esc(a.nom)}${a.fonction ? ` (${esc(a.fonction)})` : ""}</option>`).join("")}</select></label>
+        <label class="champ"><span>Responsable</span><select id="ak-responsable"><option value="">—</option>${respOpts.map(a => `<option value="${a.id}"${a.id === e.responsable ? " selected" : ""}>${esc(a.nom)}</option>`).join("")}</select></label>
         <label class="champ"><span>Échéance</span><input type="date" id="ak-echeance" value="${esc(isoDeDate(e.echeance))}"></label>
       </div>
       ${e.id ? `<p class="aide">${e.creePar ? `Créée par ${esc(e.creePar)}` : "Créée"}${e.creeLe ? ` le ${esc(dateHeure(e.creeLe))}` : ""}${e.faitLe ? ` · close le ${esc(dateHeure(e.faitLe))}` : ""}${e.archivee ? " · archivée" : ""}.</p>` : ""}

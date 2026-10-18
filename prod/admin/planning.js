@@ -57,12 +57,11 @@
     config = await S.lireConfig();
     general = S.general(config);
     reglages = S.reglagesPlanning(config);
-    ref = await R.lireReferentiel(general, config);
-    agents = await R.lireAgents(general, ref);
-    planning = await S.lirePlanning(general);
-    emargements = await S.lireEmargements(general);
+    // lectures indépendantes : en parallèle
+    const [r, ag, pl, em, meta] = await Promise.all([R.lireReferentiel(general, config), R.lireAgents(general), S.lirePlanning(general), S.lireEmargements(general), S.lireMeta()]);
+    ref = r; agents = ag; planning = pl; emargements = em;
     // tables créées par une version antérieure : colonnes du socle manquantes (Champ…)
-    const meta = await S.lireMeta(), ids = [...[T().agents, T().creneaux, T().affectations, T().emargements].map(n => `cols-${n}`), `formule-${T().agents}`, `table-${T().emargements}`];
+    const ids = [...[T().agents, T().creneaux, T().affectations, T().emargements].map(n => `cols-${n}`), `formule-${T().agents}`, `table-${T().emargements}`];
     manquantes = !meta[T().affectations] ? [] : S.planInstallation(meta, config).etapes.filter(e => ids.includes(e.id))
       .map(e => e.id.startsWith("formule-") ? e.titre.replace(/^Ajouter /, "") : e.id.startsWith("table-") ? `table ${e.titre.replace(/^Créer la table /, "")}` : `${e.titre.replace(/^Compléter la table /, "")} : ${e.detail.replace(/^Colonnes ajoutées : /, "").replace(/\.$/, "")}`);
   }
@@ -209,7 +208,7 @@
       || planning.affectations.find(a => a.creneau === cId && a.agent === agentId && a.fonction !== e.fonction);
     const option = (a, cId) => { const x = cId ? surCreneau(cId, a.id) : null;
       const autre = x && x.fonction && x.fonction !== e.fonction && !e.lignes.includes(x) ? x.fonction : null;
-      return `<option value="${a.id}"${x ? " disabled" : ""}>${esc(a.nom)}${a.fonction && a.fonction !== e.fonction ? ` (habituellement ${esc(a.fonction.toLowerCase())})` : ""}${autre ? ` — déjà ${esc(autre.toLowerCase())}` : x ? " — déjà là" : ""}</option>`; };
+      return `<option value="${a.id}"${x ? " disabled" : ""}>${esc(a.nom)}${autre ? ` — déjà ${esc(autre.toLowerCase())}` : x ? " — déjà là" : ""}</option>`; };
     const blocs = cs.map(c => {
       const ls = e.lignes.map((l, i) => ({ l, i })).filter(x => x.l.creneau === c.id);
       return `<div class="pl-bloc-creneau"><div class="pl-bloc-tete"><strong>${esc(c.nom)}</strong> <span class="aide">${esc(plage(c))}</span></div>
@@ -222,7 +221,7 @@
         <select data-ajout-creneau="${c.id}" aria-label="Mobiliser un agent sur le créneau ${esc(c.nom)}"><option value="">+ mobiliser sur ce créneau…</option>${actifs.map(a => option(a, c.id)).join("")}</select></div>`;
     }).join("");
     return `<section class="carte" id="pl-edition"><h2>${esc(e.fonction)} — ${esc(jourLong(e.jour))}</h2>
-      ${cs.length > 1 ? `<div class="pl-ajout-agent"><select id="pl-ajout-journee"><option value="">+ mobiliser sur toute la journée…</option>${actifs.map(a => `<option value="${a.id}">${esc(a.nom)}${a.fonction && a.fonction !== e.fonction ? ` (habituellement ${esc(a.fonction.toLowerCase())})` : ""}</option>`).join("")}</select>
+      ${cs.length > 1 ? `<div class="pl-ajout-agent"><select id="pl-ajout-journee"><option value="">+ mobiliser sur toute la journée…</option>${actifs.map(a => `<option value="${a.id}">${esc(a.nom)}</option>`).join("")}</select>
         <small class="aide">L'agent est ajouté à chaque créneau du jour où il n'est pas déjà.</small></div>` : ""}
       ${blocs}
       <p class="aide">Champ : les formulaires (EN, ESR) sur lesquels l'agent est mobilisé ; sa page de saisie de l'autre champ le lui signale. Le champ et le périmètre proposés sont ceux de son dernier créneau. Aucune valeur cochée : tous les établissements. Un agent absent de la liste se crée dans l'onglet Équipe.</p>
@@ -299,7 +298,7 @@
       const faits = l.filter(x => x.c.fin <= t), prochain = l.filter(x => x.c.fin > t).sort((x, y) => x.c.debut - y.c.debut)[0];
       const emSem = emargementsDe(ag.id).filter(e => jours.has(isoLocal(new Date(e.debut * 1000))));
       const manques = faits.filter(x => jours.has(jourDuCreneau(x.c)) && !emargementsSur(ag.id, x.c).length).length;
-      return `<tr data-suivi="${ag.id}" class="eq-ligne${suivi === ag.id ? " choisi" : ""}" tabindex="0"><td><strong>${esc(ag.nom)}</strong></td><td>${esc(ag.fonction)}</td>
+      return `<tr data-suivi="${ag.id}" class="eq-ligne${suivi === ag.id ? " choisi" : ""}" tabindex="0"><td><strong>${esc(ag.nom)}</strong></td>
         <td>${sem.length}</td><td>${duree(sem.reduce((n, x) => n + heures(x.c), 0))}</td>
         ${emargements ? `<td>${duree(emSem.reduce((n, e) => n + heuresE(e), 0))}${manques ? ` <span class="pastille manque">${manques} non émargé${manques > 1 ? "s" : ""}</span>` : ""}</td>` : ""}
         <td>${faits.length} · ${duree(faits.reduce((n, x) => n + heures(x.c), 0))}</td>
@@ -321,7 +320,7 @@
     }
     return `<section class="carte"><h2>Suivi individuel</h2>
       <p class="aide">Créneaux et heures prévus au planning, par agent ; heures émargées depuis les pages de saisie (« Je prends mon service »). « Effectués » compte les créneaux terminés. Cliquez sur un agent pour le détail.</p>
-      <table class="eq-table"><thead><tr><th>Agent</th><th>Fonction habituelle</th><th>Créneaux (semaine affichée)</th><th>Heures prévues (semaine)</th>${emargements ? "<th>Heures émargées (semaine)</th>" : ""}<th>Créneaux effectués</th><th>Prochain créneau</th></tr></thead><tbody>${lignes}</tbody></table>
+      <table class="eq-table"><thead><tr><th>Agent</th><th>Créneaux (semaine affichée)</th><th>Heures prévues (semaine)</th>${emargements ? "<th>Heures émargées (semaine)</th>" : ""}<th>Créneaux effectués</th><th>Prochain créneau</th></tr></thead><tbody>${lignes}</tbody></table>
       ${emargements ? `<p class="aide">L'émargement est un traitement de données personnelles sur les agents : à inscrire au registre des traitements, avec une durée de conservation, et à porter à la connaissance des agents.</p>` : ""}
       ${detail}</section>`;
   }
@@ -336,7 +335,7 @@
         ${(() => { const aj = R.criteresAjoutables(ref, config); return aj.length ? `<select id="pl-crit-ajouter" aria-label="Ajouter un critère"><option value="">+ critère…</option>${aj.map(c => `<option value="${esc(c)}">${esc(R.libelleCritere(ref, c))} (${ref.valeurs[c].length})</option>`).join("")}</select>` : ""; })()}</div>
       ${ref.absent ? `<p class="avert">Le référentiel « ${esc(ref.table)} » est introuvable : terminez l'installation.</p>` : ""}
       <div class="eq-lib" style="margin-top:14px">Fonctions : lignes du tableau</div>
-      <p class="aide">Une ligne par fonction, dans cet ordre (↑ ↓). « Ligne affichée » : la fonction a sa ligne dans le tableau. « Saisit » : les agents de cette fonction ont une page de saisie (cochée d'office dans l'onglet Formulaires) et comptent pour la couverture des créneaux. Renommer une fonction met à jour l'équipe et le planning.</p>
+      <p class="aide">Une ligne par fonction, dans cet ordre (↑ ↓). « Ligne affichée » : la fonction a sa ligne dans le tableau. « Saisit » : les agents de cette fonction ont une page de saisie (cochée d'office dans l'onglet Formulaires) et comptent pour la couverture des créneaux. Renommer une fonction met à jour le planning.</p>
       ${r.fonctions.map((f, i) => `<div class="pl-reg-ligne" data-fonction="${i}">
         <button type="button" class="pl-mini" data-monter-fonction="${i}"${i ? "" : " disabled"} aria-label="Monter">↑</button>
         <button type="button" class="pl-mini" data-descendre-fonction="${i}"${i < r.fonctions.length - 1 ? "" : " disabled"} aria-label="Descendre">↓</button>

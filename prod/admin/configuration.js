@@ -25,7 +25,7 @@
     point_situation: "Point de situation", resume_auto: "Description automatique", liens: "Publipostage (message, filtres)", annuaire_en: "Import de l'annuaire",
   };
   const CHAMPS_FORM = ["Nom", "Table", "Type", "Brouillon", "Publie", "Widget"];
-  const CHAMPS_AGENT = ["Nom", "Email", "Fonction", "Telephone", "Actif"];
+  const CHAMPS_AGENT = ["Nom", "Email", "Telephone", "Actif"];
   let analyse = null;   // { fichier, cles, formulaires, tables, equipe }
 
   const statut = (t, type) => { const e = $("cfg-statut"); e.textContent = t || ""; e.className = `statut ${type || ""}`; };
