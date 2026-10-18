@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tableau de bord</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="../commun/theme.js"></script>
+<script src="../commun/socle.js"></script>
+<script src="../commun/geo.js"></script>
+<link rel="stylesheet" href="tableau.css">
+<style>
+  body { margin: 0; }
+  #tdb-message { font: 14px/1.45 system-ui, sans-serif; margin: 16px; padding: 12px 16px; border-radius: 8px; background: #e8edff; color: #000091; }
+  :root[data-theme="dark"] body { background: #0d0d0d; }
+  :root[data-theme="dark"] #tdb-message { background: #1b1b35; color: #8585f6; }
+</style>
+</head>
+<body>
+<p id="tdb-message" hidden></p>
+<div id="tableau-de-bord"></div>
+<script src="tableau.js"></script>
+<script>
+/* Widget du tableau de bord (v2) : affiche la version publiée dans l'administration (clé tableau_de_bord de Config).
+   Les données sont celles de la table à laquelle le widget est relié (normalement la table des réponses). */
+(async () => {
+  // Abonnement aux lignes AVANT grist.ready et avant toute attente : Grist envoie les lignes dès que le widget
+  // est prêt ; un abonnement posé plus tard manque ce premier envoi et le tableau de bord attend sans fin.
+  let lignes = null, destinataire = null;
+  grist.onRecords(rows => { lignes = rows; if (destinataire) destinataire(rows); }, { includeColumns: "normal" });
+  grist.ready({ requiredAccess: "full", allowSelectBy: true });
+  const msg = t => { const p = document.getElementById("tdb-message"); p.textContent = t; p.hidden = !t; };
+  // tableau de bord de cette page : option « tableau » (posée par l'administration), sinon le premier
+  let voulu = null;
+  try { voulu = await grist.getOption("tableau"); } catch (_) { voulu = null; }
+  let nomTableau = "";
+  const lirePublie = async () => {
+    const c = await window.Socle.lireConfig(); if (!c) return null;
+    const liste = window.Socle.tableauxDeBord(c.valeurs.tableau_de_bord, window.Socle.general(c));
+    const t = (voulu && liste.find(x => x.id === voulu)) || (!voulu && liste[0]) || null;
+    nomTableau = t ? t.nom : "";
+    return t && t.publie;
+  };
+  let publie = null;
+  try { publie = await lirePublie(); } catch (e) { msg(`Configuration illisible : ${e.message || e}`); return; }
+  if (!publie) { msg(voulu && !nomTableau ? "Le tableau de bord de cette page a été supprimé dans l'administration : choisissez-en un autre ou supprimez la page."
+    : `Le tableau de bord${nomTableau ? ` « ${nomTableau} »` : ""} n'est pas publié : réglez-le dans l'administration (onglet Tableau de bord), puis « Publier ».`); return; }
+  let table = null;
+  try { table = await grist.getTable().getTableId(); } catch (_) {}
+  const tdb = window.TableauDeBord.monter(document.getElementById("tableau-de-bord"), {
+    mode: "lecture", table,
+    abonner: cb => {
+      destinataire = cb;
+      if (lignes) { cb(lignes); return; }
+      // filet : lecture directe des lignes si rien n'est arrivé
+      setTimeout(async () => {
+        if (lignes) return;
+        try { const r = await grist.fetchSelectedTable({ format: "rows", includeColumns: "normal" }); if (!lignes && Array.isArray(r)) { lignes = r; cb(r); } } catch (_) { /* attente de l'envoi de Grist */ }
+      }, 1500);
+    },
+    configuration: () => publie,
+  });
+  // nouvelle publication : prise en compte sans recharger la page
+  setInterval(async () => {
+    try { const p = await lirePublie(); if (p && JSON.stringify(p) !== JSON.stringify(publie)) { publie = p; tdb.remplacer(p); } } catch (_) {}
+  }, 60000);
+})();
+</script>
+</body>
+</html>

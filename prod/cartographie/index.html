@@ -1,0 +1,1248 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cartographie des signalements</title>
+<!-- API des widgets Grist. Sur une instance auto-hébergée, vous pouvez remplacer
+     cette adresse par https://VOTRE-GRIST/grist-plugin-api.js -->
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="../commun/theme.js"></script>
+<!-- Socle v2 : rôles des colonnes (établissement, coordonnées du référentiel, dernière version, qualification) -->
+<script src="../commun/socle.js"></script>
+<script src="../commun/geo.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #262633; --muted: #6b6b80; --line: #e2e2ea; --soft: #f5f5f8;
+    --accent: #16b378; --accent-fg: #ffffff; --warn: #b45309; --warn-bg: #fff7e6; --err: #b42318; --err-bg: #fdecea;
+    --pt: #1d4ed8; --pt2: #a3a3b2;
+  }
+  :root[data-theme="dark"] {
+      --bg: #1f1f28; --fg: #ececf2; --muted: #a0a0b2; --line: #3a3a48; --soft: #2a2a36;
+      --accent: #1fc98a; --accent-fg: #0d1a14; --warn: #f5b454; --warn-bg: #3a2e14; --err: #ff8a80; --err-bg: #3a1c1c;
+      --pt: #7aa2ff; --pt2: #6b6b80;
+    }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 10pt/1.45 Marianne, Arial, -apple-system, "Segoe UI", sans-serif; }
+  main { padding: 12px 14px; display: grid; gap: 12px; max-width: 980px; }
+  h1 { font-size: 10pt; margin: 0; font-weight: 600; }
+  .sub { color: var(--muted); margin-top: 2px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+  label { display: grid; gap: 4px; font-size: 10pt; color: var(--muted); }
+  select, input[type=text] { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 8px; min-width: 170px; }
+  .check { display: flex; gap: 6px; align-items: center; color: var(--fg); font-size: 10pt; }
+  button { font: inherit; border-radius: 6px; padding: 7px 12px; cursor: pointer; border: 1px solid var(--line);
+    background: var(--soft); color: var(--fg); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .stats { display: flex; flex-wrap: wrap; gap: 8px; }
+  .stat { background: var(--soft); border-radius: 6px; padding: 6px 10px; }
+  .stat b { font-variant-numeric: tabular-nums; }
+  .msg { border-radius: 6px; padding: 8px 10px; }
+  .msg.warn { background: var(--warn-bg); color: var(--warn); }
+  .msg.err { background: var(--err-bg); color: var(--err); }
+  .msg ul { margin: 4px 0 0; padding-left: 18px; }
+  #preview { width: 100%; height: 190px; background: var(--soft); border-radius: 8px; display: block; }
+  #carte { width: 100%; height: 360px; border-radius: 8px; border: 1px solid var(--line); display: none; }
+  #carte.active { display: block; }
+  .leaflet-popup-content { font: 10pt/1.4 Marianne, Arial, sans-serif; }
+  .leaflet-popup-content b { display: block; margin-bottom: 2px; }
+  .leaflet-popup-content table { border-collapse: collapse; }
+  .leaflet-popup-content td { padding: 1px 6px 1px 0; vertical-align: top; }
+  .leaflet-popup-content td:first-child { color: #666; white-space: nowrap; }
+  .couleurs { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--fg); }
+  .couleurs i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; border: 1px solid rgba(0,0,0,.25); }
+  .version { color: var(--muted); font-size: 9pt; font-weight: 400; margin-left: 6px; }
+  #fallback { display: none; }
+  #fallback textarea { width: 100%; height: 120px; font: 11px/1.3 ui-monospace, Menlo, Consolas, monospace;
+    color: var(--fg); background: var(--soft); border: 1px solid var(--line); border-radius: 6px; }
+  .hint { color: var(--muted); font-size: 10pt; }
+  details { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+  summary { cursor: pointer; font-weight: 600; }
+  summary span { font-weight: 400; color: var(--muted); }
+  .cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 4px 12px;
+    max-height: 190px; overflow: auto; }
+  .cols label { display: flex; gap: 6px; align-items: center; color: var(--fg); font-size: 10pt;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #colsFilter { min-width: 190px; }
+  .filt { border-top: 1px solid var(--line); padding: 8px 0; }
+  .filt:first-child { border-top: 0; }
+  .filt-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 6px; }
+  .filt-head b { font-weight: 600; }
+  .filt-head .n { color: var(--muted); }
+  .filt-head button { padding: 3px 8px; font-size: 10pt; }
+  .filt-head input { min-width: 150px; padding: 3px 6px; }
+  .filt-head input[type=date] { min-width: 0; font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; }
+  .filt-head .rm { margin-left: auto; }
+  .vals { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 3px 12px;
+    max-height: 170px; overflow: auto; }
+  .vals label { display: flex; gap: 6px; align-items: center; color: var(--fg); font-size: 10pt;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vals .c { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .sec { margin-top: 8px; }
+  .sec > b { display: block; margin-bottom: 4px; font-weight: 600; }
+  .legend { display: flex; gap: 14px; color: var(--muted); }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+<main>
+  <div>
+    <h1>Cartographie des signalements<span class="version" id="version"></span></h1>
+    <div class="sub" id="source">En attente des données Grist…</div>
+  </div>
+
+  <div class="stats" id="stats"></div>
+  <div id="messages"></div>
+  <div class="row" id="socleBox" style="display:none">
+    <label class="check" id="dvBox"><input type="checkbox" id="dvOnly" checked> Dernière version de chaque dossier seulement</label>
+    <label>Couleur des points selon <select id="colorBy"><option value="">une seule couleur</option></select></label>
+  </div>
+  <div id="carte" role="region" aria-label="Carte des entités exportées"></div>
+  <div class="couleurs hint" id="couleurs"></div>
+  <svg id="preview" role="img" aria-label="Aperçu de la position des entités"></svg>
+  <div class="legend hint" id="legend" style="display:none"><span><i style="background:var(--pt)"></i>Concernés</span><span><i style="background:var(--pt2)"></i>Ajoutés depuis la table de référence</span></div>
+
+  <div class="row">
+    <label>Format
+      <select id="format">
+        <option value="geojson">GeoJSON (.geojson)</option>
+        <option value="kml">KML – Google Earth (.kml)</option>
+        <option value="gpx">GPX – GPS (.gpx, points uniquement)</option>
+        <option value="csv">CSV avec géométrie WKT (.csv)</option>
+        <option value="shp">Shapefile (.zip)</option>
+      </select>
+    </label>
+    <label>Nom du fichier
+      <input type="text" id="filename" value="export">
+    </label>
+  </div>
+  <details id="colsBox" open>
+    <summary>Colonnes à exporter <span id="colsCount"></span></summary>
+    <div class="row" style="margin:8px 0">
+      <button type="button" id="colsAll">Tout cocher</button>
+      <button type="button" id="colsNone">Tout décocher</button>
+      <input type="text" id="colsFilter" placeholder="Filtrer les colonnes…">
+    </div>
+    <div id="colsList" class="cols"></div>
+    <p class="hint" id="colsSaved"></p>
+  </details>
+  <details id="filtBox" open>
+    <summary>Filtres sur les valeurs <span id="filtCount"></span></summary>
+    <div class="row" style="margin:8px 0">
+      <select id="filtCol"><option value="">Choisir une colonne…</option></select>
+      <button type="button" id="filtAdd">Ajouter un filtre</button>
+      <button type="button" id="filtClear">Retirer tous les filtres</button>
+    </div>
+    <div id="filtList"></div>
+    <p class="hint">Seules les lignes dont la valeur est cochée sont exportées. Plusieurs filtres se cumulent.</p>
+  </details>
+  <details id="grpBox">
+    <summary>Une entité par établissement <span id="grpState"></span></summary>
+    <div class="row" style="margin:8px 0">
+      <label>Regrouper les lignes par
+        <select id="grpCol"><option value="">Ne pas regrouper (une entité par ligne)</option></select></label>
+    </div>
+    <p class="hint">Les lignes d'un même établissement deviennent un seul point, avec <b>nb_lignes</b> (nombre de lignes).
+      Pour chaque colonne date cochée : <b>…_premier</b>, <b>…_dernier</b> et <b>…_nb_jours</b> (jours distincts).
+      Valeurs différentes d'une ligne à l'autre : les nombres sont additionnés, les textes listés, les cases cochées comptées.
+      Indispensable pour calculer un taux : sinon un établissement signalé trois fois compte trois fois.</p>
+  </details>
+  <details id="refBox">
+    <summary>Ajouter d'autres établissements <span id="refState"></span></summary>
+    <div class="row" style="margin:8px 0">
+      <label>Ajouter
+        <select id="refMode">
+          <option value="">aucun établissement</option>
+          <option value="all">tous les autres établissements de la table de référence</option>
+          <option value="some">certains autres établissements (filtres ci-dessous)</option>
+        </select></label>
+      <label>Table de référence <select id="refTable"><option value="">Choisir une table…</option></select></label>
+    </div>
+    <div id="refBody"></div>
+    <p class="hint">La table de référence est une table du document qui liste tous les établissements avec leurs coordonnées,
+      par exemple l'Annuaire de l'éducation importé dans Grist. Les établissements déjà présents dans l'export ne sont pas ajoutés deux fois.
+      Chaque entité reçoit une colonne <b>concerne</b> : 1 pour les établissements de l'export, 0 pour ceux ajoutés.
+      Sa moyenne sur une zone donne directement le taux d'établissements concernés.</p>
+  </details>
+  <div class="row">
+    <label class="check"><input type="checkbox" id="withId"> Inclure l'identifiant de ligne Grist</label>
+  </div>
+  <div class="row">
+    <button class="primary" id="download" disabled>Télécharger</button>
+    <button id="copy" disabled>Copier le contenu</button>
+  </div>
+  <div id="fallback">
+    <p class="hint">Si le téléchargement est bloqué, copiez ce contenu dans un fichier texte avec la bonne extension.</p>
+    <textarea id="output" readonly></textarea>
+  </div>
+  <p class="hint">Sur la table des signalements du socle, les coordonnées viennent de l'établissement (colonnes Latitude et Longitude
+    du référentiel), avec les colonnes de l'établissement en attributs : rien à régler. Sur une autre table, ou pour forcer d'autres colonnes,
+    réglez-les dans le panneau de droite du widget : soit <b>Latitude</b> et <b>Longitude</b>, soit une colonne <b>Géométrie</b>
+    (WKT comme <code>POINT(2.35 48.85)</code> ou GeoJSON). Les colonnes cochées deviennent des attributs. Seules les lignes visibles
+    dans le widget (filtres, liens) sont exportées.</p>
+  <p class="hint" id="diag"></p>
+</main>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------------------
+// Conversion des valeurs Grist
+// ---------------------------------------------------------------------------
+function toNumber(v) {
+  if (v === null || v === undefined || v === "") return NaN;
+  if (typeof v === "number") return v;
+  const s = String(v).trim().replace(/\s/g, "").replace(",", ".");
+  return s === "" ? NaN : Number(s);
+}
+
+// Types des colonnes Grist (lus dans les métadonnées du document) : "Date", "DateTime:Europe/Paris", …
+let colTypes = {};
+
+function dateTypeOf(col, v) {
+  const t = colTypes[col] || "";
+  if (t === "Date") return { kind: "date" };
+  if (t.startsWith("DateTime")) return { kind: "datetime", tz: t.split(":")[1] || undefined };
+  if (v instanceof Date) return { kind: "datetime" };
+  return null;
+}
+
+function toJsDate(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (v instanceof Date) return isNaN(v) ? null : v;
+  if (typeof v === "number") return new Date(v * 1000);            // Grist stocke les dates en secondes
+  if (Array.isArray(v) && (v[0] === "D" || v[0] === "d")) return new Date(v[1] * 1000);
+  if (typeof v === "object" && typeof v.toISOString === "function") return new Date(v.toISOString());
+  const d = new Date(v); return isNaN(d) ? null : d;
+}
+
+function tzParts(d, tz) {
+  try {
+    const f = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZoneName: "longOffset" });
+    const o = {}; f.formatToParts(d).forEach(p => o[p.type] = p.value);
+    const off = (o.timeZoneName || "").replace("GMT", "") || "+00:00";
+    return { day: `${o.year}-${o.month}-${o.day}`, time: `${o.hour === "24" ? "00" : o.hour}:${o.minute}:${o.second}`, off: off.length === 3 ? off + ":00" : off };
+  } catch (e) {
+    const iso = d.toISOString(); return { day: iso.slice(0, 10), time: iso.slice(11, 19), off: "Z" };
+  }
+}
+
+// Valeur d'export d'une cellule date : "2026-09-29" (Date) ou "2026-09-29T17:59:00+02:00" (DateTime)
+function formatDateCell(col, v) {
+  const dt = dateTypeOf(col, v); if (!dt) return undefined;
+  const d = toJsDate(v); if (!d) return null;
+  if (dt.kind === "date") return d.toISOString().slice(0, 10);
+  const p = tzParts(d, dt.tz); return `${p.day}T${p.time}${p.off === "Z" ? "Z" : p.off}`;
+}
+
+// Jour (AAAA-MM-JJ) d'une cellule date, utilisé par les filtres
+function dayOf(col, v) {
+  const dt = dateTypeOf(col, v); if (!dt) return undefined;
+  const d = toJsDate(v); if (!d) return null;
+  return dt.kind === "date" ? d.toISOString().slice(0, 10) : tzParts(d, dt.tz).day;
+}
+
+const frDay = k => /^\d{4}-\d{2}-\d{2}$/.test(k) ? `${k.slice(8, 10)}/${k.slice(5, 7)}/${k.slice(0, 4)}` : k;
+
+function cleanCell(col, v) {
+  const f = formatDateCell(col, v);
+  return f !== undefined ? f : cleanValue(v);
+}
+
+function cleanValue(v) {
+  if (v === null || v === undefined) return null;
+  if (v instanceof Date) return isNaN(v) ? null : v.toISOString();
+  if (Array.isArray(v)) {                       // listes de choix / références multiples
+    const arr = v[0] === "L" ? v.slice(1) : v;
+    return arr.map(x => (x && typeof x === "object") ? JSON.stringify(x) : String(x)).join(", ");
+  }
+  if (typeof v === "object") {
+    if (v.constructor && v.constructor.name === "Reference") return v.rowId ?? null;
+    return JSON.stringify(v);
+  }
+  return v;
+}
+
+// ---------------------------------------------------------------------------
+// Géométrie : WKT et GeoJSON
+// ---------------------------------------------------------------------------
+function parseWKT(txt) {
+  const s = String(txt).trim().replace(/^SRID=\d+;/i, "");
+  const m = s.match(/^([A-Za-z]+)\s*(Z|M|ZM)?\s*(\(.*\)|EMPTY)$/s);
+  if (!m) throw new Error("WKT illisible");
+  const type = m[1].toUpperCase();
+  if (m[3].toUpperCase() === "EMPTY") return null;
+  const body = m[3];
+  let i = 0;
+  function ws() { while (i < body.length && /\s/.test(body[i])) i++; }
+  function num() {
+    ws(); const r = body.slice(i).match(/^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?/);
+    if (!r) throw new Error("nombre attendu"); i += r[0].length; return Number(r[0]);
+  }
+  function coord() { const c = [num(), num()]; ws(); while (/[-+\d.]/.test(body[i] || "")) { num(); ws(); } return c; }
+  function list(fn) {           // "(" item ("," item)* ")"
+    ws(); if (body[i] !== "(") throw new Error("( attendue"); i++;
+    const out = [fn()]; ws();
+    while (body[i] === ",") { i++; out.push(fn()); ws(); }
+    if (body[i] !== ")") throw new Error(") attendue"); i++; return out;
+  }
+  const pointMaybeParen = () => { ws(); return body[i] === "(" ? list(coord)[0] : coord(); };
+  const ring = () => list(coord);
+  const poly = () => list(ring);
+  switch (type) {
+    case "POINT": return { type: "Point", coordinates: list(coord)[0] };
+    case "LINESTRING": return { type: "LineString", coordinates: list(coord) };
+    case "POLYGON": return { type: "Polygon", coordinates: poly() };
+    case "MULTIPOINT": return { type: "MultiPoint", coordinates: list(pointMaybeParen) };
+    case "MULTILINESTRING": return { type: "MultiLineString", coordinates: list(ring) };
+    case "MULTIPOLYGON": return { type: "MultiPolygon", coordinates: list(poly) };
+    default: throw new Error("type WKT non géré : " + type);
+  }
+}
+
+function parseGeometryCell(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v === "object" && v.type) return v.type === "Feature" ? v.geometry : v;
+  const s = String(v).trim();
+  if (s.startsWith("{")) { const g = JSON.parse(s); return g.type === "Feature" ? g.geometry : g; }
+  return parseWKT(s);
+}
+
+function eachCoord(g, fn) {
+  if (!g) return;
+  const walk = c => (typeof c[0] === "number") ? fn(c) : c.forEach(walk);
+  if (g.type === "GeometryCollection") g.geometries.forEach(x => eachCoord(x, fn)); else walk(g.coordinates);
+}
+
+function geomValid(g) {
+  let ok = true, n = 0;
+  eachCoord(g, ([x, y]) => { n++; if (!isFinite(x) || !isFinite(y) || Math.abs(x) > 180 || Math.abs(y) > 90) ok = false; });
+  return ok && n > 0;
+}
+
+function toWKT(g) {
+  const c = p => `${p[0]} ${p[1]}`;
+  const l = a => `(${a.map(c).join(", ")})`;
+  const p = r => `(${r.map(l).join(", ")})`;
+  switch (g.type) {
+    case "Point": return `POINT (${c(g.coordinates)})`;
+    case "LineString": return `LINESTRING ${l(g.coordinates)}`;
+    case "Polygon": return `POLYGON ${p(g.coordinates)}`;
+    case "MultiPoint": return `MULTIPOINT (${g.coordinates.map(x => `(${c(x)})`).join(", ")})`;
+    case "MultiLineString": return `MULTILINESTRING ${p(g.coordinates)}`;
+    case "MultiPolygon": return `MULTIPOLYGON (${g.coordinates.map(p).join(", ")})`;
+    default: return "";
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Construction de la FeatureCollection
+// ---------------------------------------------------------------------------
+const MAPPED = ["Latitude", "Longitude", "Geometrie", "Nom"];
+
+function buildCollection(records, mapped, opts) {
+  const features = [], problems = [];
+  const mappedCols = new Set(Object.values(mapped.cols || {}).filter(Boolean));
+  records.forEach((rec, idx) => {
+    const m = mapped.rows[idx] || {};
+    let geom = null, why = null;
+    try {
+      if (mapped.cols.Geometrie) {
+        geom = parseGeometryCell(m.Geometrie);
+        if (!geom) why = "géométrie vide";
+      } else {
+        const lat = toNumber(m.Latitude), lon = toNumber(m.Longitude);
+        if (isNaN(lat) || isNaN(lon)) why = "coordonnées vides ou non numériques";
+        else geom = { type: "Point", coordinates: [lon, lat] };
+      }
+      if (geom && !geomValid(geom)) { why = "coordonnées hors limites (latitude/longitude inversées ?)"; geom = null; }
+    } catch (e) { why = "géométrie illisible (" + e.message + ")"; geom = null; }
+    if (!geom) { problems.push({ id: rec.id, why }); return; }
+
+    const props = {};
+    if (opts.withId) props.grist_id = rec.id;
+    for (const [k, v] of Object.entries(rec)) {
+      if (k === "id" || k === "manualSort" || k.startsWith("gristHelper_")) continue;
+      if (mapped.cols.Geometrie && k === mapped.cols.Geometrie) continue; // déjà dans la géométrie
+      if (opts.selected && !opts.selected.has(k)) continue;               // colonne décochée
+      props[k] = cleanCell(k, v);
+    }
+    const name = m.Nom != null && m.Nom !== "" ? String(cleanCell(mapped.cols.Nom, m.Nom)) : null;
+    features.push({ type: "Feature", geometry: geom, properties: props, _name: name, _id: rec.id });
+  });
+  return { features, problems, mappedCols };
+}
+
+function publicCollection(features) {
+  return { type: "FeatureCollection",
+    features: features.map(f => ({ type: "Feature", geometry: f.geometry, properties: f.properties })) };
+}
+
+// ---------------------------------------------------------------------------
+// Encodeurs
+// ---------------------------------------------------------------------------
+const esc = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+function toKML(features, docName) {
+  const coords = a => a.map(c => `${c[0]},${c[1]}`).join(" ");
+  const ring = r => `<LinearRing><coordinates>${coords(r)}</coordinates></LinearRing>`;
+  const poly = p => `<Polygon><outerBoundaryIs>${ring(p[0])}</outerBoundaryIs>${p.slice(1).map(r => `<innerBoundaryIs>${ring(r)}</innerBoundaryIs>`).join("")}</Polygon>`;
+  const geom = g => {
+    switch (g.type) {
+      case "Point": return `<Point><coordinates>${g.coordinates[0]},${g.coordinates[1]}</coordinates></Point>`;
+      case "LineString": return `<LineString><coordinates>${coords(g.coordinates)}</coordinates></LineString>`;
+      case "Polygon": return poly(g.coordinates);
+      case "MultiPoint": return `<MultiGeometry>${g.coordinates.map(c => geom({ type: "Point", coordinates: c })).join("")}</MultiGeometry>`;
+      case "MultiLineString": return `<MultiGeometry>${g.coordinates.map(c => geom({ type: "LineString", coordinates: c })).join("")}</MultiGeometry>`;
+      case "MultiPolygon": return `<MultiGeometry>${g.coordinates.map(poly).join("")}</MultiGeometry>`;
+      default: return "";
+    }
+  };
+  const pm = features.map(f => {
+    const data = Object.entries(f.properties).map(([k, v]) => `<Data name="${esc(k)}"><value>${esc(v)}</value></Data>`).join("");
+    return `<Placemark><name>${esc(f._name ?? ("Ligne " + f._id))}</name><ExtendedData>${data}</ExtendedData>${geom(f.geometry)}</Placemark>`;
+  }).join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<kml xmlns="http://www.opengis.net/kml/2.2"><Document><name>${esc(docName)}</name>\n${pm}\n</Document></kml>\n`;
+}
+
+function toGPX(features) {
+  const pts = [];
+  features.forEach(f => {
+    const g = f.geometry;
+    const list = g.type === "Point" ? [g.coordinates] : g.type === "MultiPoint" ? g.coordinates : [];
+    const desc = Object.entries(f.properties).map(([k, v]) => `${k} : ${v ?? ""}`).join("\n");
+    list.forEach(c => pts.push(`<wpt lat="${c[1]}" lon="${c[0]}"><name>${esc(f._name ?? ("Ligne " + f._id))}</name><desc>${esc(desc)}</desc></wpt>`));
+  });
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="Widget Grist export cartographique" xmlns="http://www.topografix.com/GPX/1/1">\n${pts.join("\n")}\n</gpx>\n`;
+}
+
+function toCSV(features) {
+  const cols = [];
+  features.forEach(f => Object.keys(f.properties).forEach(k => { if (!cols.includes(k)) cols.push(k); }));
+  const q = v => { const s = v == null ? "" : String(v); return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const lines = [["WKT", ...cols].map(q).join(";")];
+  features.forEach(f => lines.push([toWKT(f.geometry), ...cols.map(c => f.properties[c])].map(q).join(";")));
+  return "\uFEFF" + lines.join("\r\n") + "\r\n";   // BOM : accents corrects dans Excel
+}
+
+let shpLoading = null;
+function loadShpWrite() {
+  if (window.shpwrite) return Promise.resolve(window.shpwrite);
+  if (!shpLoading) shpLoading = new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/@mapbox/shp-write@0.4.3/shpwrite.js";
+    s.onload = () => window.shpwrite ? res(window.shpwrite) : rej(new Error("bibliothèque absente"));
+    s.onerror = () => { shpLoading = null; rej(new Error("impossible de charger la bibliothèque Shapefile (réseau bloqué ?)")); };
+    document.head.appendChild(s);
+  });
+  return shpLoading;
+}
+
+// ---------------------------------------------------------------------------
+// Interface
+// ---------------------------------------------------------------------------
+const $ = id => document.getElementById(id);
+let state = { features: [], problems: [], total: 0, mode: null };
+
+function renderMessages() {
+  const box = $("messages"); box.innerHTML = "";
+  if (accessLevel && accessLevel !== "full") {
+    box.insertAdjacentHTML("beforeend", `<div class="msg warn">Le widget n'a pas l'accès complet au document : il ne voit que les colonnes associées. Dans le panneau de droite, onglet du widget, réglez <b>Accès</b> sur <b>Accès complet</b> pour lire toutes les colonnes de la table.</div>`);
+  }
+  if (!state.mode) {
+    box.insertAdjacentHTML("beforeend", `<div class="msg warn">Aucune coordonnée trouvée. Sur la table des signalements du socle, vérifiez que le référentiel a des colonnes Latitude et Longitude (onglet Référentiel de l'administration). Sinon, associez les colonnes dans le panneau de droite : <b>Latitude</b> et <b>Longitude</b>, ou <b>Géométrie</b>.</div>`);
+    return;
+  }
+  if (state.problems.length) {
+    const byWhy = {};
+    state.problems.forEach(p => { (byWhy[p.why] = byWhy[p.why] || []).push(p.id); });
+    const items = Object.entries(byWhy).map(([why, ids]) =>
+      `<li>${esc(why)} : ${ids.length} ligne${ids.length > 1 ? "s" : ""} (id ${ids.slice(0, 8).join(", ")}${ids.length > 8 ? "…" : ""})</li>`).join("");
+    box.insertAdjacentHTML("beforeend", `<div class="msg warn">${state.problems.length} ligne${state.problems.length > 1 ? "s" : ""} ignorée${state.problems.length > 1 ? "s" : ""} :<ul>${items}</ul></div>`);
+  }
+}
+
+function renderStats() {
+  const types = {};
+  state.features.forEach(f => types[f.geometry.type] = (types[f.geometry.type] || 0) + 1);
+  const t = Object.entries(types).map(([k, v]) => `<div class="stat">${esc(k)} <b>${v}</b></div>`).join("");
+  const f = (state.filteredOut ? `<div class="stat">Écartées par les filtres <b>${state.filteredOut}</b></div>` : "")
+    + (state.anciennes ? `<div class="stat">Versions antérieures écartées <b>${state.anciennes}</b></div>` : "");
+  const g = grpCol ? `<div class="stat">Établissements <b>${state.features.filter(x => !x._ref).length}</b></div>` : "";
+  const r = state.ref ? `<div class="stat">Ajoutés depuis « ${esc(ref.table)} » <b>${state.ref.added}</b></div>` : "";
+  $("stats").innerHTML = `<div class="stat">Lignes <b>${state.total}</b></div>${f}${g}${r}<div class="stat">Entités exportées <b>${state.features.length}</b></div>${t}`;
+  $("legend").style.display = state.ref ? "flex" : "none";
+  let info = "";
+  if (state.ref) {
+    const i = state.ref, parts = [];
+    if (i.skipped) parts.push(`${i.skipped} sans coordonnées valides`);
+    if (i.filteredOut) parts.push(`${i.filteredOut} écartés par les filtres`);
+    const unmatched = ref.enrich && i.concerned ? state.features.filter(x => !x._ref).length - i.matched : 0;
+    info = `Référence : ${i.added} établissement(s) ajouté(s)${parts.length ? " · non ajoutés : " + parts.join(", ") : ""}` +
+      (unmatched > 0 && grpCol ? ` · ${unmatched} établissement(s) concerné(s) absent(s) de la référence (identifiant différent ?)` : "");
+  }
+  $("refState").textContent = state.ref ? `(${state.ref.added} ajoutés)` : ref.mode ? "(à régler)" : "";
+  if (info) $("stats").insertAdjacentHTML("beforeend", `<div class="hint" style="flex-basis:100%">${esc(info)}</div>`);
+  if (state.ref && !grpCol) $("stats").insertAdjacentHTML("beforeend", `<div class="msg warn" style="flex-basis:100%">Pour un taux juste, activez « Une entité par établissement » : sinon un établissement signalé plusieurs fois compte plusieurs fois.</div>`);
+}
+
+// Sans Leaflet (réseau filtré) : points sur le fond de carte du socle (départements, académies, encarts), si tous sont en France
+function renderPreviewFond() {
+  const G = window.Geo, svg = $("preview");
+  if (!G || !state.features.length || !state.features.every(f => f.geometry && f.geometry.type === "Point")) return false;
+  const places = state.features.map(f => ({ f, p: G.placer(f.geometry.coordinates[1], f.geometry.coordinates[0]) }));
+  if (places.some(x => !x.p)) return false;
+  const pal = legendeCouleurs(), k = 1;
+  const sombre = document.documentElement.getAttribute("data-theme") === "dark";
+  svg.style.height = "auto"; svg.style.aspectRatio = `${G.GEO.w} / ${G.GEO.h}`;
+  svg.setAttribute("viewBox", `0 0 ${G.GEO.w} ${G.GEO.h}`);
+  const cadres = G.GEO.frames.map(f => `<rect x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h}" fill="none" stroke="${sombre ? "#4a4a58" : "#c3c2b7"}" stroke-width="1.5" rx="4"></rect><text x="${f.x + 6}" y="${f.y + 18}" font-size="15" fill="${sombre ? "#a0a0b2" : "#666"}">${esc(f.t)}</text>`).join("");
+  let ronds = "";
+  [...places].sort((a, b) => !!b.f._ref - !!a.f._ref).forEach(({ f, p }) => {
+    const coul = f._ref ? "#a3a3b2" : pal ? (pal.get(valeurCouleur(f)) || "#000091") : "#000091", r = f._ref ? 6 : 10;
+    const att = `r="${r}" fill="${coul}" fill-opacity="${f._ref ? .6 : .9}" stroke="#fff" stroke-width="1.5"`;
+    const titre = `<title>${esc(String(f._name ?? ""))}</title>`;
+    ronds += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" ${att}>${titre}</circle>`;
+    if (p.paris) ronds += `<circle cx="${p.paris.x.toFixed(1)}" cy="${p.paris.y.toFixed(1)}" ${att}>${titre}</circle>`;
+  });
+  svg.innerHTML = G.fondSvg(k, sombre ? { fond: "#3a3a48", trait: "#1f1f28", traitAcademie: "#8a8aa0" } : { fond: "#eef0f5", trait: "#ffffff", traitAcademie: "#8a8fa3" }) + cadres + ronds;
+  $("couleurs").innerHTML = pal && pal.size ? [...pal.entries()].map(([v, c]) => `<span><i style="background:${c}"></i>${esc(v)}</span>`).join("") : "";
+  return true;
+}
+function renderPreview() {
+  const svg = $("preview"); svg.style.height = ""; svg.style.aspectRatio = ""; const W = svg.clientWidth || 600, H = svg.clientHeight || 190;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.innerHTML = "";
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  state.features.forEach(f => eachCoord(f.geometry, ([x, y]) => {
+    minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y); }));
+  if (!isFinite(minX)) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" fill="currentColor" opacity=".5">Aucune entité à afficher</text>`; return; }
+  const k = Math.cos(((minY + maxY) / 2) * Math.PI / 180) || 1;           // correction de latitude
+  const dx = Math.max((maxX - minX) * k, 1e-6), dy = Math.max(maxY - minY, 1e-6), pad = 12;
+  const s = Math.min((W - 2 * pad) / dx, (H - 2 * pad) / dy);
+  const ox = (W - dx * s) / 2, oy = (H - dy * s) / 2;
+  const P = ([x, y]) => [ox + (x - minX) * k * s, H - (oy + (y - minY) * s)];
+  const ns = "http://www.w3.org/2000/svg"; const frag = document.createDocumentFragment();
+  const path = rings => rings.map(r => "M" + r.map(c => P(c).map(v => v.toFixed(1)).join(",")).join("L")).join("");
+  [...state.features].sort((a, b) => !!b._ref - !!a._ref).forEach(f => {
+    const g = f.geometry;
+    if (g.type === "Point" || g.type === "MultiPoint") {
+      (g.type === "Point" ? [g.coordinates] : g.coordinates).forEach(c => {
+        const e = document.createElementNS(ns, "circle"); const [x, y] = P(c);
+        e.setAttribute("cx", x); e.setAttribute("cy", y); e.setAttribute("r", f._ref ? 1.8 : 2.6);
+        e.setAttribute("fill", f._ref ? "var(--pt2)" : "var(--pt)"); e.setAttribute("fill-opacity", f._ref ? ".6" : ".8"); frag.appendChild(e);
+      });
+    } else {
+      const polys = g.type === "Polygon" ? [g.coordinates] : g.type === "MultiPolygon" ? g.coordinates : null;
+      const lines = g.type === "LineString" ? [g.coordinates] : g.type === "MultiLineString" ? g.coordinates : null;
+      const e = document.createElementNS(ns, "path");
+      e.setAttribute("d", polys ? polys.map(path).join("") : path(lines));
+      e.setAttribute("fill", polys ? "var(--pt)" : "none"); e.setAttribute("fill-opacity", ".2");
+      e.setAttribute("stroke", "var(--pt)"); e.setAttribute("stroke-width", "1"); frag.appendChild(e);
+    }
+  });
+  svg.appendChild(frag);
+}
+
+function renderDiag() {
+  const n = (typeof tableColumns === "function") ? tableColumns().length : 0;
+  $("diag").textContent = `Diagnostic : accès « ${accessLevel || "inconnu"} » · ${state.total} ligne(s) reçue(s) · ${n} colonne(s) lue(s) · source : ${diagSource}` +
+    (socle ? ` · socle : établissements de « ${socle.referentiel} »` : "") +
+    (diagError ? ` · erreur : ${diagError}` : "");
+}
+
+function render() {
+  renderMessages(); renderStats(); renderCarte(); renderDiag();
+  const ok = state.features.length > 0;
+  $("download").disabled = !ok; $("copy").disabled = !ok || $("format").value === "shp";
+}
+
+async function buildOutput() {
+  const fmt = $("format").value;
+  const name = ($("filename").value || "export").replace(/[\\/:*?"<>|]+/g, "_");
+  const fc = publicCollection(state.features);
+  switch (fmt) {
+    case "geojson": return { name: name + ".geojson", type: "application/geo+json", text: JSON.stringify(fc) };
+    case "kml": return { name: name + ".kml", type: "application/vnd.google-earth.kml+xml", text: toKML(state.features, name) };
+    case "gpx": {
+      const n = state.features.filter(f => /Point/.test(f.geometry.type)).length;
+      if (!n) throw new Error("Le GPX ne contient que des points : aucune entité ponctuelle à exporter.");
+      return { name: name + ".gpx", type: "application/gpx+xml", text: toGPX(state.features) };
+    }
+    case "csv": return { name: name + ".csv", type: "text/csv;charset=utf-8", text: toCSV(state.features) };
+    case "shp": {
+      const shp = await loadShpWrite();
+      // le Shapefile ne gère pas les MultiPoint : on les éclate en points
+      const shpFc = { type: "FeatureCollection", features: fc.features.flatMap(f => f.geometry.type === "MultiPoint"
+        ? f.geometry.coordinates.map(c => ({ type: "Feature", geometry: { type: "Point", coordinates: c }, properties: f.properties }))
+        : [f]) };
+      const blob = await shp.zip(shpFc, { outputType: "blob", compression: "DEFLATE", folder: name, filename: name,
+        types: { point: name + "_points", polygon: name + "_polygones", polyline: name + "_lignes" } });
+      return { name: name + ".zip", blob };
+    }
+  }
+}
+
+function showError(msg) {
+  $("messages").insertAdjacentHTML("afterbegin", `<div class="msg err">${esc(msg)}</div>`);
+}
+
+$("download").addEventListener("click", async () => {
+  try {
+    const out = await buildOutput();
+    const blob = out.blob || new Blob([out.text], { type: out.type });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = out.name; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    if (out.text) { $("output").value = out.text.length > 2e6 ? out.text.slice(0, 2e6) + "\n…" : out.text; $("fallback").style.display = "block"; }
+  } catch (e) { showError(e.message); }
+});
+
+$("copy").addEventListener("click", async () => {
+  try {
+    const out = await buildOutput();
+    $("output").value = out.text; $("fallback").style.display = "block";
+    try { await navigator.clipboard.writeText(out.text); $("copy").textContent = "Copié ✓"; }
+    catch { $("output").select(); document.execCommand("copy"); $("copy").textContent = "Copié ✓"; }
+    setTimeout(() => $("copy").textContent = "Copier le contenu", 1800);
+  } catch (e) { showError(e.message); }
+});
+
+$("format").addEventListener("change", render);
+$("withId").addEventListener("change", () => recompute());
+window.addEventListener("resize", () => { if (window.L && carte) carte.invalidateSize(); else renderCarte(); });
+document.addEventListener("socle-theme", () => { if (!window.L) renderCarte(); });
+
+// ---------------------------------------------------------------------------
+// Branchement Grist
+// ---------------------------------------------------------------------------
+let lastRecords = [], lastMappings = null;
+let savedCols = null;          // null = toutes les colonnes ; sinon tableau des colonnes cochées
+let optionsLoaded = false;
+let accessLevel = null, diagSource = "-", diagError = "";
+
+function tableColumns() {
+  const cols = [];
+  lastRecords.forEach(r => Object.keys(r).forEach(k => {
+    if (k === "id" || k === "manualSort" || k.startsWith("gristHelper_")) return;
+    if (lastMappings && lastMappings.Geometrie && k === lastMappings.Geometrie) return;
+    if (!cols.includes(k)) cols.push(k);
+  }));
+  return cols;
+}
+
+function selectedSet() { return savedCols ? new Set(savedCols) : null; }
+
+function renderColumns() {
+  const cols = tableColumns(), sel = selectedSet(), f = $("colsFilter").value.trim().toLowerCase();
+  const n = sel ? cols.filter(c => sel.has(c)).length : cols.length;
+  $("colsCount").textContent = `(${n} sur ${cols.length})`;
+  $("colsList").innerHTML = cols.filter(c => !f || c.toLowerCase().includes(f)).map(c =>
+    `<label title="${esc(c)}"><input type="checkbox" data-col="${esc(c)}" ${!sel || sel.has(c) ? "checked" : ""}> ${esc(c)}</label>`).join("");
+}
+
+async function saveColumns(list) {
+  const cols = tableColumns();
+  savedCols = (list.length === cols.length && cols.every(c => list.includes(c))) ? null : list;
+  let msg = "";
+  try {
+    if (window.grist && grist.setOption) { await grist.setOption("colonnes", savedCols); msg = "Sélection enregistrée avec le widget."; }
+  } catch (e) { msg = "Sélection valable pour cette session (droits insuffisants pour l'enregistrer dans le document)."; }
+  $("colsSaved").textContent = msg;
+  renderColumns(); recompute();
+}
+
+$("colsList").addEventListener("change", e => {
+  if (!e.target.dataset.col) return;
+  const cols = tableColumns(), sel = selectedSet() || new Set(cols);
+  e.target.checked ? sel.add(e.target.dataset.col) : sel.delete(e.target.dataset.col);
+  saveColumns(cols.filter(c => sel.has(c)));
+});
+$("colsAll").addEventListener("click", () => saveColumns(tableColumns()));
+$("colsNone").addEventListener("click", () => saveColumns([]));
+$("colsFilter").addEventListener("input", renderColumns);
+
+// ---------------------------------------------------------------------------
+// Filtres par valeur
+// ---------------------------------------------------------------------------
+let filters = {};            // { colonne: [valeurs cochées] } ; colonne absente = pas de filtre
+const EMPTY = "(vide)";
+const MAX_VALUES = 400;
+
+function isDateCol(col) { return /^Date/.test(colTypes[col] || "") || lastRecords.some(r => r[col] instanceof Date); }
+
+function valueKeys(col, v) {
+  if (isDateCol(col)) { const d = dayOf(col, v) ?? dayOf(col, toJsDate(v)); return [d || EMPTY]; }
+  if (v === null || v === undefined || v === "") return [EMPTY];
+  if (Array.isArray(v)) { const a = v[0] === "L" ? v.slice(1) : v; return a.length ? a.map(x => String(cleanValue(x))) : [EMPTY]; }
+  const c = cleanValue(v); return [c === null || c === "" ? EMPTY : String(c)];
+}
+
+function rowPasses(r, except) {
+  for (const [col, allowed] of Object.entries(filters)) {
+    if (col === except) continue;
+    const set = allowed instanceof Set ? allowed : new Set(allowed);
+    if (!valueKeys(col, r[col]).some(k => set.has(k))) return false;
+  }
+  return true;
+}
+
+function filteredRecords() { return lastRecords.filter(r => rowPasses(r)); }
+
+function distinctValues(col) {
+  // comptes calculés sur les lignes qui passent les AUTRES filtres
+  const counts = new Map();
+  lastRecords.forEach(r => { if (!rowPasses(r, col)) return; valueKeys(col, r[col]).forEach(k => counts.set(k, (counts.get(k) || 0) + 1)); });
+  // valeurs cochées mais absentes des données : on les garde visibles
+  (filters[col] || []).forEach(k => { if (!counts.has(k)) counts.set(k, 0); });
+  const entries = [...counts.entries()];
+  if (isDateCol(col)) return entries.sort((a, b) => (a[0] === EMPTY) - (b[0] === EMPTY) || b[0].localeCompare(a[0]));  // plus récent d'abord
+  return entries.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "fr"));
+}
+
+async function saveFilters() {
+  try { if (window.grist && grist.setOption) await grist.setOption("filtres", filters); } catch (e) { /* droits insuffisants */ }
+  renderFilters(); recompute();
+}
+
+function renderFilterSelect() {
+  const sel = $("filtCol"), cur = sel.value;
+  const cols = tableColumns().filter(c => !(c in filters));
+  sel.innerHTML = `<option value="">Choisir une colonne…</option>` + cols.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  if (cols.includes(cur)) sel.value = cur;
+}
+
+function renderFilters() {
+  renderFilterSelect();
+  const box = $("filtList"); const searches = {};
+  box.querySelectorAll("input[data-search]").forEach(i => searches[i.dataset.search] = i.value);
+  const active = Object.keys(filters);
+  $("filtCount").textContent = active.length ? `(${active.length} actif${active.length > 1 ? "s" : ""})` : "";
+  box.innerHTML = active.map(col => {
+    const vals = distinctValues(col), allowed = new Set(filters[col]);
+    const q = (searches[col] || "").toLowerCase(), isD = isDateCol(col);
+    const lab = v => isD ? frDay(v) : v;
+    const shown = vals.filter(([v]) => !q || lab(v).toLowerCase().includes(q) || v.toLowerCase().includes(q));
+    const nChecked = vals.filter(([v]) => allowed.has(v)).length;
+    const list = shown.slice(0, MAX_VALUES).map(([v, n]) =>
+      `<label title="${esc(v)}"><input type="checkbox" data-fcol="${esc(col)}" data-fval="${esc(v)}" ${allowed.has(v) ? "checked" : ""}> <span>${esc(lab(v))}</span> <span class="c">${n}</span></label>`).join("");
+    const more = shown.length > MAX_VALUES ? `<p class="hint">${shown.length - MAX_VALUES} autres valeurs : utilisez la recherche.</p>` : "";
+    return `<div class="filt">
+      <div class="filt-head"><b>${esc(col)}</b><span class="n">${nChecked} sur ${vals.length} valeur${vals.length > 1 ? "s" : ""}</span>
+        <button type="button" data-fall="${esc(col)}">Tout</button><button type="button" data-fnone="${esc(col)}">Aucune</button>
+        <input type="text" data-search="${esc(col)}" placeholder="Rechercher…" value="${esc(searches[col] || "")}">
+        <button type="button" class="rm" data-frm="${esc(col)}" title="Retirer ce filtre">Retirer</button></div>
+      ${isD ? `<div class="filt-head">Période du <input type="date" data-from="${esc(col)}"> au <input type="date" data-to="${esc(col)}">
+        <button type="button" data-fperiod="${esc(col)}">Appliquer la période</button></div>` : ""}
+      <div class="vals">${list}</div>${more}</div>`;
+  }).join("");
+}
+
+$("filtAdd").addEventListener("click", () => {
+  const col = $("filtCol").value; if (!col) return;
+  filters[col] = distinctValues(col).map(([v]) => v);     // au départ tout est coché : décochez ce que vous excluez
+  saveFilters();
+});
+$("filtClear").addEventListener("click", () => { filters = {}; saveFilters(); });
+$("filtList").addEventListener("change", e => {
+  const t = e.target; if (!t.dataset.fcol) return;
+  const set = new Set(filters[t.dataset.fcol] || []);
+  t.checked ? set.add(t.dataset.fval) : set.delete(t.dataset.fval);
+  filters[t.dataset.fcol] = [...set]; saveFilters();
+});
+$("filtList").addEventListener("click", e => {
+  const t = e.target;
+  if (t.dataset.frm) { delete filters[t.dataset.frm]; saveFilters(); }
+  else if (t.dataset.fall) { filters[t.dataset.fall] = distinctValues(t.dataset.fall).map(([v]) => v); saveFilters(); }
+  else if (t.dataset.fnone) { filters[t.dataset.fnone] = []; saveFilters(); }
+  else if (t.dataset.fperiod) {
+    const col = t.dataset.fperiod, box = $("filtList");
+    const from = box.querySelector(`input[data-from="${CSS.escape(col)}"]`).value || "0000-01-01";
+    const to = box.querySelector(`input[data-to="${CSS.escape(col)}"]`).value || "9999-12-31";
+    filters[col] = distinctValues(col).map(([v]) => v).filter(v => v !== EMPTY && v >= from && v <= to);
+    saveFilters();
+  }
+});
+$("filtList").addEventListener("input", e => {
+  if (!e.target.dataset.search) return;
+  const col = e.target.dataset.search, pos = e.target.selectionStart;
+  renderFilters();
+  const i = $("filtList").querySelector(`input[data-search="${CSS.escape(col)}"]`); if (i) { i.focus(); i.setSelectionRange(pos, pos); }
+});
+
+// ---------------------------------------------------------------------------
+// Regroupement par établissement
+// ---------------------------------------------------------------------------
+let grpCol = "";
+const normKey = v => { const c = cleanValue(v); return c === null || c === "" ? null : String(c).trim().toUpperCase(); };
+
+function groupFeatures(features, recs) {
+  const recById = new Map(recs.map(r => [r.id, r]));
+  const groups = new Map(), loose = [];
+  features.forEach(f => {
+    const k = normKey((recById.get(f._id) || {})[grpCol]);
+    if (k === null) { loose.push(f); return; }
+    (groups.get(k) || groups.set(k, []).get(k)).push(f);
+  });
+  const out = [];
+  groups.forEach((list, k) => {
+    const props = {}, keys = [];
+    list.forEach(f => Object.keys(f.properties).forEach(c => { if (!keys.includes(c)) keys.push(c); }));
+    keys.forEach(c => {
+      const vals = list.map(f => f.properties[c]).filter(v => v !== null && v !== undefined && v !== "");
+      if (c === "grist_id") { props.grist_id = list[0].properties.grist_id; return; }
+      if (dateTypeOf(c)) {                                        // dates : première, dernière, nombre de jours
+        const sorted = vals.map(String).sort();
+        props[c + "_premier"] = sorted[0] ?? null; props[c + "_dernier"] = sorted[sorted.length - 1] ?? null;
+        props[c + "_nb_jours"] = new Set(sorted.map(v => v.slice(0, 10))).size;
+        return;
+      }
+      const distinct = [...new Set(vals.map(v => typeof v === "object" ? JSON.stringify(v) : v))];
+      if (distinct.length <= 1) props[c] = distinct.length ? vals[0] : null;
+      else if (vals.every(v => typeof v === "number")) props[c] = +vals.reduce((a, v) => a + v, 0).toFixed(6);
+      else if (vals.every(v => typeof v === "boolean")) props[c] = vals.filter(Boolean).length;
+      else props[c] = distinct.map(String).flatMap(v => v.split(", ")).filter((v, i, a) => a.indexOf(v) === i).join(", ");
+    });
+    props[grpCol] = props[grpCol] ?? list[0].properties[grpCol] ?? k;
+    props.nb_lignes = list.length;
+    out.push({ type: "Feature", geometry: list[0].geometry, properties: props, _name: list[0]._name, _id: list[0]._id, _key: k });
+  });
+  loose.forEach(f => { f.properties.nb_lignes = 1; out.push(f); });
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Table de référence : ajout des établissements non concernés
+// ---------------------------------------------------------------------------
+let ref = { mode: "", table: "", key: "", keyMain: "", lat: "", lon: "", cols: null, enrich: true, filters: {} };
+let refData = null;                  // { table, rows, cols, types }
+let refLoading = null, refError = "";
+let metaT = null, metaC = null, mainTableId = null;
+
+async function loadMeta(force) {
+  if (metaT && !force) return;
+  metaT = await grist.docApi.fetchTable("_grist_Tables");
+  metaC = await grist.docApi.fetchTable("_grist_Tables_column");
+}
+function typesOfTable(tableId) {
+  const types = {}; if (!metaT || !metaC) return types;
+  const ref = metaT.id[metaT.tableId.indexOf(tableId)];
+  metaC.id.forEach((_, i) => { if (metaC.parentId[i] === ref) types[metaC.colId[i]] = metaC.type[i]; });
+  return types;
+}
+function docTables() {
+  if (!metaT) return [];
+  return metaT.tableId.filter((t, i) => t && !t.startsWith("GristHidden") && !(metaT.summarySourceTable && metaT.summarySourceTable[i]) && t !== mainTableId);
+}
+async function loadRefTable(tableId) {
+  if (!tableId) { refData = null; return; }
+  if (refData && refData.table === tableId) return;
+  if (refLoading && refLoading.table === tableId) return refLoading.p;
+  const p = (async () => {
+    try {
+      await loadMeta();
+      const data = await grist.docApi.fetchTable(tableId);
+      const cols = Object.keys(data).filter(c => c !== "id" && c !== "manualSort" && !c.startsWith("gristHelper_"));
+      const rows = (data.id || []).map((id, i) => { const r = { id }; cols.forEach(c => r[c] = data[c][i]); return r; });
+      refData = { table: tableId, rows, cols, types: typesOfTable(tableId) }; refError = "";
+    } catch (e) { refData = null; refError = e && e.message ? e.message : String(e); }
+    refLoading = null;
+  })();
+  refLoading = { table: tableId, p };
+  return p;
+}
+const guess = (cols, re) => cols.find(c => re.test(c)) || "";
+function autoRef() {                 // colonnes devinées à la première sélection d'une table
+  const c = refData.cols;
+  if (!c.includes(ref.key)) ref.key = guess(c, /uai|^identifiant|numero_uai/i) || c[0] || "";
+  if (!c.includes(ref.lat)) ref.lat = guess(c, /^lat|latitude/i);
+  if (!c.includes(ref.lon)) ref.lon = guess(c, /^lon|^lng|longitude/i);
+  if (!tableColumns().includes(ref.keyMain)) ref.keyMain = grpCol || guess(tableColumns(), /uai/i) || "";
+  if (!Array.isArray(ref.cols)) ref.cols = c.filter(x => x !== ref.lat && x !== ref.lon &&
+    /nom|type|statut|commune|acad|depart|secteur|voie|ips|appartenance|ministere|^etat/i.test(x)).slice(0, 12);
+}
+function withTypes(types, fn) { const saved = colTypes; colTypes = types; try { return fn(); } finally { colTypes = saved; } }
+function refKeys(col, v) { return withTypes(refData.types, () => valueKeys(col, v)); }
+function refPasses(r, except) {
+  if (ref.mode !== "some") return true;
+  for (const [col, allowed] of Object.entries(ref.filters || {})) {
+    if (col === except) continue;
+    const set = new Set(allowed);
+    if (!refKeys(col, r[col]).some(k => set.has(k))) return false;
+  }
+  return true;
+}
+function refDistinct(col) {
+  const counts = new Map();
+  refData.rows.forEach(r => { if (!refPasses(r, col)) return; refKeys(col, r[col]).forEach(k => counts.set(k, (counts.get(k) || 0) + 1)); });
+  (ref.filters[col] || []).forEach(k => { if (!counts.has(k)) counts.set(k, 0); });
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "fr"));
+}
+
+// entités ajoutées + enrichissement des entités concernées
+function addReference(features, recs) {
+  const info = { added: 0, skipped: 0, matched: 0, filteredOut: 0 };
+  if (!ref.mode || !refData || !ref.key || !ref.lat || !ref.lon) return { features, info };
+  const keyName = ref.keyMain || ref.key;
+  const index = new Map();
+  refData.rows.forEach(r => { const k = normKey(r[ref.key]); if (k !== null && !index.has(k)) index.set(k, r); });
+  const carry = (ref.cols || []).filter(c => refData.cols.includes(c));
+  const props = r => { const o = {}; carry.forEach(c => o[c] = withTypes(refData.types, () => cleanCell(c, r[c]))); return o; };
+  // établissements concernés : toutes les lignes exportées (après filtres), même sans coordonnées
+  const concerned = new Set(recs.map(r => normKey(r[ref.keyMain])).filter(k => k !== null));
+  const recById = new Map(recs.map(r => [r.id, r]));
+  features.forEach(f => {
+    f.properties.concerne = 1;
+    if (!ref.enrich) return;
+    const k = f._key !== undefined && ref.keyMain === grpCol ? f._key : normKey((recById.get(f._id) || {})[ref.keyMain]);
+    const r = k !== null && k !== undefined ? index.get(k) : null;
+    if (!r) return;
+    info.matched++;
+    Object.entries(props(r)).forEach(([c, v]) => { if (!(c in f.properties)) f.properties[c] = v; });
+  });
+  const extra = [];
+  index.forEach((r, k) => {
+    if (concerned.has(k)) return;
+    if (!refPasses(r)) { info.filteredOut++; return; }
+    const lat = toNumber(r[ref.lat]), lon = toNumber(r[ref.lon]);
+    const g = { type: "Point", coordinates: [lon, lat] };
+    if (isNaN(lat) || isNaN(lon) || !geomValid(g)) { info.skipped++; return; }
+    const p = { [keyName]: cleanValue(r[ref.key]), ...props(r), concerne: 0 };
+    if (grpCol) p.nb_lignes = 0;
+    const nameCol = guess(carry, /^nom|appellation|denomination/i);
+    extra.push({ type: "Feature", geometry: g, properties: p, _name: nameCol ? String(p[nameCol] ?? k) : k, _id: "ref-" + r.id, _ref: true });
+  });
+  info.added = extra.length; info.concerned = concerned.size;
+  return { features: features.concat(extra), info };
+}
+
+const opt = (list, cur, empty) => (empty !== undefined ? `<option value="">${esc(empty)}</option>` : "") +
+  list.map(c => `<option value="${esc(c)}" ${c === cur ? "selected" : ""}>${esc(c)}</option>`).join("");
+
+function renderGroup() {
+  const cols = tableColumns();
+  $("grpCol").innerHTML = opt(cols, grpCol, "Ne pas regrouper (une entité par ligne)");
+  $("grpState").textContent = grpCol ? `(par « ${grpCol} »)` : "";
+}
+
+function renderRef() {
+  $("refMode").value = ref.mode || "";
+  const tables = docTables();
+  $("refTable").innerHTML = opt(tables, ref.table, tables.length ? "Choisir une table…" : "Aucune autre table dans le document");
+  const body = $("refBody");
+  if (!ref.mode) { body.innerHTML = ""; $("refState").textContent = ""; return; }
+  if (!ref.table) { body.innerHTML = `<p class="hint">Choisissez la table qui liste tous les établissements.</p>`; $("refState").textContent = ""; return; }
+  if (refError) { body.innerHTML = `<div class="msg err">Lecture de « ${esc(ref.table)} » impossible : ${esc(refError)}</div>`; return; }
+  if (!refData || refData.table !== ref.table) { body.innerHTML = `<p class="hint">Lecture de la table…</p>`; return; }
+  const c = refData.cols, sel = new Set(ref.cols || []);
+  const f = ref.filters || {};
+  const filtHtml = ref.mode !== "some" ? "" : `<div class="sec"><b>Quels établissements ajouter ?</b>
+      <div class="row" style="margin-bottom:6px"><select id="refFiltCol">${opt(c.filter(x => !(x in f)), "", "Filtrer sur la colonne…")}</select>
+        <button type="button" id="refFiltAdd">Ajouter un filtre</button></div>
+      ${Object.keys(f).map(col => {
+        const vals = refDistinct(col), allowed = new Set(f[col]);
+        const q = (refSearch[col] || "").toLowerCase(), shown = vals.filter(([v]) => !q || v.toLowerCase().includes(q));
+        return `<div class="filt"><div class="filt-head"><b>${esc(col)}</b><span class="n">${vals.filter(([v]) => allowed.has(v)).length} sur ${vals.length}</span>
+          <button type="button" data-rall="${esc(col)}">Tout</button><button type="button" data-rnone="${esc(col)}">Aucune</button>
+          <input type="text" data-rsearch="${esc(col)}" placeholder="Rechercher…" value="${esc(refSearch[col] || "")}">
+          <button type="button" class="rm" data-rrm="${esc(col)}">Retirer</button></div>
+          <div class="vals">${shown.slice(0, MAX_VALUES).map(([v, n]) => `<label title="${esc(v)}"><input type="checkbox" data-rcol="${esc(col)}" data-rval="${esc(v)}" ${allowed.has(v) ? "checked" : ""}> <span>${esc(v)}</span> <span class="c">${n}</span></label>`).join("")}</div>
+          ${shown.length > MAX_VALUES ? `<p class="hint">${shown.length - MAX_VALUES} autres valeurs : utilisez la recherche.</p>` : ""}</div>`;
+      }).join("") || `<p class="hint">Sans filtre, tous les autres établissements sont ajoutés. Exemple : filtrez sur le type (Lycée) et le statut (Public).</p>`}</div>`;
+  body.innerHTML = `
+    <div class="row">
+      <label>Identifiant dans la référence <select data-ref="key">${opt(c, ref.key, "Choisir…")}</select></label>
+      <label>Identifiant dans la table exportée <select data-ref="keyMain">${opt(tableColumns(), ref.keyMain, "Choisir…")}</select></label>
+      <label>Latitude <select data-ref="lat">${opt(c, ref.lat, "Choisir…")}</select></label>
+      <label>Longitude <select data-ref="lon">${opt(c, ref.lon, "Choisir…")}</select></label>
+    </div>
+    <div class="sec"><b>Colonnes de la référence à reprendre <span class="hint">(${sel.size} sur ${c.length})</span></b>
+      <div class="cols">${c.filter(x => x !== ref.lat && x !== ref.lon && x !== ref.key).map(x => `<label title="${esc(x)}"><input type="checkbox" data-rcarry="${esc(x)}" ${sel.has(x) ? "checked" : ""}> ${esc(x)}</label>`).join("")}</div>
+      <label class="check" style="margin-top:6px"><input type="checkbox" data-ref="enrich" ${ref.enrich ? "checked" : ""}> Reprendre aussi ces colonnes pour les établissements concernés (mêmes attributs pour tous les points)</label>
+    </div>${filtHtml}`;
+}
+let refSearch = {};
+
+async function saveRef() {
+  try { if (window.grist && grist.setOption) await grist.setOption("referentiel", ref); } catch (e) { /* droits insuffisants */ }
+  renderRef(); recompute();
+}
+async function onRefTable() {
+  renderRef();
+  if (!ref.table) { refData = null; recompute(); return; }
+  await loadRefTable(ref.table);
+  if (refData) autoRef();
+  saveRef();
+}
+$("grpCol").addEventListener("change", async e => {
+  grpCol = e.target.value;
+  if (grpCol && !ref.keyMain) ref.keyMain = grpCol;
+  try { if (window.grist && grist.setOption) await grist.setOption("regroupement", grpCol); } catch (err) { }
+  renderGroup(); renderRef(); recompute();
+});
+$("refMode").addEventListener("change", async e => {
+  ref.mode = e.target.value;
+  if (ref.mode && !metaT) { try { await loadMeta(); } catch (err) { refError = err.message; } }
+  if (ref.mode && ref.table) await onRefTable(); else saveRef();
+});
+$("refTable").addEventListener("change", e => { ref.table = e.target.value; ref.cols = null; ref.filters = {}; refSearch = {}; onRefTable(); });
+$("refBody").addEventListener("change", e => {
+  const t = e.target;
+  if (t.dataset.ref) { ref[t.dataset.ref] = t.type === "checkbox" ? t.checked : t.value; saveRef(); }
+  else if (t.dataset.rcarry) { const s = new Set(ref.cols || []); t.checked ? s.add(t.dataset.rcarry) : s.delete(t.dataset.rcarry); ref.cols = refData.cols.filter(c => s.has(c)); saveRef(); }
+  else if (t.dataset.rcol) { const s = new Set(ref.filters[t.dataset.rcol] || []); t.checked ? s.add(t.dataset.rval) : s.delete(t.dataset.rval); ref.filters[t.dataset.rcol] = [...s]; saveRef(); }
+});
+$("refBody").addEventListener("click", e => {
+  const t = e.target;
+  if (t.id === "refFiltAdd") { const col = $("refFiltCol").value; if (!col) return; ref.filters[col] = refDistinct(col).map(([v]) => v); saveRef(); }
+  else if (t.dataset.rrm) { delete ref.filters[t.dataset.rrm]; saveRef(); }
+  else if (t.dataset.rall) { ref.filters[t.dataset.rall] = refDistinct(t.dataset.rall).map(([v]) => v); saveRef(); }
+  else if (t.dataset.rnone) { ref.filters[t.dataset.rnone] = []; saveRef(); }
+});
+$("refBody").addEventListener("input", e => {
+  const col = e.target.dataset.rsearch; if (!col) return;
+  refSearch[col] = e.target.value; const pos = e.target.selectionStart; renderRef();
+  const i = $("refBody").querySelector(`input[data-rsearch="${CSS.escape(col)}"]`); if (i) { i.focus(); i.setSelectionRange(pos, pos); }
+});
+
+function recompute() {
+  // Colonnes du panneau de Grist si elles sont associées ; sinon, sur une table du socle, coordonnées de l'établissement
+  const panel = lastMappings || {};
+  const manuel = !!(panel.Geometrie || (panel.Latitude && panel.Longitude));
+  const cols = manuel ? panel : (socle ? { ...socle.auto } : panel);
+  const hasGeom = !!cols.Geometrie, hasLatLon = !!(cols.Latitude && cols.Longitude);
+  state.mode = hasGeom ? "geom" : hasLatLon ? "latlon" : null;
+  state.total = lastRecords.length;
+  let recs = filteredRecords();
+  state.filteredOut = lastRecords.length - recs.length;
+  state.anciennes = 0;
+  if (socle && socle.dv && dvOnly) { const n = recs.length; recs = recs.filter(r => r[socle.dv]); state.anciennes = n - recs.length; }
+  if (!state.mode) { state.features = []; state.problems = []; render(); return; }
+  const rows = recs.map(r => manuel
+    ? ((window.grist && grist.mapColumnNames) ? (grist.mapColumnNames(r) || {}) : r)
+    : { Latitude: r[cols.Latitude], Longitude: r[cols.Longitude], Geometrie: cols.Geometrie ? r[cols.Geometrie] : undefined, Nom: r[cols.Nom] });
+  const res = buildCollection(recs, { cols, rows }, { withId: $("withId").checked, selected: selectedSet() });
+  let feats = res.features;
+  state.grouped = grpCol ? feats.length : 0;
+  if (grpCol) feats = groupFeatures(feats, recs);
+  const added = addReference(feats, recs);
+  state.features = added.features; state.problems = res.problems; state.ref = ref.mode && refData ? added.info : null;
+  $("source").textContent = hasGeom
+    ? `Géométrie lue dans la colonne « ${cols.Geometrie} »`
+    : !manuel && socle ? `Signalements placés à leur établissement (référentiel « ${socle.referentiel} », colonnes « ${cols.Latitude} » et « ${cols.Longitude} »)`
+    : `Points construits depuis « ${cols.Latitude} » et « ${cols.Longitude} »`;
+  render();
+}
+
+// ---------------------------------------------------------------------------
+// Socle v2 : signalements placés à leur établissement
+// ---------------------------------------------------------------------------
+// Sur une table de réponses du socle, chaque ligne reçoit les colonnes de son établissement (référentiel) :
+// coordonnées, UAI, commune, académie… (préfixées « Etab_ » si la table a déjà une colonne du même nom).
+// La colonne Établissement prend le nom de l'établissement au lieu de son numéro de ligne.
+let socle = null;     // { referentiel, etabCol, auto: { Latitude, Longitude, Nom }, uai, dv, qualif, ajoutees }
+let dvOnly = true, colorBy = null;   // colorBy null : pas encore choisi (qualification par défaut)
+const refIdOf = v => typeof v === "number" ? v : (v && typeof v === "object" && "rowId" in v) ? v.rowId : (Array.isArray(v) && v[0] === "R") ? v[2] : null;
+async function enrichirSocle(records) {
+  socle = null;
+  const S = window.Socle;
+  if (!S || !mainTableId || !grist.docApi) return records;
+  try {
+    const config = await S.lireConfig(); if (!config) return records;
+    const g = S.general(config), meta = await S.lireMeta(), tMeta = meta[mainTableId]; if (!tMeta) return records;
+    const assoc = config.valeurs.roles || {};
+    const rr = S.resoudreRoles("reponses", tMeta, { reponses: mainTableId, referentiel: g.referentiel }, assoc.reponses || {}, {});
+    const etabCol = rr.Etablissement && rr.Etablissement.col; if (!etabCol) return records;
+    const refTable = S.cibleRef(tMeta.colonnes[etabCol].type); if (!refTable || !meta[refTable]) return records;
+    const rf = S.resoudreRoles("referentiel", meta[refTable], { reponses: mainTableId, referentiel: refTable }, assoc.referentiel || {}, {});
+    const c = role => rf[role] && rf[role].col;
+    if (!c("Latitude") || !c("Longitude")) return records;
+    const data = await grist.docApi.fetchTable(refTable);
+    const idx = new Map((data.id || []).map((id, i) => [id, i]));
+    // colonnes déjà recopiées par formule dans la table ($Etablissement.UAI…) : reprises telles quelles, sans doublon
+    const deja = new Map();
+    Object.values(tMeta.colonnes).forEach(x => { const m = x.isFormula && /^\s*(?:return\s+)?\$(\w+)\.(\w+)\s*$/.exec(x.formula || ""); if (m && m[1] === etabCol) deja.set(m[2], x.colId); });
+    const refCols = Object.keys(data).filter(k => k !== "id" && k !== "manualSort" && !k.startsWith("gristHelper_") && !deja.has(k));
+    const present = new Set(); records.forEach(r => Object.keys(r).forEach(k => present.add(k)));
+    const nom = col => deja.get(col) || (present.has(col) ? `Etab_${col}` : col);
+    await loadMeta(); const refTypes = typesOfTable(refTable);
+    refCols.forEach(col => { colTypes[nom(col)] = refTypes[col]; });
+    // département et académie déduits des coordonnées (fond de carte du socle) quand le référentiel ne les donne pas
+    const G = window.Geo, terr = [];
+    if (G && !c("Departement")) terr.push(["Departement_carte", l => l.dep + " · " + l.departement]);
+    if (G && !c("Academie")) terr.push(["Academie_carte", l => l.academie]);
+    const lieux = new Map();
+    const out = records.map(r => {
+      const id = refIdOf(r[etabCol]), i = id ? idx.get(id) : undefined, e = { ...r };
+      if (i !== undefined) {
+        refCols.forEach(col => { e[nom(col)] = data[col][i]; }); if (c("Nom")) e[etabCol] = data[c("Nom")][i];
+        if (terr.length) {
+          if (!lieux.has(id)) lieux.set(id, G.localiser(data[c("Latitude")][i], data[c("Longitude")][i]));
+          const l = lieux.get(id); terr.forEach(([col, f]) => { e[col] = l ? f(l) : null; });
+        }
+      }
+      return e;
+    });
+    terr.forEach(([col]) => { colTypes[col] = "Text"; });
+    colTypes[etabCol] = "Text";
+    socle = { referentiel: refTable, etabCol, auto: { Latitude: nom(c("Latitude")), Longitude: nom(c("Longitude")), Nom: c("Nom") ? nom(c("Nom")) : etabCol },
+      uai: c("UAI") ? nom(c("UAI")) : null, dv: rr.Derniere_version && rr.Derniere_version.col, qualif: rr.Qualification && rr.Qualification.col,
+      ajoutees: [...refCols.map(nom), ...terr.map(([col]) => col)] };
+    return out;
+  } catch (e) { diagError = e && e.message ? e.message : String(e); return records; }
+}
+
+// ---------------------------------------------------------------------------
+// Carte (Leaflet, fond Plan IGN) ; à défaut, aperçu schématique
+// ---------------------------------------------------------------------------
+const PALETTE = ["#000091", "#e1000f", "#18753c", "#b34000", "#6a6af4", "#a94645", "#009081", "#7d4e5b", "#c08c65", "#465f9d", "#ce614a", "#5770be"];
+const FOND_IGN = "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/png&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}";
+let carte = null, couche = null, cadrage = "";
+// Couleurs des choix d'une colonne Choice / ChoiceList (réglées dans Grist), sinon palette
+function couleursChoix(col) {
+  const out = {}; if (!metaT || !metaC || !mainTableId) return out;
+  const tref = metaT.id[metaT.tableId.indexOf(mainTableId)];
+  const i = metaC.id.findIndex((_, k) => metaC.parentId[k] === tref && metaC.colId[k] === col);
+  if (i < 0) return out;
+  try { const o = JSON.parse(metaC.widgetOptions[i] || "{}"); Object.entries(o.choiceOptions || {}).forEach(([v, x]) => { if (x && x.fillColor) out[v] = x.fillColor; }); } catch (_) { /* options illisibles */ }
+  return out;
+}
+const valeurCouleur = f => { const v = f.properties[colorBy]; if (v === null || v === undefined || v === "") return EMPTY; return String(v).split(", ")[0]; };
+function legendeCouleurs() {
+  if (!colorBy) return null;
+  const vals = [...new Set(state.features.filter(f => !f._ref && colorBy in f.properties).map(valeurCouleur))].sort((a, b) => a.localeCompare(b, "fr"));
+  const choix = couleursChoix(colorBy), m = new Map(); let k = 0;
+  vals.forEach(v => m.set(v, choix[v] || (v === EMPTY ? "#a3a3b2" : PALETTE[k++ % PALETTE.length])));
+  return m;
+}
+function popupHtml(f) {
+  const lignes = Object.entries(f.properties).filter(([, v]) => v !== null && v !== undefined && v !== "").slice(0, 12)
+    .map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(String(v).length > 160 ? String(v).slice(0, 160) + "…" : v)}</td></tr>`).join("");
+  return `<b>${esc(f._name ?? ("Ligne " + f._id))}</b><table>${lignes}</table>`;
+}
+function renderCarte() {
+  if (!window.L) { $("carte").classList.remove("active"); $("preview").style.display = ""; $("couleurs").innerHTML = ""; if (!renderPreviewFond()) renderPreview(); return; }
+  $("preview").style.display = "none"; $("carte").classList.add("active");
+  if (!carte) {
+    carte = L.map("carte", { preferCanvas: true, scrollWheelZoom: true });
+    L.tileLayer(FOND_IGN, { maxZoom: 19, attribution: "© IGN – Plan IGN" }).addTo(carte);
+    couche = L.layerGroup().addTo(carte);
+    carte.setView([46.6, 2.4], 5);
+  }
+  couche.clearLayers();
+  const pal = legendeCouleurs(), pts = [];
+  [...state.features].sort((a, b) => !!b._ref - !!a._ref).forEach(f => {
+    const coul = f._ref ? "#a3a3b2" : pal ? (pal.get(valeurCouleur(f)) || "#000091") : "#000091";
+    const g = f.geometry;
+    if (g.type === "Point" || g.type === "MultiPoint") {
+      (g.type === "Point" ? [g.coordinates] : g.coordinates).forEach(c => {
+        pts.push([c[1], c[0]]);
+        L.circleMarker([c[1], c[0]], { radius: f._ref ? 3 : 6, color: "#ffffff", weight: f._ref ? 0.5 : 1, fillColor: coul, fillOpacity: f._ref ? 0.55 : 0.9 })
+          .bindPopup(popupHtml(f)).addTo(couche);
+      });
+    } else {
+      const l = L.geoJSON(g, { style: { color: coul, weight: 1.5, fillOpacity: 0.2 } }).bindPopup(popupHtml(f)).addTo(couche);
+      try { const b = l.getBounds(); pts.push(b.getSouthWest(), b.getNorthEast()); } catch (_) { /* géométrie vide */ }
+    }
+  });
+  // recadrage seulement quand l'ensemble des entités change (sinon on garde le zoom de l'utilisateur)
+  const sig = `${state.features.length}|${state.features.slice(0, 50).map(f => f._id).join(",")}`;
+  if (pts.length && sig !== cadrage) { cadrage = sig; carte.fitBounds(L.latLngBounds(pts), { padding: [24, 24], maxZoom: 13 }); }
+  setTimeout(() => carte.invalidateSize(), 0);
+  $("couleurs").innerHTML = pal && pal.size ? [...pal.entries()].map(([v, c]) => `<span><i style="background:${c}"></i>${esc(v)}</span>`).join("")
+    + (state.ref ? `<span><i style="background:#a3a3b2"></i>Établissements ajoutés</span>` : "") : "";
+}
+function renderSocle() {
+  $("socleBox").style.display = socle ? "flex" : (window.L ? "flex" : "none");
+  $("dvBox").style.display = socle && socle.dv ? "flex" : "none";
+  $("dvOnly").checked = dvOnly;
+  if (colorBy === null) colorBy = socle && socle.qualif ? socle.qualif : "";
+  const cols = tableColumns();
+  $("colorBy").innerHTML = opt(cols, colorBy, "une seule couleur");
+}
+$("dvOnly").addEventListener("change", async e => {
+  dvOnly = e.target.checked;
+  try { if (window.grist && grist.setOption) await grist.setOption("derniereVersion", dvOnly); } catch (err) { /* droits insuffisants */ }
+  recompute();
+});
+$("colorBy").addEventListener("change", async e => {
+  colorBy = e.target.value;
+  try { if (window.grist && grist.setOption) await grist.setOption("couleur", colorBy); } catch (err) { /* droits insuffisants */ }
+  renderCarte();
+});
+if (window.Socle) $("version").textContent = `socle ${window.Socle.VERSION}`;
+
+if (window.grist) {
+  grist.ready({
+    requiredAccess: "full",          // nécessaire pour lire toutes les colonnes (includeColumns: "normal")
+    columns: [
+      { name: "Latitude", title: "Latitude", optional: true, type: "Numeric,Text,Any", description: "Degrés décimaux (WGS84)" },
+      { name: "Longitude", title: "Longitude", optional: true, type: "Numeric,Text,Any", description: "Degrés décimaux (WGS84)" },
+      { name: "Geometrie", title: "Géométrie (WKT ou GeoJSON)", optional: true, type: "Text,Any", description: "À la place de Latitude/Longitude" },
+      { name: "Nom", title: "Libellé (KML/GPX)", optional: true, type: "Any" },
+    ],
+  });
+  if (grist.onOptions) grist.onOptions((opts, settings) => {
+    savedCols = (opts && Array.isArray(opts.colonnes)) ? opts.colonnes : null;
+    filters = (opts && opts.filtres && typeof opts.filtres === "object") ? opts.filtres : {};
+    grpCol = (opts && typeof opts.regroupement === "string") ? opts.regroupement : "";
+    if (opts && opts.referentiel && typeof opts.referentiel === "object") ref = { ...ref, ...opts.referentiel, filters: opts.referentiel.filters || {} };
+    accessLevel = settings && settings.accessLevel;
+    if (opts && typeof opts.derniereVersion === "boolean") dvOnly = opts.derniereVersion;
+    if (opts && typeof opts.couleur === "string") colorBy = opts.couleur;
+    optionsLoaded = true; renderColumns(); renderFilters(); renderGroup(); renderRef(); recompute();
+    if (ref.mode && ref.table) loadRefTable(ref.table).then(() => { if (refData) autoRef(); renderRef(); recompute(); });
+  });
+  // "normal" = toutes les colonnes de la table, pas seulement celles associées dans le panneau
+  let typesFor = null;
+  async function loadColTypes() {
+    try {
+      const tbl = grist.selectedTable || (grist.getTable && grist.getTable());
+      const tableId = tbl && tbl.getTableId ? await tbl.getTableId() : null;
+      if (!tableId || tableId === typesFor || !grist.docApi) return;
+      mainTableId = tableId;
+      await loadMeta(true);
+      colTypes = typesOfTable(tableId); typesFor = tableId;
+    } catch (e) { /* sans métadonnées, les dates reconnues restent celles transmises comme objets Date */ }
+  }
+  grist.onRecords(async (records, mappings) => {
+    lastRecords = records || []; lastMappings = mappings;
+    await loadColTypes();
+    let source = "widget";
+    // Repli : si Grist n'a envoyé que les colonnes associées (ancienne version, option ignorée…),
+    // on lit la table entière et on complète les lignes reçues (les filtres du widget restent respectés).
+    const received = new Set(); lastRecords.forEach(r => Object.keys(r).forEach(k => received.add(k)));
+    const mappedOnly = [...received].every(k => k === "id" || Object.values(mappings || {}).includes(k));
+    if (lastRecords.length && mappedOnly) {
+      try {
+        const tbl = grist.selectedTable || (grist.getTable && grist.getTable());
+        const tableId = tbl && tbl.getTableId ? await tbl.getTableId() : null;
+        if (tableId && grist.docApi && grist.docApi.fetchTable) {
+          const data = await grist.docApi.fetchTable(tableId);
+          const idx = new Map((data.id || []).map((id, i) => [id, i]));
+          const colIds = Object.keys(data).filter(c => c !== "id" && c !== "manualSort" && !c.startsWith("gristHelper_"));
+          lastRecords = lastRecords.map(r => {
+            const i = idx.get(r.id); if (i === undefined) return r;
+            const full = { ...r };
+            colIds.forEach(c => { if (!(c in full)) full[c] = data[c][i]; });
+            return full;
+          });
+          source = "table " + tableId;
+        }
+      } catch (e) { diagError = e && e.message ? e.message : String(e); }
+    }
+    diagSource = source;
+    lastRecords = await enrichirSocle(lastRecords);
+    if (socle && !ref.table) { ref.table = socle.referentiel; }
+    renderSocle(); renderColumns(); renderFilters(); renderGroup(); renderRef(); recompute();
+  }, { includeColumns: "normal" });
+} else {
+  $("source").textContent = "API Grist introuvable : ce widget doit être ouvert dans Grist.";
+}
+</script>
+</body>
+</html>

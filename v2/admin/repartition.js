@@ -13,7 +13,7 @@
   const ROLES_CRITERES = ["Academie", "Departement", "Nom_circonscription", "Statut_public_prive", "Libelle_nature", "Type", "Region_academique"];
   const NOMS_CRITERES = { Academie: "Académie", Departement: "Département", Nom_circonscription: "Circonscription", Statut_public_prive: "Public / privé", Libelle_nature: "Nature", Type: "Type", Region_academique: "Région académique" };
   const PREFIXE_PAGE = "Formulaire ";
-  const URL_SAISIE_V2 = /\/v2\/saisie\/?(index\.html)?(\?.*)?$/i;
+  const URL_SAISIE_V2 = /\/(v2|prod)\/saisie\/?(index\.html)?(\?.*)?$/i;   // v2 (développement) ou prod (version figée)
 
   /* ---------- Référentiel : valeurs des critères possibles ---------- */
   // { table, cols: {colId: {label, ref}}, roles: {role: colId}, valeurs: {colId: [{v, n}]} } ou { absent } / { erreur }

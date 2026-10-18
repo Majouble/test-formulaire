@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Administration des signalements</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="../commun/theme.js"></script>
+<script src="../commun/socle.js"></script>
+<script src="../commun/geo.js"></script>
+<script src="../commun/point-moteur.js"></script>
+<link rel="stylesheet" href="formulaires.css">
+<link rel="stylesheet" href="../tableau-de-bord/tableau.css">
+<style>
+  :root {
+    --fond: #f6f6f6; --carte: #fff; --texte: #1e1e1e; --doux: #666; --trait: #ddd;
+    --accent: #000091; --accent-clair: #e3e3fd; --ok: #18753c; --ok-clair: #b8fec9;
+    --alerte: #b34000; --alerte-clair: #ffe9e6; --info-clair: #e8edff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--texte); background: var(--fond); }
+  header { background: var(--carte); border-bottom: 1px solid var(--trait); padding: 12px 16px 0; position: sticky; top: 0; z-index: 2; }
+  h1 { font-size: 17px; margin: 0; }
+  .theme-bouton { margin-left: 10px; font: inherit; font-size: 14px; line-height: 1; padding: 3px 7px; border: 1px solid var(--trait); border-radius: 12px; background: var(--carte); color: var(--texte); cursor: pointer; vertical-align: 2px; }
+  .version { color: var(--doux); font-size: 12px; margin-left: 8px; font-weight: normal; }
+  nav { display: flex; gap: 4px; margin-top: 10px; flex-wrap: wrap; }
+  nav button { border: 0; background: none; padding: 8px 12px; font: inherit; color: var(--doux); border-bottom: 3px solid transparent; cursor: pointer; }
+  nav button[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+  nav button:disabled { cursor: default; opacity: .55; }
+  main { padding: 16px; max-width: 980px; }
+  main[hidden] { display: none; }
+  main#formulaires { padding: 0; max-width: none; }
+  #formulaires .app { height: calc(100vh - 80px); }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .carte { background: var(--carte); border: 1px solid var(--trait); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .carte h2 { font-size: 15px; margin: 0 0 4px; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .carte > p.aide { color: var(--doux); margin: 0 0 12px; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .bandeau { border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-weight: 600; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .bandeau.ok { background: var(--ok-clair); color: var(--ok); }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .bandeau.alerte { background: var(--alerte-clair); color: var(--alerte); }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .bandeau.info { background: var(--info-clair); color: var(--accent); }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) table { width: 100%; border-collapse: collapse; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) th, :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--trait); vertical-align: top; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) th { font-size: 12px; color: var(--doux); font-weight: 600; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) select, :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) input[type="text"], :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) textarea { font: inherit; padding: 5px 8px; border: 1px solid var(--x-bbbbbb); border-radius: 4px; width: 100%; background: var(--x-ffffff); }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) textarea { min-height: 64px; resize: vertical; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) label.champ { display: block; margin-bottom: 10px; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) label.champ span { display: block; font-weight: 600; margin-bottom: 3px; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) label.champ small { display: block; color: var(--doux); font-weight: normal; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .grille { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  @media (max-width: 640px) { :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .grille { grid-template-columns: 1fr; } }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .pastille { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--x-eeeeee); color: var(--doux); white-space: nowrap; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .pastille.manque { background: var(--alerte-clair); color: var(--alerte); }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .pastille.reco { background: var(--info-clair); color: var(--accent); }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .pastille.ok { background: var(--ok-clair); color: var(--ok); }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .groupe { font-size: 12px; font-weight: 600; color: var(--doux); text-transform: uppercase; letter-spacing: .03em; margin: 14px 0 6px; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .etape { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--trait); }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .etape input { margin-top: 3px; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .etape .detail { color: var(--doux); font-size: 13px; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .boutons { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) button.primaire, :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) button.secondaire { font: inherit; padding: 7px 14px; border-radius: 4px; cursor: pointer; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) button.primaire { background: var(--accent); color: var(--x-ffffff); border: 1px solid var(--accent); }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) button.secondaire { background: var(--x-ffffff); color: var(--accent); border: 1px solid var(--accent); }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) button:disabled { opacity: .5; cursor: default; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .statut { font-size: 13px; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .statut.ok { color: var(--ok); }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .statut.err { color: var(--alerte); }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) ul.journal { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) ul.journal li.err { color: var(--alerte); }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .vide { color: var(--doux); font-style: italic; }
+  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) code { background: var(--x-f0f0f0); padding: 0 4px; border-radius: 3px; font-size: 12.5px; }
+  /* onglets Équipe et Planning */
+  main#planning { max-width: 1200px; }
+  :is(#equipe, #planning, #acces, #liens) .eq-table tr.eq-ligne { cursor: pointer; }
+  :is(#equipe, #planning, #acces, #liens) .eq-table tr.eq-ligne:hover, :is(#equipe, #planning, #acces, #liens) .eq-table tr.eq-ligne:focus, #planning .eq-table tr.choisi { background: var(--accent-clair); outline: none; }
+  #equipe .eq-table tr.inactif td { color: var(--doux); }
+  #equipe .eq-criteres { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
+  #equipe .eq-criteres select { width: auto; }
+  :is(#equipe, #planning, #acces, #liens) .eq-lib { display: block; font-weight: 600; margin-bottom: 4px; }
+  #equipe .eq-criteres .eq-lib { display: inline; margin: 0 4px 0 0; }
+  #equipe .crit { display: inline-flex; align-items: center; gap: 2px; background: var(--accent-clair); color: var(--accent); border-radius: 12px; padding: 2px 4px 2px 10px; font-size: 13px; }
+  #equipe .crit button { border: 0; background: none; color: inherit; cursor: pointer; font: inherit; padding: 0 4px; }
+  :is(#equipe, #planning, #acces, #liens) .eq-crit-lib { font-size: 12px; color: var(--doux); margin: 8px 0 4px; }
+  :is(#equipe, #planning, #acces, #liens) .eq-puces { display: flex; flex-wrap: wrap; gap: 4px; }
+  :is(#equipe, #planning, #acces, #liens) .eq-puce { font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 14px; border: 1px solid var(--trait); background: var(--x-ffffff); cursor: pointer; }
+  :is(#equipe, #planning, #acces, #liens) .eq-puce.on { background: var(--accent); border-color: var(--accent); color: var(--x-ffffff); }
+  #equipe .eq-role { display: block; margin: 4px 0; }
+  #equipe .eq-case { display: flex; gap: 6px; align-items: center; font-weight: normal !important; }
+  :is(#equipe, #planning, #acces, #liens) div.champ { margin-bottom: 12px; }
+  :is(#equipe, #planning, #acces, #liens) .avert { background: var(--alerte-clair); color: var(--alerte); padding: 8px 12px; border-radius: 6px; margin: 10px 0 0; }
+  #equipe .eq-reprise { background: var(--info-clair); border-radius: 6px; padding: 10px 12px; margin-top: 12px; }
+  #equipe .eq-reprise ul { margin: 6px 0 8px; padding-left: 18px; }
+  :is(#equipe, #planning, #acces, #liens) button.danger { color: var(--alerte); border-color: var(--alerte); }
+  :is(#equipe, #planning, #acces, #liens) details summary { cursor: pointer; }
+  :is(#equipe, #planning, #acces, #liens) details[open] summary { margin-bottom: 8px; }
+  #planning .pl-barre { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  #planning .pl-barre h2 { margin: 0 8px 0 0 !important; }
+  #planning button.petit { padding: 4px 10px !important; font-size: 13px; }
+  #planning .pl-grille { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+  @media (max-width: 900px) { #planning .pl-grille { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  #planning .pl-col { background: var(--x-fafafa); border: 1px solid var(--trait); border-radius: 6px; padding: 6px; display: flex; flex-direction: column; gap: 6px; min-height: 120px; }
+  #planning .pl-col.auj { border-color: var(--accent); box-shadow: inset 0 3px 0 var(--accent); }
+  #planning .pl-col-tete { font-weight: 600; font-size: 13px; text-transform: capitalize; }
+  #planning .pl-creneau { text-align: left; font: inherit; font-size: 12px; background: var(--x-ffffff); border: 1px solid var(--trait); border-left: 4px solid var(--accent); border-radius: 4px; padding: 5px 6px; cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+  #planning .pl-creneau.alerte { border-left-color: var(--alerte); }
+  #planning .pl-creneau.choisi { background: var(--accent-clair); }
+  #planning .pl-c-nom { font-weight: 600; }
+  #planning .pl-c-h { color: var(--doux); }
+  #planning .pl-c-ag small { color: var(--doux); margin-left: 4px; }
+  #planning .pl-c-vide { color: var(--alerte); font-style: italic; }
+  #planning .pl-ajout { font: inherit; font-size: 12px; background: none; border: 1px dashed var(--x-bbbbbb); border-radius: 4px; color: var(--accent); padding: 4px; cursor: pointer; margin-top: auto; }
+  #planning .pl-defile { overflow-x: auto; }
+  #planning .pl-tableau { border-collapse: separate; border-spacing: 0; min-width: 760px; table-layout: fixed; }
+  #planning .pl-tableau th, #planning .pl-tableau td { border-bottom: 1px solid var(--trait); border-right: 1px solid var(--trait); padding: 0; vertical-align: top; }
+  #planning .pl-tableau thead th { text-align: center; font-size: 13px; text-transform: capitalize; padding: 6px 4px; color: var(--texte); }
+  #planning .pl-tableau th[scope=row] { text-align: left; font-size: 13px; padding: 6px 8px; width: 130px; background: var(--x-fafafa); color: var(--texte); }
+  #planning .pl-tableau td.auj, #planning .pl-tableau th.auj { background: var(--x-f3f3ff); }
+  #planning .pl-tableau th.auj { box-shadow: inset 0 3px 0 var(--accent); }
+  #planning .pl-tableau .choisi-col { background: var(--x-ececfe); }
+  #planning .pl-ligne-compte td { text-align: center; padding: 6px 4px; }
+  #planning .pl-nb { display: inline-block; min-width: 28px; font-size: 18px; font-weight: 700; color: var(--accent); }
+  #planning .pl-nb.zero { color: var(--x-bbbbbb); }
+  #planning .pl-nb-champs { display: block; font-size: 11px; color: var(--doux); }
+  #planning .pl-champ { display: inline-block; font-size: 10px; font-weight: 700; padding: 0 5px; margin-left: 4px; border-radius: 8px; background: var(--x-eeeeee); color: var(--texte); vertical-align: 1px; }
+  #planning .pl-champ-en { background: var(--x-e3e3fd); color: var(--x-000091); }
+  #planning .pl-champ-esr { background: var(--x-fde9d6); color: var(--x-8a3b00); }
+  #planning .pl-mini:disabled { opacity: .3; cursor: default; }
+  #planning .pl-cr-jour, #planning .pl-cellule { display: flex; flex-direction: column; gap: 2px; width: 100%; min-height: 44px; text-align: left; font: inherit; font-size: 12px; background: none; border: 0; padding: 5px 6px; cursor: pointer; position: relative; }
+  #planning .pl-cr-jour:hover, #planning .pl-cellule:hover { background: var(--accent-clair); }
+  #planning .pl-cr-jour small { color: var(--doux); }
+  #planning .pl-cr-jour.alerte { box-shadow: inset 3px 0 0 var(--alerte); }
+  #planning .pl-alerte-ic { position: absolute; top: 3px; right: 5px; color: var(--alerte); }
+  #planning .pl-cellule.choisie { background: var(--accent-clair); box-shadow: inset 0 0 0 2px var(--accent); }
+  #planning .pl-nom { font-weight: 600; font-size: 13px; }
+  #planning .pl-nom small { font-weight: normal; color: var(--doux); }
+  #planning .pl-plus { color: var(--x-bbbbbb); font-size: 16px; margin: auto; }
+  #planning .pl-bloc-creneau { border: 1px solid var(--trait); border-radius: 6px; padding: 8px 10px; margin: 8px 0; }
+  #planning .pl-bloc-tete { margin-bottom: 6px; }
+  #planning .pl-bloc-creneau select { width: auto; margin-top: 4px; }
+  #planning .pl-crit { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; margin: 4px 0; }
+  #planning .pl-crit .eq-crit-lib { margin: 0; min-width: 90px; }
+  #planning .pl-note { width: 200px !important; }
+  #planning .eq-criteres { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 0 0 8px; }
+  #planning .eq-criteres select { width: auto; }
+  #planning .crit { display: inline-flex; align-items: center; gap: 2px; background: var(--accent-clair); color: var(--accent); border-radius: 12px; padding: 2px 4px 2px 10px; font-size: 13px; }
+  #planning .crit button { border: 0; background: none; color: inherit; cursor: pointer; font: inherit; padding: 0 4px; }
+  #planning .pl-outils { margin-top: 12px; }
+  #planning .pl-modeles { display: flex; flex-wrap: wrap; gap: 8px; }
+  #planning .pl-modele { display: flex; flex-direction: column; font-size: 12px; text-transform: capitalize; }
+  #planning .pl-modele select { width: auto; }
+  #planning .pl-jour-creneau { border-left: 4px solid var(--trait); padding: 4px 10px; margin: 8px 0; }
+  #planning .pl-jour-creneau.en-cours { border-left-color: var(--ok); background: var(--x-f3fbf5); }
+  #planning .pl-jour-creneau ul { margin: 4px 0; padding-left: 18px; }
+  #planning .pl-propre { background: var(--x-fff3a6); padding: 0 4px; border-radius: 3px; }
+  #planning .lien { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; font-size: 13px; }
+  #planning .pl-champs { display: grid; grid-template-columns: 2fr 1fr 1fr 2fr; gap: 0 12px; }
+  @media (max-width: 700px) { #planning .pl-champs { grid-template-columns: 1fr 1fr; } }
+  #planning input[type=time] { font: inherit; padding: 4px 6px; border: 1px solid var(--x-bbbbbb); border-radius: 4px; }
+  #planning .pl-aff { border: 1px solid var(--trait); border-radius: 6px; padding: 8px; margin-bottom: 6px; }
+  #planning .pl-aff-haut { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #planning .pl-aff-haut select { width: auto; }
+  #planning .pl-case { display: inline-flex; gap: 4px; align-items: center; font-size: 13px; }
+  #planning .pl-mini { font: inherit; border: 1px solid var(--trait); background: var(--x-ffffff); border-radius: 4px; width: 26px; height: 26px; cursor: pointer; padding: 0; margin-left: auto; }
+  #planning .pl-mini.danger { color: var(--alerte); }
+  #planning .pl-ajout-agent { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+  #planning .pl-ajout-agent select { width: auto; }
+  #planning .pl-detail { margin-top: 12px; }
+  #planning .pl-detail h3 { font-size: 14px; margin: 0 0 6px; }
+  #planning .pl-detail tr.avenir td { color: var(--accent); }
+  #planning .pl-reg-ligne { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
+  #planning .pl-reg-ligne input[type=text] { width: 220px; }
+  #planning .pl-reg-ligne .pl-mini { margin-left: 0; }
+  #planning .pl-reg-creneau { margin-left: 20px; }
+  #planning .pl-reg-modele { border-left: 3px solid var(--accent-clair); padding-left: 8px; margin: 8px 0; }
+  /* onglet Actions (kanban) */
+  main#onglet-actions { max-width: none; padding: 0; }
+  #onglet-actions button.primaire, #onglet-actions button.secondaire { font: inherit; padding: 7px 14px; border-radius: 4px; cursor: pointer; }
+  #onglet-actions button.primaire { background: var(--accent); color: var(--x-ffffff); border: 1px solid var(--accent); }
+  #onglet-actions button.secondaire { background: var(--x-ffffff); color: var(--accent); border: 1px solid var(--accent); }
+  #onglet-actions button.danger { color: var(--alerte); border-color: var(--alerte); }
+  #onglet-actions .statut { font-size: 13px; margin: 0 16px; } #onglet-actions .statut.ok { color: var(--ok); } #onglet-actions .statut.err { color: var(--alerte); }
+  #onglet-actions .ak-vide-table { padding: 24px 16px; }
+  #onglet-actions .ak-barre { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 16px; background: var(--x-ffffff); border-bottom: 1px solid var(--trait); }
+  #onglet-actions .ak-barre input[type=search], #onglet-actions .ak-barre select { font: inherit; padding: 6px 8px; border: 1px solid var(--x-bbbbbb); border-radius: 4px; }
+  #onglet-actions .ak-case { font-size: 13px; color: var(--doux); display: flex; gap: 4px; align-items: center; }
+  #onglet-actions .ak-stats { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+  #onglet-actions .ak-stat { font-size: 12px; background: var(--x-f2f2f2); border-radius: 12px; padding: 3px 10px; color: var(--doux); }
+  #onglet-actions .ak-stat strong { color: var(--texte); }
+  #onglet-actions .ak-stat.retard.actif { background: var(--alerte-clair); color: var(--alerte); } #onglet-actions .ak-stat.retard.actif strong { color: var(--alerte); }
+  #onglet-actions .ak-stat.fait { background: var(--ok-clair); color: var(--ok); }
+  #onglet-actions .ak-tableau { display: grid; grid-template-columns: repeat(3, minmax(240px, 1fr)); gap: 14px; padding: 14px 16px; align-items: start; overflow-x: auto; }
+  #onglet-actions .ak-col { background: var(--x-f0f0f4); border-radius: 10px; display: flex; flex-direction: column; max-height: calc(100vh - 160px); }
+  #onglet-actions .ak-col-tete { display: flex; align-items: center; gap: 6px; padding: 10px 12px; font-weight: 700; color: var(--c); border-bottom: 3px solid var(--c); }
+  #onglet-actions .ak-point { width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+  #onglet-actions .ak-nb { background: var(--x-ffffff); color: var(--doux); border-radius: 10px; padding: 0 8px; font-size: 12px; font-weight: 600; }
+  #onglet-actions .ak-plus { margin-left: auto; border: 0; background: var(--x-ffffff); color: var(--c); width: 26px; height: 26px; border-radius: 6px; font-size: 18px; line-height: 1; cursor: pointer; }
+  #onglet-actions .ak-cartes { padding: 10px; display: flex; flex-direction: column; gap: 8px; min-height: 80px; overflow-y: auto; border-radius: 0 0 10px 10px; transition: background .15s; }
+  #onglet-actions .ak-cartes.survol { background: color-mix(in srgb, var(--c) 12%, transparent); }
+  #onglet-actions .ak-vide { color: var(--doux); font-size: 13px; text-align: center; margin: 14px 0; }
+  #onglet-actions .ak-carte { background: var(--x-ffffff); border-radius: 8px; padding: 10px 12px; box-shadow: 0 1px 2px rgba(0,0,0,.08); border-left: 4px solid var(--x-c9c9d6); cursor: grab; }
+  #onglet-actions .ak-carte:hover, #onglet-actions .ak-carte:focus { box-shadow: 0 2px 8px rgba(0,0,0,.14); outline: none; }
+  #onglet-actions .ak-carte.glisse { opacity: .4; }
+  #onglet-actions .ak-carte.prio-haute { border-left-color: var(--x-ce0500); }
+  #onglet-actions .ak-carte.prio-basse { border-left-color: var(--x-9fbfe0); }
+  #onglet-actions .ak-carte.retard { background: var(--x-fff6f4); }
+  #onglet-actions .ak-carte-tete { display: flex; gap: 6px; align-items: flex-start; justify-content: space-between; }
+  #onglet-actions .ak-titre { font-weight: 600; font-size: 14px; }
+  #onglet-actions .ak-prio { font-size: 11px; border-radius: 10px; padding: 1px 8px; white-space: nowrap; }
+  #onglet-actions .ak-prio.prio-haute { background: var(--x-ffe9e9); color: var(--x-ce0500); } #onglet-actions .ak-prio.prio-basse { background: var(--x-e8edff); color: var(--x-000091); }
+  #onglet-actions .ak-desc { font-size: 12.5px; color: var(--doux); margin: 4px 0 0; white-space: pre-line; }
+  #onglet-actions .ak-carte-pied { display: flex; align-items: center; justify-content: space-between; gap: 6px; margin-top: 8px; font-size: 12px; color: var(--doux); }
+  #onglet-actions .ak-date.retard { color: var(--alerte); font-weight: 600; } #onglet-actions .ak-date.jour { color: var(--x-b36b00); font-weight: 600; }
+  #onglet-actions .ak-resp { width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--x-ffffff); font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  #onglet-actions .ak-resp.vide { background: var(--x-dddddd); color: var(--x-777777); }
+  #onglet-actions .ak-voile { position: fixed; inset: 0; background: rgba(0,0,0,.35); display: flex; align-items: flex-start; justify-content: center; padding-top: 8vh; z-index: 10; }
+  #onglet-actions .ak-fenetre { background: var(--x-ffffff); border-radius: 10px; padding: 18px 20px; width: min(560px, calc(100% - 32px)); box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+  #onglet-actions .ak-fenetre h2 { font-size: 16px; margin: 0 0 12px; }
+  #onglet-actions .ak-fenetre label.champ { display: block; margin-bottom: 10px; }
+  #onglet-actions .ak-fenetre label.champ span { display: block; font-weight: 600; margin-bottom: 3px; font-size: 13px; }
+  #onglet-actions .ak-fenetre input, #onglet-actions .ak-fenetre select, #onglet-actions .ak-fenetre textarea { font: inherit; padding: 6px 8px; border: 1px solid var(--x-bbbbbb); border-radius: 4px; width: 100%; background: var(--x-ffffff); }
+  #onglet-actions .ak-grille { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+  #onglet-actions .boutons { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+  #onglet-actions .aide { color: var(--doux); font-size: 12px; }
+  #onglet-actions button.petit { padding: 5px 10px; font-size: 13px; }
+  #onglet-actions button.actif { background: var(--accent); color: var(--x-ffffff); }
+  #onglet-actions .lien { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; font-size: 13px; }
+  #onglet-actions .ak-lib { font-size: 13px; color: var(--doux); display: inline-flex; gap: 6px; align-items: center; }
+  #onglet-actions .ak-barre select { font: inherit; padding: 6px 8px; border: 1px solid var(--x-bbbbbb); border-radius: 4px; }
+  #onglet-actions .ak-sous-barre { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 8px 16px 0; }
+  #onglet-actions .ak-sous-barre .ak-stats { margin-left: 0; }
+  #onglet-actions button.ak-stat { border: 0; font: inherit; font-size: 12px; cursor: pointer; }
+  #onglet-actions .ak-stat.filtre { box-shadow: inset 0 0 0 2px var(--alerte); }
+  #onglet-actions .ak-tableau { display: flex; grid-template-columns: none; }
+  #onglet-actions .ak-col { flex: 1 0 260px; max-width: 420px; }
+  #onglet-actions .ak-col.repliee { flex: 0 0 44px; min-height: 220px; cursor: pointer; align-items: center; padding: 10px 0; border-top: 3px solid var(--c); }
+  #onglet-actions .ak-col-vertical { writing-mode: vertical-rl; font-weight: 700; color: var(--c); white-space: nowrap; font-size: 13px; }
+  #onglet-actions .ak-col-titre small { font-weight: normal; color: var(--doux); }
+  #onglet-actions .ak-col-tete .ak-plus + .ak-plus { margin-left: 2px; font-size: 13px; }
+  #onglet-actions .ak-ajout-bas { margin: 0 10px 10px; border: 1px dashed var(--x-c4c4d4); background: none; color: var(--doux); border-radius: 8px; padding: 6px; font: inherit; font-size: 13px; cursor: pointer; }
+  #onglet-actions .ak-ajout-bas:hover { color: var(--c); border-color: var(--c); }
+  #onglet-actions .ak-col-ajout { flex: 0 0 200px; height: 52px; border: 2px dashed var(--x-c4c4d4); background: none; border-radius: 10px; color: var(--doux); font: inherit; cursor: pointer; }
+  #onglet-actions .ak-col-saisie { padding: 12px; gap: 8px; background: var(--x-ffffff); border: 1px solid var(--trait); }
+  #onglet-actions .ak-col-saisie input[type=text] { font: inherit; padding: 6px 8px; border: 1px solid var(--x-bbbbbb); border-radius: 4px; }
+  #onglet-actions .ak-badges { display: inline-flex; gap: 4px; align-items: center; flex-shrink: 0; }
+  #onglet-actions .ak-statut-b { font-size: 11px; border-radius: 10px; padding: 1px 8px; background: color-mix(in srgb, var(--c) 15%, white); color: var(--c); white-space: nowrap; }
+  #onglet-actions .ak-deplier { border: 0; background: none; color: var(--doux); cursor: pointer; font-size: 13px; padding: 0 2px; }
+  #onglet-actions .ak-detail { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--trait); font-size: 12.5px; color: var(--doux); display: flex; flex-direction: column; gap: 2px; }
+  #onglet-actions .ak-dates { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+  #onglet-actions .ak-carte-actions { display: flex; justify-content: flex-end; margin-top: 6px; }
+  #onglet-actions .ak-mini { font: inherit; font-size: 11px; padding: 2px 8px; border: 1px solid var(--trait); border-radius: 6px; background: var(--x-f6f6f6); cursor: pointer; }
+  #onglet-actions .ak-mini.danger { color: var(--alerte); }
+  #onglet-actions .ak-mini:disabled { opacity: .3; cursor: default; }
+  #onglet-actions .ak-repere { height: 4px; border-radius: 2px; background: var(--c); margin: -2px 0; }
+  #onglet-actions .ak-fenetre.large { width: min(720px, calc(100% - 32px)); max-height: 84vh; overflow: auto; }
+  #onglet-actions .eq-lib { display: block; font-weight: 600; margin-bottom: 4px; }
+  #onglet-actions .ak-reg-ligne { display: flex; gap: 6px; align-items: center; margin: 4px 0; flex-wrap: wrap; }
+  #onglet-actions .ak-reg-ligne input[type=text] { width: 200px !important; }
+  #onglet-actions .ak-reg-ligne input.ak-emoji { width: 52px !important; text-align: center; }
+  #onglet-actions .ak-reg-ligne input[type=color] { width: 40px !important; height: 32px; padding: 0 2px !important; }
+  #onglet-actions .ak-reg-ligne input[type=radio] { width: auto !important; }
+  #onglet-actions .ak-reg-ligne.supprimee { background: var(--x-fff8e1); padding: 6px 8px; border-radius: 6px; font-size: 13px; }
+  #onglet-actions .ak-reg-ligne.supprimee select { width: auto !important; }
+  #onglet-actions .ak-champs-carte { display: flex; gap: 14px; flex-wrap: wrap; }
+  #onglet-actions .ak-champs-carte input { width: auto !important; }
+  /* onglet Accès */
+  #acces .ac-table { border-top: 1px solid var(--trait); padding: 10px 0; }
+  #acces .ac-table ul { margin: 4px 0 6px; padding-left: 18px; }
+  #acces .ac-formules { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 4px; }
+  #acces .ac-formules td { padding: 3px 6px; border-bottom: 1px solid var(--x-eeeeee); vertical-align: top; }
+  #acces .ac-formules tr.remplacee td { background: var(--x-fff8e1); }
+  #acces .ac-etapes li { margin-bottom: 8px; }
+  #acces .ac-copie { display: flex; gap: 8px; align-items: flex-start; margin-top: 6px; }
+  #acces .ac-copie textarea { min-height: 40px; }
+  #acces tr.inactif td { color: var(--doux); }
+  #acces details summary { cursor: pointer; }
+  #acces .ac-confirmation { background: var(--x-fff8e1); border: 1px solid var(--x-f0c36d); border-radius: 6px; padding: 10px 14px; margin-top: 10px; }
+  #acces .ac-confirmation p { margin: 0 0 6px; }
+  #liens .ac-confirmation { background: var(--x-fff8e1); border: 1px solid var(--x-f0c36d); border-radius: 6px; padding: 10px 14px; margin-top: 10px; }
+  #liens .ac-confirmation p { margin: 0 0 6px; }
+  #liens .li-etapes { list-style: none; padding: 0; margin: 0; }
+  #liens .li-etape { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid var(--trait); }
+  #liens .li-etape .pastille { flex: none; margin-top: 2px; min-width: 52px; text-align: center; }
+  #liens .li-etape .detail { color: var(--doux); font-size: 13px; margin-top: 2px; }
+  #liens .li-etape code { word-break: break-all; }
+  #liens .li-crit { display: flex; gap: 10px; align-items: baseline; margin-bottom: 6px; }
+  #liens .li-crit-nom { flex: none; width: 130px; font-size: 12px; font-weight: 600; color: var(--doux); }
+  #liens .li-crit .puces-ps { flex: 1; }
+  #liens .li-crit select { font-size: 12.5px; padding: 2px 6px; max-width: 280px; }
+  #liens .li-crit input[data-crit-saisie] { font-size: 12.5px; padding: 2px 8px; width: 260px; }
+  #liens .li-retirer { flex: none; font-size: 15px; text-decoration: none; color: var(--doux); }
+  #liens .puces-ps { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  #liens .puce-ps { font: inherit; font-size: 12px; padding: 2px 9px; border-radius: 12px; border: 1px solid var(--trait); background: var(--x-ffffff); color: var(--texte); cursor: pointer; }
+  #liens .puce-ps small { color: var(--doux); }
+  #liens .puce-ps.on { background: var(--accent); border-color: var(--accent); color: var(--x-ffffff); }
+  #liens .puce-ps.on small { color: var(--x-ddddee); }
+  #liens .li-filtres { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+  #liens .li-filtres input[type="text"] { width: 240px; }
+  #liens .li-message { margin: 8px 0; padding: 8px 12px; border: 1px solid var(--trait); border-radius: 6px; }
+  #liens .li-message summary { cursor: pointer; }
+  #liens .li-message textarea { min-height: 160px; }
+  #liens .li-actions { white-space: nowrap; }
+  #liens .li-actions a { text-decoration: none; margin-right: 6px; }
+  #liens .lien-btn { background: none; border: 0; padding: 0 4px; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; font-size: 12.5px; }
+  #liens #li-sortie { width: 100%; margin-top: 8px; font-family: monospace; font-size: 12px; }
+  #liens .avert { color: var(--alerte); }
+  #equipe .eq-invites-reglage { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 12px; padding: 10px 12px; background: var(--x-f5f5fe); border-radius: 6px; font-size: 13.5px; }
+  #equipe .eq-invites-reglage .aide { flex-basis: 100%; margin: 0; }
+  #equipe .lien-btn { background: none; border: 0; padding: 0 4px; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; font-size: 12.5px; }
+  #equipe .eq-lien { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+  #equipe .eq-lien input, #equipe .eq-lien-copie { flex: 1; min-width: 280px; font-size: 12px; }
+  #installation #carte-configuration .etape .detail { color: var(--doux); font-size: 13px; }
+  #installation #carte-configuration .avert { color: var(--alerte); }
+  #installation .cfg-ensuite { margin: 4px 0 0; padding-left: 20px; font-size: 13.5px; }
+  #installation .cfg-ensuite li { margin-bottom: 4px; }
+  /* onglet Point de situation : éditeur à gauche, aperçu en direct à droite */
+  main#point-situation { max-width: none; }
+  #point-situation .ps-mise { display: grid; grid-template-columns: minmax(420px, 1fr) minmax(380px, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 1000px) { #point-situation .ps-mise { grid-template-columns: 1fr; } }
+  #point-situation .ps-apercu { position: sticky; top: 92px; max-height: calc(100vh - 104px); overflow: auto; background: var(--x-ffffff); border: 1px solid var(--trait); border-radius: 8px; padding: 12px; }
+  #point-situation .ps-apercu-barre { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+  #point-situation .ps-apercu-barre select { width: auto; }
+  #point-situation .ps-tete { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  #point-situation .ps-tete h2 { margin: 0; }
+  #point-situation .ps-bloc { border: 1px solid var(--trait); border-radius: 8px; margin: 10px 0; background: var(--x-ffffff); }
+  #point-situation .ps-bloc.inactif { opacity: .55; }
+  #point-situation .ps-bloc-tete { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--x-f8f8fb); border-bottom: 1px solid var(--trait); border-radius: 8px 8px 0 0; flex-wrap: wrap; }
+  #point-situation .ps-bloc-tete select { width: auto; flex: 1 1 140px; }
+  #point-situation .ps-bloc-corps { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 6px; }
+  #point-situation .ps-num { font-weight: 700; color: var(--accent); min-width: 16px; }
+  #point-situation .ps-titre { flex: 1 1 160px; font-weight: 600; }
+  #point-situation .ps-clause { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #point-situation .ps-clause select, #point-situation .ps-clause input { width: auto; flex: 1 1 120px; min-width: 0; }
+  #point-situation .ps-clause select.ps-lien { flex: 0 0 auto; }
+  #point-situation .ps-lien-1, #point-situation .ps-ligne-n { color: var(--doux); font-size: 12px; width: 26px; text-align: right; }
+  #point-situation .ps-badge { flex: 1; font-size: 12px; background: var(--x-fff3a6); padding: 4px 8px; border-radius: 4px; }
+  #point-situation .ps-ajouts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--doux); }
+  #point-situation .ps-ajouts select { width: auto; }
+  #point-situation .ps-options-col { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #point-situation .ps-petit { font-size: 12px; color: var(--doux); }
+  #point-situation .ps-petit input[type=number] { width: 58px; }
+  #point-situation input[type=color] { padding: 0 2px; height: 30px; width: 40px; border: 1px solid var(--x-bbbbbb); border-radius: 4px; }
+  #point-situation .ps-actif { font-size: 12px; color: var(--doux); white-space: nowrap; }
+  #point-situation .ps-outils { display: flex; gap: 2px; }
+  #point-situation .ps-mini { font: inherit; border: 1px solid var(--trait); background: var(--x-ffffff); border-radius: 4px; width: 26px; height: 26px; cursor: pointer; padding: 0; }
+  #point-situation .ps-mini.danger { color: var(--alerte); }
+  #point-situation .ps-mini:disabled { opacity: .3; cursor: default; }
+  #point-situation .ps-lienbtn { align-self: flex-start; background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-size: 13px; cursor: pointer; text-decoration: underline; }
+  #point-situation .ps-lienbtn.discret { color: var(--doux); font-size: 12px; align-self: flex-end; }
+  #point-situation .ps-note { font-size: 12px; color: var(--doux); margin: 0; }
+  #point-situation .ps-note.err { color: var(--alerte); }
+  #point-situation .puces-ps { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  #point-situation .puce-ps { font: inherit; font-size: 12px; padding: 2px 9px; border-radius: 12px; border: 1px solid var(--trait); background: var(--x-ffffff); color: var(--texte); cursor: pointer; }
+  #point-situation .puce-ps.on { background: var(--accent); border-color: var(--accent); color: var(--x-ffffff); }
+  #point-situation .puce-ps button { background: none; border: 0; color: inherit; cursor: pointer; padding: 0 2px; font: inherit; }
+  #point-situation section > button.secondaire { margin-top: 4px; }
+  #point-situation details summary { cursor: pointer; }
+  #point-situation #ps-statut { position: sticky; bottom: 0; background: var(--fond); padding: 6px 0; margin: 0; }
+  /* aperçu : rendu proche du widget */
+  #point-situation .page { font-family: Marianne, Arial, sans-serif; font-size: 11px; color: #161616; }
+  #point-situation .page .entete { display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 8px; align-items: center; font-size: 10px; border-bottom: 1px solid #ccc; padding-bottom: 6px; }
+  #point-situation .page .logo { font-weight: 700; font-size: 9px; line-height: 1.2; }
+  #point-situation .page .bandeau { text-align: center; font-weight: 700; color: var(--accent); }
+  #point-situation .page h1 { font-size: 13px; text-align: center; margin: 10px 0; }
+  #point-situation .page h2 { font-size: 12px; font-weight: 600; border-bottom: 2px solid var(--accent); margin: 12px 0 6px; padding-bottom: 2px; }
+  #point-situation .page table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  #point-situation .page th, #point-situation .page td { border: 1px solid #000; padding: 3px 4px; vertical-align: top; font-size: 10px; text-align: left; word-wrap: break-word; }
+  #point-situation .page mark { background: #ff0; }
+  #point-situation .page .vide { color: var(--doux); font-style: italic; }
+  /* onglet Tableau de bord */
+  main#onglet-tdb { max-width: none; padding: 0; }
+  #onglet-tdb .tdb-barre-admin { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 10px 16px; background: var(--x-ffffff); border-bottom: 1px solid var(--trait); }
+  #onglet-tdb .tdb-barre-admin button { font: inherit; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+  #onglet-tdb .tdb-barre-admin .primaire { background: var(--accent); color: var(--x-ffffff); border: 1px solid var(--accent); }
+  #onglet-tdb .tdb-barre-admin .secondaire { background: var(--x-ffffff); color: var(--accent); border: 1px solid var(--accent); }
+  #onglet-tdb .pastille { font-size: 11px; padding: 1px 8px; border-radius: 10px; background: var(--x-eeeeee); }
+  #onglet-tdb .pastille.ok { background: var(--ok-clair); color: var(--ok); } #onglet-tdb .pastille.reco { background: var(--info-clair); color: var(--accent); } #onglet-tdb .pastille.manque { background: var(--alerte-clair); color: var(--alerte); }
+  #onglet-tdb .statut { font-size: 13px; } #onglet-tdb .statut.ok { color: var(--ok); } #onglet-tdb .statut.err { color: var(--alerte); }
+  #onglet-tdb .tdb-pages { font-size: 13px; color: var(--doux); }
+  #onglet-tdb .tdb-aide button { font: inherit; font-size: 12.5px; padding: 2px 10px; border-radius: 4px; background: var(--x-ffffff); color: var(--accent); border: 1px solid var(--accent); cursor: pointer; }
+  #onglet-tdb .tdb-menu-ancre { position: relative; }
+  #onglet-tdb .tdb-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; background: var(--x-ffffff); border: 1px solid var(--trait); border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.16); min-width: 300px; padding: 6px 0; }
+  #onglet-tdb .tdb-menu[hidden] { display: none; }
+  #onglet-tdb .tdb-menu button { display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: 0; padding: 7px 16px; color: var(--texte); }
+  #onglet-tdb .tdb-menu button:hover { background: var(--accent-clair, var(--x-eef0ff)); }
+  #onglet-tdb .tdb-menu-groupe { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--doux); padding: 10px 16px 2px; font-weight: 600; }
+  #onglet-tdb .tdb-menu-info { font-size: 12.5px; color: var(--doux); padding: 2px 16px 4px; }
+  #onglet-tdb .tdb-menu .tdb-pages { display: block; }
+  #onglet-tdb .tdb-barre-admin select { font: inherit; font-weight: 600; padding: 5px 8px; border: 1px solid var(--trait); border-radius: 4px; max-width: 320px; }
+  #onglet-tdb .tdb-barre-admin .lien { background: none; border: 0; color: var(--accent); text-decoration: underline; padding: 0 4px; }
+  #onglet-tdb .tdb-panneau { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 16px; background: var(--x-f5f5fe); border-bottom: 1px solid var(--trait); font-size: 13.5px; }
+  #onglet-tdb .tdb-panneau[hidden] { display: none; }
+  #onglet-tdb .tdb-panneau input[type="text"], #onglet-tdb .tdb-panneau select { font: inherit; padding: 4px 8px; border: 1px solid var(--trait); border-radius: 4px; }
+  #onglet-tdb .tdb-panneau button { font: inherit; padding: 5px 12px; border-radius: 4px; cursor: pointer; }
+  #onglet-tdb .tdb-panneau .primaire { background: var(--accent); color: var(--x-ffffff); border: 1px solid var(--accent); }
+  #onglet-tdb .tdb-panneau .secondaire { background: var(--x-ffffff); color: var(--accent); border: 1px solid var(--accent); }
+  #onglet-tdb .tdb-panneau .danger { color: var(--alerte); border-color: var(--alerte); }
+  #onglet-tdb .tdb-panneau .aide { flex-basis: 100%; margin: 0; color: var(--doux); }
+  #onglet-tdb .tdb-pages .lien { background: none; border: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; padding: 0 4px; }
+  #onglet-tdb .tdb-aide { margin: 8px 16px 0; font-size: 13px; color: var(--doux); }
+
+  /* Thème clair / sombre (commun/theme.js) : couleurs des règles, valeurs sombres déduites des claires */
+  :root { --x-000091: #000091; --x-777777: #777777; --x-8a3b00: #8a3b00; --x-9fbfe0: #9fbfe0; --x-b36b00: #b36b00; --x-bbbbbb: #bbbbbb; --x-c4c4d4: #c4c4d4; --x-c9c9d6: #c9c9d6; --x-ce0500: #ce0500; --x-dddddd: #dddddd; --x-ddddee: #ddddee; --x-e3e3fd: #e3e3fd; --x-e8edff: #e8edff; --x-ececfe: #ececfe; --x-eeeeee: #eeeeee; --x-eef0ff: #eef0ff; --x-f0c36d: #f0c36d; --x-f0f0f0: #f0f0f0; --x-f0f0f4: #f0f0f4; --x-f2f2f2: #f2f2f2; --x-f3f3ff: #f3f3ff; --x-f3fbf5: #f3fbf5; --x-f5f5fe: #f5f5fe; --x-f6f6f6: #f6f6f6; --x-f8f8fb: #f8f8fb; --x-fafafa: #fafafa; --x-fde9d6: #fde9d6; --x-ffe9e9: #ffe9e9; --x-fff3a6: #fff3a6; --x-fff6f4: #fff6f4; --x-fff8e1: #fff8e1; --x-ffffff: #ffffff; }
+  :root[data-theme="dark"] { --x-000091: #8585f6; --x-777777: #acacac; --x-8a3b00: #f7c098; --x-9fbfe0: #2d3a47; --x-b36b00: #f5c783; --x-bbbbbb: #3c3c3c; --x-c4c4d4: #2f2f37; --x-c9c9d6: #2e2e34; --x-ce0500: #ff5655; --x-dddddd: #353535; --x-ddddee: #1f1f2b; --x-e3e3fd: #21213f; --x-e8edff: #1b1b35; --x-ececfe: #111128; --x-eeeeee: #2c2c2c; --x-eef0ff: #0f1228; --x-f0c36d: #5c4b2b; --x-f0f0f0: #2a2a2a; --x-f0f0f4: #1c1c20; --x-f2f2f2: #1e1e1e; --x-f3f3ff: #0e0e26; --x-f3fbf5: #152218; --x-f5f5fe: #1b1b35; --x-f6f6f6: #161616; --x-f8f8fb: #17171d; --x-fafafa: #242424; --x-fde9d6: #312215; --x-ffe9e9: #2a1010; --x-fff3a6: #453f1a; --x-fff6f4: #26130e; --x-fff8e1: #2d2711; --x-ffffff: #1e1e1e; }
+  :root[data-theme="dark"] { --fond: #161616; --carte: #1e1e1e; --texte: #cecece; --doux: #a5a5a5; --trait: #353535; --accent: #8585f6; --accent-clair: #21213f; --ok: #27a658; --ok-clair: #183d21; --alerte: #fc8a4a; --alerte-clair: #2b1410; --info-clair: #1b1b35; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Administration des signalements<span class="version" id="version"></span><button type="button" id="theme-bouton" class="theme-bouton"></button></h1>
+  <nav role="tablist">
+    <button role="tab" aria-selected="true" data-onglet="installation">Installation</button>
+    <button role="tab" aria-selected="false" data-onglet="referentiel">Référentiel</button>
+    <button role="tab" aria-selected="false" data-onglet="equipe">Équipe</button>
+    <button role="tab" aria-selected="false" data-onglet="planning">Planning</button>
+    <button role="tab" aria-selected="false" data-onglet="onglet-actions">Actions</button>
+    <button role="tab" aria-selected="false" data-onglet="acces">Accès</button>
+    <button role="tab" aria-selected="false" data-onglet="liens">Établissements</button>
+    <button role="tab" aria-selected="false" data-onglet="formulaires">Formulaires</button>
+    <button role="tab" aria-selected="false" data-onglet="point-situation">Point de situation</button>
+    <button role="tab" aria-selected="false" data-onglet="onglet-tdb">Tableau de bord</button>
+  </nav>
+</header>
+<main id="installation">
+  <div id="bandeau" class="bandeau info">Lecture du document…</div>
+
+  <section class="carte" id="carte-actions">
+    <h2>Actions proposées</h2>
+    <p class="aide">Ce qu'il manque pour que le document respecte le socle. Rien n'est renommé ni supprimé ; chaque action est appliquée séparément.</p>
+    <div id="liste-actions"></div>
+    <div class="boutons">
+      <button class="primaire" id="btn-appliquer">Appliquer la sélection</button>
+      <button class="secondaire" id="btn-relire">Relire le document</button>
+      <span class="statut" id="statut-actions"></span>
+    </div>
+    <ul class="journal" id="journal"></ul>
+  </section>
+
+  <section class="carte" id="carte-general">
+    <h2>Réglages généraux</h2>
+    <p class="aide">Clé <code>general</code> de la table Config, lue par tous les modules.</p>
+    <div class="grille">
+      <label class="champ"><span>Situation suivie</span><input type="text" id="g-situation" placeholder="Mouvements, octobre 2026"></label>
+      <label class="champ"><span>Préréglage</span>
+        <select id="g-preset"><option value="en">Établissements scolaires (EN)</option><option value="esr">Enseignement supérieur (ESR)</option></select></label>
+      <label class="champ"><span>Académies couvertes</span><small>Une par ligne. Vide = toutes.</small><textarea id="g-academies"></textarea></label>
+      <label class="champ"><span>Qualifications valant retour à la normale</span><small>Séparées par des virgules. Exclues du décompte des jours de mobilisation.</small><input type="text" id="g-retour"></label>
+      <label class="champ"><span>Table des réponses</span><select id="g-reponses"></select></label>
+      <label class="champ"><span>Table du référentiel</span><select id="g-referentiel"></select></label>
+    </div>
+    <div class="boutons">
+      <button class="primaire" id="btn-general">Enregistrer les réglages</button>
+      <span class="statut" id="statut-general"></span>
+    </div>
+  </section>
+
+  <section class="carte" id="carte-roles">
+    <h2>Rôles des colonnes</h2>
+    <p class="aide">Quelle colonne joue chaque rôle. Une association choisie ici est enregistrée dans la clé <code>roles</code> de Config et prime sur la reconnaissance automatique.</p>
+    <div id="roles-reponses"></div>
+    <div id="roles-referentiel" style="margin-top:16px"></div>
+    <div class="boutons">
+      <button class="primaire" id="btn-roles">Enregistrer les associations</button>
+      <span class="statut" id="statut-roles"></span>
+    </div>
+  </section>
+
+  <section class="carte" id="carte-configuration"></section>
+
+  <section class="carte" id="carte-remarques" hidden>
+    <h2>Remarques</h2>
+    <ul class="journal" id="remarques"></ul>
+  </section>
+</main>
+<main id="referentiel" hidden>
+  <section class="carte">
+    <h2>Annuaire de l'éducation nationale</h2>
+    <p class="aide">Import depuis l'open data (data.education.gouv.fr), limité aux académies du document. Les établissements sont rapprochés par UAI : les existants sont mis à jour, les nouveaux ajoutés. Rien n'est supprimé : les établissements saisis à la main et ceux sortis de l'annuaire restent, car des signalements peuvent y renvoyer.</p>
+    <div id="ref-contexte"></div>
+    <div id="ref-etape1">
+      <label class="etape" style="border:0"><input type="checkbox" id="ref-ouverts" checked><span>Établissements ouverts seulement</span></label>
+      <div class="boutons"><button class="primaire" id="btn-ref-apercu">1. Interroger l'annuaire</button></div>
+    </div>
+  </section>
+  <section class="carte" id="ref-etape2" hidden>
+    <h2>Périmètre</h2>
+    <p class="aide">Nombre d'établissements par académie, puis par type. Décochez les types à ne pas importer.</p>
+    <div id="ref-academies" style="margin-bottom:12px"></div>
+    <div class="grille">
+      <div><div class="groupe">Types d'établissements</div><div id="ref-types"></div></div>
+      <div><div class="groupe">Informations supplémentaires (facultatif)</div><p class="aide" style="margin:0 0 6px">Chaque champ coché devient une colonne du référentiel.</p><div id="ref-champs" style="max-height:320px;overflow:auto"></div></div>
+    </div>
+    <div class="boutons"><button class="primaire" id="btn-ref-analyser">2. Télécharger et comparer</button></div>
+  </section>
+  <section class="carte" id="ref-etape3" hidden>
+    <h2>Bilan avant import</h2>
+    <div id="ref-bilan"></div>
+    <div class="boutons"><button class="primaire" id="btn-ref-importer">3. Importer dans Grist</button></div>
+  </section>
+  <p class="statut" id="ref-statut"></p>
+</main>
+<main id="equipe" hidden></main>
+<main id="planning" hidden></main>
+<main id="onglet-actions" hidden></main>
+<main id="acces" hidden></main>
+<main id="liens" hidden></main>
+<main id="formulaires" hidden>
+<div class="app" id="app">
+  <header class="haut">
+    <h1>Administration des formulaires</h1>
+    <label for="choix-formulaire" class="visuellement-cache">Formulaire</label>
+    <select id="choix-formulaire"></select>
+    <span class="infos" id="infos"></span>
+    <span class="espace"></span>
+    <span class="etat-publi" id="etat-publi" role="status"></span>
+    <button type="button" class="secondaire" id="btn-tester" aria-pressed="false">▶ Tester</button>
+    <button type="button" class="secondaire" id="btn-nouveau">+ Nouveau</button>
+    <button type="button" class="secondaire" id="btn-dupliquer">⧉ Dupliquer</button>
+    <button type="button" class="primaire" id="btn-publier">Publier</button>
+  </header>
+  <section class="apercu" id="apercu" aria-label="Aperçu du formulaire"></section>
+  <aside class="panneau" id="panneau" aria-label="Réglages"></aside>
+</div>
+
+<div class="menu-ajout" id="menu-ajout" role="dialog" aria-label="Ajouter un bloc" hidden></div>
+<dialog id="dlg-nouveau">
+  <form method="dialog" id="form-nouveau">
+    <h3 id="dlg-titre">Nouveau formulaire</h3>
+    <div class="champ"><label for="nf-nom">Nom du formulaire</label><input type="text" id="nf-nom" required></div>
+    <div class="champ" id="nf-bloc-type"><label for="nf-type">Type de questionnaire</label><select id="nf-type"><option value="etablissement">Questionnaire établissement</option></select>
+      <span class="aide">Établissement recherché par nom ou UAI et complété automatiquement ; nouveau signalement puis mises à jour (versions) ; qualification, date des faits, description automatique ; visas départemental et académique.</span></div>
+    <div class="champ" id="nf-bloc-table"><label for="nf-table">Table des réponses<span class="aide">La table où chaque réponse est enregistrée (une ligne par version).</span></label><select id="nf-table"></select></div>
+    <div class="champ" id="nf-bloc-nouvelle" hidden><label for="nf-nouvelle">Nom de la nouvelle table<span class="aide">Créée avec les colonnes du questionnaire établissement : Etablissement, Date_faits, Qualification, Description, Dossier, Nature, Date, Commentaire, Auteur (et Site, Clos selon les options ci-dessous).</span></label><input type="text" id="nf-nouvelle" autocomplete="off"></div>
+    <div class="champ" id="nf-bloc-etab" hidden><label for="nf-etab">Référentiel des établissements<span class="aide">Table dans laquelle l'établissement est recherché par nom ou UAI ; la colonne Etablissement y fait référence.</span></label><select id="nf-etab"></select>
+      <p class="note" id="nf-etab-info" style="margin:4px 0 0" hidden></p></div>
+    <div id="nf-bloc-options" hidden>
+      <label class="case"><input type="checkbox" id="nf-site"> Champ « Site / bâtiment » (version enseignement supérieur)</label>
+      <label class="case"><input type="checkbox" id="nf-clos" checked> Clôture des signalements (colonne « Clos »)</label>
+    </div>
+    <label class="case" id="nf-bloc-import"><input type="checkbox" id="nf-import" checked> Proposer d'ajouter les colonnes existantes de la table</label>
+    <p class="statut err" id="nf-erreur" role="alert"></p>
+    <div class="actions"><button type="button" class="secondaire" id="nf-annuler">Annuler</button><button type="submit" class="primaire" id="nf-valider">Créer</button></div>
+  </form>
+</dialog>
+</main>
+<main id="point-situation" hidden></main>
+<main id="onglet-tdb" hidden></main>
+<script src="repartition.js"></script>
+<script src="installation.js"></script>
+<script src="configuration.js"></script>
+<script src="point-situation.js"></script>
+<script src="../tableau-de-bord/tableau.js"></script>
+<script src="tableau-de-bord.js"></script>
+<script src="formulaires.js"></script>
+<script src="referentiel.js"></script>
+<script src="equipe.js"></script>
+<script src="planning.js"></script>
+<script src="acces.js"></script>
+<script src="actions.js"></script>
+<script src="liens.js"></script>
+<script>if (window.SocleTheme) window.SocleTheme.bouton(document.getElementById("theme-bouton"));</script>
+<script>
+  // Onglets
+  document.querySelectorAll("nav button[data-onglet]").forEach(b => b.addEventListener("click", () => {
+    document.querySelectorAll("nav button[data-onglet]").forEach(x => x.setAttribute("aria-selected", String(x === b)));
+    document.querySelectorAll("main").forEach(m => { m.hidden = m.id !== b.dataset.onglet; });
+    if (b.dataset.onglet === "referentiel") window.OngletReferentiel.afficher();
+    if (b.dataset.onglet === "equipe") window.OngletEquipe.afficher();
+    if (b.dataset.onglet === "planning") window.OngletPlanning.afficher();
+    if (b.dataset.onglet === "acces") window.OngletAcces.afficher();
+    if (b.dataset.onglet === "liens") window.OngletLiens.afficher();
+    if (b.dataset.onglet === "onglet-actions") window.OngletActions.afficher();
+    if (b.dataset.onglet === "formulaires") window.OngletFormulaires.afficher();
+    if (b.dataset.onglet === "point-situation") window.OngletPointSituation.afficher();
+    if (b.dataset.onglet === "onglet-tdb") window.OngletTableauDeBord.afficher();
+  }));
+</script>
+</body>
+</html>

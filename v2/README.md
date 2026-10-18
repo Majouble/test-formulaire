@@ -1,20 +1,32 @@
 # Signalements Grist — version 2
 
-Ce dossier contient la version 2 des widgets. La version 1 (`index.html` à la racine du dépôt) reste en service tant que les documents MEN et ESR n'ont pas basculé.
+Ce dossier contient la version de développement des widgets v2. La version figée pour la production est dans `prod/` (même contenu, adresses `…/prod/…`), mise à jour seulement lors d'une publication. La version 1 (`index.html` à la racine du dépôt) reste en service tant que les documents MEN et ESR n'ont pas basculé.
 
-| Adresse | Version | Usage |
+| Widget | Production (version figée) | Développement (bouge à chaque mise à jour) |
 | --- | --- | --- |
-| `https://majouble.github.io/test-formulaire/` | v1 | Documents en production (ne pas modifier pendant la refonte) |
-| `https://majouble.github.io/test-formulaire/v2/saisie/` | v2 | Formulaire de saisie : Config, rôles, périmètre de la page, fusion des mises à jour concurrentes (en test) |
-| `https://majouble.github.io/test-formulaire/v2/admin/` | v2 | Administration : onglets Installation, Référentiel (annuaire EN), Équipe, Planning, Actions, Accès, Établissements (liens d'accès et publipostage), Formulaires, Point de situation et Tableau de bord en test |
-| `https://majouble.github.io/test-formulaire/v2/point-situation/` | v2 | Production du point de situation, selon la configuration publiée dans l'administration (en test) |
-| `https://majouble.github.io/test-formulaire/v2/tableau-de-bord/` | v2 | Tableau de bord en lecture, selon la version publiée dans l'administration (en test) |
-| `https://majouble.github.io/test-formulaire/v2/cartographie/` | v2 | Cartographie : carte des signalements et export GeoJSON, KML, GPX, CSV (WKT), Shapefile (en test) |
+| Administration | `https://majouble.github.io/test-formulaire/prod/admin/` | `https://majouble.github.io/test-formulaire/v2/admin/` |
+| Saisie | `https://majouble.github.io/test-formulaire/prod/saisie/` | `https://majouble.github.io/test-formulaire/v2/saisie/` |
+| Point de situation | `https://majouble.github.io/test-formulaire/prod/point-situation/` | `https://majouble.github.io/test-formulaire/v2/point-situation/` |
+| Tableau de bord | `https://majouble.github.io/test-formulaire/prod/tableau-de-bord/` | `https://majouble.github.io/test-formulaire/v2/tableau-de-bord/` |
+| Cartographie | `https://majouble.github.io/test-formulaire/prod/cartographie/` | `https://majouble.github.io/test-formulaire/v2/cartographie/` |
+| Version 1 | `https://majouble.github.io/test-formulaire/` | — |
+
+Un document de production n'utilise que des adresses `…/prod/…` ; un document de test, des adresses `…/v2/…`. Ne pas mélanger les deux dans un même document : l'administration crée les pages (saisie, tableau de bord, cartographie, établissements) à côté d'elle-même, donc dans le même dossier.
+
+## Mise en production
+
+1. Dans `v2/commun/socle.js`, passer `VERSION` à un numéro sans `alpha` (par exemple `2.0.1 (jj/mm/aaaa)`).
+2. Lancer `sh outils/publier-prod.sh` : le dossier `prod/` est recréé à partir de `v2/` (refus si la version contient `alpha`, `beta` ou `dev`).
+3. Valider et pousser ; GitHub Pages publie en une à deux minutes.
+4. Dans chaque document de production, vider le cache (Ctrl+F5) et vérifier le numéro de version dans l'administration.
+5. Reprendre le développement dans `v2/` avec une version de test (`2.0.2-alpha.1`…).
+
+Bascule d'un document v1 vers la v2 : exporter le document en sauvegarde (.grist), ajouter la page d'administration `…/prod/admin/`, installer, importer le référentiel, configurer l'équipe et les accès, puis remplacer l'adresse des widgets de saisie par `…/prod/saisie/`. La liste de vérification à cocher avant la bascule est dans le projet (« Socle v2 — liste de vérification avant production »).
 
 ## Organisation
 
 ```
-v2/
+v2/                      développement (prod/ = copie figée, voir « Mise en production »)
 ├── README.md            ce fichier
 ├── commun/socle.js      code partagé : lecture de Config, rôles, plan d'installation
 ├── commun/theme.js      thème clair ou sombre de tous les widgets (data-theme sur <html>)
