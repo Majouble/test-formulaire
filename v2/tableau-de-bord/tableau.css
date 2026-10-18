@@ -154,3 +154,52 @@
 
 #tableau-de-bord #toggleEdit { display: none; }
 #tableau-de-bord.lecture .edit-only { display: none !important; }
+
+/* ---------- Atelier (administration) : tableau de bord au centre, réglages du bloc choisi à droite ---------- */
+#tableau-de-bord.atelier .tdb-header .bar .edit-only, #tableau-de-bord.atelier #toggleEdit, #tableau-de-bord.atelier .tdb-header h1 { display: none !important; }
+#tableau-de-bord.atelier .tdb-header .bar { padding-top: 4px; padding-bottom: 4px; min-height: 0; }
+#tableau-de-bord .atelier-cadre { display: grid; grid-template-columns: minmax(0, 1fr) 400px; align-items: start; }
+#tableau-de-bord .atelier-cadre > .tdb-main { min-width: 0; }
+#tableau-de-bord .studio { position: sticky; top: 0; max-height: 100vh; overflow: auto; background: var(--surface); border-left: 1px solid var(--grid); display: flex; flex-direction: column; min-height: 60vh; }
+@media (max-width: 1000px) { #tableau-de-bord .atelier-cadre { grid-template-columns: 1fr; } #tableau-de-bord .studio { position: static; max-height: none; border-left: 0; border-top: 1px solid var(--grid); } }
+#tableau-de-bord .st-tete { display: flex; gap: 10px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--grid); position: sticky; top: 0; background: var(--surface); z-index: 2; }
+#tableau-de-bord .st-titre { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+#tableau-de-bord .st-titre strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tableau-de-bord .st-outils { white-space: nowrap; }
+#tableau-de-bord .st-outils button { padding: 2px 6px; }
+#tableau-de-bord .st-icone { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 30px; border-radius: 8px; background: var(--q0); color: var(--accent); font-weight: 700; font-size: 13px; }
+#tableau-de-bord .st-onglets { display: flex; gap: 2px; padding: 0 10px; border-bottom: 1px solid var(--grid); position: sticky; top: 55px; background: var(--surface); z-index: 2; }
+#tableau-de-bord .st-onglet { border: 0 !important; border-bottom: 3px solid transparent !important; border-radius: 0 !important; background: none !important; padding: 8px 10px !important; color: var(--ink-2) !important; }
+#tableau-de-bord .st-onglet.actif { border-bottom-color: var(--accent) !important; color: var(--ink) !important; font-weight: 600; }
+#tableau-de-bord .st-corps { padding: 12px 14px; flex: 1; }
+#tableau-de-bord .studio .editor { margin-top: 0; padding-top: 12px; border-top: 0; gap: 12px; }
+#tableau-de-bord .studio .editor .row { align-items: flex-start; }
+#tableau-de-bord .studio .editor .lbl { min-width: 100%; font-weight: 600; color: var(--ink); }
+#tableau-de-bord .studio .editor select, #tableau-de-bord .studio .editor input[type=text] { max-width: 100%; }
+#tableau-de-bord .st-pied { padding: 8px 14px; border-top: 1px solid var(--grid); }
+#tableau-de-bord .st-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+#tableau-de-bord .st-liste { list-style: none; padding: 0; margin: 6px 0 0; display: grid; gap: 2px; }
+#tableau-de-bord .st-liste button { width: 100%; text-align: left; display: flex; gap: 8px; align-items: center; border: 0; padding: 4px 6px; }
+#tableau-de-bord .st-liste button:hover { background: var(--q0); }
+#tableau-de-bord.atelier .card[data-bi] { cursor: pointer; transition: box-shadow .12s; }
+#tableau-de-bord.atelier .card[data-bi]:hover { box-shadow: 0 0 0 2px var(--q1); }
+#tableau-de-bord.atelier .card.selectionne { box-shadow: 0 0 0 2px var(--accent) !important; }
+/* outils du bloc : dans le panneau ; sur le bloc, seule la poignée de déplacement, en surimpression */
+#tableau-de-bord.atelier .card[data-bi] { position: relative; }
+#tableau-de-bord.atelier .card .card-head .edit-only { opacity: 0; transition: opacity .12s; position: absolute; top: 6px; right: 8px; }
+#tableau-de-bord.atelier .card .card-head .edit-only button { display: none; }
+#tableau-de-bord.atelier .card .card-head .edit-only .drag { cursor: grab; padding: 2px 4px; border-radius: 4px; background: var(--surface); }
+#tableau-de-bord.atelier .card:hover .card-head .edit-only, #tableau-de-bord.atelier .card.selectionne .card-head .edit-only { opacity: 1; }
+#tableau-de-bord .st-rappel { margin: 0 0 8px; }
+/* fenêtres */
+#tableau-de-bord .fenetre { position: fixed; inset: 0; background: rgba(11,11,11,.35); display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px; z-index: 50; }
+#tableau-de-bord .fenetre[hidden] { display: none; }
+#tableau-de-bord .fenetre-boite { background: var(--surface); border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,.25); width: min(860px, 100%); max-height: 86vh; overflow: auto; }
+#tableau-de-bord .fenetre-tete { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--grid); position: sticky; top: 0; background: var(--surface); }
+#tableau-de-bord .fenetre-tete h2 { margin: 0; font-size: 13pt; }
+#tableau-de-bord #fenetreCorps { padding: 14px 18px 18px; }
+#tableau-de-bord .st-modeles { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin-top: 10px; }
+#tableau-de-bord .st-modele { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 12px !important; border-radius: 10px !important; }
+#tableau-de-bord .st-modele:hover { border-color: var(--accent) !important; background: var(--q0) !important; }
+#tableau-de-bord .st-modele span:last-child { color: var(--ink-2); font-size: 9pt; }
+#tableau-de-bord .st-reglages h2 { font-size: 11pt; margin: 16px 0 2px; }

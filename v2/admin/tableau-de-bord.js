@@ -34,12 +34,12 @@
   function dessinerPages() {
     const z = $("tdb-pages"), mes = pagesDe(pages, td);
     z.innerHTML = (mes.length
-      ? `Page${mes.length > 1 ? "s" : ""} dédiée${mes.length > 1 ? "s" : ""} : ${mes.map(p => `« ${esc(p.nom)} »`).join(", ")}
-         <button class="lien" id="tdb-page-autre">+ une autre page</button>`
-      : `<button class="secondaire" id="tdb-page-creer">Créer la page dédiée</button>`)
-      + ` · Carte : ${pagesCarte.length ? `${pagesCarte.map(p => `« ${esc(p.nom)} »`).join(", ")} <button class="lien" id="carte-page-autre">+ une autre</button>`
-        : `<button class="secondaire" id="carte-page-creer" title="Page Grist avec le widget de cartographie (carte et export GeoJSON, KML, GPX, CSV, Shapefile)">Créer la page Cartographie</button>`}`;
-    const go = () => creerPage("tdb"), goC = () => creerPage("carte");
+      ? `<div class="tdb-menu-info">Page${mes.length > 1 ? "s" : ""} de ce tableau : ${mes.map(p => `« ${esc(p.nom)} »`).join(", ")}</div>
+         <button role="menuitem" id="tdb-page-autre">Créer une autre page pour ce tableau</button>`
+      : `<div class="tdb-menu-info">Aucune page n'affiche encore ce tableau.</div><button role="menuitem" id="tdb-page-creer">Créer la page dédiée</button>`)
+      + (pagesCarte.length ? `<div class="tdb-menu-info">Cartographie : ${pagesCarte.map(p => `« ${esc(p.nom)} »`).join(", ")}</div><button role="menuitem" id="carte-page-autre">Créer une autre page Cartographie</button>`
+        : `<button role="menuitem" id="carte-page-creer" title="Page Grist avec le widget de cartographie (carte et export GeoJSON, KML, GPX, CSV, Shapefile)">Créer la page Cartographie</button>`);
+    const go = () => { fermerMenu(); creerPage("tdb"); }, goC = () => { fermerMenu(); creerPage("carte"); };
     if ($("tdb-page-creer")) $("tdb-page-creer").addEventListener("click", go);
     if ($("tdb-page-autre")) $("tdb-page-autre").addEventListener("click", go);
     if ($("carte-page-creer")) $("carte-page-creer").addEventListener("click", goC);
@@ -133,14 +133,27 @@
     if (!tableaux.length) tableaux = [{ id: "principal", nom: "Tableau de bord", table: general.reponses, brouillon: null, publie: null }];
     zone.innerHTML = `<div class="tdb-barre-admin">
         <select id="tdb-choix" title="Tableau de bord à modifier"></select>
-        <button class="lien" id="tdb-nouveau" title="Créer un autre tableau de bord (ex. MEN et MESRE)">+ Nouveau</button>
-        <button class="lien" id="tdb-gerer">Renommer, table…</button>
-        <span id="tdb-etat"></span><span style="flex:1"></span>
+        <button class="primaire" id="tdb-ajouter">+ Ajouter un bloc</button>
+        <button class="secondaire" id="tdb-reglages" title="Nom, présentation dans Word, filtres rapides et filtres communs">⚙ Réglages du tableau</button>
+        <span style="flex:1"></span>
         <span class="statut" id="tdb-statut" role="status"></span>
-        <span id="tdb-pages" class="tdb-pages"></span>
-        <button class="secondaire" id="tdb-recharger" title="Relire les signalements du document">↻ Données</button>
-        <button class="secondaire" id="tdb-annuler" hidden>Revenir à la version publiée</button>
-        <button class="primaire" id="tdb-publier">Publier</button></div>
+        <span id="tdb-etat"></span>
+        <button class="primaire" id="tdb-publier">Publier</button>
+        <span class="tdb-menu-ancre"><button class="secondaire" id="tdb-menu-btn" aria-haspopup="true" aria-expanded="false" title="Autres actions">⋯</button>
+          <div class="tdb-menu" id="tdb-menu" hidden role="menu">
+            <div class="tdb-menu-groupe">Tableaux de bord</div>
+            <button role="menuitem" id="tdb-nouveau">Nouveau tableau de bord…</button>
+            <button role="menuitem" id="tdb-gerer">Renommer, changer de table, supprimer…</button>
+            <div class="tdb-menu-groupe">Pages de Grist</div>
+            <div id="tdb-pages" class="tdb-pages"></div>
+            <div class="tdb-menu-groupe">Données et versions</div>
+            <button role="menuitem" id="tdb-recharger">Relire les signalements</button>
+            <button role="menuitem" id="tdb-annuler" hidden>Revenir à la version publiée</button>
+            <div class="tdb-menu-groupe">Configuration</div>
+            <button role="menuitem" data-module="sauvegarder">Sauvegarder (fichier .json)</button>
+            <button role="menuitem" data-module="restaurer">Restaurer un fichier…</button>
+            <button role="menuitem" data-module="recuperer">Récupérer d'un autre widget (v1)…</button>
+          </div></span></div>
       <div id="tdb-panneau" class="tdb-panneau" hidden></div>
       <p class="tdb-aide" id="tdb-aide"></p>
       <p class="tdb-aide" id="tdb-etab" hidden></p>
@@ -149,15 +162,22 @@
     try { await lirePages(); } catch (_) { pages = []; }
     $("tdb-publier").addEventListener("click", publier);
     $("tdb-annuler").addEventListener("click", async () => {
+      fermerMenu();
       if (!confirm("Abandonner les modifications non publiées ?")) return;
       td = { ...td, brouillon: JSON.parse(JSON.stringify(td.publie)) }; await ecrire(); module.remplacer(td.publie); dessinerEtat();
     });
-    $("tdb-recharger").addEventListener("click", () => recharger && recharger());
+    $("tdb-recharger").addEventListener("click", () => { fermerMenu(); if (recharger) recharger(); });
     $("tdb-choix").addEventListener("change", e => monterTableau(e.target.value));
+    $("tdb-ajouter").addEventListener("click", () => module && module.action && module.action("ajouter"));
+    $("tdb-reglages").addEventListener("click", () => module && module.action && module.action("reglages"));
+    $("tdb-menu-btn").addEventListener("click", e => { e.stopPropagation(); const m = $("tdb-menu"); m.hidden = !m.hidden; $("tdb-menu-btn").setAttribute("aria-expanded", String(!m.hidden)); });
+    $("tdb-menu").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.module && module) module.action(b.dataset.module); if (b.dataset.module || b.id === "tdb-nouveau" || b.id === "tdb-gerer") fermerMenu(); });
+    document.addEventListener("click", e => { if (!e.target.closest(".tdb-menu-ancre")) fermerMenu(); });
     $("tdb-nouveau").addEventListener("click", () => panneau("nouveau"));
     $("tdb-gerer").addEventListener("click", () => panneau("gerer"));
     monterTableau(tableaux[0].id);
   }
+  function fermerMenu() { const m = $("tdb-menu"); if (m && !m.hidden) { m.hidden = true; $("tdb-menu-btn").setAttribute("aria-expanded", "false"); } }
   function dessinerChoix() {
     $("tdb-choix").innerHTML = tableaux.map(t => `<option value="${esc(t.id)}"${t.id === td.id ? " selected" : ""}>${esc(t.nom)}${tableaux.length > 1 ? ` — ${esc(t.table)}` : ""}</option>`).join("");
   }
@@ -167,12 +187,11 @@
     td = tableaux.find(t => t.id === id) || tableaux[0];
     table = td.table || general.reponses;
     dessinerChoix(); dessinerEtat(); dessinerPages(); statut("");
-    $("tdb-aide").innerHTML = `Modifiez les blocs ci-dessous : le brouillon s'enregistre au fil de l'eau, sur les signalements de la table <b>${esc(table)}</b>. Les pages de ce tableau de bord n'affichent que la version publiée.
-      Pour reprendre un tableau de bord existant (document v1), utilisez « Récupérer d'un autre widget… ».`;
+    $("tdb-aide").innerHTML = `Cliquez sur un bloc pour le régler dans le panneau de droite. Signalements de la table <b>${esc(table)}</b> ; le brouillon s'enregistre au fil de l'eau, les pages n'affichent que la version publiée.`;
     const zone = $("tdb-zone"); zone.innerHTML = `<div id="tableau-de-bord"></div>`;
     recharger = null;
     module = window.TableauDeBord.monter($("tableau-de-bord"), {
-      mode: "edition", table,
+      mode: "edition", table, atelier: true,
       abonner: async cb => { recharger = async () => cb(await lignes()); await recharger(); },
       configuration: () => td.brouillon || td.publie || null,
       enregistrer: enregistreurPour(td.id),

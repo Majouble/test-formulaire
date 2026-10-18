@@ -67,6 +67,8 @@ v2/
 
 - Plusieurs tableaux de bord (18/10) : clé `tableau_de_bord` de Config = `{ tableaux: [{ id, nom, table, brouillon, publie, publie_le }] }` (l'ancienne forme à un seul tableau est reprise comme premier tableau, qui reste aussi recopié en tête de la clé). Onglet Tableau de bord : liste déroulante du tableau à modifier, « + Nouveau » (nom, table des signalements, reprise facultative des blocs), « Renommer, table… », suppression. Chaque page dédiée porte l'option `tableau` (identifiant) ; une page sans option affiche le premier tableau.
 
+- Atelier du tableau de bord (18/10) : dans l'administration, le tableau de bord s'affiche tel que le lecteur le verra ; un clic sur un bloc ouvre ses réglages dans un panneau à droite (onglets Données, Présentation, Détail ; monter, descendre, dupliquer, supprimer). Fenêtres « + Ajouter un bloc » (chiffre clé, tableau, barres, histogramme, courbe, anneau, carte par territoire, carte des établissements, chacun préréglé) et « ⚙ Réglages du tableau » (nom, Word, filtres rapides, filtres communs). Une seule barre : tableau choisi, ajout, réglages, état, Publier, menu « ⋯ » (nouveau tableau, renommer, pages de Grist, relire, revenir à la version publiée, sauvegarder, restaurer, récupérer d'un widget v1). Le widget de lecture est inchangé.
+
 ## Tester l'installation
 
 1. Créer un document Grist vierge.

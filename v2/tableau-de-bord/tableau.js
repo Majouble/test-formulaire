@@ -18,6 +18,14 @@
       return { remplacer: c => module && module.remplacer(c), configuration: () => module && module.configuration() };
     }
     RACINE.innerHTML = BALISAGE;
+    if (CTX.mode === "edition" && CTX.atelier) {       // atelier : tableau de bord et panneau de réglages côte à côte
+      RACINE.classList.add("atelier");
+      const main = RACINE.querySelector(".tdb-main"), cadre = document.createElement("div");
+      cadre.className = "atelier-cadre"; main.parentNode.insertBefore(cadre, main); cadre.appendChild(main);
+      cadre.insertAdjacentHTML("beforeend", `<aside id="studio" class="studio" aria-label="Réglages du bloc"></aside>`);
+      RACINE.insertAdjacentHTML("beforeend", `<div id="fenetre" class="fenetre" hidden><div class="fenetre-boite" role="dialog" aria-modal="true" aria-labelledby="fenetreTitre">
+        <div class="fenetre-tete"><h2 id="fenetreTitre"></h2><button class="ghost" data-act="st-fermer-fenetre" title="Fermer">✕</button></div><div id="fenetreCorps"></div></div></div>`);
+    }
 
 "use strict";
 // =============================================================================
@@ -518,6 +526,10 @@ function measureText(m) {
 // =============================================================================
 let config = { filters: [], blocks: [] };
 let editing = CTX.mode === "edition", configLoaded = false;
+// Atelier (administration, CTX.atelier) : tableau de bord tel que le lecteur le verra au centre, réglages du bloc choisi
+// dans un panneau à droite (onglets Données, Présentation, Détail), fenêtres pour l'ajout d'un bloc et les réglages du tableau.
+const studio = () => CTX.mode === "edition" && !!CTX.atelier;
+let selId = null, ongletSt = "donnees", fenetre = null;   // bloc choisi, onglet du panneau, fenêtre ouverte (« ajouter » | « reglages »)
 let uid = 1;
 const newId = () => "b" + Date.now().toString(36) + (uid++);
 
@@ -678,9 +690,8 @@ function renderGlobal() {
   const lt = logicTree(f, config.filtersLogic);
   const chips = lt && !lt.error ? (f.some(c => c.col) ? `<span class="chip">${rich(condsText(f, config.filtersLogic))}</span>` : "")
     : f.filter(c => c.col).map(c => `<span class="chip">${rich(condText(c))}</span>`).join("");
-  $("globalBox").innerHTML = `
-    <div class="view-only">${chips ? `<div class="chips"><span class="sub">Filtres communs :</span>${chips}</div>` : ""}</div>
-    <div class="edit-only card">
+  const vue = `<div class="view-only">${chips ? `<div class="chips"><span class="sub">Filtres communs :</span>${chips}</div>` : ""}</div>`;
+  const reglages = `
       <div class="row" style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
         <span class="sub">Nom de ce tableau de bord</span>
         <input type="text" id="dashName" value="${esc(dashName())}" style="min-width:220px" title="Sert à retrouver la configuration dans la table ${CFG_TABLE}">
@@ -701,8 +712,13 @@ function renderGlobal() {
 
       <h2>Filtres communs à tout le tableau de bord</h2>
       <div class="desc">Ces conditions s'appliquent à tous les blocs, en plus des conditions propres à chaque bloc.</div>
-      <div style="margin-top:8px">${condEditor("g", f)}</div>
-    </div>`;
+      <div style="margin-top:8px">${condEditor("g", f)}</div>`;
+  if (studio()) {            // atelier : réglages du tableau dans leur fenêtre ; à l'écran, les filtres communs en rappel
+    $("globalBox").innerHTML = chips ? `<div class="chips st-rappel"><span class="sub">Filtres communs :</span>${chips} <button class="ghost" data-act="st-reglages">modifier</button></div>` : "";
+    if (fenetre === "reglages") $("fenetreCorps").innerHTML = `<div class="st-reglages">${reglages}</div>`;
+    return;
+  }
+  $("globalBox").innerHTML = `${vue}<div class="edit-only card">${reglages}</div>`;
 }
 
 function blockEditor(b, i) {
@@ -739,6 +755,8 @@ function blockEditor(b, i) {
     ${b.rows.col && !isDate(b.rows.col) ? `<div class="row"><span class="lbl">Compléter avec</span>${refPick("rows.ref", b.rows.ref || {}, true)}</div>${refFilter("rows.ref", b.rows.ref || {})}` : ""}
     <div class="row"><span class="lbl">Colonnes</span>${dim("cols", b.cols, "Aucune (une seule colonne de résultat)")}
       ${b.cols && b.cols.col && !isDate(b.cols.col) ? `<select data-b="${i}" data-k="colSort" title="Ordre des colonnes du tableau et des séries du graphique">${opt([["value", "colonnes : par valeur décroissante"], ["label", "colonnes : de A à Z"], ["labeldesc", "colonnes : de Z à A"]], b.colSort || "value")}</select>` : ""}</div>
+`;
+  const crossVue = b.type !== "cross" ? "" : `
     <div class="row"><span class="lbl">Affichage</span>
       <select data-b="${i}" data-k="view">${opt([["both", "Graphique et tableau"], ["table", "Tableau seul"], ["chart", "Graphique seul"]], b.view || "both")}</select>
       <select data-b="${i}" data-k="sort">${opt([["value", "Tri par valeur décroissante"], ["label", "Tri alphabétique ou chronologique"]], b.sort || "value")}</select>
@@ -768,22 +786,25 @@ function blockEditor(b, i) {
       <span class="hint">Les conditions et colonnes proposées sont celles de cette table. Filtres communs et rapides : appliqués quand la table a une colonne du même nom.</span></div>`;
   const nc = (b.conds || []).filter(c => c.col).length;
   const resume = [isMainSrc(b) ? "" : "table " + b.source, plain(measureText(b.measure)), nc ? `${nc} condition${nc > 1 ? "s" : ""}` : "sans condition"].filter(Boolean).join(" · ");
-  return `<details class="edbox edit-only" data-detailbox="${esc(b.id)}-ed" ${detailOpen.has(b.id + "-ed") ? "open" : ""}>
-    <summary><span class="lbl">Réglages</span> <span class="hint">${esc(resume)}</span></summary>
-    <div class="editor">
-    ${srcSel}
-    <div class="row"><span class="lbl">Titre</span><input type="text" style="flex:1;min-width:200px" data-b="${i}" data-k="title" value="${esc(b.title || "")}"></div>
-    ${measure}${cross}${pct}${card}
-    <div class="row"><span class="lbl">Rappel du calcul</span>
+  const rappel = `    <div class="row"><span class="lbl">Rappel du calcul</span>
       <textarea rows="2" style="flex:1;min-width:240px;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--axis);border-radius:6px;padding:4px 6px" data-b="${i}" data-k="desc" placeholder="${esc(plain(autoDesc(b)))}" ${b.hideDesc ? "disabled" : ""}>${esc(b.desc || "")}</textarea>
       ${String(b.desc || "").trim() ? `<button class="ghost" data-act="autodesc" data-b="${i}" title="Effacer le texte saisi et revenir au rappel automatique">Texte automatique</button>` : ""}</div>
     <div class="row"><span class="hint">Laissez vide pour le texte automatique (affiché en grisé). Saisi, votre texte le remplace à l'écran et dans les exports ; <b>{calcul}</b> y insère le texte automatique, *texte* le met en gras.</span></div>
     <div class="row"><label><input type="checkbox" data-b="${i}" data-k="hideDesc" ${b.hideDesc ? "checked" : ""}> Masquer le rappel du calcul (sous le titre, à l'écran et dans les exports)</label></div>
-    <details data-detailbox="${esc(b.id)}" ${detailOpen.has(b.id) ? "open" : ""}><summary><span class="lbl">Colonnes du détail</span>
+`;
+  const detailBox = `    <details data-detailbox="${esc(b.id)}" ${detailOpen.has(b.id) ? "open" : ""}><summary><span class="lbl">Colonnes du détail</span>
       <span class="hint">${(b.detailCols || []).length ? `${b.detailCols.length} colonne(s) choisie(s)` : "choix automatique"} · affichées au clic sur un chiffre, une barre ou une case</span></summary>
       <div class="chips" style="margin-top:6px">${columns.map(c => `<label class="chip" style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" data-bdetail="${i}" data-col="${esc(c.id)}" ${(b.detailCols || []).includes(c.id) ? "checked" : ""}> ${esc(plain(c.label))}</label>`).join("")}</div>
       <p class="hint">Aucune case cochée : le widget montre les colonnes du bloc et les colonnes courtes.${(b.detailCols || []).length ? ` <button class="ghost" data-act="clrdetail" data-b="${i}">Revenir au choix automatique</button>` : ""}</p></details>
-    <div class="row" style="align-items:flex-start"><span class="lbl">Conditions</span><div style="flex:1">${condEditor(s, b.conds)}</div></div>
+`;
+  const conditions = `<div class="row" style="align-items:flex-start"><span class="lbl">Conditions</span><div style="flex:1">${condEditor(s, b.conds)}</div></div>`;
+  const titre = `<div class="row"><span class="lbl">Titre</span><input type="text" style="flex:1;min-width:200px" data-b="${i}" data-k="title" value="${esc(b.title || "")}"></div>`;
+  // atelier (administration) : réglages répartis en onglets dans le panneau de droite
+  if (studio()) return { resume, donnees: `${srcSel}${measure}${cross}${conditions}`, presentation: `${titre}${crossVue}${pct}${card}${rappel}`, detail: detailBox };
+  return `<details class="edbox edit-only" data-detailbox="${esc(b.id)}-ed" ${detailOpen.has(b.id + "-ed") ? "open" : ""}>
+    <summary><span class="lbl">Réglages</span> <span class="hint">${esc(resume)}</span></summary>
+    <div class="editor">
+    ${srcSel}${titre}${measure}${cross}${crossVue}${pct}${card}${rappel}${detailBox}${conditions}
   </div></details>`;
 }
 
@@ -865,7 +886,7 @@ function renderTile(b, i, base) {
         + (att ? `<span class="attached-badge edit-only">Rattachée à « ${esc(plain(att.title || "tuile"))} » · masquée hors modification</span>` : ""); })()}
     ${srcNote(b)}${missingColsNote(b)}
     ${isCover(b) ? `<div class="part">${t.cover && t.cover.ok ? esc(coverNote(t.cover)) : esc(refStateText(t.cover ? t.cover.L : { state: "unset" }))}</div>` : ""}
-    ${blockEditor(b, i)}</div>`;
+    ${studio() ? "" : blockEditor(b, i)}</div>`;
 }
 
 // Calcul d'un tableau croisé
@@ -945,8 +966,8 @@ function renderCross(b, i, base) {
   const head = `<div class="card-head"><div class="t"><h2>${rich(b.title || measureText(b.measure))}</h2>
       ${b.hideDesc ? "" : `<div class="desc">${rich(blockDesc(b))}</div>`}</div>
       ${exportTools(i)}${blockTools(i)}</div>`;
-  if (!b.rows.col) return `<div class="card" data-card="${i}" data-bi="${i}">${head}<div class="empty">Choisissez une colonne pour les lignes (bouton « Modifier le tableau de bord »).</div>${blockEditor(b, i)}</div>`;
-  if (!d.rows.length && !d.missingKeys.size) return `<div class="card" data-card="${i}" data-bi="${i}">${head}<div class="empty">Aucune ligne ne correspond aux conditions.</div>${srcNote(b)}${missingColsNote(b)}${blockEditor(b, i)}</div>`;
+  if (!b.rows.col) return `<div class="card" data-card="${i}" data-bi="${i}">${head}<div class="empty">Choisissez une colonne pour les lignes (bouton « Modifier le tableau de bord »).</div>${studio() ? "" : blockEditor(b, i)}</div>`;
+  if (!d.rows.length && !d.missingKeys.size) return `<div class="card" data-card="${i}" data-bi="${i}">${head}<div class="empty">Aucune ligne ne correspond aux conditions.</div>${srcNote(b)}${missingColsNote(b)}${studio() ? "" : blockEditor(b, i)}</div>`;
   const top = topOf(b);
   const shownRows = d.rowKeys.slice(0, top);
   const pct = b.percent && ADDITIVE.has(b.measure.agg || "count") && d.total;
@@ -970,7 +991,7 @@ function renderCross(b, i, base) {
     ? `<p class="hint">Les totaux sont recalculés sur l'ensemble des lignes concernées${b.measure.agg === "distinct" ? " (une même valeur n'est comptée qu'une fois)" : ""}.</p>` : "";
   const multi = (d.rc && records.some(r => Array.isArray(r[d.rc]))) || (d.cc && records.some(r => Array.isArray(r[d.cc])));
   const noteMulti = multi ? `<p class="hint">Une ligne ayant plusieurs valeurs dans une liste de choix est comptée dans chacune : la somme des lignes peut dépasser le total.</p>` : "";
-  return `<div class="card" data-card="${i}" data-bi="${i}">${head}${chart}${table}${srcNote(b)}${missingColsNote(b)}${refNote(b, d)}${ADDITIVE.has(b.measure.agg || "count") ? "" : note}${noteMulti}${blockEditor(b, i)}</div>`;
+  return `<div class="card" data-card="${i}" data-bi="${i}">${head}${chart}${table}${srcNote(b)}${missingColsNote(b)}${refNote(b, d)}${ADDITIVE.has(b.measure.agg || "count") ? "" : note}${noteMulti}${studio() ? "" : blockEditor(b, i)}</div>`;
 }
 
 // =============================================================================
@@ -1509,6 +1530,7 @@ function render() {
   $("tiles").innerHTML = tiles.join("");
   $("blocks").innerHTML = blocks.join("") || (config.blocks.length ? "" : `<div class="card empty">Tableau de bord vide : cliquez sur « Modifier le tableau de bord » pour ajouter des blocs.</div>`);
   renderQuickBar();
+  if (studio()) renderStudio();
   const filtered = (config.filters && config.filters.some(c => c.col)) || Object.keys(quick).length;
   $("source").textContent = `${base.length} ligne${base.length > 1 ? "s" : ""}${filtered ? ` sur ${records.length}` : ""}`;
   renderDiagOnly();
@@ -1620,6 +1642,98 @@ RACINE.addEventListener("click", e => {
   else if (act === "docx") exportWord(i);
 });
 $("toggleEdit").addEventListener("click", () => { editing = !editing; render(); });
+
+// ---- Atelier : panneau du bloc choisi, fenêtres « Ajouter un bloc » et « Réglages du tableau »
+const ICONES = { tile: "123", table: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 7h12M2 10h12M7 3v10"/></svg>`, barh: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3v10"/><path d="M2 5h9M2 8h12M2 11h6"/></svg>`, barv: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 14h12"/><path d="M4 13V8M8 13V3M12 13V6"/></svg>`, line: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 14h12"/><path d="M2 11l4-4 3 2 5-6"/></svg>`, pie: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5V8l4 3.8"/></svg>`, map: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4l4-1.5 4 1.5 4-1.5v9.5l-4 1.5-4-1.5-4 1.5z"/><path d="M6 2.5v9.5M10 4v9.5"/></svg>`, points: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="6" r="1.6"/><circle cx="11" cy="5" r="2.2"/><circle cx="8" cy="11" r="1.2"/></svg>` };
+function genreBloc(b) {
+  if (b.type === "tile") return { icone: ICONES.tile, nom: "Chiffre clé" };
+  if ((b.view || "both") === "table") return { icone: ICONES.table, nom: "Tableau" };
+  const c = b.chart || "barh";
+  return { icone: ICONES[c] || "▦", nom: (CHART_TYPES.find(x => x[0] === c) || [, "Graphique"])[1] + ((b.view || "both") === "both" ? " et tableau" : "") };
+}
+const MODELES = [
+  { cle: "tile", icone: ICONES.tile, nom: "Chiffre clé", desc: "Un nombre en grand : signalements, établissements touchés, part du total…" },
+  { cle: "table", icone: ICONES.table, nom: "Tableau", desc: "Un tableau croisé : une ligne par valeur, une colonne de résultat ou plusieurs." },
+  { cle: "barh", icone: ICONES.barh, nom: "Barres", desc: "Classement horizontal, avec son tableau (qualifications, académies…)." },
+  { cle: "barv", icone: ICONES.barv, nom: "Histogramme", desc: "Colonnes verticales, souvent par jour ou par semaine." },
+  { cle: "line", icone: ICONES.line, nom: "Courbe", desc: "Évolution dans le temps (date de saisie, date des faits)." },
+  { cle: "pie", icone: ICONES.pie, nom: "Anneau", desc: "Répartition en parts (peu de valeurs)." },
+  { cle: "map", icone: ICONES.map, nom: "Carte par territoire", desc: "Départements ou académies colorés selon la valeur." },
+  { cle: "points", icone: ICONES.points, nom: "Carte des établissements", desc: "Un point par établissement, taille selon la valeur." },
+];
+function creerBloc(cle) {
+  const id = newId();
+  if (cle === "tile") config.blocks.push({ id, type: "tile", title: "Nouveau chiffre clé", measure: { agg: "count" }, conds: [] });
+  else {
+    const date = columns.find(c => isDate(c.id)), choix = columns.find(c => /^Choice/.test(c.type)) || columns.find(c => !isDate(c.id) && !isNumCol(c.id)) || columns[0] || {};
+    const geo = columns.find(c => /^(departement|academie)$/i.test(c.id)), etab = columns.find(c => /^uai$/i.test(c.id)) || columns.find(c => /^Ref:/.test(c.type));
+    const col = cle === "line" || cle === "barv" ? (date || choix).id : cle === "map" ? (geo || choix).id : cle === "points" ? (etab || choix).id : choix.id;
+    const b = { id, type: "cross", title: "Nouveau bloc", measure: { agg: "count" }, rows: { col: col || "", grain: "jour" }, cols: { col: "", grain: "jour" }, conds: [],
+      view: cle === "table" ? "table" : ["map", "points", "pie"].includes(cle) ? "chart" : "both", sort: cle === "line" || cle === "barv" ? "label" : "value", top: cle === "pie" ? 6 : 20 };
+    if (cle !== "table") b.chart = cle;
+    if (cle === "map" && geo) b.rows.grain = /acad/i.test(geo.id) ? "aca_norm" : "dep_norm";
+    if (cle === "map" || cle === "points") b.top = 0;
+    b.title = `${(MODELES.find(m => m.cle === cle) || {}).nom || "Bloc"}${col ? ` — ${plain(labelOf(col))}` : ""}`;
+    config.blocks.push(b);
+  }
+  selId = id; ongletSt = "donnees"; fermerFenetre(); commit();
+  setTimeout(() => { const c = RACINE.querySelector(".card.selectionne"); if (c) c.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, 50);
+}
+function ouvrirFenetre(type) {
+  fenetre = type;
+  $("fenetre").hidden = false;
+  $("fenetreTitre").textContent = type === "ajouter" ? "Ajouter un bloc" : "Réglages du tableau de bord";
+  if (type === "ajouter") $("fenetreCorps").innerHTML = `<p class="hint">Choisissez une présentation : le bloc est créé avec des réglages de départ, à ajuster ensuite dans le panneau de droite.</p>
+    <div class="st-modeles">${MODELES.map(m => `<button class="st-modele" data-act="st-creer" data-k="${m.cle}"><span class="st-icone">${m.icone}</span><strong>${esc(m.nom)}</strong><span>${esc(m.desc)}</span></button>`).join("")}</div>`;
+  else renderGlobal();
+  const b = $("fenetreCorps").querySelector("button, input, select"); if (b) b.focus();
+}
+function fermerFenetre() { fenetre = null; const f = $("fenetre"); if (f) { f.hidden = true; $("fenetreCorps").innerHTML = ""; } }
+function renderStudio() {
+  const z = $("studio"); if (!z) return;
+  const i = config.blocks.findIndex(b => b.id === selId);
+  RACINE.querySelectorAll("[data-bi]").forEach(c => c.classList.toggle("selectionne", i >= 0 && Number(c.dataset.bi) === i));
+  if (i < 0) {
+    selId = null;
+    z.innerHTML = `<div class="st-tete"><strong>Réglages</strong></div>
+      <div class="st-corps"><p class="hint">Cliquez sur un bloc du tableau de bord pour le régler ici. Le résultat s'affiche à gauche au fur et à mesure.</p>
+      <div class="st-actions"><button class="primary" data-act="st-ajouter">+ Ajouter un bloc</button><button data-act="st-reglages">⚙ Réglages du tableau</button></div>
+      ${config.blocks.length ? `<div class="sub" style="margin-top:14px">Blocs du tableau de bord</div><ol class="st-liste">${config.blocks.map(b => { const g = genreBloc(b);
+        return `<li><button class="ghost" data-act="st-choisir" data-k="${esc(b.id)}"><span class="st-icone">${g.icone}</span> ${esc(plain(b.title || measureText(b.measure)))}</button></li>`; }).join("")}</ol>` : ""}</div>`;
+    return;
+  }
+  const b = config.blocks[i], g = genreBloc(b);
+  // les réglages se calculent dans la table source du bloc (colonnes proposées, conditions)
+  const parts = inSrc(b, () => blockEditor(b, i));
+  const onglet = (k, lib) => `<button role="tab" class="st-onglet${ongletSt === k ? " actif" : ""}" aria-selected="${ongletSt === k}" data-act="st-onglet" data-k="${k}">${lib}</button>`;
+  z.innerHTML = `<div class="st-tete"><span class="st-icone">${g.icone}</span><div class="st-titre"><span class="hint">${esc(g.nom)}</span><strong>${esc(plain(b.title || measureText(b.measure)))}</strong></div>
+      <span class="st-outils"><button class="ghost" data-act="up" data-b="${i}" title="Monter">↑</button><button class="ghost" data-act="down" data-b="${i}" title="Descendre">↓</button>
+      <button class="ghost" data-act="dup" data-b="${i}" title="Dupliquer">⧉</button><button class="ghost" data-act="del" data-b="${i}" title="Supprimer ce bloc">🗑</button>
+      <button class="ghost" data-act="st-fermer" title="Fermer le panneau">✕</button></span></div>
+    <div class="st-onglets" role="tablist">${onglet("donnees", "Données")}${onglet("presentation", "Présentation")}${onglet("detail", "Détail")}</div>
+    <div class="st-corps editor" role="tabpanel">${ongletSt === "donnees" ? parts.donnees : ongletSt === "presentation" ? parts.presentation : parts.detail}</div>
+    <div class="st-pied hint">${esc(parts.resume)}</div>`;
+}
+if (studio()) {
+  RACINE.addEventListener("click", e => {
+    const t = e.target.closest("button");
+    const act = t && t.dataset.act;
+    if (act === "st-ajouter") return ouvrirFenetre("ajouter");
+    if (act === "st-reglages") return ouvrirFenetre("reglages");
+    if (act === "st-fermer-fenetre") return fermerFenetre();
+    if (act === "st-creer") return creerBloc(t.dataset.k);
+    if (act === "st-choisir") { selId = t.dataset.k; ongletSt = "donnees"; return renderStudio(); }
+    if (act === "st-onglet") { ongletSt = t.dataset.k; return renderStudio(); }
+    if (act === "st-fermer") { selId = null; return renderStudio(); }
+    if (e.target === $("fenetre")) return fermerFenetre();
+    // clic sur un bloc du tableau de bord (hors boutons et champs) : il devient le bloc réglé
+    if (t || e.target.closest("input, select, textarea, label, a, .studio, .fenetre")) return;
+    const card = e.target.closest("[data-bi]"); if (!card) return;
+    const b = config.blocks[Number(card.dataset.bi)]; if (!b) return;
+    if (selId !== b.id) { selId = b.id; renderStudio(); }
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && fenetre && RACINE.isConnected) fermerFenetre(); });
+}
 
 // ---- Glisser-déposer : réordonner les chiffres clés entre eux et les tableaux ou cartes entre eux
 let dragFrom = null;
@@ -2640,6 +2754,14 @@ async function recevoir(rows) {
 return {
   remplacer(c) { config = JSON.parse(JSON.stringify(c)); configLoaded = true; render(); },
   configuration: () => config,
+  // actions de la barre de l'administration (atelier)
+  action(nom) {
+    if (nom === "ajouter") ouvrirFenetre("ajouter");
+    else if (nom === "reglages") ouvrirFenetre("reglages");
+    else if (nom === "sauvegarder") $("saveCfg").click();
+    else if (nom === "restaurer") $("loadCfg").click();
+    else if (nom === "recuperer") $("findCfg").click();
+  },
 };
 
   }
