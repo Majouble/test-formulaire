@@ -792,11 +792,31 @@ async function dupliquerBloc(b, i) {
     // une question ne peut pas partager sa colonne : la copie crée une nouvelle colonne de même type
     const c = meta[b.colonne]; if (!c) return;
     const lib = `${libelleQuestion(b.colonne)} (copie)`;
-    try { n.colonne = await creerColonne(courant.table, lib, c.type, c.opts); n.reglages = { ...n.reglages, libelle: lib }; }
-    catch (e) { message(`Copie impossible : ${e.message || e}`, "err"); return; }
+    try {
+      n.colonne = await creerColonne(courant.table, lib, c.type, c.opts); n.reglages = { ...n.reglages, libelle: lib };
+      // question tableau : la copie a sa propre table, de même structure (sinon les deux questions partageraient leurs lignes et leurs champs)
+      if (b.reglages && b.reglages.tableau && b.reglages.tableau.table) n.reglages.tableau = { ...b.reglages.tableau, table: await copierSousTable(b.reglages.tableau.table) };
+    } catch (e) { message(`Copie impossible : ${e.message || e}`, "err"); return; }
   }
   blocs().splice(i + 1, 0, n);
   choisi = n.id; sauver(); dessinerApercu(); dessinerPanneau();
+  if (n.reglages && n.reglages.tableau && n.reglages.tableau.table) { message(`Question copiée avec sa propre table, ${n.reglages.tableau.table} (mêmes champs, sans les lignes).`, "ok"); reglesApresTableau(n.reglages.tableau.table); }
+}
+// Nouvelle table de même structure que la sous-table d'une question tableau (colonnes, libellés, choix, réglages) ; renvoie son nom
+async function copierSousTable(src) {
+  const [T, C] = await Promise.all([grist.docApi.fetchTable("_grist_Tables"), grist.docApi.fetchTable("_grist_Tables_column")]);
+  const ref = T.id[T.tableId.indexOf(src)]; if (!ref) throw new Error(`table ${src} introuvable`);
+  const idx = C.id.map((_, i) => i).filter(i => C.parentId[i] === ref && C.colId[i] !== "manualSort" && !String(C.colId[i]).startsWith("gristHelper"));
+  const nomT = identifiant(`${src} copie`, tables.concat(T.tableId));
+  const v = (k, i) => (C[k] || [])[i];
+  const simples = idx.filter(i => !v("isFormula", i)), formules = idx.filter(i => v("isFormula", i));
+  await actions([["AddTable", nomT, simples.map(i => ({ id: v("colId", i), type: v("type", i), isFormula: false, formula: v("formula", i) || "" }))]]);
+  await actions([
+    ...formules.map(i => ["AddColumn", nomT, v("colId", i), { type: v("type", i), isFormula: true, formula: v("formula", i) || "" }]),
+    ...idx.map(i => ["ModifyColumn", nomT, v("colId", i), { label: v("label", i) || v("colId", i), widgetOptions: v("widgetOptions", i) || "", description: v("description", i) || "", untieColIdFromLabel: true }]),
+  ]);
+  await lireMeta();
+  return nomT;
 }
 function retirerBloc(b) {
   const lib = b.genre === "question" ? `« ${libelleQuestion(b.colonne)} »` : "ce bloc";
