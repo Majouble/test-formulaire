@@ -159,9 +159,13 @@
     let t;
     try { t = await grist.docApi.fetchTable(general.formulaires); } catch (_) { return []; }
     return (t.id || []).map((id, i) => {
-      let conf = null;
+      let conf = null, brouillon = null;
       try { conf = t.Publie && t.Publie[i] ? JSON.parse(t.Publie[i]) : null; } catch (_) { conf = null; }
-      return { id, nom: String((t.Nom || [])[i] || ""), table: String((t.Table || [])[i] || ""), conf, type: String((t.Type || [])[i] || "etablissement") };
+      try { brouillon = t.Brouillon && t.Brouillon[i] ? JSON.parse(t.Brouillon[i]) : null; } catch (_) { brouillon = null; }
+      // blocs du formulaire publié et du brouillon : une question tableau ajoutée (et sa table) est couverte
+      // par les règles d'accès dès sa création, sans attendre la publication
+      const blocsTableaux = [...((conf && conf.blocs) || []), ...((brouillon && brouillon.blocs) || [])].filter(b => b && b.reglages && b.reglages.tableau && b.reglages.tableau.table);
+      return { id, nom: String((t.Nom || [])[i] || ""), table: String((t.Table || [])[i] || ""), conf, blocsTableaux, type: String((t.Type || [])[i] || "etablissement") };
     }).filter(f => f.conf && f.table);
   }
   // Un groupe par référentiel visé par les formulaires d'établissement : clé UUID, colonne Lien, attribut utilisateur
@@ -192,7 +196,7 @@
       out.add(g.table);
       for (const f of g.formulaires) {
         out.add(f.table);
-        (f.conf.blocs || []).forEach(b => { const st = b && b.reglages && b.reglages.tableau && b.reglages.tableau.table; if (st && meta[st]) out.add(st); });
+        (f.blocsTableaux || f.conf.blocs || []).forEach(b => { const st = b && b.reglages && b.reglages.tableau && b.reglages.tableau.table; if (st && meta[st]) out.add(st); });
         Object.values(meta[f.table].colonnes).forEach(c => { const x = S().cibleRef(c.type) || (/^RefList:(.+)$/.exec(c.type) || [])[1]; if (x && meta[x] && !technique.has(x)) out.add(x); });
       }
     }
@@ -208,7 +212,8 @@
     if (!meta[general.referentiel]) tables.delete(general.referentiel);
     return tables.size ? S().majSchemaPublic([...tables].filter(t => meta[t])) : false;
   }
-  const formuleLien = (attribut, page) => `SELF_HYPERLINK(${page ? `page=${page}, ` : ""}LinkKey_${attribut}=$${LIEN.cle})`;
+  const formuleLien = (attribut, page) => `SELF_HYPERLINK(${page ? `page=${page}, ` : ""}LinkKey_${attribut}=$${LIEN.cle})${S().STYLE_LIEN}`;
+  const ancienneFormuleLien = (attribut, page) => `SELF_HYPERLINK(${page ? `page=${page}, ` : ""}LinkKey_${attribut}=$${LIEN.cle})`;
   // Pages des établissements : vues personnalisées dont l'option « etablissements » nomme le référentiel
   async function lirePagesEtab() {
     try {
@@ -228,6 +233,6 @@
     lireReferentiel, libelleCritere, criteres, criteresAjoutables, enregistrerCriteres,
     perimetreObjet, nettoyer, memePerimetre, resumePerimetre, nomPage,
     lireAgents, optionsVue, lirePages, agentDePage,
-    LIEN, lireFormulairesPublies, groupesLiens, formuleLien, lirePagesEtab, tablesPubliques, majSchemaPublic,
+    LIEN, lireFormulairesPublies, groupesLiens, formuleLien, ancienneFormuleLien, lirePagesEtab, tablesPubliques, majSchemaPublic,
   };
 })();

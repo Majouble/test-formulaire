@@ -11,11 +11,16 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.2 (18/10/2026)";
+  const VERSION = "2.0.3 (18/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
   const TABLE_ADMIN = "Administration";   // table vide qui porte la page d'administration : réservée aux propriétaires par les règles d'accès
+  const TABLE_CELLULE = "Cellule";        // table vide qui porte la page « Cellule » : lisible des propriétaires et des agents connectés seulement ;
+                                           // Grist masque une page qui contient une table illisible, et toutes les pages rangées dessous
+  // Liens personnels (établissements, invités) : page seule, sans la liste des pages ni les panneaux de Grist.
+  // (« embed=true » passerait aussi le document en lecture seule : la saisie serait impossible)
+  const STYLE_LIEN = ` + "&style=singlePage"`;
   const DEFAUTS_GENERAL = {
     situation: "",                         // nom de la situation suivie (« Mouvements octobre 2026 »…)
     preset: "en",                          // « en » (établissements scolaires) ou « esr »
@@ -338,6 +343,8 @@ return sorted(champs)`;
     const f = String(c.formula || "").trim();
     return f === "" || f === "user.Email" || (/^# Auteur \(socle/.test(f) && !f.startsWith(MARQUE_AUTEUR)) || (/user\.LinkKey/.test(f) && /Invité/.test(f) && !f.startsWith("#"));
   }
+  const ANCIENNE_FORMULE_LIEN_INVITE = `SELF_HYPERLINK(page=$${INVITE.page} or None, LinkKey_${INVITE.attribut}=$${INVITE.cle}) if $${INVITE.cle} else ""`;
+  const formuleLienInvite = () => `(SELF_HYPERLINK(page=$${INVITE.page} or None, LinkKey_${INVITE.attribut}=$${INVITE.cle})${STYLE_LIEN}) if $${INVITE.cle} else ""`;
   function colonnesAgents(config) {
     const g = general(config);
     return [
@@ -346,7 +353,7 @@ return sorted(champs)`;
       { id: "Modifie_le", type: "DateTime:Europe/Paris" },
       { id: INVITE.cle, type: "Text" }, { id: INVITE.page, type: "Int" }, { id: INVITE.expire, type: "DateTime:Europe/Paris" },
       { id: "Champs_acces", type: "ChoiceList", isFormula: true, formula: formuleChampsAcces(g), widgetOptions: choix(CHAMPS.map(c => c.id)) },
-      { id: INVITE.lien, type: "Text", isFormula: true, formula: `SELF_HYPERLINK(page=$${INVITE.page} or None, LinkKey_${INVITE.attribut}=$${INVITE.cle}) if $${INVITE.cle} else ""` },
+      { id: INVITE.lien, type: "Text", isFormula: true, formula: formuleLienInvite() },
       // lien encore valable (recalculé par Grist à chaque modification et au moins toutes les heures) : lu par les règles d'accès
       { id: INVITE.valide, type: "Bool", isFormula: true, formula: `bool($${INVITE.cle}) and (not $${INVITE.expire} or $${INVITE.expire} > NOW())` },
     ];
@@ -622,6 +629,7 @@ return sorted(champs)`;
     // 1. Tables techniques
     ajouterTableTechnique(TABLE_CONFIG, COLONNES_CONFIG, "Réglages du document, une ligne par clé (valeur en JSON).");
     ajouterTableTechnique(TABLE_ADMIN, [{ id: "Note", type: "Text" }], "Table vide qui porte la page d'administration : les règles d'accès la réservent aux propriétaires, la page est ainsi invisible des agents, des invités et des établissements.");
+    ajouterTableTechnique(TABLE_CELLULE, [{ id: "Note", type: "Text" }], "Table vide qui porte la page « Cellule » : les pages rangées dessous (réponses, référentiel, tableaux de bord…) sont invisibles des établissements et des invités (onglet Accès).");
     ajouterTableTechnique(g.formulaires, COLONNES_FORMULAIRES, "Formulaires en brouillon et publiés.");
     const colsAgents = colonnesAgents(config);
     ajouterTableTechnique(g.agents, colsAgents.filter(c => !c.isFormula), "Équipe de la cellule : nom, adresse, téléphone (onglet Équipe).");
@@ -830,7 +838,7 @@ return sorted(champs)`;
 
   window.Socle = {
     reglagesPointParDefaut,
-    VERSION, TABLE_CONFIG, TABLE_ADMIN, DEFAUTS_GENERAL, NATURES, ROLES,
+    VERSION, TABLE_CONFIG, TABLE_ADMIN, TABLE_CELLULE, STYLE_LIEN, formuleLienInvite, ANCIENNE_FORMULE_LIEN_INVITE, DEFAUTS_GENERAL, NATURES, ROLES,
     colonnesEmargements, lireEmargements, STATUTS_ACTION, PRIORITES_ACTION, ACTIONS_DEFAUT, reglagesActions, optionsStatuts, colonnesActions, lireActions,
     PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
     norm, cibleRef, lireMeta, lireConfig, activerCacheLecture, viderCacheLecture, surEcriture, general, actionConfig, ecrireConfig,

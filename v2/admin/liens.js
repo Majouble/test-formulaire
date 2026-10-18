@@ -36,6 +36,12 @@
     formulaires = await R.lireFormulairesPublies(general);
     groupes = R.groupesLiens(meta, config, general, formulaires);
     pages = (await R.lirePagesEtab()) || [];
+    // formule du lien d'avant la 2.0.3 (sans « page seule ») : mise à jour d'office
+    const anciennes = groupes.filter(g => g.lien && memeFormule(g.formuleLien, R.ancienneFormuleLien(g.attribut, pageDe(g) ? pageDe(g).viewRef : null)));
+    if (anciennes.length) try {
+      await grist.docApi.applyUserActions(anciennes.map(g => ["ModifyColumn", g.table, LIEN, { formula: formuleAttendue(g) }]));
+      meta = await S.lireMeta(); groupes = R.groupesLiens(meta, config, general, formulaires);
+    } catch (_) { /* droits insuffisants : proposé dans l'étape « Formule du lien » */ }
     attributs = await lireAttributs();
     if (await R.majSchemaPublic(meta, config, general, formulaires)) config = await S.lireConfig();   // copie des colonnes pour les liens
     message = { ...MESSAGE_DEFAUT, ...((config && config.valeurs.liens && config.valeurs.liens.message) || {}) };

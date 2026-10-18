@@ -947,6 +947,8 @@ async function ajouterBloc(type, texte, nomTable, tableExistante) {
   }
   blocs().splice(Math.min(ctx.index, blocs().length), 0, b);
   choisi = b.id; sauver(); dessinerApercu(); dessinerPanneau();
+  // question tableau : sa table reçoit tout de suite les règles d'accès du socle (une fois le brouillon enregistré)
+  if (b.reglages && b.reglages.tableau && b.reglages.tableau.table) reglesApresTableau(b.reglages.tableau.table);
   const el = document.querySelector(`[data-bloc="${b.id}"]`); if (el) { el.scrollIntoView({ block: "center" }); }
   if (type.choix || type.cle === "tableau") { const p = $("panneau").querySelector(type.choix ? ".choix-edit input[type=text]" : "#sc-nouveau-lib"); if (p) p.focus(); }
   else { const p = $("pa-libelle"); if (p) p.focus(); }
@@ -983,6 +985,8 @@ async function ajouterBlocEtab(src, texte) {
   const b = { id: nouvelId(), section: ctx.section, genre: "question", colonne: colId, reglages: { libelle: texte } };
   blocs().splice(Math.min(ctx.index, blocs().length), 0, b);
   choisi = b.id; sauver(); dessinerApercu(); dessinerPanneau();
+  // question tableau : sa table reçoit tout de suite les règles d'accès du socle (une fois le brouillon enregistré)
+  if (b.reglages && b.reglages.tableau && b.reglages.tableau.table) reglesApresTableau(b.reglages.tableau.table);
   const el = document.querySelector(`[data-bloc="${b.id}"]`); if (el) el.scrollIntoView({ block: "center" });
 }
 function etapeExistantes() {
@@ -1592,6 +1596,16 @@ $("form-nouveau").addEventListener("submit", async ev => {
 $("btn-nouveau").addEventListener("click", () => ouvrirNouveau(false));
 $("btn-dupliquer").addEventListener("click", () => courant && ouvrirNouveau(true));
 $("btn-tester").addEventListener("click", () => courant && basculerTest());
+async function reglesApresTableau(table) {
+  clearTimeout(minuterie);
+  const json = JSON.stringify(courant.conf), id = courant.id;
+  enregistrementEnCours = enregistrementEnCours.then(() => actions([["UpdateRecord", TABLE_FORMULAIRES, id, { Brouillon: json, Modifie_le: maintenant() }]]));
+  try { await enregistrementEnCours; } catch (_) { return; }
+  let acces = { etat: "" };
+  try { if (window.OngletAcces && window.OngletAcces.reappliquerSiBesoin) acces = await window.OngletAcces.reappliquerSiBesoin(); } catch (e) { acces = { etat: "refusees", texte: String(e.message || e) }; }
+  if (acces.etat === "reappliquees") message(`Table ${table} : règles d'accès du socle appliquées.`, "ok");
+  else if (["incomplet", "refusees", "illisibles"].includes(acces.etat)) message(`Table ${table} : ${acces.texte}`, "err");
+}
 $("btn-publier").addEventListener("click", publier);
 async function publier() {
   if (!courant) return;
@@ -1623,7 +1637,7 @@ async function publier() {
     // règles d'accès du socle : réappliquées si le formulaire publié les a rendues incomplètes (nouvelle sous-table…)
     let acces = { etat: "", texte: "" };
     try { if (window.OngletAcces && window.OngletAcces.reappliquerSiBesoin) acces = await window.OngletAcces.reappliquerSiBesoin(); } catch (_) { /* facultatif */ }
-    const suite = acces.etat === "reappliquees" || ["incomplet", "refusees", "illisibles"].includes(acces.etat) ? ` ${acces.texte}` : "";
+    const suite = acces.texte ? ` ${acces.texte}` : "";
     const alerteAcces = ["incomplet", "refusees"].includes(acces.etat);
     const sansPage = pagesSaisie && !pagesSaisie.some(x => x.table === courant.table);
     message((sansPage ? "Formulaire publié. Aucune page de Grist ne l'affiche encore : utilisez « Créer la page de saisie » dans le panneau de droite."

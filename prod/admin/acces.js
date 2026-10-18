@@ -71,7 +71,7 @@
     for (const f of formulaires) {
       const ch = champDe(f);
       ajouter(f.table, ch, f);
-      (f.conf.blocs || []).forEach(b => { const st = b && b.reglages && b.reglages.tableau && b.reglages.tableau.table; if (st) ajouter(st, ch, f); });
+      (f.blocsTableaux || f.conf.blocs || []).forEach(b => { const st = b && b.reglages && b.reglages.tableau && b.reglages.tableau.table; if (st) ajouter(st, ch, f); });
       const cols = meta[f.table] ? Object.values(meta[f.table].colonnes) : [];
       cols.forEach(c => { const cible = S.cibleRef(c.type); if (cible && cible !== f.table && /etab|site|referentiel/i.test(`${c.colId} ${cible}`)) referentiels.add(cible); });
     }
@@ -95,6 +95,13 @@
       { aclFormula: NON_PROPRIETAIRE, permissionsText: "-CRUD", memo: `${MEMO} — réservé aux agents actifs de l'équipe de la cellule (onglet Équipe)` },
     ], lignes: ["Propriétaires : tous les droits.", "Agents actifs de l'équipe : lecture seule.", "Autres personnes : aucun accès.",
       "Structure (tables, colonnes, formules) : propriétaires seulement — case « Autoriser les éditeurs à modifier la structure » décochée."] });
+    // Page « Cellule » : les pages rangées dessous ne sont visibles que des propriétaires et des agents connectés par leur compte
+    if (meta[S.TABLE_CELLULE]) out.push({ tableId: S.TABLE_CELLULE, colIds: "*", titre: `${S.TABLE_CELLULE} — pages de la cellule`, regles: [
+      { aclFormula: PROPRIETAIRE, permissionsText: "+CRUD", memo: `${MEMO} — propriétaires : pages de la cellule` },
+      { aclFormula: `user.${ATTRIBUT}.Actif`, permissionsText: "+R-CUD", memo: `${MEMO} — agents connectés : pages de la cellule` },
+      { aclFormula: NON_PROPRIETAIRE, permissionsText: "-CRUD", memo: `${MEMO} — pages de la cellule invisibles des invités et des établissements` },
+    ], lignes: ["Propriétaires et agents actifs connectés par leur compte : la page « Cellule » et toutes les pages rangées dessous.",
+      "Invités et établissements (liens) : ces pages n'apparaissent pas ; ils ne voient que leur page."] });
     // Page d'administration : portée par la table Administration, invisible de tous sauf des propriétaires
     if (meta[S.TABLE_ADMIN]) out.push({ tableId: S.TABLE_ADMIN, colIds: "*", titre: `${S.TABLE_ADMIN} — page d'administration`, regles: [
       { aclFormula: PROPRIETAIRE, permissionsText: "+CRUD", memo: `${MEMO} — propriétaires : administration` },
@@ -147,7 +154,7 @@
   // Sous-tables (tableaux) d'un formulaire : { table, parent (colonne Ref vers la table des réponses), acces (colonne d'aide présente ?) }
   function sousTables(f) {
     const out = [];
-    (f.conf.blocs || []).forEach(b => {
+    (f.blocsTableaux || f.conf.blocs || []).forEach(b => {
       const st = b && b.reglages && b.reglages.tableau && b.reglages.tableau.table;
       if (!st || !meta[st] || out.some(x => x.table === st)) return;
       const parent = Object.values(meta[st].colonnes).find(c => c.type === `Ref:${f.table}`);
@@ -285,6 +292,7 @@
       ${acl !== null ? `<div class="bandeau ${ok ? "ok" : "info"}">${ok ? "Les règles d'accès du socle sont en place et à jour." : "Les règles d'accès du socle ne sont pas appliquées, ou ont changé : voir ci-dessous."}</div>` : ""}
       ${bandeauProblemes()}
       ${carteQui()}
+      ${cartePages()}
       ${carteRegles(propose, remplacees, ok, sansFormule)}
       ${carteActuelles(remplacees)}
       ${carteAFaire()}`;
@@ -353,7 +361,65 @@
 
   /* ---------- Événements et écritures ---------- */
   const dire = (t, err) => { const st = $("ac-statut"); if (st) { st.textContent = t; st.className = `statut${err ? " err" : " ok"}`; } };
+  /* ---------- Pages visibles par les liens ----------
+     Grist masque une page qui contient une table illisible, ainsi que toutes les pages rangées dessous.
+     Page « Cellule » (table Cellule, illisible des liens) : tout le reste y est rangé, sauf les pages
+     ouvertes par les liens (page des établissements, pages de saisie des invités). */
+  let pagesDoc = null;
+  async function lirePagesDoc() {
+    try {
+      const [p, v, s, t] = await Promise.all(["_grist_Pages", "_grist_Views", "_grist_Views_section", "_grist_Tables"].map(x => grist.docApi.fetchTable(x)));
+      const tref = n => t.id[t.tableId.indexOf(n)];
+      const optionsDe = i => { try { const o = JSON.parse(s.options[i] || "{}") || {}; return typeof o.customView === "string" ? JSON.parse(o.customView || "{}") : (o.customView || {}); } catch (_) { return {}; } };
+      const invites = new Set((agents || []).filter(a => a.cle && a.pageSaisie).map(a => a.pageSaisie));
+      const liste = p.id.map((id, i) => {
+        const viewRef = p.viewRef[i], secs = s.id.map((_, k) => k).filter(k => s.parentId[k] === viewRef);
+        return { id, viewRef, pagePos: Number((p.pagePos || [])[i]) || i, indentation: Number((p.indentation || [])[i]) || 0,
+          nom: String(v.name[v.id.indexOf(viewRef)] || ""),
+          cellule: secs.some(k => s.tableRef[k] === tref(S.TABLE_CELLULE)),
+          lien: secs.some(k => { const cv = optionsDe(k); return cv.widgetOptions && cv.widgetOptions.etablissements; }) || invites.has(viewRef) };
+      }).sort((a, b) => a.pagePos - b.pagePos);
+      const c = liste.findIndex(x => x.cellule);
+      liste.forEach(x => { x.sousCellule = false; });
+      if (c >= 0) for (let i = c + 1; i < liste.length && liste[i].indentation > liste[c].indentation; i++) liste[i].sousCellule = true;
+      return liste;
+    } catch (_) { return null; }
+  }
+  function cartePages() {
+    if (!pagesDoc) return "";
+    const exposees = pagesDoc.filter(x => !x.cellule && !x.lien && !x.sousCellule), liens = pagesDoc.filter(x => x.lien);
+    const enPlace = pagesDoc.some(x => x.cellule) && !exposees.length && liens.every(x => !x.sousCellule);
+    return `<section class="carte"><h2>Pages visibles par les liens</h2>
+      <p class="aide">Un établissement ou un invité ouvre sa page seule, sans la liste des pages (lien « page seule »). Pour qu'aucune autre page ne lui reste accessible, elles sont rangées sous une page « Cellule », liée à une table qu'il ne peut pas lire : Grist masque alors cette page et tout ce qu'elle contient. Les données restent de toute façon filtrées par les règles ci-dessous.</p>
+      ${enPlace ? `<p class="statut ok">Pages rangées : ${liens.length > 1 ? `seules ${liens.map(x => `« ${esc(x.nom)} »`).join(", ")} restent visibles` : liens.length ? `seule « ${esc(liens[0].nom)} » reste visible` : "aucune page n'est visible"} des liens.</p>`
+        : `<p>${exposees.length ? `Visibles par les liens aujourd'hui : ${exposees.map(x => `« ${esc(x.nom)} »`).join(", ")}.` : ""}
+          ${liens.some(x => x.sousCellule) ? ` À sortir de « Cellule » (pages ouvertes par les liens) : ${liens.filter(x => x.sousCellule).map(x => `« ${esc(x.nom)} »`).join(", ")}.` : ""}</p>
+          <div class="boutons"><button class="primaire" id="ac-pages">Ranger les pages sous « Cellule »</button><span class="statut" id="ac-pages-statut" role="status"></span></div>`}
+      <p class="aide">Les pages créées ensuite (nouvel agent, nouveau tableau de bord…) se placent en bas de la liste : revenez ici pour les ranger. Appliquez ensuite les règles (table ${esc(S.TABLE_CELLULE)}).</p></section>`;
+  }
+  async function rangerPages() {
+    const st = m => { const e = $("ac-pages-statut"); if (e) e.textContent = m; };
+    $("ac-pages").disabled = true; st("Rangement…");
+    try {
+      if (!meta[S.TABLE_CELLULE]) { await grist.docApi.applyUserActions([["AddTable", S.TABLE_CELLULE, [{ id: "Note", type: "Text", isFormula: false }]]]); meta = await S.lireMeta(); }
+      if (!pagesDoc.some(x => x.cellule)) {
+        const res = await grist.docApi.applyUserActions([["CreateViewSection", meta[S.TABLE_CELLULE].ref, 0, "record", null, null]]);
+        const rv = (res && res.retValues && res.retValues[0]) || {};
+        if (rv.viewRef) await grist.docApi.applyUserActions([["UpdateRecord", "_grist_Views", rv.viewRef, { name: "Cellule" }], ...(rv.sectionRef ? [["UpdateRecord", "_grist_Views_section", rv.sectionRef, { title: "Pages réservées à la cellule" }]] : [])]);
+      }
+      pagesDoc = await lirePagesDoc();
+      const cel = pagesDoc.find(x => x.cellule), liens = pagesDoc.filter(x => x.lien), autres = pagesDoc.filter(x => x !== cel && !x.lien);
+      const ordre = [...liens.map(x => ({ x, ind: 0 })), { x: cel, ind: 0 }];
+      let prec = 0;
+      for (const x of autres) { const ind = Math.max(1, Math.min(x.indentation + 1, prec + 1)); ordre.push({ x, ind }); prec = ind; }
+      await grist.docApi.applyUserActions([["BulkUpdateRecord", "_grist_Pages", ordre.map(o => o.x.id), { pagePos: ordre.map((_, i) => i + 1), indentation: ordre.map(o => o.ind) }]]);
+      await charger(); pagesDoc = await lirePagesDoc(); dessiner();
+      dire(`Pages rangées sous « Cellule »${aJour(reglesProposees()) ? "." : " : appliquez maintenant les règles pour que la table Cellule soit illisible des liens."}`);
+    } catch (e) { $("ac-pages").disabled = false; st(`Refusé par Grist (${e.message || e}).`); }
+  }
+
   function lier() {
+    if ($("ac-pages")) $("ac-pages").addEventListener("click", rangerPages);
     if ($("ac-formule")) $("ac-formule").addEventListener("click", ajouterFormule);
     if ($("ac-appliquer")) $("ac-appliquer").addEventListener("click", appliquer);
     if ($("ac-retirer")) $("ac-retirer").addEventListener("click", retirer);
@@ -455,7 +521,7 @@
   async function afficher() {
     racine = $("acces");
     racine.innerHTML = `<div class="bandeau info">Lecture des règles d'accès…</div>`;
-    try { await charger(); } catch (e) { racine.innerHTML = `<div class="bandeau alerte">Lecture impossible : ${esc(e.message || e)}</div>`; return; }
+    try { await charger(); pagesDoc = await lirePagesDoc(); } catch (e) { racine.innerHTML = `<div class="bandeau alerte">Lecture impossible : ${esc(e.message || e)}</div>`; return; }
     dessiner();
   }
   window.OngletAcces = { afficher, reappliquerSiBesoin };

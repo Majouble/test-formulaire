@@ -33,6 +33,10 @@
     colonnesManquantes = t ? S.colonnesAgents(config).filter(c => !c.isFormula).map(c => c.id).filter(c => !t.colonnes[c]) : [];
     if (t && !t.colonnes[S.INVITE.lien]) colonnesManquantes.push(S.INVITE.lien);
     if (t && !t.colonnes[S.INVITE.valide]) colonnesManquantes.push(S.INVITE.valide);
+    // lien d'invité d'avant la 2.0.3 (sans « page seule ») : formule mise à jour d'office
+    const cl = t && t.colonnes[S.INVITE.lien];
+    if (cl && String(cl.formula || "").replace(/\s+/g, "") === S.ANCIENNE_FORMULE_LIEN_INVITE.replace(/\s+/g, ""))
+      try { await grist.docApi.applyUserActions([["ModifyColumn", table(), S.INVITE.lien, { formula: S.formuleLienInvite() }]]); agents = await R.lireAgents(general); } catch (_) { /* droits insuffisants */ }
     await majPagesInvites();
   }
   // page de saisie de chaque invité (n° de page Grist) : le lien l'ouvre directement
