@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.0-alpha.32 (18/10/2026)";
+  const VERSION = "2.0.0-alpha.33 (18/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -305,7 +305,9 @@ return sorted(champs)`;
   /* ---------- Agents invités : accès par lien personnel, sans compte Grist ----------
      Clé dans Agents.Cle_acces, page de saisie dans Agents.Page_saisie, lien dans Agents.Lien_acces (?Invite_=<clé>).
      Attribut utilisateur « Invite » (onglet Accès) : l'invité a les droits d'un agent actif de l'équipe. */
-  const INVITE = { attribut: "Invite", cle: "Cle_acces", page: "Page_saisie", lien: "Lien_acces" };
+  const INVITE = { attribut: "Invite", cle: "Cle_acces", page: "Page_saisie", lien: "Lien_acces", expire: "Lien_expire_le", valide: "Lien_valide" };
+  // Durées de validité d'un lien d'invité (clé « acces_invites » de Config, réglée dans l'onglet Équipe)
+  const DUREES_INVITE = [["24h", "24 heures", 24], ["72h", "3 jours", 72], ["7j", "7 jours", 168], ["30j", "30 jours", 720], ["illimite", "sans limite", 0]];
   // Auteur d'une ligne (formule d'initialisation) : adresse du compte Grist, sinon « Invité : <nom> » pour un lien d'agent
   function formuleAuteur(g) {
     const t = (g && g.agents) || DEFAUTS_GENERAL.agents;
@@ -327,9 +329,11 @@ return sorted(champs)`;
       { id: "Fonction", type: "Choice", widgetOptions: choix(reglagesPlanning(config).fonctions.map(f => f.nom)) },
       { id: "Telephone", type: "Text" }, { id: "Actif", type: "Bool" },
       { id: "Modifie_le", type: "DateTime:Europe/Paris" },
-      { id: INVITE.cle, type: "Text" }, { id: INVITE.page, type: "Int" },
+      { id: INVITE.cle, type: "Text" }, { id: INVITE.page, type: "Int" }, { id: INVITE.expire, type: "DateTime:Europe/Paris" },
       { id: "Champs_acces", type: "ChoiceList", isFormula: true, formula: formuleChampsAcces(g), widgetOptions: choix(CHAMPS.map(c => c.id)) },
       { id: INVITE.lien, type: "Text", isFormula: true, formula: `SELF_HYPERLINK(page=$${INVITE.page} or None, LinkKey_${INVITE.attribut}=$${INVITE.cle}) if $${INVITE.cle} else ""` },
+      // lien encore valable (recalculé par Grist à chaque modification et au moins toutes les heures) : lu par les règles d'accès
+      { id: INVITE.valide, type: "Bool", isFormula: true, formula: `bool($${INVITE.cle}) and (not $${INVITE.expire} or $${INVITE.expire} > NOW())` },
     ];
   }
   const COLONNES_CRENEAUX = [
@@ -765,7 +769,7 @@ return sorted(champs)`;
     PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
     norm, cibleRef, lireMeta, lireConfig, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer, COLONNES_ETABLISSEMENT,
-    instantaneSchema, majSchemaPublic, tableauxDeBord, valeurTableauxDeBord, INVITE, formuleAuteur,
+    instantaneSchema, majSchemaPublic, tableauxDeBord, valeurTableauxDeBord, INVITE, DUREES_INVITE, formuleAuteur,
     REGIONS_ACADEMIQUES, regionDeAcademie,
   };
 })();

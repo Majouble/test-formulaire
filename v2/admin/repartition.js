@@ -105,6 +105,7 @@
       champsAcces: t.Champs_acces ? S().listeChoix(col("Champs_acces", i)) : null,   // null : colonne absente
       cle: String(col("Cle_acces", i) || "").trim(), pageSaisie: col("Page_saisie", i) || null,   // invité : accès par lien
       lienAcces: typeof col("Lien_acces", i) === "string" ? col("Lien_acces", i) : "", invitesPossibles: !!t.Cle_acces,
+      lienExpire: col("Lien_expire_le", i) || null, lienValide: t.Lien_valide ? col("Lien_valide", i) === true : null,
     })).sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
   }
 

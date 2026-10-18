@@ -36,6 +36,7 @@
     const meta = await S.lireMeta(), t = meta[table()];
     colonnesManquantes = t ? S.colonnesAgents(config).filter(c => !c.isFormula).map(c => c.id).filter(c => !t.colonnes[c]) : [];
     if (t && !t.colonnes[S.INVITE.lien]) colonnesManquantes.push(S.INVITE.lien);
+    if (t && !t.colonnes[S.INVITE.valide]) colonnesManquantes.push(S.INVITE.valide);
     await majPagesInvites();
   }
   // page de saisie de chaque invité (n° de page Grist) : le lien l'ouvre directement
@@ -73,7 +74,8 @@
       const pg = pageDe.get(a.id) || [];
       const fonctionConnue = fonctions().some(f => f.nom === a.fonction);
       return `<tr data-id="${a.id}" class="eq-ligne${a.actif ? "" : " inactif"}" tabindex="0">
-        <td><strong>${esc(a.nom) || "<em>sans nom</em>"}</strong>${a.actif ? "" : ` <span class="pastille">inactif</span>`}${a.cle ? ` <span class="pastille reco" title="Accès par lien personnel, sans compte Grist">invité</span>` : ""}</td>
+        <td><strong>${esc(a.nom) || "<em>sans nom</em>"}</strong>${a.actif ? "" : ` <span class="pastille">inactif</span>`}${a.cle ? ` <span class="pastille reco" title="Accès par lien personnel, sans compte Grist">invité</span> ${etatLien(a)}
+          <button class="lien-btn" data-renouveler="${a.id}" title="Nouvelle clé : l'ancien lien cesse de fonctionner">Nouveau lien</button>` : ""}</td>
         <td>${fonctionConnue ? `<span class="pastille reco">${esc(a.fonction)}</span>` : `<span class="pastille manque">${esc(a.fonction || "à choisir")}</span>`}</td>
         <td>${a.email ? esc(a.email) : a.cle ? `<span class="vide">accès par lien</span>` : `<span class="pastille manque">adresse manquante</span>`}</td>
         <td>${a.telephone ? esc(a.telephone) : `<span class="vide">—</span>`}</td>
@@ -88,6 +90,11 @@
       ${orphelines.length ? `<div class="eq-reprise"><strong>Pages de saisie sans agent dans l'équipe</strong>
         <ul>${orphelines.map(p => `<li>${esc(p.page)}</li>`).join("")}</ul>
         <button class="secondaire" id="eq-reprendre">Ajouter ces agents à l'équipe (nom repris des pages)</button></div>` : ""}
+      ${agents.some(a => a.cle) || avecExpiration() ? `<div class="eq-invites-reglage"><strong>Liens des invités</strong>
+        ${avecExpiration() ? `<label>durée de validité <select id="eq-duree">${S.DUREES_INVITE.map(([v, l]) => `<option value="${v}"${v === dureeInvite() ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></label>` : ""}
+        ${agents.some(a => a.cle) ? `<button class="secondaire" id="eq-renouveler-tous" title="Chaque invité reçoit un nouveau lien ; les anciens cessent de fonctionner">Nouveau lien pour tous les invités (${agents.filter(a => a.cle).length})</button>` : ""}
+        <span class="aide">Un lien expiré ou remplacé ne donne plus aucun accès (prise en compte par Grist dans l'heure pour l'expiration, aussitôt pour un remplacement).</span></div>
+        <div id="eq-renouveles"></div>` : ""}
       <div class="boutons"><button class="primaire" id="eq-ajouter">+ Ajouter un agent</button><span class="statut" id="eq-statut"></span></div></section>`;
   }
 
@@ -110,6 +117,15 @@
         ${a.id ? `<button class="secondaire danger" id="eq-supprimer">Retirer de l'équipe…</button>` : ""}
         <span class="statut" id="eq-fiche-statut" role="status"></span></div></section>`;
   }
+  // Durée de validité des liens d'invités (clé « acces_invites » de Config) ; un lien expiré ne donne plus aucun accès
+  const avecExpiration = () => !colonnesManquantes.includes(S.INVITE.expire);
+  const dureeInvite = () => ((config && config.valeurs.acces_invites) || {}).duree || "24h";
+  const libelleDuree = d => (S.DUREES_INVITE.find(x => x[0] === d) || S.DUREES_INVITE[0])[1];
+  const finValidite = () => { const h = (S.DUREES_INVITE.find(x => x[0] === dureeInvite()) || S.DUREES_INVITE[0])[2]; return h ? maintenant() + h * 3600 : null; };
+  const dateCourte = t => new Date(t * 1000).toLocaleString("fr-FR", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const expire = a => !!(a.lienExpire && a.lienExpire <= maintenant());
+  const etatLien = a => !a.cle ? "" : expire(a) ? `<span class="pastille manque" title="Le lien ne donne plus accès : créez un nouveau lien">lien expiré</span>`
+    : a.lienExpire ? `<span class="pastille ok">lien valable jusqu'au ${esc(dateCourte(a.lienExpire))}</span>` : `<span class="pastille">lien sans limite</span>`;
   // Accès par lien personnel (agent invité, sans compte Grist)
   function blocInvite(a) {
     const possible = agents && (agents.invitesPossibles || (agents[0] && agents[0].invitesPossibles) || !colonnesManquantes.includes(S.INVITE.cle));
@@ -118,10 +134,13 @@
     return `<div class="eq-invite">
       <label class="eq-case"><input type="checkbox" id="eq-invite"${a.invite ? " checked" : ""}> <strong>Invité : accès par lien personnel</strong>, sans compte Grist</label>
       <p class="aide">À réserver à un agent qui ne peut pas se connecter à Grist avec son adresse. Le lien ouvre sa page de saisie avec les droits d'un agent de l'équipe (saisie selon le planning, émargement).
-        <strong>Il vaut mot de passe</strong> : quiconque le détient agit en son nom. Retirez-le (« Nouvelle clé » ou décocher) dès que la personne n'est plus mobilisée.</p>
-      ${a.invite && a.cle ? `<div class="eq-lien">${lien ? `<input type="text" id="eq-lien" readonly value="${esc(lien)}"><button class="secondaire" id="eq-copier-lien">Copier le lien</button>`
-          : `<span class="vide">Lien en cours de calcul par Grist : rechargez l'onglet dans un instant.</span>`}
-        <button class="secondaire" id="eq-nouvelle-cle" title="L'ancien lien cesse de fonctionner">Nouvelle clé</button></div>` : ""}
+        <strong>Il vaut mot de passe</strong> : quiconque le détient agit en son nom.${avecExpiration() ? ` Chaque lien expire au bout de <strong>${esc(libelleDuree(dureeInvite()))}</strong> (réglage de l'équipe, ci-dessus) ; un lien transmis à d'autres cesse donc vite de fonctionner.` : ""}
+        « Nouveau lien » remplace le lien : l'ancien ne fonctionne plus.</p>
+      ${a.invite && a.cle ? `<div class="eq-lien">${lien && !expire(a) ? `<input type="text" id="eq-lien" readonly value="${esc(lien)}"><button class="secondaire" id="eq-copier-lien">Copier le lien</button>`
+          : lien ? "" : `<span class="vide">Lien en cours de calcul par Grist : rechargez l'onglet dans un instant.</span>`}
+        <button class="primaire" id="eq-nouvelle-cle" title="Nouvelle clé : l'ancien lien cesse de fonctionner">Nouveau lien</button>
+        ${avecExpiration() && dureeInvite() !== "illimite" ? `<button class="secondaire" id="eq-prolonger" title="Garde le même lien">Prolonger (${esc(libelleDuree(dureeInvite()))})</button>` : ""}
+        ${etatLien(agents.find(x => x.id === a.id) || a)}</div>` : ""}
       ${a.invite && !a.cle ? `<p class="aide">Le lien sera créé à l'enregistrement.</p>` : ""}
     </div>`;
   }
@@ -141,6 +160,13 @@
       const ouvrir = () => { const a = agents.find(x => x.id === +tr.dataset.id); if (a) { edition = JSON.parse(JSON.stringify(a)); edition.invite = !!a.cle; dessiner(); $("eq-fiche").scrollIntoView({ block: "nearest" }); $("eq-nom").focus(); } };
       tr.addEventListener("click", ouvrir);
       tr.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ouvrir(); } });
+    });
+    racine.querySelectorAll("[data-renouveler]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); renouveler([+b.dataset.renouveler]); }));
+    if ($("eq-renouveler-tous")) $("eq-renouveler-tous").addEventListener("click", () => renouveler(agents.filter(a => a.cle).map(a => a.id)));
+    if ($("eq-duree")) $("eq-duree").addEventListener("change", async e => {
+      try { await S.ecrireConfig("acces_invites", { ...((config && config.valeurs.acces_invites) || {}), duree: e.target.value }); config = await S.lireConfig(); }
+      catch (err) { dire("eq-statut", `Réglage refusé (${err.message || err}).`, true); return; }
+      dire("eq-statut", `Durée des liens d'invités : ${libelleDuree(e.target.value)}. Elle s'applique aux prochains liens créés ou prolongés.`);
     });
     $("eq-ajouter").addEventListener("click", () => {
       edition = { id: null, nom: "", email: "", fonction: fonctionParDefaut(), telephone: "", actif: true };
@@ -165,7 +191,8 @@
       try { await navigator.clipboard.writeText(o.value); } catch (_) { try { document.execCommand("copy"); } catch (_) { /* sélection laissée */ } }
       $("eq-copier-lien").textContent = "Lien copié";
     });
-    if ($("eq-nouvelle-cle")) $("eq-nouvelle-cle").addEventListener("click", () => { lireChamps(); edition.cle = nouvelleCle(); enregistrer("Nouvelle clé : l'ancien lien ne fonctionne plus. Envoyez le nouveau."); });
+    if ($("eq-nouvelle-cle")) $("eq-nouvelle-cle").addEventListener("click", () => { lireChamps(); edition.cle = nouvelleCle(); edition.renouveler = true; enregistrer("Nouveau lien créé : l'ancien ne fonctionne plus. Copiez le nouveau et transmettez-le à l'agent."); });
+    if ($("eq-prolonger")) $("eq-prolonger").addEventListener("click", () => { lireChamps(); edition.renouveler = true; enregistrer(`Lien prolongé de ${libelleDuree(dureeInvite())} (même lien).`); });
     ["eq-nom", "eq-email", "eq-tel", "eq-actif"].forEach(id => $(id).addEventListener("input", () => { lireChamps(); $("eq-resume").innerHTML = resumeFiche(); }));
     $("eq-fonction").addEventListener("change", lireChamps);
     $("eq-annuler").addEventListener("click", () => { edition = null; dessiner(); });
@@ -181,10 +208,25 @@
     const c = { Nom: a.nom.trim(), Email: a.email.trim(), Fonction: a.fonction, Telephone: a.telephone.trim(), Actif: !!a.actif, Modifie_le: maintenant() };
     if (!colonnesManquantes.includes(S.INVITE.cle) && a.invite !== undefined) {
       c[S.INVITE.cle] = a.invite ? (a.cle || nouvelleCle()) : "";
+      if (avecExpiration() && (!a.invite || !a.cle || a.renouveler)) c[S.INVITE.expire] = a.invite ? finValidite() : null;
       if (a.invite && a.id) { const p = pageDeAgent(a); if (p) c[S.INVITE.page] = p; }
     }
     return c;
   };
+  // Nouveau lien (nouvelle clé et nouvelle échéance) pour un ou plusieurs invités ; liens affichés pour être copiés
+  async function renouveler(ids) {
+    if (!ids.length) return;
+    const fin = avecExpiration() ? finValidite() : undefined;
+    try {
+      await grist.docApi.applyUserActions(ids.map(id => ["UpdateRecord", table(), id, { [S.INVITE.cle]: nouvelleCle(), ...(fin !== undefined ? { [S.INVITE.expire]: fin } : {}) }]));
+      await charger(); dessiner();
+      const liste = agents.filter(a => ids.includes(a.id));
+      $("eq-renouveles").innerHTML = `<div class="eq-reprise"><strong>Nouveaux liens</strong> (les anciens ne fonctionnent plus) :
+        <ul>${liste.map(a => `<li>${esc(a.nom)} : ${a.lienAcces ? `<input type="text" readonly value="${esc(a.lienAcces)}" class="eq-lien-copie"> <button class="lien-btn" data-copier="${esc(a.lienAcces)}">Copier</button>` : `<span class="vide">en cours de calcul, rechargez l'onglet</span>`}</li>`).join("")}</ul></div>`;
+      $("eq-renouveles").querySelectorAll("[data-copier]").forEach(b => b.addEventListener("click", async () => { try { await navigator.clipboard.writeText(b.dataset.copier); b.textContent = "Copié"; } catch (_) { b.previousElementSibling.select(); } }));
+      dire("eq-statut", `${ids.length} nouveau${ids.length > 1 ? "x" : ""} lien${ids.length > 1 ? "s" : ""} créé${ids.length > 1 ? "s" : ""}${fin ? `, valable${ids.length > 1 ? "s" : ""} jusqu'au ${dateCourte(fin)}` : ""}.`);
+    } catch (e) { dire("eq-statut", `Écriture refusée par Grist (${e.message || e}).`, true); }
+  }
   // Auteur des signalements et des émargements : formule qui reconnaît aussi les invités (« Invité : <nom> »)
   async function auteurPourInvites() {
     try {

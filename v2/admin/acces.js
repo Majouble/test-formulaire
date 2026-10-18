@@ -25,7 +25,8 @@
   // Identité d'agent : compte Grist (attribut « Agent », par adresse) ou lien d'agent invité (attribut « Invite », par clé)
   const INVITE = S.INVITE.attribut;
   let avecInvites = false;   // colonne Agents.Cle_acces présente
-  const agentSi = build => avecInvites ? `(${build(`user.${ATTRIBUT}`)}) or (user.LinkKey.${INVITE} and ${build(`user.${INVITE}`)})` : build(`user.${ATTRIBUT}`);
+  let invitesExpirent = false;   // colonne Agents.Lien_valide présente : lien d'invité limité dans le temps
+  const agentSi = build => avecInvites ? `(${build(`user.${ATTRIBUT}`)}) or (user.LinkKey.${INVITE}${invitesExpirent ? ` and user.${INVITE}.${S.INVITE.valide}` : ""} and ${build(`user.${INVITE}`)})` : build(`user.${ATTRIBUT}`);
   const membre = () => agentSi(u => `${u}.Actif`);
 
   let config, general, meta, agents, formulaires, groupes, acl, racine;
@@ -40,6 +41,7 @@
     groupes = R.groupesLiens(meta, config, general, formulaires).filter(g => g.cle);   // accès par lien : clés en place
     acl = await lireAcl();
     avecInvites = !!(meta[general.agents] && meta[general.agents].colonnes[S.INVITE.cle]);
+    invitesExpirent = !!(avecInvites && meta[general.agents].colonnes[S.INVITE.valide]);
   }
   // null si les règles ne sont pas lisibles (non propriétaire)
   async function lireAcl() {
