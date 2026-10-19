@@ -46,7 +46,7 @@ const PROFIL_DEFAUT = {
   principale: "frequente", exclues: ["RAS"], exclureTout: false, jours: "auto",
   fondsIgn: true, voile: true,
   encarts: true, encartsMax: 3, encartsMin: 4, encartsEcart: 6,
-  etiquettes: 5, etiquettesPlacees: true,
+  etiquettes: 5, etiquettesPlacees: true, etiquettesVoisins: true,
   decoupage: "auto", seuilIllisible: 20,   // pages : par académie, par département, ou automatique (académies illisibles découpées)
   // établissements retenus : catégories (vide = toutes), qualifications (vide = toutes ; s'applique aux signalements),
   // seuils sur le nombre de signalements et les jours de mobilisation
@@ -571,6 +571,9 @@ async function construireAtlas(name) {
   // (les valeurs d'attributs peuvent contenir « > » : on cible directement l'attribut featureFilter de l'élément Atlas)
   projet = projet.replace(/(<Atlas\s[^]*?featureFilter=")([^"]*)(")/, (m, a, v, b) => /aggregate\(/.test(v) ? `${a}coalesce(&quot;Nb_etablissements&quot;, 0) &gt; 0${b}` : m);
   projet = cocherCouches(projet, t => /providerKey="wms"/.test(t), P.fondsIgn !== false);
+  // étiquettes des établissements voisins (autres académies ou départements) : règle d'étiquetage activée ou non
+  projet = projet.replace(/<rule ([^>]*description="(?:Académies voisines|Établissements voisins[^"]*)"[^>]*)>/g, (m, attrs) => {
+    const a = attrs.replace(/\s*active="[01]"/, ""); return P.etiquettesVoisins === false ? `<rule ${a} active="0">` : `<rule ${a}>`; });
   projet = cocherCouches(projet, t => /name="voile hors académie"/.test(t), P.voile !== false);
   const nb = new Set(fc.features.map(f => f.properties.Academie)).size;
   const champTable = c => c.champ.startsWith("col:") ? `${nomExport(c.champ.slice(4))} (${AGREGATS[c.agregat || agregatParDefaut(colTypes[c.champ.slice(4)] || "")]})` : c.champ;
@@ -771,7 +774,7 @@ const AtlasUI = (() => {
     el("atlasEncarts").checked = P.encarts !== false; el("atlasEncartsMax").value = P.encartsMax; el("atlasEncartsMin").value = P.encartsMin; el("atlasEncartsEcart").value = P.encartsEcart;
     el("atlasEncartsBloc").style.display = P.encarts !== false ? "" : "none";
     el("atlasDecoupage").value = P.decoupage || "auto"; el("atlasSeuil").value = P.seuilIllisible; el("atlasSeuilBloc").style.display = (P.decoupage || "auto") === "auto" ? "" : "none";
-    el("atlasEtiquettes").value = P.etiquettes; el("atlasPlacees").checked = P.etiquettesPlacees !== false;
+    el("atlasEtiquettes").value = P.etiquettes; el("atlasVoisins").checked = P.etiquettesVoisins !== false; el("atlasPlacees").checked = P.etiquettesPlacees !== false;
     const F = { categories: [], qualifs: [], minSignalements: 1, minJours: 0, ...(P.filtre || {}) };
     el("atlasFiltreCat").innerHTML = `<span>Catégories :</span>` + ["École", "Collège", "Lycée", "Autre"].map(c => `<label><input type="checkbox" data-cat="${c}"${F.categories.includes(c) ? " checked" : ""}> ${c}</label>`).join("") + `<span class="hint">aucune cochée = toutes</span>`;
     const vq = valeursQualif();
@@ -799,6 +802,7 @@ const AtlasUI = (() => {
     p.exclureTout = el("atlasExclureTout").checked; p.jours = el("atlasJours").value;
     p.fondsIgn = el("atlasIgn").checked; p.voile = el("atlasVoile").checked;
     p.decoupage = el("atlasDecoupage").value; p.seuilIllisible = Math.max(0, Math.min(100, parseInt(el("atlasSeuil").value, 10) || 20));
+    p.etiquettesVoisins = el("atlasVoisins").checked;
     p.etiquettes = Math.max(3, Math.min(9, parseFloat(el("atlasEtiquettes").value) || 5)); p.etiquettesPlacees = el("atlasPlacees").checked;
     p.filtre = { categories: [...el("atlasFiltreCat").querySelectorAll("input:checked")].map(b => b.dataset.cat),
       qualifs: [...el("atlasFiltreQualif").querySelectorAll("input:checked")].map(b => b.dataset.qualif),

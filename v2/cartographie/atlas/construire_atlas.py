@@ -118,7 +118,7 @@ def etiquettes(taille, couleur, gras, priorite, chevauchement, montrer=None, pos
 regles = QgsRuleBasedLabeling.Rule(None)
 r_page = QgsRuleBasedLabeling.Rule(etiquettes(6.5, "#1d1d4f", True, 9, Qgis.LabelOverlapHandling.AllowOverlapIfRequired,
     "NOT (@map_id = 'carte' AND coalesce(attribute(@feature, 'Zoom'), 0) > 0) AND coalesce(" + POS("Lh", "Eh") + ", 0) = 0", positions=True), 0, 0, DANS_PAGE, "Académie de la page")
-r_voisins = QgsRuleBasedLabeling.Rule(etiquettes(5.5, "#696982", False, 3, Qgis.LabelOverlapHandling.PreventOverlap), 0, 0, "ELSE", "Académies voisines")
+r_voisins = QgsRuleBasedLabeling.Rule(etiquettes(5.5, "#696982", False, 3, Qgis.LabelOverlapHandling.PreventOverlap), 0, 0, "ELSE", "Établissements voisins (autres pages)")
 r_voisins.setIsElse(True); regles.appendChild(r_page); regles.appendChild(r_voisins)
 sig.setLabeling(QgsRuleBasedLabeling(regles)); sig.setLabelsEnabled(True)
 
