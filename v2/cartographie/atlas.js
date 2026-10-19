@@ -46,6 +46,10 @@ const PROFIL_DEFAUT = {
   principale: "frequente", exclues: ["RAS"], exclureTout: false, jours: "auto",
   fondsIgn: true, voile: true,
   encarts: true, encartsMax: 3, encartsMin: 4, encartsEcart: 6,
+  etiquettes: 5, etiquettesPlacees: true,
+  // établissements retenus : catégories (vide = toutes), qualifications (vide = toutes ; s'applique aux signalements),
+  // seuils sur le nombre de signalements et les jours de mobilisation
+  filtre: { categories: [], qualifs: [], minSignalements: 1, minJours: 0 },
 };
 const copie = o => JSON.parse(JSON.stringify(o));
 
@@ -115,7 +119,7 @@ function signalementsAtlas(profil) {
   const cols = manuel ? panel : (socle ? socle.auto : panel);
   if (!cols.Latitude || !cols.Longitude) throw new Error("L'atlas place les établissements par leurs coordonnées : associez Latitude et Longitude, ou utilisez une table du socle.");
   // « tous » : toutes les versions (jours de mobilisation) ; « recs » : dernière version seulement si la case est cochée
-  const tous = filteredRecords(); let recs = tous; if (socle && socle.dv && dvOnly) recs = recs.filter(r => r[socle.dv]);
+  let tous = filteredRecords(), recs = tous; if (socle && socle.dv && dvOnly) recs = recs.filter(r => r[socle.dv]);
   const cles = new Set(); tous.forEach(r => Object.keys(r).forEach(k => cles.add(k)));
   const trouve = (...noms) => noms.find(n => n && cles.has(n)) || null;
   const motif = re => [...cles].find(k => re.test(k)) || null;
@@ -135,6 +139,9 @@ function signalementsAtlas(profil) {
   const dateDe = r => (C.faits && secondesDe(r[C.faits])) || (C.cree && secondesDe(r[C.cree])) || null;
   const qualifsDe = r => C.qualif ? texteCellule(r[C.qualif]).split(", ").map(q => q.trim()).filter(Boolean) : [];
   const estExclu = r => { const q = qualifsDe(r); return q.length > 0 && q.every(x => exclues.has(x.toUpperCase())); };
+  // filtre du profil sur les qualifications : seuls les signalements qui en portent une comptent
+  const F = { categories: [], qualifs: [], minSignalements: 1, minJours: 0, ...(P.filtre || {}) };
+  if (F.qualifs.length) { const garde = r => qualifsDe(r).some(q => F.qualifs.includes(q)); tous = tous.filter(garde); recs = recs.filter(garde); }
   const cleDe = r => { const lat = toNumber(r[cols.Latitude]), lon = toNumber(r[cols.Longitude]); if (isNaN(lat) || isNaN(lon)) return null;
     return (C.uai ? texteCellule(r[C.uai]).trim() : "") || `${lat.toFixed(5)},${lon.toFixed(5)}`; };
   // colonnes de la table recopiées dans les deux couches (détail : telles quelles ; établissement : regroupées)
@@ -177,7 +184,7 @@ function signalementsAtlas(profil) {
     if (!exclu) qs.forEach(q => { const x = e.qualifs.get(q) || { n: 0, date: 0 }; x.n++; if (typeof d === "number" && d > x.date) x.date = d; e.qualifs.set(q, x); });
     if (typeof d === "number" && (!e.date || d > e.date)) e.date = d;
     const brut = {}; tableCols.forEach(c => { brut[nomExport(c.col)] = valeurExport(c.col, r[c.col]); });
-    detail.push({ type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] }, properties: { ...e.props, ...brut,
+    detail.push({ cle, type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] }, properties: { ...e.props, ...brut,
       Qualification: qs[0] || "", Qualifications: qs.join(", "), Date: jourDe(d), Dossier: R.Dossier ? texteCellule(r[R.Dossier]) : "",
       Nb_jours: C.jours && !isNaN(toNumber(r[C.jours])) ? toNumber(r[C.jours]) : null, grist_id: r.id } });
   }
@@ -203,12 +210,20 @@ function signalementsAtlas(profil) {
     const principale = [...e.qualifs.entries()].sort((a, b) => triQualif(a, b) || a[0].localeCompare(b[0], "fr"))[0];
     const regroupees = {}; tableCols.forEach(c => { regroupees[nomExport(c.col)] = regrouper(c.col, e.lignes); });
     const j = joursEtab.get(e.cle);
-    features.push({ type: "Feature", geometry: { type: "Point", coordinates: [e.lon, e.lat] }, properties: { ...e.props, ...regroupees,
+    features.push({ _cle: e.cle, type: "Feature", geometry: { type: "Point", coordinates: [e.lon, e.lat] }, properties: { ...e.props, ...regroupees,
       Nb_signalements: e.n, Qualification_principale: principale ? principale[0] : "", Qualifications: [...e.qualifs.keys()].join(", "),
       Nb_jours: j ? (j.max !== null ? j.max : j.jours.size || null) : null,
       Derniere_date: e.date ? jourDe(e.date) : "" } });
   }
-  if (!features.length) throw new Error("Aucun établissement localisé à mettre dans l'atlas.");
+  // filtre du profil sur les établissements : catégorie, nombre de signalements, jours de mobilisation
+  const avantFiltre = features.length;
+  for (let i = features.length - 1; i >= 0; i--) {
+    const p = features[i].properties;
+    if ((F.categories.length && !F.categories.includes(p.Categorie)) || p.Nb_signalements < (+F.minSignalements || 1) || (p.Nb_jours || 0) < (+F.minJours || 0)) features.splice(i, 1);
+  }
+  const clesRetenues = new Set(features.map(f => f._cle)); features.forEach(f => { delete f._cle; });
+  for (let i = detail.length - 1; i >= 0; i--) { if (!clesRetenues.has(detail[i].cle)) detail.splice(i, 1); else delete detail[i].cle; }
+  if (!features.length) throw new Error(avantFiltre ? `Aucun établissement ne passe le filtre du profil (${avantFiltre} avant filtre).` : "Aucun établissement localisé à mettre dans l'atlas.");
   // Rang dans l'académie selon le critère du profil : le tableau garde les N premiers
   const cmp = {
     signalements: (a, b) => b.Nb_signalements - a.Nb_signalements || (b.Nb_jours || 0) - (a.Nb_jours || 0) || String(b.Derniere_date).localeCompare(String(a.Derniere_date)),
@@ -219,7 +234,7 @@ function signalementsAtlas(profil) {
   for (const f of features) { const k = f.properties.Academie || ""; if (!parAca.has(k)) parAca.set(k, []); parAca.get(k).push(f.properties); }
   for (const l of parAca.values()) { l.sort((a, b) => cmp(a, b) || a.Etablissement.localeCompare(b.Etablissement, "fr")); l.forEach((p, i) => { p.Rang = i + 1; }); }
   return { fc: { type: "FeatureCollection", name: "signalements", features }, detail: { type: "FeatureCollection", name: "signalements_detail", features: detail },
-    infos: { jours: C.jours, qualif: C.qualif, ordre, tableCols } };
+    infos: { jours: C.jours, qualif: C.qualif, ordre, tableCols, avantFiltre } };
 }
 
 /* ---------- encarts de zoom : zones denses et place libre sur la carte ----------
@@ -239,6 +254,16 @@ function versL93(lon, lat) {
   const r0 = a * F * t(p0) ** n, r = a * F * t(lat * rad) ** n, th = n * (lon * rad - l0);
   return [700000 + r * Math.sin(th), 6600000 + r0 - r * Math.cos(th)];
 }
+// Emprise de la page d'une académie sur la carte principale (mode « Auto » de QGIS) et mètres par mm de papier
+function emprisePage(aca) {
+  const anneaux = aca.geometry.type === "Polygon" ? aca.geometry.coordinates : aca.geometry.coordinates.flat();
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  anneaux.forEach(an => an.forEach(([x, y]) => { x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); y2 = Math.max(y2, y); }));
+  const ratio = CARTE_MM.l / CARTE_MM.h;
+  if ((x2 - x1) / (y2 - y1) < ratio) { const d = (ratio * (y2 - y1) - (x2 - x1)) / 2; x1 -= d; x2 += d; } else { const d = ((x2 - x1) / ratio - (y2 - y1)) / 2; y1 -= d; y2 += d; }
+  const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2, w = (x2 - x1) * (1 + CARTE_MM.marge), h = (y2 - y1) * (1 + CARTE_MM.marge);
+  return { E: { x1: cx - w / 2, y1: cy - h / 2, x2: cx + w / 2, y2: cy + h / 2 }, k: w / CARTE_MM.l, anneaux };
+}
 function calculerEncarts(features, academies, opts) {
   const max = Math.max(0, Math.min(3, opts.max | 0)), minEtab = Math.max(2, opts.min | 0), ecart = Math.max(1, +opts.ecart || 6);
   const zones = [], zoomDe = new Map();   // zoomDe : point (feature) → numéro d'encart
@@ -247,14 +272,7 @@ function calculerEncarts(features, academies, opts) {
   for (const aca of academies.features) {
     const page = aca.properties.nom;
     if (OUTRE_MER.has(page) || !pts.some(p => p.aca === page)) continue;
-    // emprise de la page (mode Auto de QGIS)
-    const anneaux = aca.geometry.type === "Polygon" ? aca.geometry.coordinates : aca.geometry.coordinates.flat();
-    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
-    anneaux.forEach(an => an.forEach(([x, y]) => { x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); y2 = Math.max(y2, y); }));
-    const ratio = CARTE_MM.l / CARTE_MM.h;
-    if ((x2 - x1) / (y2 - y1) < ratio) { const d = (ratio * (y2 - y1) - (x2 - x1)) / 2; x1 -= d; x2 += d; } else { const d = ((x2 - x1) / ratio - (y2 - y1)) / 2; y1 -= d; y2 += d; }
-    const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2, w = (x2 - x1) * (1 + CARTE_MM.marge), h = (y2 - y1) * (1 + CARTE_MM.marge);
-    const E = { x1: cx - w / 2, y1: cy - h / 2, x2: cx + w / 2, y2: cy + h / 2 }, k = w / CARTE_MM.l;   // mètres par mm
+    const { E, k, anneaux } = emprisePage(aca);   // emprise de la page, mètres par mm
     const papier = (x, y) => [CARTE_MM.x + (x - E.x1) / k, CARTE_MM.y + (E.y2 - y) / k];
     const visibles = pts.filter(p => p.x >= E.x1 && p.x <= E.x2 && p.y >= E.y1 && p.y <= E.y2).map(p => ({ ...p, pp: papier(p.x, p.y) }));
     const dePage = visibles.filter(p => p.aca === page);
@@ -319,6 +337,75 @@ function calculerEncarts(features, academies, opts) {
     });
   }
   return { zones, zoomDe };
+}
+
+/* ---------- étiquettes placées à l'avance (carte principale et encarts) ----------
+   Pour chaque carte, les étiquettes des établissements de l'académie sont posées une à une (les plus signalés d'abord) :
+   d'abord contre le point, sinon de plus en plus loin dans 16 directions, à la première place libre (ni autre étiquette,
+   ni point, ni encart, ni échelle, dans le cadre). QGIS les pose là et trace un trait de rappel vers le point quand
+   l'étiquette en est écartée. Estimation de la taille du texte : DejaVu Sans gras, coupure à 26 caractères. */
+function lignesEtiquette(t) {
+  const lignes = []; let l = "";
+  String(t || "").split(/\s+/).filter(Boolean).forEach(m => { if (l && (l + " " + m).length > 26) { lignes.push(l); l = m; } else l = l ? `${l} ${m}` : m; });
+  if (l) lignes.push(l); return lignes.length ? lignes : [""];
+}
+// Sans place libre : l'étiquette est retirée (champ Lh / Eh), sauf pour les établissements protégés (ceux du tableau),
+// qui gardent leur meilleure place même en chevauchant.
+function placerEtiquettes(features, academies, zones, taille, protege) {
+  const MM = taille * 0.3528, carW = MM * 0.66, ligneH = MM * 1.25, tampon = 0.5;
+  const boite = t => { const l = lignesEtiquette(t); return { w: Math.max(...l.map(x => x.length)) * carW + 2 * tampon, h: l.length * ligneH + 2 * tampon }; };
+  const chevauche = (a, b) => a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2;
+  const pts = features.map(f => { const [x, y] = versL93(f.geometry.coordinates[0], f.geometry.coordinates[1]); return { f, x, y }; });
+  // une carte : cadre papier, emprise, étiquettes à poser, obstacles fixes ; écrit les champs (préfixe L ou E)
+  const poser = (cadre, E, k, aPoser, obstacles, prefixe) => {
+    const papier = (x, y) => [cadre.x + (x - E.x1) / k, cadre.y + (E.y2 - y) / k];
+    const dedans = pts.filter(p => p.x >= E.x1 && p.x <= E.x2 && p.y >= E.y1 && p.y <= E.y2);
+    const occupes = [...obstacles, ...dedans.map(p => { const [u, v] = papier(p.x, p.y); return { x1: u - 1.7, y1: v - 1.7, x2: u + 1.7, y2: v + 1.7, point: p }; })];
+    const directions = [...Array(16)].map((_, i) => i * Math.PI / 8);
+    aPoser.sort((a, b) => (a.f.properties.Rang || 1e9) - (b.f.properties.Rang || 1e9));
+    for (const p of aPoser) {
+      const [u, v] = papier(p.x, p.y), b = boite(p.f.properties.Etiquette);
+      const candidats = [];
+      // contre le point : à droite, à gauche, au-dessus, au-dessous, puis en diagonale
+      [[1.6, 0, "Left", "Half"], [-1.6, 0, "Right", "Half"], [0, -1.8, "Center", "Bottom"], [0, 1.8, "Center", "Top"], [1.3, -1.3, "Left", "Bottom"], [-1.3, -1.3, "Right", "Bottom"], [1.3, 1.3, "Left", "Top"], [-1.3, 1.3, "Right", "Top"]]
+        .forEach(([dx, dy, ha, va]) => candidats.push({ ax: u + dx, ay: v + dy, ha, va, d: 0 }));
+      for (const d of [5, 8, 11, 15, 20, 26, 33]) directions.forEach(t => {
+        const c = Math.cos(t), s = Math.sin(t), ha = c > 0.35 ? "Left" : c < -0.35 ? "Right" : "Center", va = s > 0.35 ? "Top" : s < -0.35 ? "Bottom" : "Half";
+        candidats.push({ ax: u + d * c, ay: v + d * s, ha, va, d });
+      });
+      let meilleur = null;
+      for (const c of candidats) {
+        const x1 = c.ha === "Left" ? c.ax : c.ha === "Right" ? c.ax - b.w : c.ax - b.w / 2, y1 = c.va === "Top" ? c.ay : c.va === "Bottom" ? c.ay - b.h : c.ay - b.h / 2;
+        const r = { x1, y1, x2: x1 + b.w, y2: y1 + b.h };
+        const hors = r.x1 < cadre.x + 0.5 || r.y1 < cadre.y + 0.5 || r.x2 > cadre.x + cadre.l - 0.5 || r.y2 > cadre.y + cadre.h - 0.5;
+        const conflits = occupes.filter(o => o.point !== p && chevauche(o, r)).length;
+        const cout = c.d + (hors ? 500 : 0) + conflits * 200;
+        if (!meilleur || cout < meilleur.cout) meilleur = { ...c, r, cout };
+        if (!hors && !conflits) break;   // candidats rangés du plus proche au plus loin : la première place libre suffit
+      }
+      const P = p.f.properties;
+      if (meilleur.cout >= 200 && !protege(P)) { P[prefixe + "h"] = 1; continue; }
+      occupes.push(meilleur.r);
+      P[prefixe + "x"] = Math.round(E.x1 + (meilleur.ax - cadre.x) * k); P[prefixe + "y"] = Math.round(E.y2 - (meilleur.ay - cadre.y) * k);
+      P[prefixe + "a"] = meilleur.ha; P[prefixe + "v"] = meilleur.va;
+    }
+  };
+  const zonesDe = new Map(); zones.forEach(z => { const pg = z.properties.page; if (!zonesDe.has(pg)) zonesDe.set(pg, []); zonesDe.get(pg).push(z.properties); });
+  for (const aca of academies.features) {
+    const page = aca.properties.nom; if (OUTRE_MER.has(page)) continue;
+    const dePage = pts.filter(p => p.f.properties.Academie === page); if (!dePage.length) continue;
+    const { E, k } = emprisePage(aca), zs = zonesDe.get(page) || [];
+    // carte principale : sans les établissements montrés dans un encart ; les encarts et l'échelle sont des obstacles
+    const obst = [{ x1: ECHELLE_MM.x, y1: ECHELLE_MM.y, x2: ECHELLE_MM.x + ECHELLE_MM.l, y2: ECHELLE_MM.y + ECHELLE_MM.h },
+      ...zs.map(z => ({ x1: z.px - 1, y1: z.py - 1, x2: z.px + z.pw + 1, y2: z.py + z.ph + 1 }))];
+    poser(CARTE_MM, E, k, dePage.filter(p => !p.f.properties.Zoom), obst, "L");
+    // encarts : les établissements de l'académie qui tombent dans l'emprise de l'encart
+    zs.forEach(z => {
+      const Ez = { x1: z.xmin, y1: z.ymin, x2: z.xmax, y2: z.ymax };
+      const dans = dePage.filter(p => p.x >= Ez.x1 && p.x <= Ez.x2 && p.y >= Ez.y1 && p.y <= Ez.y2 && p.f.properties.Ex == null);
+      poser({ x: z.px, y: z.py, l: z.pw, h: z.ph }, Ez, (Ez.x2 - Ez.x1) / z.pw, dans, [{ x1: z.px, y1: z.py, x2: z.px + 5.5, y2: z.py + 5.5 }], "E");
+    });
+  }
 }
 
 /* ---------- projet QGIS ---------- */
@@ -399,11 +486,14 @@ async function construireAtlas(name) {
   const lignes = Math.max(0, Math.min(5000, parseInt(P.lignes, 10) || 0));
   // encarts : zones denses (un fichier zones.geojson toujours présent ; une ligne vide garde au fichier son type)
   const enc = P.encarts !== false ? calculerEncarts(fc.features, JSON.parse(acas), { max: P.encartsMax, min: P.encartsMin, ecart: P.encartsEcart }) : { zones: [], zoomDe: new Map() };
-  fc.features.forEach(f => { f.properties.Zoom = enc.zoomDe.get(f) || null; });
+  fc.features.forEach(f => { f.properties.Zoom = enc.zoomDe.get(f) || null; ["Lx", "Ly", "La", "Lv", "Lh", "Ex", "Ey", "Ea", "Ev", "Eh"].forEach(c => { f.properties[c] = null; }); });
+  // établissements dont l'étiquette reste toujours affichée : ceux du tableau (ou les 22 premiers si le tableau les prend tous)
+  const proteges = lignes || 22;
+  if (P.etiquettesPlacees !== false) placerEtiquettes(fc.features, JSON.parse(acas), enc.zones, +P.etiquettes || 5, pr => (pr.Rang || 1e9) <= proteges);
   const vide = { type: "Feature", geometry: { type: "Polygon", coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] }, properties: { cle: "", page: "", num: 0, nb: 0, px: 0, py: 0, pw: 0, ph: 0, xmin: 0, xmax: 1, ymin: 0, ymax: 1, zoom: 1 } };
   const zonesFc = { type: "FeatureCollection", name: "zones", crs: { type: "name", properties: { name: "urn:ogc:def:crs:EPSG::2154" } }, features: enc.zones.length ? enc.zones : [vide] };
   let projet = poserVariables(qgsBase.replace("@@TITRE@@", "").replace("@@DATE@@", "").replace("@@SERVICE@@", "").replace("@@LIGNES@@", "22"),
-    { atlas_titre: P.titre || "Signalements", atlas_date: $("atlasDate").value.trim(), atlas_service: P.service || "", atlas_lignes: String(lignes) });
+    { atlas_titre: P.titre || "Signalements", atlas_date: $("atlasDate").value.trim(), atlas_service: P.service || "", atlas_lignes: String(lignes), atlas_etiquette: String(+P.etiquettes || 5) });
   const notes = [];
   if (P.tableauWidget !== false) {
     const colonnes = (P.colonnes || []).map(c => ({ nom: c.champ.startsWith("col:") ? nomExport(c.champ.slice(4)) : c.champ, titre: c.titre || c.champ.replace(/^col:/, "") }))
@@ -429,6 +519,10 @@ async function construireAtlas(name) {
     `- Jours de mobilisation : ${infos.jours ? `valeur la plus haute de la colonne « ${infos.jours} », toutes versions` : "jours distincts (date des faits, à défaut de saisie) ayant un signalement non ignoré, toutes versions"}.`,
     `- Fonds IGN : ${P.fondsIgn !== false ? "cochés" : "décochés (à cocher dans le groupe « Fonds de carte »)"} ; voile gris hors académie : ${P.voile !== false ? "oui" : "non"}.`,
     `- Encarts de zoom : ${P.encarts !== false ? `${enc.zones.length} sur l'ensemble des pages (au plus ${P.encartsMax} par page, zones d'au moins ${P.encartsMin} établissements à moins de ${P.encartsEcart} mm sur la carte) ; couche « zones », cadres pointillés numérotés` : "non"}.`,
+    `- Établissements retenus : ${fc.features.length} sur ${infos.avantFiltre}${(() => { const F = { categories: [], qualifs: [], minSignalements: 1, minJours: 0, ...(P.filtre || {}) };
+      const l = [F.categories.length ? `catégories ${F.categories.join(", ")}` : "", F.qualifs.length ? `qualifications ${F.qualifs.join(", ")}` : "", F.minSignalements > 1 ? `au moins ${F.minSignalements} signalements` : "", F.minJours > 0 ? `au moins ${F.minJours} jours de mobilisation` : ""].filter(Boolean);
+      return l.length ? ` (${l.join(" ; ")})` : ""; })()}.`,
+    `- Étiquettes : ${+P.etiquettes || 5} pt (variable atlas_etiquette)${P.etiquettesPlacees !== false ? " ; placées par le widget (champs Lx/Ly sur la carte, Ex/Ey dans les encarts, traits de rappel), retirées faute de place sauf pour les établissements du tableau (Lh/Eh = 1)" : " ; placement automatique de QGIS"}.`,
     ...notes.map(n => "- " + n), "",
     "Variables du projet (Projet › Propriétés › Variables) : atlas_titre, atlas_date, atlas_service, atlas_lignes (0 = tous).",
     "Si les fonds IGN restent blancs ou si la carte met longtemps à s'afficher, QGIS n'atteint pas internet :",
@@ -441,8 +535,12 @@ async function construireAtlas(name) {
     "Garder vos retouches QGIS : enregistrez le projet retouché (chemins relatifs) puis déposez-le dans le widget comme modèle du profil.",
     "Les exports suivants le réutiliseront ; seuls les variables, le tableau (si le profil le règle) et les fonds/voile sont modifiés.", "",
     "Sources : signalements (Grist) ; contours IGN Admin Express (Licence ouverte, via france-geojson) ; fonds IGN Géoplateforme."].join("\r\n");
+  // points en Lambert-93, comme les contours : les positions d'étiquettes (Lx/Ly…) sont dans le système de la couche
+  const enL93 = c => ({ ...c, crs: { type: "name", properties: { name: "urn:ogc:def:crs:EPSG::2154" } },
+    features: c.features.map(f => ({ ...f, geometry: { type: "Point", coordinates: versL93(f.geometry.coordinates[0], f.geometry.coordinates[1]).map(v => Math.round(v * 10) / 10) } })) });
+  const fcL93 = enL93(fc), detailL93 = enL93(detail);
   const zip = new JSZip(), dossier = zip.folder(name);
-  dossier.file("atlas.qgs", projet); dossier.file("signalements.geojson", JSON.stringify(fc)); dossier.file("signalements_detail.geojson", JSON.stringify(detail));
+  dossier.file("atlas.qgs", projet); dossier.file("signalements.geojson", JSON.stringify(fcL93)); dossier.file("signalements_detail.geojson", JSON.stringify(detailL93));
   dossier.file("zones.geojson", JSON.stringify(zonesFc));
   dossier.file("academies.geojson", acas); dossier.file("departements.geojson", deps); dossier.file("LISEZMOI.txt", lisezmoi);
   return { name: name + ".zip", blob: await zip.generateAsync({ type: "blob", compression: "DEFLATE" }) };
@@ -603,6 +701,13 @@ const AtlasUI = (() => {
     el("atlasIgn").checked = P.fondsIgn !== false; el("atlasVoile").checked = P.voile !== false;
     el("atlasEncarts").checked = P.encarts !== false; el("atlasEncartsMax").value = P.encartsMax; el("atlasEncartsMin").value = P.encartsMin; el("atlasEncartsEcart").value = P.encartsEcart;
     el("atlasEncartsBloc").style.display = P.encarts !== false ? "" : "none";
+    el("atlasEtiquettes").value = P.etiquettes; el("atlasPlacees").checked = P.etiquettesPlacees !== false;
+    const F = { categories: [], qualifs: [], minSignalements: 1, minJours: 0, ...(P.filtre || {}) };
+    el("atlasFiltreCat").innerHTML = `<span>Catégories :</span>` + ["École", "Collège", "Lycée", "Autre"].map(c => `<label><input type="checkbox" data-cat="${c}"${F.categories.includes(c) ? " checked" : ""}> ${c}</label>`).join("") + `<span class="hint">aucune cochée = toutes</span>`;
+    const vq = valeursQualif();
+    el("atlasFiltreQualif").innerHTML = vq.length ? `<span>Qualifications :</span>` + vq.map(q => `<label><input type="checkbox" data-qualif="${htmlTexte(q)}"${F.qualifs.includes(q) ? " checked" : ""}> ${htmlTexte(q)}</label>`).join("") + `<span class="hint">aucune cochée = toutes</span>` : "";
+    el("atlasMinSig").value = F.minSignalements; el("atlasMinJours").value = F.minJours;
+    compterPlusTard();
     const ordre = choixColonne((socle && socle.qualif) || "Qualification");
     el("atlasOrdreAide").textContent = ordre.length ? `Ordre actuel : ${ordre.join(" › ")}.` : "La colonne de qualification n'a pas de liste de choix.";
     const id = idModeleDoc();
@@ -623,11 +728,32 @@ const AtlasUI = (() => {
     p.principale = el("atlasPrincipale").value; p.exclues = el("atlasExclues").value.split(/[,;]/).map(s => s.trim()).filter(Boolean);
     p.exclureTout = el("atlasExclureTout").checked; p.jours = el("atlasJours").value;
     p.fondsIgn = el("atlasIgn").checked; p.voile = el("atlasVoile").checked;
+    p.etiquettes = Math.max(3, Math.min(9, parseFloat(el("atlasEtiquettes").value) || 5)); p.etiquettesPlacees = el("atlasPlacees").checked;
+    p.filtre = { categories: [...el("atlasFiltreCat").querySelectorAll("input:checked")].map(b => b.dataset.cat),
+      qualifs: [...el("atlasFiltreQualif").querySelectorAll("input:checked")].map(b => b.dataset.qualif),
+      minSignalements: Math.max(1, parseInt(el("atlasMinSig").value, 10) || 1), minJours: Math.max(0, parseInt(el("atlasMinJours").value, 10) || 0) };
     p.encarts = el("atlasEncarts").checked; p.encartsMax = Math.max(1, Math.min(3, parseInt(el("atlasEncartsMax").value, 10) || 3));
     p.encartsMin = Math.max(2, parseInt(el("atlasEncartsMin").value, 10) || 4); p.encartsEcart = Math.max(1, Math.min(30, parseFloat(el("atlasEncartsEcart").value) || 6));
     ecrireLocal();
   }
-  const changer = () => { lireFormulaire(); modifie = true; el("atlasModifie").style.display = ""; };
+  const changer = () => { lireFormulaire(); modifie = true; el("atlasModifie").style.display = ""; compterPlusTard(); };
+  // valeurs de qualification proposées au filtre : choix de la colonne dans Grist, sinon valeurs rencontrées
+  function valeursQualif() {
+    const col = (socle && socle.qualif) || "Qualification", choix = choixColonne(col);
+    const v = new Set(); (lastRecords || []).forEach(r => texteCellule(r[col]).split(", ").forEach(x => { if (x.trim()) v.add(x.trim()); }));
+    return [...choix, ...[...v].filter(x => !choix.includes(x)).sort((a, b) => a.localeCompare(b, "fr"))];
+  }
+  // nombre d'établissements retenus par le profil (recalculé un instant après chaque changement)
+  let minuteur = null;
+  function compterPlusTard() {
+    clearTimeout(minuteur);
+    minuteur = setTimeout(() => {
+      const c = el("atlasCompte"); if (!c) return;
+      try { const r = signalementsAtlas(profilCourant()); const n = r.fc.features.length, a = new Set(r.fc.features.map(f => f.properties.Academie)).size;
+        c.textContent = `— ${n} établissement${n > 1 ? "s" : ""} sur ${r.infos.avantFiltre}, ${a} académie${a > 1 ? "s" : ""}`; }
+      catch (e) { c.textContent = "— " + e.message; }
+    }, 300);
+  }
   let branche = false;
   function brancher() {
     if (branche) return; branche = true;

@@ -146,6 +146,15 @@
         <label style="flex:1">Service (une ligne par retour) <textarea id="atlasService" rows="2" style="width:100%"></textarea></label>
       </div>
     </details>
+    <details class="atlas-bloc" open><summary>Établissements retenus <span class="hint" id="atlasCompte"></span></summary>
+      <p class="hint" style="margin:0 0 4px">En plus des filtres du widget. Les zones de zoom et le classement sont calculés sur les établissements retenus.</p>
+      <div id="atlasFiltreCat" class="row" style="margin:0;gap:4px 12px"><span>Catégories :</span></div>
+      <div id="atlasFiltreQualif" class="row" style="margin:4px 0 0;gap:4px 12px"></div>
+      <div class="row" style="margin:4px 0 0">
+        <label>au moins <input type="number" id="atlasMinSig" min="1" step="1" style="width:4em"> signalement(s)</label>
+        <label>au moins <input type="number" id="atlasMinJours" min="0" step="1" style="width:4em"> jour(s) de mobilisation</label>
+      </div>
+    </details>
     <details class="atlas-bloc" open><summary>Tableau sous la carte</summary>
       <div class="row" style="margin:0;align-items:center">
         <label>Les <input type="number" id="atlasLignes" min="0" max="500" step="1" style="width:4.5em"> premiers établissements de l'académie</label>
@@ -170,6 +179,10 @@
     <details class="atlas-bloc"><summary>Carte et modèle QGIS</summary>
       <label class="check"><input type="checkbox" id="atlasIgn"> Fonds IGN (relief et plan, Géoplateforme : connexion internet nécessaire)</label>
       <label class="check"><input type="checkbox" id="atlasVoile"> Voile gris sur les académies voisines</label>
+      <div class="row" style="margin:0;align-items:center">
+        <label>Étiquettes <input type="number" id="atlasEtiquettes" min="3" max="9" step="0.5" style="width:4em"> pt</label>
+        <label class="check"><input type="checkbox" id="atlasPlacees"> placées par le widget : traits de rappel, et sans place libre retirées (sauf les établissements du tableau)</label>
+      </div>
       <label class="check"><input type="checkbox" id="atlasEncarts"> Encarts de zoom sur les zones denses (placés là où la carte est la moins chargée)</label>
       <div id="atlasEncartsBloc" class="row" style="margin:0 0 4px 22px;align-items:center">
         <label>au plus <input type="number" id="atlasEncartsMax" min="1" max="3" style="width:3.5em"> par page</label>

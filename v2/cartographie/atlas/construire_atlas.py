@@ -85,20 +85,31 @@ sig.setRenderer(QgsCategorizedSymbolRenderer("Categorie", cats))
 # les montre). Académies voisines : plus petites, grises, retirées si elles gênent.
 from qgis.core import QgsRuleBasedLabeling, QgsSimpleLineCallout
 P = getattr(QgsPalLayerSettings, "Property", QgsPalLayerSettings)   # énumération déplacée selon les versions de QGIS
-def etiquettes(taille, couleur, gras, priorite, chevauchement, montrer=None):
+# taille des étiquettes (pt) : variable du projet atlas_etiquette (réglée par le widget) ; voisines 1 pt plus petites.
+# Noms longs coupés à 26 caractères. Position : celle calculée par le widget (champs Lx/Ly sur la carte, Ex/Ey dans
+# l'encart, alignements La/Lv et Ea/Ev), avec un trait de rappel quand l'étiquette est écartée de son point ;
+# à défaut (champ vide), placement automatique de QGIS autour du point.
+POS = lambda carte, encart: f"CASE WHEN @map_id = 'carte' THEN attribute(@feature, '{carte}') WHEN @map_id LIKE 'encart%' THEN attribute(@feature, '{encart}') END"
+def etiquettes(taille, couleur, gras, priorite, chevauchement, montrer=None, positions=False):
     lab = QgsPalLayerSettings(); lab.fieldName = '"Etiquette"'; lab.isExpression = True
+    lab.autoWrapLength = 26; lab.useMaxLineLengthForAutoWrap = True
     tf = QgsTextFormat(); f = QFont("DejaVu Sans"); f.setBold(gras); tf.setFont(f); tf.setSize(taille); tf.setColor(QColor(couleur))
     b = QgsTextBufferSettings(); b.setEnabled(True); b.setSize(0.8); b.setColor(QColor("white")); tf.setBuffer(b)
     lab.setFormat(tf); lab.placement = Qgis.LabelPlacement.OrderedPositionsAroundPoint; lab.dist = 1.0; lab.priority = priorite
     ps = lab.placementSettings(); ps.setOverlapHandling(chevauchement); ps.setAllowDegradedPlacement(True); lab.setPlacementSettings(ps)
     co = QgsSimpleLineCallout(); co.setEnabled(True); co.setMinimumLength(1.5); co.setDrawCalloutToAllParts(False)
     co.lineSymbol().setColor(QColor(couleur)); co.lineSymbol().setWidth(0.2); lab.setCallout(co)
-    if montrer:
-        ddl = lab.dataDefinedProperties(); ddl.setProperty(P.Show, QgsProperty.fromExpression(montrer)); lab.setDataDefinedProperties(ddl)
+    ddl = lab.dataDefinedProperties()
+    ddl.setProperty(P.Size, QgsProperty.fromExpression(f"coalesce(to_real(@atlas_etiquette), 5.5) - {0 if gras else 1}"))
+    if montrer: ddl.setProperty(P.Show, QgsProperty.fromExpression(montrer))
+    if positions:
+        for prop, carte, encart in ((P.PositionX, "Lx", "Ex"), (P.PositionY, "Ly", "Ey"), (P.Hali, "La", "Ea"), (P.Vali, "Lv", "Ev")):
+            ddl.setProperty(prop, QgsProperty.fromExpression(POS(carte, encart)))
+    lab.setDataDefinedProperties(ddl)
     return lab
 regles = QgsRuleBasedLabeling.Rule(None)
 r_page = QgsRuleBasedLabeling.Rule(etiquettes(6.5, "#1d1d4f", True, 9, Qgis.LabelOverlapHandling.AllowOverlapIfRequired,
-    "NOT (@map_id = 'carte' AND coalesce(attribute(@feature, 'Zoom'), 0) > 0)"), 0, 0, DANS_PAGE, "Académie de la page")
+    "NOT (@map_id = 'carte' AND coalesce(attribute(@feature, 'Zoom'), 0) > 0) AND coalesce(" + POS("Lh", "Eh") + ", 0) = 0", positions=True), 0, 0, DANS_PAGE, "Académie de la page")
 r_voisins = QgsRuleBasedLabeling.Rule(etiquettes(5.5, "#696982", False, 3, Qgis.LabelOverlapHandling.PreventOverlap), 0, 0, "ELSE", "Académies voisines")
 r_voisins.setIsElse(True); regles.appendChild(r_page); regles.appendChild(r_voisins)
 sig.setLabeling(QgsRuleBasedLabeling(regles)); sig.setLabelsEnabled(True)
@@ -138,6 +149,7 @@ QgsExpressionContextUtils.setProjectVariable(p, "atlas_date", "oct. 2026" if DEM
 QgsExpressionContextUtils.setProjectVariable(p, "atlas_service", "MENJS/SG/HFDS/\nCellule ministérielle\nde veille et d'alerte" if DEMO else "@@SERVICE@@")
 # nombre d'établissements dans le tableau (les plus signalés de l'académie) ; 0 = tous, sur des pages supplémentaires
 QgsExpressionContextUtils.setProjectVariable(p, "atlas_lignes", "22" if DEMO else "@@LIGNES@@")
+QgsExpressionContextUtils.setProjectVariable(p, "atlas_etiquette", "5")
 
 # --- mise en page A4 portrait
 lay = QgsPrintLayout(p); lay.initializeDefaults(); lay.setName("Atlas par académie")
