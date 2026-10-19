@@ -205,6 +205,46 @@ function testerCondition(cond, ligne, lecteur) {
   }));
 }
 
+/* ---------- surlignage des changements depuis le dernier point ----------
+   La formule de la description (Description_Word_) marque ce qu'apporte chaque version par rapport à la précédente :
+   entre deux points, seule la dernière mise à jour ressortirait, et une mise à jour déjà diffusée ressortirait encore.
+   Ici, chaque cellule est comparée mot à mot à ce qu'elle était dans la version du dossier en vigueur au dernier
+   point (dernière version saisie avant lui) : seuls les mots ajoutés depuis sont surlignés. */
+const JETONS_PS = /\*\*|\n|[^\S\n]+|[\p{L}\p{N}_]+|[^\p{L}\p{N}_\s]/gu;
+const BORD_PS = " \t,.;:!?)(«»\"'’-–—";
+const sansMarques = s => String(s ?? "").replace(/==/g, "");
+function marquerAjouts(avant, apres) {
+  const a = String(avant).match(JETONS_PS) || [], b = String(apres).match(JETONS_PS) || [];
+  if (!b.length) return "";
+  if (a.length * b.length > 4e6) return apres;   // texte démesuré : pas de surlignage plutôt qu'un calcul trop long
+  // plus longue sous-suite commune, puis jetons de « b » absents de « a »
+  const n = a.length, m = b.length, L = new Uint32Array((n + 1) * (m + 1)), w = m + 1;
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+    L[i * w + j] = a[i] === b[j] ? L[(i + 1) * w + j + 1] + 1 : Math.max(L[(i + 1) * w + j], L[i * w + j + 1]);
+  const ajoute = new Array(m).fill(true);
+  for (let i = 0, j = 0; i < n && j < m;) {
+    if (a[i] === b[j]) { ajoute[j] = false; i++; j++; }
+    else if (L[(i + 1) * w + j] >= L[i * w + j + 1]) i++; else j++;
+  }
+  // regroupement : une suite de jetons ajoutés est entourée de ==, ponctuation et espaces en bordure laissés dehors,
+  // ** (gras) et retours à la ligne coupent la suite
+  const sortie = []; let groupe = [];
+  const fermer = () => {
+    if (!groupe.length) return;
+    const t = groupe.join(""); groupe = [];
+    let d = 0, f = t.length;
+    while (d < f && BORD_PS.includes(t[d])) d++;
+    while (f > d && BORD_PS.includes(t[f - 1])) f--;
+    sortie.push(d < f ? `${t.slice(0, d)}==${t.slice(d, f)}==${t.slice(f)}` : t);
+  };
+  b.forEach((x, j) => {
+    if (x === "**" || x === "\n" || !ajoute[j]) { fermer(); sortie.push(x); }
+    else groupe.push(x);
+  });
+  fermer();
+  return sortie.join("");
+}
+
 /* ---------- assemblage ---------- */
 function actifs(liste) { return liste.filter(x => x.Actif !== false && x.Actif !== 0).sort((a, b) => (Number(a.Ordre) || 0) - (Number(b.Ordre) || 0)); }
 function cleTri(v) { return v instanceof Date ? v.getTime() : typeof v === "number" ? v : normal(texteValeur(v)); }
@@ -248,6 +288,8 @@ async function assemblerPoint(sources, cfg) {
 
   // plusieurs sources possibles (point national : un document par région académique)
   const depuis = R.depuis ? new Date(R.depuis) : null, marque = R.dernierPoint ? new Date(R.dernierPoint) : null;
+  // surlignage : « point » = ce qui a changé depuis le dernier point (défaut) ; « version » = marques des colonnes (dernière mise à jour)
+  const depuisPoint = R.surlignage !== "version" && marque instanceof Date && !isNaN(marque);
   const manquants = new Set();
   let lignes = [];
   for (const source of (Array.isArray(sources) ? sources : [sources])) {
@@ -257,7 +299,7 @@ async function assemblerPoint(sources, cfg) {
     const colFaits = R.dateFaits || (typesBase.Date_faits ? "Date_faits" : colDate);
     await lec.preparer([...chemins, colFaits]); lec.manquants.forEach(m => manquants.add(m));
     // une ligne par dossier : sa dernière version = faits les plus récents, puis saisie la plus récente, puis ordre de création
-    const derniere = new Map();
+    const derniere = new Map(), versions = new Map();
     const cle = r => {
       const saisie = r[colDate] instanceof Date ? r[colDate].getTime() : 0;
       return [r[colFaits] instanceof Date ? r[colFaits].getTime() : saisie, saisie, r.id];
@@ -272,12 +314,20 @@ async function assemblerPoint(sources, cfg) {
       if (r[colFaits] instanceof Date && jourDe(r[colFaits]) > aujourdhui) continue;
       const d = r[colDossier] || r.id, k = cle(r), p = derniere.get(d);
       if (!p || plusRecente(k, p.k)) derniere.set(d, { r, k });
+      if (!versions.has(d)) versions.set(d, []);
+      versions.get(d).push({ r, k });
     }
-    for (const { r } of derniere.values()) {
+    // version du dossier en vigueur au dernier point : la plus récente parmi celles saisies avant lui
+    const auDernierPoint = d => {
+      let best = null;
+      for (const v of versions.get(d) || []) if (v.r[colDate] instanceof Date && v.r[colDate] <= marque && (!best || plusRecente(v.k, best.k))) best = v;
+      return best ? best.r : null;
+    };
+    for (const [d, { r }] of derniere.entries()) {
       const quand = r[colFaits] instanceof Date ? r[colFaits] : r[colDate];   // versions sans date des faits : date de saisie
       if (depuis && quand instanceof Date && quand < depuis) continue;
       if (R.academie && texteValeur(lec.lire(r, R.champAcademie || "Etablissement.Academie")) !== R.academie) continue;
-      lignes.push({ r, lec });
+      lignes.push({ r, lec, ref: depuisPoint ? auDernierPoint(d) : undefined });
     }
   }
   // listes de valeurs « ordre des choix » : prises dans la configuration de la colonne Grist
@@ -304,9 +354,17 @@ async function assemblerPoint(sources, cfg) {
     const cols = colonnes.filter(c => !String(c.Tableaux || "").trim() || String(c.Tableaux).split(",").map(normal).includes(normal(sec.Titre)));
     const lignesSec = lignes.filter(x => restantes.has(x) && testerCondition(sec.Condition, x.r, x.lec));
     lignesSec.forEach(x => restantes.delete(x));
-    const rows = lignesSec.map(({ r, lec }) => {
+    const MENTION = "\u0001nouveau\u0001";
+    const rows = lignesSec.map(({ r, lec, ref }) => {
       const nouveau = marque && r[colDate] instanceof Date && r[colDate] > marque && r[colNature] === "Nouveau signalement";
-      return cols.map(c => remplir(c.Contenu, r, lec, { nouveau: nouveau ? "==**Nouveau signalement**==" : "" }));
+      const extra = { nouveau: nouveau ? MENTION : "" };
+      let vals = cols.map(c => remplir(c.Contenu, r, lec, extra));
+      if (depuisPoint) {
+        // dossier connu au dernier point et modifié depuis : mots ajoutés ; sinon (inchangé, ou nouveau dossier) : rien de surligné
+        if (ref && ref !== r) { const avant = cols.map(c => remplir(c.Contenu, ref, lec, extra)); vals = vals.map((v, i) => marquerAjouts(sansMarques(avant[i]), sansMarques(v))); }
+        else vals = vals.map(sansMarques);
+      }
+      return vals.map(v => v.split(MENTION).join("==**Nouveau signalement**=="));
     });
     return { titre: sec.Titre, colonnes: cols, rows };
   });

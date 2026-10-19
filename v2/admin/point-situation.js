@@ -308,6 +308,13 @@
       ${brouillon.colonnes.map(htmlColonne).join("")}
       <button class="secondaire" data-act="ajouter" data-liste="colonnes">+ Ajouter une colonne</button>
     </section>
+    <section class="carte"><h2>Surlignage jaune</h2>
+      <p class="aide">Ce qui est mis en évidence dans le point (gras jaune dans Word). Le widget peut changer ce choix au moment de produire un point.</p>
+      <label class="champ" style="max-width:640px"><span>Surligner</span><select data-opt="surlignage">
+        <option value=""${o.surlignage !== "version" ? " selected" : ""}>ce qui a changé depuis le dernier point de situation (mots ajoutés depuis, quel que soit le nombre de mises à jour)</option>
+        <option value="version"${o.surlignage === "version" ? " selected" : ""}>la dernière mise à jour de chaque dossier (marques de la colonne Description_Word_, comme la v1)</option></select></label>
+      <p class="aide">Le dernier point est le dernier enregistré dans le widget (bouton « Enregistrer ce point »), ou l'heure saisie dans sa barre. Un nouveau signalement porte la mention « Nouveau signalement » ; son texte n'est pas surligné. Dans l'aperçu ci-contre, le dernier point est minuit aujourd'hui.</p>
+    </section>
     <section class="carte"><h2>Ordre des signalements</h2>
       <p class="aide">Dans chaque tableau, du premier critère au dernier.</p>
       ${brouillon.tri.map(htmlTri).join("")}

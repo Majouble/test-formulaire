@@ -56,7 +56,8 @@
 <body>
 <div class="barre" role="toolbar" aria-label="Paramètres du point de situation">
   <label>Signalements depuis <input type="datetime-local" id="depuis"></label>
-  <label>Marquer « nouveau » après <input type="datetime-local" id="dernierPoint"></label>
+  <label title="Les signalements et les ajouts postérieurs à ce point sont mis en évidence">Dernier point <input type="datetime-local" id="dernierPoint"></label>
+  <label>Surligner <select id="surlignage"><option value="point">ce qui a changé depuis le dernier point</option><option value="version">la dernière mise à jour de chaque dossier</option></select></label>
   <label>Heure du point <input type="datetime-local" id="maintenant"></label>
   <label>N° <input type="number" id="numero" min="1"></label>
   <label>Académie <select id="academie"><option value="">Toutes</option></select></label>
@@ -211,7 +212,7 @@ async function charger() {
 }
 async function calculer(majAcademies) {
   const cfg = {
-    reglages: { ...options, depuis: $("depuis").value ? new Date($("depuis").value) : null, dernierPoint: $("dernierPoint").value ? new Date($("dernierPoint").value) : null, academie: $("academie").value },
+    reglages: { ...options, surlignage: $("surlignage").value, depuis: $("depuis").value ? new Date($("depuis").value) : null, dernierPoint: $("dernierPoint").value ? new Date($("dernierPoint").value) : null, academie: $("academie").value },
     colonnes: await lireConfigTable("Colonnes_point"), sections: await lireConfigTable("Sections_point"), tri: await lireConfigTable("Tri_point"),
   };
   if (majAcademies) {
@@ -245,7 +246,7 @@ function entete() {
     heure: n.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }).replace(":", "h"),
   };
 }
-["depuis", "dernierPoint", "academie"].forEach(id => $(id).addEventListener("change", () => calculer(false).catch(e => etat("Erreur : " + e.message, "erreur"))));
+["depuis", "dernierPoint", "academie", "surlignage"].forEach(id => $(id).addEventListener("change", () => calculer(false).catch(e => etat("Erreur : " + e.message, "erreur"))));
 ["maintenant", "numero"].forEach(id => $(id).addEventListener("change", () => calculer(false)));
 $("actualiser").onclick = () => { $("maintenant").value = enLocal(new Date()); charger(); };
 
@@ -346,7 +347,7 @@ $("copierWord").onclick = () => {
 };
 
 grist.ready({ requiredAccess: "full", allowSelectBy: false });
-lireReglages().then(o => { options = o || {}; charger(); });
+lireReglages().then(o => { options = o || {}; $("surlignage").value = options.surlignage === "version" ? "version" : "point"; charger(); });
 </script>
 </body>
 </html>
