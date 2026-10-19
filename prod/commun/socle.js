@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.6.0 (19/10/2026)";
+  const VERSION = "2.7.0 (19/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -116,6 +116,16 @@
         accepte: () => true,
         motifs: [/^auteur/, /saisi_?par|redacteur|createur/],
         creer: ctx => ({ type: "Text", isFormula: false, formula: formuleAuteur(ctx && ctx.general, (ctx && ctx.cols && ctx.cols.Etablissement) || "Etablissement") }) },
+      { role: "Etat_plus_grave", libelle: "État le plus grave de l'établissement (formule)", obligatoire: false, parDefaut: true,
+        accepte: c => c.isFormula,
+        motifs: [/etat_?(le_?)?plus_?grave/, /etat_?max|gravite_?max|qualification_?max/],
+        creer: ctx => { const q = qualifMeta(ctx), choix = q.choix.filter(x => !RAS.test(x));   // mêmes choix et couleurs que Qualification
+          return { type: choix.length ? "Choice" : "Text", isFormula: true, formula: formuleEtatPlusGrave(ctx, q.choix),
+            ...(choix.length ? { widgetOptions: json({ choices: choix, choiceOptions: q.options }) } : {}) }; } },
+      { role: "Nb_jours_mobilisation", libelle: "Nombre de jours de mobilisation (formule)", obligatoire: false, parDefaut: true,
+        accepte: c => c.isFormula && /^(Int|Numeric|Any)$/.test(typeBase(c.type)),
+        motifs: [/jours?_(de_)?mobilisation/, /^nb_?(de_)?jours/],
+        creer: ctx => ({ type: "Int", isFormula: true, formula: formuleJoursMobilisation(ctx) }) },
     ],
     referentiel: [
       { role: "Nom", libelle: "Nom de l'établissement", obligatoire: true, accepte: c => typeBase(c.type) !== "Bool",
@@ -179,6 +189,62 @@
 
   // Formule de la dernière version, décidée le 15/10/2026 : un dossier = un établissement un jour donné ;
   // la dernière version est la plus récente par date de saisie, puis par numéro de ligne.
+  /* Jour d'un signalement (date des faits, à défaut date de saisie), qualifications « RAS » ignorées : formules communes
+     à l'état le plus grave et au nombre de jours de mobilisation (reprises des documents MEN et MESRE). */
+  const RAS = /^\s*ras\s*$/i;
+  function entetesMobilisation(ctx) {
+    const c = ctx.cols || {}, faits = c.Date_faits || "Date_faits", cree = c.Cree_le || "Cree_le", q = c.Qualification || "Qualification";
+    return [
+      `import datetime`,
+      `def jour(r):`,
+      `  d = r.${faits} or r.${cree}`,
+      `  return d.date() if isinstance(d, datetime.datetime) else d`,
+      `def qualifs(r):`,
+      `  q = r.${q}`,
+      `  liste = list(q) if isinstance(q, (list, tuple)) else ([q] if q else [])`,
+      `  return [str(x).strip() for x in liste if str(x).strip() and str(x).strip().upper() != "RAS"]`,
+    ];
+  }
+  // Choix de la colonne Qualification (ordre et couleurs), lus dans la table existante
+  function qualifMeta(ctx) {
+    const col = ctx.tRep && ctx.cols && ctx.cols.Qualification && ctx.tRep.colonnes[ctx.cols.Qualification];
+    let o = {}; try { o = col && col.widgetOptions ? JSON.parse(col.widgetOptions) : {}; } catch (_) { o = {}; }
+    return { choix: Array.isArray(o.choices) ? o.choices : [], options: o.choiceOptions || {} };
+  }
+  // Jours distincts (hors RAS) où l'établissement a un signalement, jusqu'au jour de cette ligne
+  function formuleJoursMobilisation(ctx) {
+    const e = (ctx.cols && ctx.cols.Etablissement) || "Etablissement";
+    return [...entetesMobilisation(ctx),
+      `j = jour(rec)`,
+      `if not $${e} or not j or not qualifs(rec):`,
+      `  return None`,
+      `jours = {jour(r) for r in ${ctx.reponses}.lookupRecords(${e}=$${e}) if qualifs(r)}`,
+      `return len([d for d in jours if d and d <= j])`].join("\n");
+  }
+  // Qualification la plus grave de l'établissement jusqu'au jour de cette ligne : la première dans ORDRE (ordre des choix
+  // de la colonne Qualification à l'installation, du plus grave au moins grave) ; hors liste, la plus récente
+  function formuleEtatPlusGrave(ctx, choix) {
+    const e = (ctx.cols && ctx.cols.Etablissement) || "Etablissement";
+    const ordre = (choix || []).filter(x => !RAS.test(x));
+    return [...entetesMobilisation(ctx),
+      `# du plus grave au moins grave : à ajuster si l'ordre des choix change`,
+      `ORDRE = ${JSON.stringify(ordre)}`,
+      `j = jour(rec)`,
+      `if not $${e} or not j:`,
+      `  return None`,
+      `vus = {}`,
+      `for r in ${ctx.reponses}.lookupRecords(${e}=$${e}):`,
+      `  d = jour(r)`,
+      `  if d and d <= j:`,
+      `    for q in qualifs(r):`,
+      `      vus[q] = max(vus.get(q, d), d)`,
+      `if not vus:`,
+      `  return None`,
+      `def rang(item):`,
+      `  q, d = item`,
+      `  return (ORDRE.index(q) if q in ORDRE else len(ORDRE), -d.toordinal(), q)`,
+      `return sorted(vus.items(), key=rang)[0][0]`].join("\n");
+  }
   function formuleDerniereVersion(ctx) {
     const d = (ctx.cols && ctx.cols.Dossier) || "Dossier", c = (ctx.cols && ctx.cols.Cree_le) || "Cree_le";
     return [
@@ -704,7 +770,7 @@ return sorted(champs)`;
       if (!tRep) {
         // Colonnes simples avec la table, références et formule ensuite (la table doit exister pour s'y référer)
         const defs = ROLES.reponses.filter(voulu);
-        const apres = ["Etablissement", "Dossier", "Derniere_version", "Description_Word_", "Auteur"];   // références et formules : une fois la table créée
+        const apres = ["Etablissement", "Dossier", "Derniere_version", "Description_Word_", "Auteur", "Etat_plus_grave", "Nb_jours_mobilisation"];   // références et formules : une fois la table créée
         const simples = defs.filter(d => !apres.includes(d.role));
         etapes.push({ id: `table-reponses${sfx}`, groupe: "Tables", coche: true, titre: `Créer la table ${rep}`,
           detail: `Une ligne par version de signalement : ${defs.map(d => d.role).join(", ")}.`,
@@ -712,7 +778,7 @@ return sorted(champs)`;
                     ...apres.map(role =>
                       ["AddColumn", rep, role, ROLES.reponses.find(d => d.role === role).creer(ctx)])] });
       } else {
-        rolesRep = resoudreRoles("reponses", tRep, ctx, assocRep, {});
+        rolesRep = resoudreRoles("reponses", tRep, ctx, assocRep, {}); ctx.tRep = tRep;
         Object.entries(rolesRep).forEach(([role, r]) => { if (r.col) ctx.cols[role] = r.col; });
         for (const def of ROLES.reponses) {
           const r = rolesRep[def.role];
