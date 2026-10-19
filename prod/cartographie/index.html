@@ -115,11 +115,21 @@
         <option value="gpx">GPX – GPS (.gpx, points uniquement)</option>
         <option value="csv">CSV avec géométrie WKT (.csv)</option>
         <option value="shp">Shapefile (.zip)</option>
+        <option value="atlas">Atlas QGIS par académie (.zip)</option>
       </select>
     </label>
     <label>Nom du fichier
       <input type="text" id="filename" value="export">
     </label>
+  </div>
+  <div id="atlasBox" class="row" style="display:none;flex-direction:column;align-items:stretch;gap:6px">
+    <p class="hint" style="margin:0">Projet QGIS prêt à l'emploi : une page A4 par académie (carte de repérage, carte des établissements signalés sur fond IGN, légende, tableau DSDEN · commune · UAI · type · établissement · REP/REP+ · internat). Dézippez le dossier, ouvrez <code>atlas.qgs</code> dans QGIS (3.34 ou plus récent), puis Mise en page › « Atlas par académie » › Atlas › Exporter en PDF.</p>
+    <label>Titre de l'atlas <input type="text" id="atlasTitre"></label>
+    <div class="row" style="margin:0">
+      <label>Date affichée <input type="text" id="atlasDate" style="width:9em"></label>
+      <label style="flex:1">Service (en-tête, une ligne par retour) <textarea id="atlasService" rows="3" style="width:100%"></textarea></label>
+    </div>
+    <p class="hint" style="margin:0">REP/REP+ et internat viennent du référentiel, s'il en a les colonnes (import de l'annuaire, « Informations supplémentaires » : appartenance à l'éducation prioritaire, hébergement).</p>
   </div>
   <details id="colsBox" open>
     <summary>Colonnes à exporter <span id="colsCount"></span></summary>
@@ -558,7 +568,114 @@ function renderDiag() {
 function render() {
   renderMessages(); renderStats(); renderCarte(); renderDiag();
   const ok = state.features.length > 0;
-  $("download").disabled = !ok; $("copy").disabled = !ok || $("format").value === "shp";
+  const atlas = $("format").value === "atlas";
+  $("atlasBox").style.display = atlas ? "flex" : "none"; if (atlas) initAtlas();
+  $("download").disabled = !ok; $("copy").disabled = !ok || $("format").value === "shp" || atlas;
+}
+
+/* ---------------------------------------------------------------------------
+   Atlas QGIS : projet (atlas/atlas.qgs, fabriqué par atlas/construire_atlas.py), contours des académies et des
+   départements (IGN Admin Express), et les établissements signalés de l'export, un point par établissement, aux
+   champs attendus par le projet : Etiquette, Categorie, Academie, DSDEN, Commune, UAI, Type_libelle, Etablissement, REP, Internat.
+   --------------------------------------------------------------------------- */
+let zipLoading = null;
+function loadJSZip() {
+  if (window.JSZip) return Promise.resolve(window.JSZip);
+  if (!zipLoading) zipLoading = new Promise((res, rej) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+    s.onload = () => window.JSZip ? res(window.JSZip) : rej(new Error("bibliothèque absente"));
+    s.onerror = () => { zipLoading = null; rej(new Error("impossible de charger la bibliothèque ZIP (réseau bloqué ?)")); };
+    document.head.appendChild(s);
+  });
+  return zipLoading;
+}
+const sansAccents = s => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+// sigle (EE, EM, CLG, LPO, LGT, LP…) et catégorie (couleur du point) d'après la nature ou le type de l'établissement
+function natureCourte(nature, type) {
+  const n = sansAccents(`${nature || ""} ${type || ""}`).toUpperCase();
+  const court = /MATERNELLE/.test(n) ? "EM" : /ECOLE|PRIMAIRE|ELEMENTAIRE/.test(n) ? "EE" : /COLLEGE/.test(n) ? "CLG" : /EREA/.test(n) ? "EREA"
+    : /POLYVALENT/.test(n) ? "LPO" : /PROFESSIONNEL/.test(n) ? "LP" : /GENERAL ET TECHNO|GENERAL|LGT/.test(n) ? "LGT" : /TECHNO/.test(n) ? "LT" : /LYCEE/.test(n) ? "LYC" : "";
+  const categorie = ["EE", "EM"].includes(court) ? "École" : court === "CLG" ? "Collège" : /^L|EREA/.test(court) ? "Lycée" : "Autre";
+  const libelle = { EE: "École (élém.)", EM: "École (mat.)", CLG: "Collège", LPO: "Lycée (LPO)", LGT: "Lycée (LGT)", LP: "Lycée (LP)", LT: "Lycée (LT)", LYC: "Lycée", EREA: "EREA" }[court] || String(type || nature || "");
+  return { court, categorie, libelle };
+}
+// « Collège Jules Ferry » → « JULES FERRY » (le sigle dit déjà le type)
+function nomCourt(nom) {
+  return sansAccents(String(nom || "").replace(/^\s*(ecole|école|college|collège|lycée|lycee|groupe scolaire|erea)(\s+(élémentaire|elementaire|maternelle|primaire|polyvalent|professionnel|général|general|technologique|et|des métiers|d'application|publique?|privée?))*\s+/i, "")).toUpperCase().trim();
+}
+function signalementsAtlas() {
+  const G = window.Geo, panel = lastMappings || {}, manuel = !!(panel.Latitude && panel.Longitude);
+  const cols = manuel ? panel : (socle ? socle.auto : panel);
+  if (!cols.Latitude || !cols.Longitude) throw new Error("L'atlas place les établissements par leurs coordonnées : associez Latitude et Longitude, ou utilisez une table du socle.");
+  let recs = filteredRecords(); if (socle && socle.dv && dvOnly) recs = recs.filter(r => r[socle.dv]);
+  const cles = new Set(); recs.forEach(r => Object.keys(r).forEach(k => cles.add(k)));
+  const trouve = (...noms) => noms.find(n => n && cles.has(n)) || null;
+  const motif = re => [...cles].find(k => re.test(k)) || null;
+  const C = { nom: trouve(cols.Nom, "Nom_etablissement", "Etab_Nom", "Nom"), uai: trouve(socle && socle.uai, "UAI", "Etab_UAI"),
+    commune: trouve("Commune", "Etab_Commune"), dep: trouve("Departement", "Etab_Departement"), aca: trouve("Academie", "Etab_Academie", "Academie_carte"),
+    type: trouve("Type", "Etab_Type"), nature: trouve("Libelle_nature", "Etab_Libelle_nature"), rep: motif(/education_prioritaire|^(etab_)?rep(_rep_plus)?$/i),
+    internat: motif(/hebergement|internat/i), qualif: socle && socle.qualif, date: trouve("Date_faits", "Cree_le") };
+  const texte = v => Array.isArray(v) ? v.filter(x => x !== "L").join(", ") : v == null ? "" : String(v);
+  const parEtab = new Map();
+  for (const r of recs) {
+    const lat = toNumber(r[cols.Latitude]), lon = toNumber(r[cols.Longitude]);
+    if (isNaN(lat) || isNaN(lon)) continue;
+    const uai = C.uai ? texte(r[C.uai]).trim() : "", cle = uai || `${lat.toFixed(5)},${lon.toFixed(5)}`;
+    if (!parEtab.has(cle)) parEtab.set(cle, { r, lat, lon, uai, n: 0, qualifs: new Set(), date: null });
+    const e = parEtab.get(cle); e.n++;
+    if (C.qualif) texte(r[C.qualif]).split(", ").filter(Boolean).forEach(q => e.qualifs.add(q));
+    const d = C.date ? r[C.date] : null; if (typeof d === "number" && (!e.date || d > e.date)) e.date = d;
+  }
+  const features = [];
+  for (const e of parEtab.values()) {
+    const r = e.r, lieu = G ? G.localiser(e.lat, e.lon) : null;
+    const academie = (G && C.aca && G.acaKey(texte(r[C.aca]))) || (lieu && lieu.academie) || texte(C.aca ? r[C.aca] : "");
+    const depCode = (G && e.uai && G.depFromUai(e.uai)) || (lieu && lieu.dep) || "";
+    const depNom = (G && G.DEP_NAMES[depCode]) || (C.dep ? texte(r[C.dep]) : "") || (lieu && lieu.departement) || "";
+    const n = natureCourte(C.nature ? texte(r[C.nature]) : "", C.type ? texte(r[C.type]) : "");
+    const nom = nomCourt(C.nom ? texte(r[C.nom]) : "");
+    const intern = C.internat ? r[C.internat] : null;
+    features.push({ type: "Feature", geometry: { type: "Point", coordinates: [e.lon, e.lat] }, properties: {
+      Etiquette: `${n.court} ${nom}`.trim(), Etablissement: nom, Type_court: n.court, Type_libelle: n.libelle, Categorie: n.categorie,
+      UAI: e.uai, Commune: C.commune ? texte(r[C.commune]) : "", DSDEN: depCode ? `${depCode} - ${depNom}` : depNom, Academie: academie,
+      REP: (C.rep && texte(r[C.rep]).trim()) || "-", Internat: intern === true || intern === 1 || /^(1|oui|o|true|vrai)$/i.test(texte(intern).trim()) ? "Oui" : "-",
+      Nb_signalements: e.n, Qualifications: [...e.qualifs].join(", "), Derniere_date: e.date ? new Date(e.date * 1000).toISOString().slice(0, 10) : "" } });
+  }
+  if (!features.length) throw new Error("Aucun établissement localisé à mettre dans l'atlas.");
+  return { type: "FeatureCollection", name: "signalements", features };
+}
+const xmlTexte = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+async function construireAtlas(name) {
+  const fc = signalementsAtlas(), JSZip = await loadJSZip();
+  const lire = async f => { const r = await fetch(new URL(`atlas/${f}`, location.href).href); if (!r.ok) throw new Error(`fichier ${f} introuvable (${r.status})`); return r.text(); };
+  const [qgs, acas, deps] = await Promise.all(["atlas.qgs", "academies.geojson", "departements.geojson"].map(lire));
+  const projet = qgs.replace("@@TITRE@@", xmlTexte($("atlasTitre").value.trim() || "Signalements"))
+    .replace("@@DATE@@", xmlTexte($("atlasDate").value.trim())).replace("@@SERVICE@@", xmlTexte($("atlasService").value.trim()));
+  const nb = new Set(fc.features.map(f => f.properties.Academie)).size;
+  const lisezmoi = [`Atlas des signalements par académie — ${fc.features.length} établissement(s), ${nb} académie(s).`, "",
+    "1. Dézippez le dossier (les fichiers doivent rester ensemble).", "2. Ouvrez atlas.qgs dans QGIS (3.34 ou plus récent).",
+    "3. Projet › Mises en page › « Atlas par académie ».", "4. Atlas › Exporter l'atlas en PDF : une page par académie ayant des signalements.", "",
+    "Titre, date et service : Projet › Propriétés › Variables (atlas_titre, atlas_date, atlas_service).",
+    "Fond de carte : relief IGN (Géoplateforme), ou « Plan IGN » à cocher dans les couches ; connexion internet nécessaire.",
+    "Couches ajoutées (QPV, etc.) : à glisser sous « signalements » ; la légende de la mise en page se met à jour à la main.", "",
+    "Sources : signalements (Grist) ; contours IGN Admin Express (Licence ouverte, via france-geojson) ; fonds IGN Géoplateforme."].join("\r\n");
+  const zip = new JSZip(), dossier = zip.folder(name);
+  dossier.file("atlas.qgs", projet); dossier.file("signalements.geojson", JSON.stringify(fc));
+  dossier.file("academies.geojson", acas); dossier.file("departements.geojson", deps); dossier.file("LISEZMOI.txt", lisezmoi);
+  return { name: name + ".zip", blob: await zip.generateAsync({ type: "blob", compression: "DEFLATE" }) };
+}
+const SERVICE_DEFAUT = "MENJS/SG/HFDS/\nCellule ministérielle\nde veille et d'alerte";
+function initAtlas() {
+  if ($("atlasTitre").dataset.init) return; $("atlasTitre").dataset.init = "1";
+  let m = {}; try { m = JSON.parse(localStorage.getItem("socle-v2-atlas") || "{}") || {}; } catch (_) { m = {}; }
+  $("atlasTitre").value = m.titre || "Signalements";
+  $("atlasDate").value = new Date().toLocaleDateString("fr-FR", { month: "short", year: "numeric" });
+  $("atlasService").value = m.service || SERVICE_DEFAUT;
+  if (!m.titre && window.Socle && window.grist && grist.docApi) window.Socle.lireConfig().then(c => { const g = c && window.Socle.general(c); if (g && g.situation && !$("atlasTitre").dataset.touche) $("atlasTitre").value = g.situation; }).catch(() => {});
+  const garder = () => { try { localStorage.setItem("socle-v2-atlas", JSON.stringify({ titre: $("atlasTitre").value, service: $("atlasService").value })); } catch (_) { /* stockage indisponible */ } };
+  $("atlasTitre").addEventListener("input", () => { $("atlasTitre").dataset.touche = "1"; garder(); });
+  $("atlasService").addEventListener("input", garder);
 }
 
 async function buildOutput() {
@@ -574,6 +691,7 @@ async function buildOutput() {
       return { name: name + ".gpx", type: "application/gpx+xml", text: toGPX(state.features) };
     }
     case "csv": return { name: name + ".csv", type: "text/csv;charset=utf-8", text: toCSV(state.features) };
+    case "atlas": return construireAtlas(name);
     case "shp": {
       const shp = await loadShpWrite();
       // le Shapefile ne gère pas les MultiPoint : on les éclate en points

@@ -1,4 +1,4 @@
-# Signalements Grist — production (2.0.9 (19/10/2026))
+# Signalements Grist — production (2.0.10 (19/10/2026))
 
 Copie figée de `v2/`, produite par `outils/publier-prod.sh`. Ne pas modifier ce dossier à la main :
 les changements se font dans `v2/`, puis on republie.
@@ -38,7 +38,7 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 ├── saisie/              formulaire de saisie
 ├── admin/               administration : installation.js, configuration.js, referentiel.js, equipe.js, planning.js, pages-agents.js (onglet Équipe, Pages de saisie), actions.js, acces.js, liens.js, repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css)
 ├── point-situation/     production du point de situation
-├── cartographie/        carte et export cartographique (reprise du widget « Export cartographique »)
+├── cartographie/        carte et export cartographique (reprise du widget « Export cartographique ») ; atlas/ : projet QGIS de l'atlas par académie et contours
 ├── tableau-de-bord/     tableau de bord : tableau.js (module partagé, édition dans l'administration, lecture dans le widget)
 └── modeles/             exemples de configuration à importer (à venir)
 ```
@@ -98,6 +98,7 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 - Version 2.0.7 (19/10) : point de situation, la première publication crée la page « Point de situation » (widget en accès complet, liée à la table des signalements) ; l'en-tête de l'onglet indique la page, ou propose « Créer la page ».
 - Version 2.0.8 (19/10) : onglet « Équipe » unique, en trois sous-onglets : Agents (fiche : droit de saisie du moment, prochains créneaux, pages de saisie avec création, lien d'invité), Planning (inchangé), Pages de saisie (grille agents × formulaires publiés, admin/pages-agents.js, qui remplace le panneau « Pages de saisie par agent » de l'onglet Formulaires). Bandeau de synthèse : agents actifs, mobilisés aujourd'hui, pages à créer, règles d'accès à réappliquer. L'onglet Accès ne détaille plus les droits par agent (affichés dans Équipe › Agents).
 - Version 2.0.9 (19/10) : la structure du document (pages, tables, colonnes) est relue quand on revient dans l'administration, qu'on change d'onglet ou de sous-onglet, ou avec « ↻ Relire » (Pages de saisie) : une page supprimée dans Grist redevient « à créer ». Lien d'un invité dont la page a été supprimée : il ouvre la page d'accueil.
+- Version 2.0.10 (19/10) : cartographie, export « Atlas QGIS par académie (.zip) » : projet QGIS `atlas.qgs` (mise en page A4 « Atlas par académie » : en-tête service / titre / date, carte de repérage, carte des établissements signalés sur fond relief IGN avec étiquettes « CLG JULES FERRY », légende, échelle, tableau DSDEN · commune · UAI · type · établissement · REP/REP+ · internat ; une page par académie ayant des signalements), contours des académies et départements (IGN Admin Express via france-geojson, Licence ouverte), établissements signalés (un point par établissement). Titre, date et service se règlent dans le widget (variables du projet `atlas_titre`, `atlas_date`, `atlas_service`). Le projet est fabriqué par `cartographie/atlas/construire_atlas.py` (PyQGIS 3.34) : le relancer après une modification de la mise en page.
 
 - Thème sombre (18/10) : `commun/theme.js`, chargé par chaque widget, pose `data-theme="light"` ou `"dark"` sur `<html>` d'après, dans l'ordre, le choix de la personne (bouton ◐ de l'administration : automatique, clair, sombre ; gardé dans le navigateur, commun à tous les widgets), le thème transmis par Grist, puis le réglage du navigateur. Couleurs des feuilles de style ramenées à des variables (`--x-<couleur>`), avec des équivalents sombres (fonds gris foncés, texte clair, bleu France éclairci #8585f6, à la manière du DSFR) ; l'aperçu du point de situation reste une page blanche.
 
