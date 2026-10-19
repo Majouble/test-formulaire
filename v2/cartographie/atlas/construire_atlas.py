@@ -59,9 +59,9 @@ ra2 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "0,0,0,0", 
 ra2.setIsElse(True); ra.appendChild(ra1); ra.appendChild(ra2)
 aca.setRenderer(QgsRuleBasedRenderer(ra))
 terres.setRenderer(QgsSingleSymbolRenderer(QgsFillSymbol.createSimple({"color": "241,240,234,255", "outline_style": "no"})))
-# voile blanc léger hors de l'académie de la page : elle ressort, les voisines restent lisibles
+# voile gris hors de l'académie de la page : elle ressort, les voisines restent lisibles (opacité réglable dans la symbologie)
 rv = QgsRuleBasedRenderer.Rule(None)
-rv.appendChild(QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "255,255,255,85", "outline_style": "no"}), 0, 0, '@atlas_pagename IS NULL OR "nom" = @atlas_pagename', "Académie de la page"))
+rv.appendChild(QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "95,95,110,95", "outline_style": "no"}), 0, 0, '@atlas_pagename IS NULL OR "nom" = @atlas_pagename', "Académie de la page"))
 voile.setRenderer(QgsInvertedPolygonRenderer(QgsRuleBasedRenderer(rv)))
 racine = QgsRuleBasedRenderer.Rule(None)
 r1 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "0,0,145,255", "outline_color": "255,255,255,255", "outline_width": "0.15"}), 0, 0, '"nom" = @atlas_pagename', "Académie de la page")
@@ -126,14 +126,15 @@ def texte(t, x, y, w, h, taille, couleur="#161616", gras=False, ha=Qt.AlignLeft,
     lay.addLayoutItem(it); place(it, x, y, w, h); return it
 
 texte("[% @atlas_service %]", 6, 5, 48, 17, 7.5, nom="service")
-texte("[% @atlas_titre %]", 56, 6, 116, 9, 10.5, "#ffffff", True, Qt.AlignHCenter, fond=MARINE, nom="titre")
-texte("[% @atlas_date %]", 174, 6, 30, 9, 10.5, ORANGE, True, Qt.AlignHCenter, cadre=ORANGE, nom="date")
+# titre sur deux lignes au besoin
+texte("[% @atlas_titre %]", 56, 5, 116, 12, 10, "#ffffff", True, Qt.AlignHCenter, fond=MARINE, nom="titre")
+texte("[% @atlas_date %]", 174, 5, 30, 12, 10.5, ORANGE, True, Qt.AlignHCenter, cadre=ORANGE, nom="date")
 
 loc = QgsLayoutItemMap(lay); loc.setId("reperage"); lay.addLayoutItem(loc); place(loc, 6, 24, 36, 32)
 loc.setLayers([rep]); loc.setKeepLayerSet(True); loc.setCrs(QgsCoordinateReferenceSystem("EPSG:2154"))
 loc.zoomToExtent(QgsRectangle(90000, 6040000, 1250000, 7120000)); loc.setFrameEnabled(True); loc.setBackgroundColor(QColor("#ffffff"))
-texte("Académie :", 46, 26, 80, 9, 15, "#9a9a9a", True, nom="academie_etiquette")
-texte("[% @atlas_pagename %]", 46, 36, 156, 14, 22, MARINE, True, nom="academie_nom")
+texte("Académie :", 46, 25, 76, 9, 14, "#9a9a9a", True, nom="academie_etiquette")
+texte("[% @atlas_pagename %]", 46, 35, 76, 14, 19, MARINE, True, nom="academie_nom")
 
 carte = QgsLayoutItemMap(lay); carte.setId("carte"); lay.addLayoutItem(carte); place(carte, 6, 56, 198, 134)
 carte.setCrs(QgsCoordinateReferenceSystem("EPSG:2154")); carte.zoomToExtent(QgsRectangle(800000, 6200000, 1080000, 6420000))
@@ -144,10 +145,19 @@ leg.setTitle("Légende :"); leg.setLinkedMap(carte); leg.setAutoUpdateModel(Fals
 arbre_leg = leg.model().rootGroup(); arbre_leg.removeAllChildren()   # arbre propre à la légende (enregistré dans le projet)
 for l, titre in ((sig, "Établissements signalés|(atténués : académies voisines)"), (dep, "Départements"), (aca, "Académie")):
     arbre_leg.addLayer(l).setCustomProperty("legend/title-label", titre)   # titre dans la légende, sans renommer la couche
-leg.setBackgroundEnabled(True); leg.setBackgroundColor(QColor(255, 255, 255, 225)); leg.setFrameEnabled(True)
-for st, taille, gr in ((QgsLegendStyle.Title, 8, True), (QgsLegendStyle.Group, 7, False), (QgsLegendStyle.Subgroup, 7, False), (QgsLegendStyle.SymbolLabel, 7, False)):
+leg.setBackgroundEnabled(True); leg.setBackgroundColor(QColor("#ffffff")); leg.setFrameEnabled(True)
+leg.setFrameStrokeColor(QColor("#c8c8d8")); leg.setFrameStrokeWidth(QgsLayoutMeasurement(0.25, MM))
+for st, taille, gr in ((QgsLegendStyle.Title, 7.5, True), (QgsLegendStyle.Group, 6.5, False), (QgsLegendStyle.Subgroup, 6.5, False), (QgsLegendStyle.SymbolLabel, 6.5, False)):
     s = leg.style(st); fo = QFont("DejaVu Sans"); fo.setBold(gr); tfo = s.textFormat(); tfo.setFont(fo); tfo.setSize(taille); s.setTextFormat(tfo); leg.setStyle(st, s)
-leg.setSymbolWidth(4); leg.setSymbolHeight(3.5); leg.adjustBoxSize(); place(leg, 9, 61, 46, 40); leg.setResizeToContents(True)
+# légende dans l'en-tête, à droite du nom de l'académie : elle ne cache jamais la carte. Taille fixe, deux colonnes ;
+# un titre trop long se coupe avec « | » (ex. « Établissements signalés|(atteintes aux personnes) »)
+for st, haut in ((QgsLegendStyle.Title, None), (QgsLegendStyle.Group, 1.6), (QgsLegendStyle.Subgroup, 1.6), (QgsLegendStyle.Symbol, 1.1), (QgsLegendStyle.SymbolLabel, 1.1)):
+    s = leg.style(st)
+    if haut is not None: s.setMargin(QgsLegendStyle.Top, haut)
+    else: s.setMargin(QgsLegendStyle.Bottom, 1.5)
+    leg.setStyle(st, s)
+leg.setColumnCount(2); leg.setSplitLayer(True); leg.setEqualColumnWidth(False); leg.setColumnSpace(3); leg.setBoxSpace(1.5)
+leg.setSymbolWidth(3.5); leg.setSymbolHeight(2.8); leg.setResizeToContents(False); place(leg, 124, 21, 80, 34)
 
 ech = QgsLayoutItemScaleBar(lay); ech.setId("echelle"); lay.addLayoutItem(ech); ech.setLinkedMap(carte); ech.setStyle("Single Box")
 ech.applyDefaultSize(QgsUnitTypes.DistanceKilometers); ech.setUnits(QgsUnitTypes.DistanceKilometers); ech.setUnitLabel("km"); ech.setNumberOfSegments(2); ech.setNumberOfSegmentsLeft(0)
@@ -165,7 +175,11 @@ texte("[% with_variable('n', " + NB + ", CASE WHEN to_int(@atlas_lignes) > 0 AND
 
 tab = QgsLayoutItemAttributeTable.create(lay); tab.setVectorLayer(sig)
 cols = []
-for champ, titre, largeur in (("DSDEN", "DSDEN", 40), ("Commune", "Commune", 24), ("UAI", "UAI", 16), ("Type_libelle", "Type", 19), ("Etablissement", "Établissement", 44), ("REP", "REP/REP+", 18), ("Internat", "Internat ?", 14), ("Nb_signalements", "Signal.", 12)):
+# colonnes facultatives (REP… Nb_jours) : le widget retire celles qui ne sont pas cochées et donne la place restante
+# à « Établissement » (largeurs en mm ; garder les mêmes valeurs dans COLONNES_ATLAS du widget)
+for champ, titre, largeur in (("DSDEN", "DSDEN", 36), ("Commune", "Commune", 24), ("UAI", "UAI", 16), ("Type_libelle", "Type", 19), ("Etablissement", "Établissement", 44),
+                              ("REP", "REP/REP+", 18), ("Internat", "Internat ?", 14), ("Qualification_principale", "Qualification", 26),
+                              ("Nb_signalements", "Signal.", 12), ("Nb_jours", "Jours de mobilisation", 30)):
     c = QgsLayoutTableColumn(titre); c.setAttribute(champ); c.setWidth(largeur); cols.append(c)
 tab.setColumns(cols)
 tri = []

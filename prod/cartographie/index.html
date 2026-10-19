@@ -123,7 +123,7 @@
     </label>
   </div>
   <div id="atlasBox" class="row" style="display:none;flex-direction:column;align-items:stretch;gap:6px">
-    <p class="hint" style="margin:0">Projet QGIS prêt à l'emploi : une page A4 par académie (carte de repérage, carte des établissements signalés sur fond IGN, légende, tableau DSDEN · commune · UAI · type · établissement · REP/REP+ · internat · nombre de signalements). Dézippez le dossier, ouvrez <code>atlas.qgs</code> dans QGIS (3.34 ou plus récent), puis Mise en page › « Atlas par académie » › Atlas › Exporter en PDF.</p>
+    <p class="hint" style="margin:0">Projet QGIS prêt à l'emploi : une page A4 par académie (carte de repérage, légende, carte des établissements signalés sur fond IGN, tableau des établissements les plus signalés). Dézippez le dossier, ouvrez <code>atlas.qgs</code> dans QGIS (3.34 ou plus récent), puis Mise en page › « Atlas par académie » › Atlas › Exporter en PDF.</p>
     <label>Titre de l'atlas <input type="text" id="atlasTitre"></label>
     <div class="row" style="margin:0">
       <label>Date affichée <input type="text" id="atlasDate" style="width:9em"></label>
@@ -133,6 +133,7 @@
       <label>Tableau sous la carte : les <input type="number" id="atlasLignes" min="0" max="500" step="1" style="width:4.5em"> établissements les plus signalés de l'académie</label>
       <span class="hint">22 tiennent sous la carte ; 0 = tous, sur des pages supplémentaires.</span>
     </div>
+    <div class="row" style="margin:0;align-items:center;flex-wrap:wrap;gap:4px 12px" id="atlasCols"><span>Colonnes du tableau, après DSDEN · commune · UAI · type · établissement (trois au plus pour garder un nom lisible) :</span></div>
     <label><input type="checkbox" id="atlasIgn"> Fonds IGN (relief et plan, chargés depuis la Géoplateforme : connexion internet nécessaire)</label>
     <p class="hint" style="margin:0">REP/REP+ et internat viennent du référentiel, s'il en a les colonnes (import de l'annuaire, « Informations supplémentaires » : appartenance à l'éducation prioritaire, hébergement).</p>
   </div>
@@ -651,12 +652,13 @@ function signalementsAtlas() {
     const lat = toNumber(r[cols.Latitude]), lon = toNumber(r[cols.Longitude]);
     if (isNaN(lat) || isNaN(lon)) continue;
     const uai = C.uai ? texte(r[C.uai]).trim() : "", cle = uai || `${lat.toFixed(5)},${lon.toFixed(5)}`;
-    if (!parEtab.has(cle)) parEtab.set(cle, { lat, lon, uai, n: 0, qualifs: new Map(), date: null, props: etabProps(r, lat, lon, uai) });
+    if (!parEtab.has(cle)) parEtab.set(cle, { lat, lon, uai, n: 0, qualifs: new Map(), date: null, jours: new Set(), props: etabProps(r, lat, lon, uai) });
     const e = parEtab.get(cle); e.n++;
     const qs = C.qualif ? texte(r[C.qualif]).split(", ").map(q => q.trim()).filter(Boolean) : [];
     const d = C.date ? secondes(r[C.date]) : null;
     qs.forEach(q => { const x = e.qualifs.get(q) || { n: 0, date: 0 }; x.n++; if (typeof d === "number" && d > x.date) x.date = d; e.qualifs.set(q, x); });
     if (typeof d === "number" && (!e.date || d > e.date)) e.date = d;
+    if (d) e.jours.add(jour(d));
     // couche de détail : un point par signalement (une ligne de la table), pour catégoriser par qualification
     detail.push({ type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] }, properties: { ...e.props,
       Qualification: qs[0] || "", Qualifications: qs.join(", "), Date: jour(d), Dossier: R.Dossier ? texte(r[R.Dossier]) : "", grist_id: r.id } });
@@ -667,6 +669,7 @@ function signalementsAtlas() {
     const principale = [...e.qualifs.entries()].sort((a, b) => b[1].n - a[1].n || b[1].date - a[1].date || a[0].localeCompare(b[0], "fr"))[0];
     features.push({ type: "Feature", geometry: { type: "Point", coordinates: [e.lon, e.lat] }, properties: { ...e.props,
       Nb_signalements: e.n, Qualification_principale: principale ? principale[0] : "", Qualifications: [...e.qualifs.keys()].join(", "),
+      Nb_jours: e.jours.size || null,   // jours distincts ayant au moins un signalement (« jours de mobilisation »)
       Derniere_date: e.date ? jour(e.date) : "" } });
   }
   if (!features.length) throw new Error("Aucun établissement localisé à mettre dans l'atlas.");
@@ -674,10 +677,24 @@ function signalementsAtlas() {
   const parAca = new Map();
   for (const f of features) { const k = f.properties.Academie || ""; if (!parAca.has(k)) parAca.set(k, []); parAca.get(k).push(f.properties); }
   for (const l of parAca.values()) {
-    l.sort((a, b) => b.Nb_signalements - a.Nb_signalements || String(b.Derniere_date).localeCompare(String(a.Derniere_date)) || a.Etablissement.localeCompare(b.Etablissement, "fr"));
+    l.sort((a, b) => b.Nb_signalements - a.Nb_signalements || (b.Nb_jours || 0) - (a.Nb_jours || 0) || String(b.Derniere_date).localeCompare(String(a.Derniere_date)) || a.Etablissement.localeCompare(b.Etablissement, "fr"));
     l.forEach((p, i) => { p.Rang = i + 1; });
   }
   return { fc: { type: "FeatureCollection", name: "signalements", features }, detail: { type: "FeatureCollection", name: "signalements_detail", features: detail } };
+}
+// colonnes facultatives du tableau de l'atlas (largeurs en mm, comme dans construire_atlas.py) ; le reste va à « Établissement »
+const COLONNES_ATLAS = [["REP", "REP/REP+", 18], ["Internat", "Internat", 14], ["Qualification_principale", "Qualification", 26],
+  ["Nb_signalements", "Nombre de signalements", 12], ["Nb_jours", "Jours de mobilisation", 30]];
+// 198 mm de cadre, moins 1,6 mm de marges par colonne (0,8 de chaque côté)
+const COLONNES_ATLAS_DEFAUT = ["Qualification_principale", "Nb_jours"], LARGEUR_CADRE = 198, MARGES_COLONNE = 1.6, LARGEUR_FIXE = 36 + 24 + 16 + 19;
+function colonnesTableau(qgs, gardees) {
+  const choisies = COLONNES_ATLAS.filter(c => gardees.includes(c[0])), n = 5 + choisies.length;
+  const largeur = Math.max(28, Math.floor(LARGEUR_CADRE - MARGES_COLONNE * n - LARGEUR_FIXE - choisies.reduce((t, c) => t + c[2], 0)) - 1);
+  return qgs.replace(/<displayColumns>[\s\S]*?<\/displayColumns>/, bloc => bloc.replace(/<column ([^>]*)>[\s\S]*?<\/column>\s*/g, (m, attrs) => {
+    const a = (/attribute="([^"]*)"/.exec(attrs) || [])[1];
+    if (COLONNES_ATLAS.some(c => c[0] === a) && !gardees.includes(a)) return "";
+    return a === "Etablissement" ? m.replace(/width="[\d.]+"/, `width="${largeur}"`) : m;
+  }));
 }
 const xmlTexte = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 async function construireAtlas(name) {
@@ -688,6 +705,7 @@ async function construireAtlas(name) {
   let projet = qgs.replace("@@TITRE@@", xmlTexte($("atlasTitre").value.trim() || "Signalements"))
     .replace("@@DATE@@", xmlTexte($("atlasDate").value.trim())).replace("@@SERVICE@@", xmlTexte($("atlasService").value.trim()))
     .replace("@@LIGNES@@", String(lignes));
+  projet = colonnesTableau(projet, COLONNES_ATLAS.map(c => c[0]).filter(k => { const b = document.querySelector(`#atlasCols input[value="${k}"]`); return b && b.checked; }));
   // sans fonds IGN : couches décochées (QGIS ne les demande pas au serveur), le fond uni reste
   if (!ign) projet = projet.replace(/<layer-tree-layer [^>]*providerKey="wms"[^>]*>/g, t => t.replace('checked="Qt::Checked"', 'checked="Qt::Unchecked"'));
   const nb = new Set(fc.features.map(f => f.properties.Academie)).size;
@@ -700,10 +718,15 @@ async function construireAtlas(name) {
     "Si les fonds IGN restent blancs ou si la carte met longtemps à s'afficher, QGIS n'atteint pas internet :",
     "Préférences › Options › Réseau › cocher « Utiliser un proxy pour l'accès web », type « DefaultProxy » (proxy du poste), puis redémarrer QGIS.",
     "Test : Explorateur › XYZ Tiles › OpenStreetMap ; si ce fond ne s'affiche pas non plus, c'est le réseau, pas le projet.",
-    "Couches ajoutées (QPV, etc.) : à glisser sous « signalements » ; la légende de la mise en page se met à jour à la main.", "",
+    "Couches ajoutées (QPV, etc.) : à glisser sous « signalements » ; la légende de la mise en page se met à jour à la main.",
+    "Légende : dans l'en-tête, sur deux colonnes, à taille fixe pour ne jamais couvrir la carte ; un titre long se coupe avec « | ».",
+    "Voile gris hors de l'académie : couche « voile hors académie » (opacité dans sa symbologie, ou à décocher).",
+    "Pour garder vos réglages QGIS d'un export à l'autre : conservez votre atlas.qgs et ne remplacez que signalements.geojson",
+    "et signalements_detail.geojson par ceux du nouvel export (mêmes noms, même dossier).", "",
     "Deux couches de points :",
     "- signalements : un point par établissement (carte et tableau de l'atlas). Nb_signalements, Qualification_principale (la plus fréquente,",
-    "  à égalité la plus récente), Qualifications (toutes), Derniere_date, Categorie (École / Collège / Lycée / Autre),",
+    "  à égalité la plus récente), Qualifications (toutes), Nb_jours (jours distincts signalés), Derniere_date,",
+    "  Categorie (École / Collège / Lycée / Autre),",
     "  Type_etablissement et Nature (valeurs brutes du référentiel).",
     "- signalements_detail (décochée) : un point par signalement, avec sa Qualification et sa Date, pour symboliser ou",
     "  compter par qualification. Les points d'un même établissement sont superposés (style « Déplacement de points » conseillé).", "",
@@ -713,7 +736,7 @@ async function construireAtlas(name) {
   dossier.file("academies.geojson", acas); dossier.file("departements.geojson", deps); dossier.file("LISEZMOI.txt", lisezmoi);
   return { name: name + ".zip", blob: await zip.generateAsync({ type: "blob", compression: "DEFLATE" }) };
 }
-const SERVICE_DEFAUT = "MENJS/SG/HFDS/\nCellule ministérielle\nde veille et d'alerte";
+const SERVICE_DEFAUT = "HFDS/\nCentre ministériel de crise";
 function initAtlas() {
   if ($("atlasTitre").dataset.init) return; $("atlasTitre").dataset.init = "1";
   let m = {}; try { m = JSON.parse(localStorage.getItem("socle-v2-atlas") || "{}") || {}; } catch (_) { m = {}; }
@@ -722,11 +745,14 @@ function initAtlas() {
   $("atlasService").value = m.service || SERVICE_DEFAUT;
   $("atlasLignes").value = Number.isInteger(m.lignes) ? m.lignes : 22;
   $("atlasIgn").checked = m.ign !== false;
+  const gardees = Array.isArray(m.colonnes) ? m.colonnes : COLONNES_ATLAS_DEFAUT;
+  COLONNES_ATLAS.forEach(([k, titre]) => $("atlasCols").insertAdjacentHTML("beforeend", `<label><input type="checkbox" value="${k}"${gardees.includes(k) ? " checked" : ""}> ${titre}</label>`));
   if (!m.titre && window.Socle && window.grist && grist.docApi) window.Socle.lireConfig().then(c => { const g = c && window.Socle.general(c); if (g && g.situation && !$("atlasTitre").dataset.touche) $("atlasTitre").value = g.situation; }).catch(() => {});
-  const garder = () => { try { localStorage.setItem("socle-v2-atlas", JSON.stringify({ titre: $("atlasTitre").value, service: $("atlasService").value, lignes: parseInt($("atlasLignes").value, 10) || 0, ign: $("atlasIgn").checked })); } catch (_) { /* stockage indisponible */ } };
+  const garder = () => { try { localStorage.setItem("socle-v2-atlas", JSON.stringify({ titre: $("atlasTitre").value, service: $("atlasService").value, lignes: parseInt($("atlasLignes").value, 10) || 0, ign: $("atlasIgn").checked,
+    colonnes: [...document.querySelectorAll("#atlasCols input:checked")].map(b => b.value) })); } catch (_) { /* stockage indisponible */ } };
   $("atlasTitre").addEventListener("input", () => { $("atlasTitre").dataset.touche = "1"; garder(); });
   $("atlasService").addEventListener("input", garder);
-  $("atlasLignes").addEventListener("change", garder); $("atlasIgn").addEventListener("change", garder);
+  $("atlasLignes").addEventListener("change", garder); $("atlasIgn").addEventListener("change", garder); $("atlasCols").addEventListener("change", garder);
 }
 
 async function buildOutput() {
