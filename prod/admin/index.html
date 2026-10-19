@@ -120,6 +120,38 @@
   #planning .pl-c-vide { color: var(--alerte); font-style: italic; }
   #planning .pl-ajout { font: inherit; font-size: 12px; background: none; border: 1px dashed var(--x-bbbbbb); border-radius: 4px; color: var(--accent); padding: 4px; cursor: pointer; margin-top: auto; }
   #planning .pl-defile { overflow-x: auto; }
+  #planning .pl-vues { display: inline-flex; margin-left: auto; border: 1px solid var(--accent); border-radius: 4px; overflow: hidden; }
+  #planning .pl-vues button { font: inherit; font-size: 13px; border: none; background: var(--x-ffffff); color: var(--accent); padding: 4px 12px; cursor: pointer; }
+  #planning .pl-vues button.on { background: var(--accent); color: #fff; font-weight: 600; }
+  #planning .pg-outils { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 10px 0; }
+  #planning .pg-outils input[type="search"] { width: 180px; }
+  #planning .pg-outils label { display: inline-flex; align-items: center; gap: 6px; }
+  #planning .pg-b { font: inherit; font-size: 13px; font-weight: 600; border-radius: 4px; padding: 3px 9px; cursor: pointer; border: 1px solid transparent; }
+  #planning .pg-table { border-collapse: separate; border-spacing: 0; min-width: 760px; font-size: 13px; }
+  #planning .pg-table th, #planning .pg-table td { border-bottom: 1px solid var(--trait); border-right: 1px solid var(--trait); padding: 0; text-align: center; }
+  #planning .pg-table thead th { background: var(--fond-doux, #f0f0f8); font-size: 12px; padding: 5px 4px; }
+  #planning .pg-table th.pg-jour.auj { color: var(--accent); }
+  #planning .pg-table th.pg-cr { font-weight: 500; color: var(--doux); font-size: 11px; white-space: nowrap; }
+  #planning .pg-table .pg-nom { position: sticky; left: 0; z-index: 1; background: var(--carte); text-align: left; padding: 4px 10px; white-space: nowrap; font-weight: 500; min-width: 150px; }
+  #planning .pg-table td { min-width: 46px; }
+  #planning .pg-c { font: inherit; width: 100%; min-height: 38px; border: none; background: var(--x-ffffff); color: var(--texte); cursor: cell; padding: 2px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; }
+  #planning .pg-c span { font-weight: 700; font-size: 13px; }
+  #planning .pg-c small { font-size: 9px; font-weight: 600; min-height: 10px; }
+  #planning .pg-c.sel { box-shadow: inset 0 0 0 2px var(--accent); }
+  #planning .pg-c.modif { box-shadow: inset 0 -3px 0 #e07b00; }
+  #planning .pg-c.sel.modif { box-shadow: inset 0 0 0 2px var(--accent), inset 0 -4px 0 #e07b00; }
+  #planning .pg-c:focus { outline: none; }
+  #planning .pg-c:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+  #planning .pg-sans { background: repeating-linear-gradient(45deg, transparent 0 6px, var(--trait) 6px 7px); }
+  #planning .pg-tot { font-size: 12px; color: var(--doux); min-width: 44px; }
+  #planning .pg-total { padding: 3px 2px; line-height: 1.2; background: var(--fond-doux, #f0f0f8); }
+  #planning .pg-total small { display: block; font-size: 10px; color: var(--doux); }
+  #planning .pg-total.manque { background: var(--alerte-clair); color: var(--alerte); }
+  #planning .pg-f0 { background: #000091; color: #fff; } #planning .pg-f1 { background: #4a5fb5; color: #fff; }
+  #planning .pg-f2 { background: #cfdcfb; color: #000091; } #planning .pg-f3 { background: #fbd8b5; color: #5b2a00; }
+  #planning .pg-f4 { background: #d6f0dd; color: #18492a; } #planning .pg-f5 { background: #f3d4e6; color: #5c1a40; }
+  #planning .pg-f6 { background: #e8e1c9; color: #4a3d0e; } #planning .pg-f7 { background: #d9eef2; color: #0b4652; }
+  #planning .pg-f8, #planning .pg-f9 { background: #e5e5e5; color: #161616; }
   #planning .pl-tableau { border-collapse: separate; border-spacing: 0; min-width: 760px; table-layout: fixed; }
   #planning .pl-tableau th, #planning .pl-tableau td { border-bottom: 1px solid var(--trait); border-right: 1px solid var(--trait); padding: 0; vertical-align: top; }
   #planning .pl-tableau thead th { text-align: center; font-size: 13px; text-transform: capitalize; padding: 6px 4px; color: var(--texte); }

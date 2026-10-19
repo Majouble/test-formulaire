@@ -26,6 +26,8 @@
   let emargements = null;    // null : pas de table Emargements
   let lundi = null;          // premier jour de la semaine affichée (AAAA-MM-JJ)
   let edition = null;        // { mode: "cellule", jour, fonction, lignes, origine } ou { mode: "jour", jour, creneaux }
+  let vue = (() => { try { return localStorage.getItem("socle-v2-planning-vue") === "grille" ? "grille" : "fonction"; } catch (_) { return "fonction"; } })();
+  let grille = null;         // vue Grille : { lundi, cases: Map("agent|créneau" → {f, ch}), orig, sel, filtre, message }
   let suivi = null;          // agent dont le détail est affiché
   let reglagesEdites = null; // copie des réglages en cours de modification
   let reglagesOuverts = false;
@@ -111,7 +113,7 @@
       $("pl-creer-tables").addEventListener("click", creerTables);
       return;
     }
-    racine.innerHTML = `${manquantes.length ? `<div class="bandeau alerte">Les tables du planning datent d'une version antérieure (à ajouter : ${esc(manquantes.join(", "))}). <button class="primaire" id="pl-completer" style="margin-left:8px">Compléter les tables</button></div>` : ""}${carteSemaine()}${edition ? carteEdition() : ""}${carteDuJour()}${carteSuivi()}${carteReglages()}`;
+    racine.innerHTML = `${manquantes.length ? `<div class="bandeau alerte">Les tables du planning datent d'une version antérieure (à ajouter : ${esc(manquantes.join(", "))}). <button class="primaire" id="pl-completer" style="margin-left:8px">Compléter les tables</button></div>` : ""}${vue === "grille" ? `<section class="carte" id="pl-grille">${contenuGrille()}</section>` : carteSemaine()}${edition ? carteEdition() : ""}${carteDuJour()}${carteSuivi()}${carteReglages()}`;
     if ($("pl-completer")) $("pl-completer").addEventListener("click", creerTables);
     lier();
   }
@@ -172,7 +174,8 @@
         <button type="button" class="secondaire petit" id="pl-prec" aria-label="Semaine précédente">◀</button>
         <button type="button" class="secondaire petit" id="pl-auj">Cette semaine</button>
         <button type="button" class="secondaire petit" id="pl-suiv" aria-label="Semaine suivante">▶</button>
-        <button type="button" class="secondaire petit" id="pl-ouvrir-reglages" style="margin-left:auto">⚙ Lignes et réglages</button></div>
+        ${basculeVue()}
+        <button type="button" class="secondaire petit" id="pl-ouvrir-reglages">⚙ Lignes et réglages</button></div>
       <div class="pl-defile"><table class="pl-tableau">
         <thead><tr><th></th>${tete}</tr>
           <tr class="pl-ligne-compte"><th scope="row">Mobilisés</th>${compte}</tr>
@@ -373,6 +376,7 @@
         <button type="button" class="pl-mini" data-monter-fonction="${i}"${i ? "" : " disabled"} aria-label="Monter">↑</button>
         <button type="button" class="pl-mini" data-descendre-fonction="${i}"${i < r.fonctions.length - 1 ? "" : " disabled"} aria-label="Descendre">↓</button>
         <input type="text" data-champ="nom" value="${esc(f.nom)}" aria-label="Nom de la fonction">
+        <label class="pl-case" title="Lettre tapée dans la vue Grille (vide : l'initiale)">code <input type="text" data-champ="code" value="${esc(f.code || "")}" maxlength="2" size="2" style="width:3.2em;text-transform:uppercase" aria-label="Code de la fonction dans la grille"></label>
         <label class="pl-case"><input type="checkbox" data-champ="ligne"${f.ligne ? " checked" : ""}> ligne affichée</label>
         <label class="pl-case"><input type="checkbox" data-champ="saisie"${f.saisie ? " checked" : ""}> saisit</label>
         ${f.ancien && f.ancien !== f.nom.trim() ? `<small class="aide">renommée (« ${esc(f.ancien)} »)</small>` : ""}
@@ -390,16 +394,243 @@
       </details></section>`;
   }
 
+  /* ---------- Vue Grille : agents × créneaux de la semaine, saisie au clavier comme dans un tableur ----------
+     Une case = la fonction de l'agent sur ce créneau (code d'une ou deux lettres) et son champ (EN, ESR, ou les deux).
+     Lettre = fonction, 1 / 2 / 3 = EN / ESR / les deux, Suppr = vider, flèches et Maj + flèches = sélection,
+     Ctrl + C / Ctrl + V = copier-coller (y compris depuis Excel : codes ou noms de fonction, « EN » / « ESR »).
+     Rien n'est écrit avant « Enregistrer » ; une case nouvelle prend le champ et le périmètre du dernier créneau de l'agent. */
+  const basculeVue = () => `<span class="pl-vues" role="group" aria-label="Vue du planning">${[["fonction", "Par fonction"], ["grille", "Grille"]].map(([v, t]) =>
+    `<button type="button" data-vue="${v}" aria-pressed="${vue === v}"${vue === v ? ' class="on"' : ""}>${t}</button>`).join("")}</span>`;
+  function quitterGrille() {
+    if (!grille || !nbModifs()) return true;
+    return confirm("Des cases de la grille sont modifiées et pas enregistrées. Les abandonner ?");
+  }
+  function changerVue(v) {
+    if (v === vue || (v !== "grille" && !quitterGrille())) return;
+    vue = v; grille = null; try { localStorage.setItem("socle-v2-planning-vue", v); } catch (_) { /* stockage indisponible */ }
+    dessiner();
+  }
+  // codes des fonctions : celui des réglages, sinon l'initiale (puis deux lettres en cas de doublon)
+  function codesFonctions() {
+    const pris = new Set(), res = new Map(), noms = [...reglages.fonctions.map(f => f.nom), ...new Set(planning.affectations.map(a => a.fonction).filter(f => f && !reglages.fonctions.some(x => x.nom === f)))];
+    reglages.fonctions.forEach(f => { if (f.code && !pris.has(f.code)) { pris.add(f.code); res.set(f.nom, f.code); } });
+    noms.forEach(n => { if (res.has(n)) return;
+      // une seule lettre de préférence (initiale, puis initiale d'un autre mot, puis une autre lettre du nom), deux sinon
+      const mots = S.norm(n).split("_").filter(Boolean).map(m => m.toUpperCase().replace(/[^A-Z]/g, "")).filter(Boolean), longs = mots.filter(m => m.length > 2);
+      const essais = [...(mots[0] ? [mots[0][0]] : []), ...longs.map(m => m[0]), ...mots.join("").split(""),
+        ...(mots.length > 1 ? [mots[0][0] + mots[1][0]] : []), ...(mots[0] ? [mots[0].slice(0, 2)] : [])];
+      const c = essais.find(x => x && !pris.has(x)) || "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").find(x => !pris.has(x)) || "?";
+      pris.add(c); res.set(n, c); });
+    return new Map(noms.map(n => [n, res.get(n)]));
+  }
+  const cleCase = (agent, cr) => `${agent}|${cr}`;
+  const toutChamp = ch => !ch || !ch.length || ch.length === CHAMPS.length;
+  function colonnesGrille() {
+    const cols = [];
+    [...Array(7)].map((_, i) => plusJours(lundi, i)).forEach(iso => {
+      const cs = creneauxDu(iso);
+      if (!cs.length) cols.push({ iso, vide: true });
+      cs.forEach(c => cols.push({ iso, cr: c }));
+    });
+    return cols;
+  }
+  function preparerGrille() {
+    if (grille && grille.lundi === lundi) return;
+    const cases = new Map(), ids = new Set(colonnesGrille().filter(c => c.cr).map(c => c.cr.id));
+    planning.affectations.filter(a => ids.has(a.creneau)).forEach(a => cases.set(cleCase(a.agent, a.creneau), { f: a.fonction, ch: S.champsDe(a), id: a.id }));
+    grille = { lundi, cases, orig: new Map([...cases].map(([k, v]) => [k, { ...v, ch: [...v.ch] }])), sel: { r: 0, c: 0, ar: 0, ac: 0 }, filtre: "", message: "", presse: null };
+  }
+  const memeCase = (x, y) => (!x && !y) || (x && y && x.f === y.f && toutChamp(x.ch) === toutChamp(y.ch) && (toutChamp(x.ch) || x.ch.join() === y.ch.join()));
+  function nbModifs() {
+    if (!grille) return 0;
+    const cles = new Set([...grille.cases.keys(), ...grille.orig.keys()]);
+    return [...cles].filter(k => !memeCase(grille.cases.get(k), grille.orig.get(k))).length;
+  }
+  function lignesGrille() {
+    const ids = new Set(colonnesGrille().filter(c => c.cr).map(c => c.cr.id));
+    const presents = new Set(planning.affectations.filter(a => ids.has(a.creneau)).map(a => a.agent));
+    const mots = String(grille.filtre || "").split(/\s+/).map(m => S.norm(m)).filter(Boolean);
+    return agents.filter(a => a.actif || presents.has(a.id)).filter(a => mots.every(m => S.norm(a.nom).includes(m)))
+      .sort((x, y) => x.nom.localeCompare(y.nom, "fr"));
+  }
+  function contenuGrille() {
+    preparerGrille();
+    const cols = colonnesGrille(), lignes = lignesGrille(), codes = codesFonctions(), g = grille;
+    const b = { r1: Math.min(g.sel.r, g.sel.ar), r2: Math.max(g.sel.r, g.sel.ar), c1: Math.min(g.sel.c, g.sel.ac), c2: Math.max(g.sel.c, g.sel.ac) };
+    const d0 = dateDe(lundi), d6 = dateDe(plusJours(lundi, 6));
+    const titre = `Semaine du ${d0.getDate()}${d0.getMonth() !== d6.getMonth() ? ` ${MOIS[d0.getMonth()]}` : ""} au ${d6.getDate()} ${MOIS[d6.getMonth()]} ${d6.getFullYear()}`;
+    const parJour = []; cols.forEach(c => { const x = parJour[parJour.length - 1]; if (x && x.iso === c.iso) x.n++; else parJour.push({ iso: c.iso, n: 1, vide: c.vide }); });
+    const fonctionsSaisie = new Set(reglages.fonctions.filter(f => f.saisie).map(f => f.nom));
+    const tete1 = parJour.map(j => `<th colspan="${j.n}" scope="colgroup" class="pg-jour${j.iso === aujourdhui() ? " auj" : ""}">${esc(jourCourt(j.iso))}</th>`).join("");
+    const tete2 = cols.map(c => c.vide ? `<th class="pg-cr"><button type="button" class="lien" data-pg-jour="${c.iso}">créneaux…</button></th>` : `<th class="pg-cr" title="${esc(plage(c.cr))}">${esc(c.cr.nom)}</th>`).join("");
+    const corps = lignes.map((a, r) => `<tr><th scope="row" class="pg-nom">${esc(a.nom)}${a.actif ? "" : ' <small class="aide">(inactif)</small>'}</th>${cols.map((c, ci) => {
+      if (c.vide) return `<td class="pg-sans"></td>`;
+      const v = g.cases.get(cleCase(a.id, c.cr.id)), choisi = r >= b.r1 && r <= b.r2 && ci >= b.c1 && ci <= b.c2;
+      const modif = !memeCase(v, g.orig.get(cleCase(a.id, c.cr.id))), code = v ? (codes.get(v.f) || "?") : "", ch = v && !toutChamp(v.ch) ? v.ch.join("+") : "";
+      const rang = v ? reglages.fonctions.findIndex(f => f.nom === v.f) : -1;
+      return `<td><button type="button" class="pg-c${v ? ` pg-f${rang < 0 ? 9 : Math.min(rang, 8)}` : ""}${choisi ? " sel" : ""}${modif ? " modif" : ""}" data-r="${r}" data-c="${ci}" tabindex="${r === g.sel.r && ci === g.sel.c ? 0 : -1}"
+        aria-label="${esc(`${a.nom}, ${jourCourt(c.iso)} ${c.cr.nom} : ${v ? `${v.f}, ${ch || "EN et ESR"}` : "non mobilisé"}`)}"><span>${esc(code)}</span><small>${esc(ch)}</small></button></td>`;
+    }).join("")}<td class="pg-tot">${cols.filter(c => c.cr && g.cases.get(cleCase(a.id, c.cr.id))).length || ""}</td></tr>`).join("");
+    const totaux = cols.map(c => {
+      if (c.vide) return `<td class="pg-sans"></td>`;
+      const vs = agents.map(a => g.cases.get(cleCase(a.id, c.cr.id))).filter(Boolean), n = vs.length, saisie = vs.filter(v => fonctionsSaisie.has(v.f)).length;
+      const detail = [...codes].map(([f, k]) => { const m = vs.filter(v => v.f === f).length; return m ? `${k}${m}` : ""; }).filter(Boolean).join(" ");
+      const en = vs.filter(v => toutChamp(v.ch) || v.ch.includes("EN")).length, esr = vs.filter(v => toutChamp(v.ch) || v.ch.includes("ESR")).length;
+      return `<td class="pg-total${!saisie ? " manque" : ""}" title="${!saisie ? "Aucun agent de saisie sur ce créneau" : `${n} agent(s)`}"><strong>${n}</strong><small>${esc(detail)}</small>${n ? `<small>EN ${en} · ESR ${esr}</small>` : ""}</td>`;
+    }).join("");
+    const n = nbModifs();
+    return `<div class="pl-barre"><h2>${esc(titre)}</h2>
+        <button type="button" class="secondaire petit" id="pl-prec" aria-label="Semaine précédente">◀</button>
+        <button type="button" class="secondaire petit" id="pl-auj">Cette semaine</button>
+        <button type="button" class="secondaire petit" id="pl-suiv" aria-label="Semaine suivante">▶</button>
+        ${basculeVue()}
+        <button type="button" class="secondaire petit" id="pl-ouvrir-reglages">⚙ Lignes et réglages</button></div>
+      <div class="pg-outils">
+        <label>Filtrer <input type="search" id="pg-filtre" value="${esc(g.filtre)}" placeholder="nom de l'agent"></label>
+        <span class="aide">Remplir la sélection :</span>
+        ${[...codes].map(([f, k]) => { const rang = reglages.fonctions.findIndex(x => x.nom === f);
+          return `<button type="button" class="pg-b pg-f${rang < 0 ? 9 : Math.min(rang, 8)}" data-pg-fonction="${esc(f)}" title="${esc(f)} (touche${k.length > 1 ? "s" : ""} ${k.split("").join(" puis ")})">${esc(k)} · ${esc(f)}</button>`; }).join("")}
+        <button type="button" class="secondaire petit" data-pg-vider="1">Vider</button>
+        <span class="aide">Champ :</span>
+        <button type="button" class="secondaire petit" data-pg-champ="EN" title="Touche 1">EN</button>
+        <button type="button" class="secondaire petit" data-pg-champ="ESR" title="Touche 2">ESR</button>
+        <button type="button" class="secondaire petit" data-pg-champ="" title="Touche 3">EN + ESR</button>
+      </div>
+      <div class="pl-defile"><table class="pg-table" id="pg-table">
+        <thead><tr><th class="pg-nom" rowspan="2">Agent</th>${tete1}<th rowspan="2" class="pg-tot">Total</th></tr><tr>${tete2}</tr></thead>
+        <tbody>${corps || `<tr><td colspan="${cols.length + 2}" class="vide">Aucun agent${g.filtre ? " ne correspond au filtre" : " actif : créez-les dans Équipe › Agents"}.</td></tr>`}</tbody>
+        <tfoot><tr><th class="pg-nom" scope="row">Mobilisés</th>${totaux}<td></td></tr></tfoot></table></div>
+      <div class="boutons"><button class="primaire" id="pg-enregistrer"${n ? "" : " disabled"}>Enregistrer${n ? ` (${n} case${n > 1 ? "s" : ""})` : ""}</button>
+        <button class="secondaire" id="pg-annuler"${n ? "" : " disabled"}>Annuler les modifications</button>
+        <span class="statut" id="pg-statut" role="status">${esc(g.message)}</span></div>
+      <p class="aide">Cliquez une case et tapez la lettre d'une fonction (${[...codes].map(([f, k]) => `${k} = ${f}`).join(", ")}) ; <b>1</b> = EN seulement, <b>2</b> = ESR seulement, <b>3</b> = les deux ; <b>Suppr</b> vide.
+        Flèches pour se déplacer, <b>Maj</b> + flèches ou <b>Maj</b> + clic pour un bloc, puis une lettre pour le remplir. <b>Ctrl + C</b> / <b>Ctrl + V</b> copient un bloc, y compris depuis Excel (codes ou noms de fonction, avec « EN » ou « ESR » au besoin).
+        Une case nouvelle prend le champ et le périmètre du dernier créneau de l'agent ; double-clic sur une case pour régler le périmètre dans la vue « Par fonction ». Les cases modifiées sont soulignées jusqu'à l'enregistrement.</p>`;
+  }
+  function redessinerGrille(focus = true) {
+    const sec = $("pl-grille"); if (!sec) return;
+    sec.innerHTML = contenuGrille(); lierGrille();
+    if (focus) { const b = sec.querySelector(`.pg-c[data-r="${grille.sel.r}"][data-c="${grille.sel.c}"]`); if (b) b.focus({ preventScroll: false }); }
+  }
+  function lierGrille() {
+    const sec = $("pl-grille"), table = $("pg-table"); if (!sec || !table) return;
+    const cols = colonnesGrille(), lignes = lignesGrille(), codes = codesFonctions(), g = grille;
+    const bornes = () => ({ r1: Math.min(g.sel.r, g.sel.ar), r2: Math.max(g.sel.r, g.sel.ar), c1: Math.min(g.sel.c, g.sel.ac), c2: Math.max(g.sel.c, g.sel.ac) });
+    const chaque = fn => { const b = bornes(); for (let r = b.r1; r <= b.r2; r++) for (let c = b.c1; c <= b.c2; c++) if (lignes[r] && cols[c] && cols[c].cr) fn(lignes[r], cols[c].cr); };
+    const poser = f => {
+      chaque((a, cr) => { const k = cleCase(a.id, cr.id), v = g.cases.get(k);
+        if (!f) g.cases.delete(k);
+        else g.cases.set(k, { ...(v || {}), f, ch: v ? v.ch : dernierChamp(a.id, cr.debut || Date.now() / 1000) }); });
+      const b = bornes();
+      if (b.r1 === b.r2 && b.c1 === b.c2 && f) { let c = g.sel.c + 1; while (cols[c] && cols[c].vide) c++; if (cols[c]) g.sel = { r: g.sel.r, c, ar: g.sel.r, ac: c }; }
+      g.message = ""; redessinerGrille();
+    };
+    const champ = ch => { chaque((a, cr) => { const v = g.cases.get(cleCase(a.id, cr.id)); if (v) v.ch = ch ? [ch] : [...CHAMPS]; }); g.message = ""; redessinerGrille(); };
+    const deplacer = (dr, dc, etendre) => {
+      let r = Math.max(0, Math.min(lignes.length - 1, g.sel.r + dr)), c = g.sel.c + dc;
+      while (cols[c] && cols[c].vide) c += dc || 1;
+      c = Math.max(0, Math.min(cols.length - 1, c)); if (cols[c] && cols[c].vide) c = g.sel.c;
+      g.sel = etendre ? { r, c, ar: g.sel.ar, ac: g.sel.ac } : { r, c, ar: r, ac: c }; redessinerGrille();
+    };
+    table.addEventListener("click", e => {
+      const b = e.target.closest(".pg-c"); if (!b) return;
+      const r = +b.dataset.r, c = +b.dataset.c;
+      g.sel = e.shiftKey ? { r, c, ar: g.sel.ar, ac: g.sel.ac } : { r, c, ar: r, ac: c }; redessinerGrille();
+    });
+    table.addEventListener("dblclick", e => {
+      const b = e.target.closest(".pg-c"); if (!b) return;
+      const a = lignes[+b.dataset.r], col = cols[+b.dataset.c]; if (!a || !col || !col.cr) return;
+      const v = g.cases.get(cleCase(a.id, col.cr.id));
+      if (nbModifs() && !confirm("Enregistrez d'abord la grille pour retrouver ces changements dans la vue « Par fonction ». Continuer sans enregistrer ?")) return;
+      vue = "fonction"; grille = null; ouvrirCellule(col.iso, v ? v.f : (reglages.fonctions[0] || {}).nom || "(sans fonction)");
+    });
+    table.addEventListener("keydown", e => {
+      if (!e.target.closest(".pg-c")) return;
+      const k = e.key, ctrl = e.ctrlKey || e.metaKey;
+      const fleches = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1], Enter: [1, 0] };
+      if (fleches[k] && !ctrl) { e.preventDefault(); deplacer(fleches[k][0], fleches[k][1], e.shiftKey && k !== "Enter"); return; }
+      if (k === "Delete" || k === "Backspace") { e.preventDefault(); poser(null); return; }
+      if (k === "Escape") { g.sel = { ...g.sel, ar: g.sel.r, ac: g.sel.c }; redessinerGrille(); return; }
+      if (ctrl || e.altKey || k.length !== 1) return;
+      if ("123".includes(k)) { e.preventDefault(); champ({ 1: "EN", 2: "ESR", 3: "" }[k]); return; }
+      // codes d'une ou deux lettres : la seconde lettre est attendue un court instant quand un code plus long commence pareil
+      const u = k.toUpperCase(); if (!/^[A-Z]$/.test(u)) return;
+      e.preventDefault(); clearTimeout(g.attente);
+      const tampon = g.tampon && Date.now() - g.tamponT < 900 ? g.tampon + u : u, liste = [...codes];
+      const exact = t => liste.find(([, c]) => c === t), suite = t => liste.some(([, c]) => c.length > t.length && c.startsWith(t));
+      if (tampon.length === 2 && exact(tampon)) { g.tampon = ""; poser(exact(tampon)[0]); return; }
+      const t1 = tampon.length === 2 ? u : tampon;
+      if (suite(t1)) { g.tampon = t1; g.tamponT = Date.now(); if (exact(t1)) g.attente = setTimeout(() => { if (g.tampon === t1) { g.tampon = ""; poser(exact(t1)[0]); } }, 900); return; }
+      g.tampon = ""; if (exact(t1)) poser(exact(t1)[0]);
+    });
+    // copier / coller : texte tabulé (Excel, LibreOffice, autre grille)
+    table.addEventListener("copy", e => {
+      const b = bornes(), txt = [];
+      for (let r = b.r1; r <= b.r2; r++) { const l = []; for (let c = b.c1; c <= b.c2; c++) { const v = lignes[r] && cols[c] && cols[c].cr ? g.cases.get(cleCase(lignes[r].id, cols[c].cr.id)) : null;
+        l.push(v ? `${codes.get(v.f) || v.f}${toutChamp(v.ch) ? "" : " " + v.ch.join("+")}` : ""); } txt.push(l.join("\t")); }
+      e.clipboardData.setData("text/plain", txt.join("\n")); e.preventDefault(); g.message = "Bloc copié."; $("pg-statut").textContent = g.message;
+    });
+    table.addEventListener("paste", e => {
+      const txt = (e.clipboardData && e.clipboardData.getData("text/plain")) || ""; if (!txt) return; e.preventDefault();
+      const lus = txt.replace(/\r/g, "").replace(/\n$/, "").split("\n").map(l => l.split("\t"));
+      const nomsF = [...codes]; let inconnus = 0;
+      const lire = t => { const s = String(t || "").trim(); if (!s) return null;
+        const champs = /\bESR\b/i.test(s) && !/\bEN\b/i.test(s) ? ["ESR"] : /\bEN\b/i.test(s) && !/\bESR\b/i.test(s) ? ["EN"] : null;
+        const tete = s.replace(/\b(EN|ESR)\b|[+|·,;/-]/gi, " ").trim(), n = S.norm(tete);
+        const f = nomsF.find(([nom, c]) => c === tete.toUpperCase() || S.norm(nom) === n) || nomsF.find(([nom]) => n && S.norm(nom).startsWith(n)) || nomsF.find(([, c]) => c[0] === tete.toUpperCase());
+        if (!f) { inconnus++; return undefined; }
+        return { f: f[0], ch: champs }; };
+      lus.forEach((ligne, i) => ligne.forEach((t, j) => {
+        const a = lignes[g.sel.r + i], col = cols[g.sel.c + j]; if (!a || !col || !col.cr) return;
+        const k = cleCase(a.id, col.cr.id), v = lire(t);
+        if (v === undefined) return;
+        if (!v) g.cases.delete(k); else g.cases.set(k, { ...(g.cases.get(k) || {}), f: v.f, ch: v.ch || (g.cases.get(k) || {}).ch || dernierChamp(a.id, col.cr.debut || Date.now() / 1000) });
+      }));
+      g.message = `${lus.length} ligne(s) collée(s)${inconnus ? ` ; ${inconnus} case(s) non reconnue(s), laissées telles quelles` : ""}.`; redessinerGrille();
+    });
+    sec.querySelectorAll("[data-pg-fonction]").forEach(b => b.addEventListener("click", () => poser(b.dataset.pgFonction)));
+    sec.querySelectorAll("[data-pg-vider]").forEach(b => b.addEventListener("click", () => poser(null)));
+    sec.querySelectorAll("[data-pg-champ]").forEach(b => b.addEventListener("click", () => champ(b.dataset.pgChamp)));
+    const filtre = $("pg-filtre");
+    filtre.addEventListener("input", () => { g.filtre = filtre.value; g.sel = { r: 0, c: g.sel.c, ar: 0, ac: g.sel.c }; const pos = filtre.selectionStart; redessinerGrille(false); const f = $("pg-filtre"); f.focus(); f.setSelectionRange(pos, pos); });
+    $("pg-annuler").addEventListener("click", () => { grille = null; preparerGrille(); grille.message = "Modifications annulées."; redessinerGrille(false); });
+    $("pg-enregistrer").addEventListener("click", enregistrerGrille);
+    sec.querySelectorAll("[data-pg-jour]").forEach(b => b.addEventListener("click", () => { if (quitterGrille()) { vue = "fonction"; grille = null; ouvrirJour(b.dataset.pgJour); } }));
+  }
+  async function enregistrerGrille() {
+    const g = grille, cles = new Set([...g.cases.keys(), ...g.orig.keys()]), acts = [], parId = new Map(planning.creneaux.map(c => [c.id, c]));
+    let ajouts = 0, changes = 0, retraits = 0;
+    for (const k of cles) {
+      const v = g.cases.get(k), o = g.orig.get(k); if (memeCase(v, o)) continue;
+      const [agent, cr] = k.split("|").map(Number);
+      if (!v) { acts.push(["RemoveRecord", T().affectations, o.id]); retraits++; continue; }
+      if (!o) { const c = parId.get(cr), t = (c && c.debut) || Date.now() / 1000;
+        acts.push(["AddRecord", T().affectations, null, champsAff({ creneau: cr, agent, perimetre: dernierPerimetre(agent, t), champ: v.ch && v.ch.length ? v.ch : [...CHAMPS], note: "" }, v.f)]); ajouts++; continue; }
+      acts.push(["UpdateRecord", T().affectations, o.id, { Fonction: v.f, Champ: ["L", ...(v.ch && v.ch.length ? v.ch : CHAMPS)], Modifie_le: maintenant() }]); changes++;
+    }
+    try {
+      $("pg-enregistrer").disabled = true;
+      await actions(acts);
+      planning = await S.lirePlanning(general); emargements = await S.lireEmargements(general);
+      const sel = g.sel, filtre = g.filtre; grille = null; preparerGrille(); grille.sel = sel; grille.filtre = filtre;
+      grille.message = acts.length ? `Enregistré : ${ajouts} mobilisation(s) ajoutée(s), ${changes} modifiée(s), ${retraits} retirée(s).` : "Aucun changement.";
+      dessiner();
+    } catch (err) { g.message = `Enregistrement refusé par Grist (${err.message || err}).`; redessinerGrille(false); }
+  }
+
   /* ---------- Événements ---------- */
   function lier() {
     racine.querySelectorAll("[data-cellule]").forEach(b => b.addEventListener("click", () => ouvrirCellule(b.dataset.cellule, b.dataset.fonction)));
     racine.querySelectorAll("[data-jour]").forEach(b => b.addEventListener("click", () => ouvrirJour(b.dataset.jour)));
-    $("pl-prec").addEventListener("click", () => { lundi = plusJours(lundi, -7); dessiner(); });
-    $("pl-suiv").addEventListener("click", () => { lundi = plusJours(lundi, 7); dessiner(); });
-    $("pl-auj").addEventListener("click", () => { lundi = lundiDe(aujourdhui()); dessiner(); });
+    const semaine = l => { if (!quitterGrille()) return; lundi = l; grille = null; dessiner(); };
+    $("pl-prec").addEventListener("click", () => semaine(plusJours(lundi, -7)));
+    $("pl-suiv").addEventListener("click", () => semaine(plusJours(lundi, 7)));
+    $("pl-auj").addEventListener("click", () => semaine(lundiDe(aujourdhui())));
     $("pl-ouvrir-reglages").addEventListener("click", () => { const d = $("pl-reglages"); d.open = true; reglagesOuverts = true; d.scrollIntoView({ block: "start" }); });
     if ($("pl-appliquer-modeles")) $("pl-appliquer-modeles").addEventListener("click", appliquerModeles);
-    $("pl-copier").addEventListener("click", copierSemaine);
+    if ($("pl-copier")) $("pl-copier").addEventListener("click", copierSemaine);
+    racine.querySelectorAll("[data-vue]").forEach(b => b.addEventListener("click", () => changerVue(b.dataset.vue)));
+    if (vue === "grille") lierGrille();
     racine.querySelectorAll("[data-suivi]").forEach(tr => {
       const f = () => { suivi = suivi === +tr.dataset.suivi ? null : +tr.dataset.suivi; dessiner(); };
       tr.addEventListener("click", f); tr.addEventListener("keydown", e => { if (e.key === "Enter") f(); });
@@ -532,7 +763,7 @@
     det.addEventListener("toggle", () => { reglagesOuverts = det.open; });
     det.addEventListener("input", ev => {
       const t = ev.target, f = t.closest("[data-fonction]"), m = t.closest("[data-modele]"), c = t.closest("[data-creneau]");
-      if (f) { const x = r.fonctions[+f.dataset.fonction]; if (t.dataset.champ === "nom") x.nom = t.value; if (t.dataset.champ === "saisie") x.saisie = t.checked; if (t.dataset.champ === "ligne") x.ligne = t.checked; return; }
+      if (f) { const x = r.fonctions[+f.dataset.fonction]; if (t.dataset.champ === "nom") x.nom = t.value; if (t.dataset.champ === "code") x.code = t.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2); if (t.dataset.champ === "saisie") x.saisie = t.checked; if (t.dataset.champ === "ligne") x.ligne = t.checked; return; }
       if (m && c) { r.modeles[+m.dataset.modele].creneaux[+c.dataset.creneau][t.dataset.champ] = t.value; return; }
       if (m && t.dataset.champ === "nom") r.modeles[+m.dataset.modele].nom = t.value;
     });
@@ -637,7 +868,9 @@
     const r = reglagesEdites;
     const renommages = r.fonctions.filter(f => f.ancien && f.nom.trim() && f.ancien !== f.nom.trim()).map(f => [f.ancien, f.nom.trim()]);
     const supprimees = reglages.fonctions.map(f => f.nom).filter(n => !r.fonctions.some(f => f.ancien === n));
-    r.fonctions = r.fonctions.map(f => ({ nom: f.nom.trim(), saisie: !!f.saisie, ligne: f.ligne !== false })).filter(f => f.nom);
+    r.fonctions = r.fonctions.map(f => ({ nom: f.nom.trim(), saisie: !!f.saisie, ligne: f.ligne !== false, ...(f.code ? { code: f.code } : {}) })).filter(f => f.nom);
+    const codes = r.fonctions.map(f => f.code).filter(Boolean);
+    if (codes.some((c, i) => codes.indexOf(c) !== i)) { dire("pl-reg-statut", "Deux fonctions ont le même code.", true); return; }
     r.modeles = r.modeles.map(m => ({ nom: m.nom.trim(), creneaux: m.creneaux.map(c => ({ nom: c.nom.trim(), debut: c.debut, fin: c.fin })).filter(c => c.nom && c.debut && c.fin) })).filter(m => m.nom);
     if (!r.fonctions.length) { dire("pl-reg-statut", "Gardez au moins une fonction.", true); return; }
     const noms = r.fonctions.map(f => S.norm(f.nom));

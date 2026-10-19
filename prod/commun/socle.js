@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.7.0 (19/10/2026)";
+  const VERSION = "2.8.0 (19/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -370,7 +370,7 @@ return "".join(resultat)`;
     const v = (config && config.valeurs && config.valeurs.planning) || {};
     return {
       fonctions: (Array.isArray(v.fonctions) && v.fonctions.length ? v.fonctions : PLANNING_DEFAUT.fonctions)
-        .map(f => ({ nom: String(f.nom || ""), saisie: !!f.saisie, ligne: f.ligne !== false })),
+        .map(f => ({ nom: String(f.nom || ""), saisie: !!f.saisie, ligne: f.ligne !== false, code: String(f.code || "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2) })),
       modeles: Array.isArray(v.modeles) ? v.modeles : PLANNING_DEFAUT.modeles,
     };
   }
