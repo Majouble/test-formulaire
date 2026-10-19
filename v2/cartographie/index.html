@@ -123,12 +123,17 @@
     </label>
   </div>
   <div id="atlasBox" class="row" style="display:none;flex-direction:column;align-items:stretch;gap:6px">
-    <p class="hint" style="margin:0">Projet QGIS prêt à l'emploi : une page A4 par académie (carte de repérage, carte des établissements signalés sur fond IGN, légende, tableau DSDEN · commune · UAI · type · établissement · REP/REP+ · internat). Dézippez le dossier, ouvrez <code>atlas.qgs</code> dans QGIS (3.34 ou plus récent), puis Mise en page › « Atlas par académie » › Atlas › Exporter en PDF.</p>
+    <p class="hint" style="margin:0">Projet QGIS prêt à l'emploi : une page A4 par académie (carte de repérage, carte des établissements signalés sur fond IGN, légende, tableau DSDEN · commune · UAI · type · établissement · REP/REP+ · internat · nombre de signalements). Dézippez le dossier, ouvrez <code>atlas.qgs</code> dans QGIS (3.34 ou plus récent), puis Mise en page › « Atlas par académie » › Atlas › Exporter en PDF.</p>
     <label>Titre de l'atlas <input type="text" id="atlasTitre"></label>
     <div class="row" style="margin:0">
       <label>Date affichée <input type="text" id="atlasDate" style="width:9em"></label>
       <label style="flex:1">Service (en-tête, une ligne par retour) <textarea id="atlasService" rows="3" style="width:100%"></textarea></label>
     </div>
+    <div class="row" style="margin:0;align-items:center">
+      <label>Tableau sous la carte : les <input type="number" id="atlasLignes" min="0" max="500" step="1" style="width:4.5em"> établissements les plus signalés de l'académie</label>
+      <span class="hint">22 tiennent sous la carte ; 0 = tous, sur des pages supplémentaires.</span>
+    </div>
+    <label><input type="checkbox" id="atlasIgn"> Fonds IGN (relief et plan, chargés depuis la Géoplateforme : connexion internet nécessaire)</label>
     <p class="hint" style="margin:0">REP/REP+ et internat viennent du référentiel, s'il en a les colonnes (import de l'annuaire, « Informations supplémentaires » : appartenance à l'éducation prioritaire, hébergement).</p>
   </div>
   <details id="colsBox" open>
@@ -576,7 +581,8 @@ function render() {
 /* ---------------------------------------------------------------------------
    Atlas QGIS : projet (atlas/atlas.qgs, fabriqué par atlas/construire_atlas.py), contours des académies et des
    départements (IGN Admin Express), et les établissements signalés de l'export, un point par établissement, aux
-   champs attendus par le projet : Etiquette, Categorie, Academie, DSDEN, Commune, UAI, Type_libelle, Etablissement, REP, Internat.
+   champs attendus par le projet : Etiquette, Categorie, Academie, DSDEN, Commune, UAI, Type_libelle, Etablissement, REP, Internat,
+   Nb_signalements et Rang (rang dans l'académie, du plus signalé au moins signalé : le tableau garde les N premiers).
    --------------------------------------------------------------------------- */
 let zipLoading = null;
 function loadJSZip() {
@@ -643,6 +649,13 @@ function signalementsAtlas() {
       Nb_signalements: e.n, Qualifications: [...e.qualifs].join(", "), Derniere_date: e.date ? new Date(e.date * 1000).toISOString().slice(0, 10) : "" } });
   }
   if (!features.length) throw new Error("Aucun établissement localisé à mettre dans l'atlas.");
+  // Rang dans l'académie : le tableau de l'atlas garde les N premiers (plus de signalements, puis le plus récent)
+  const parAca = new Map();
+  for (const f of features) { const k = f.properties.Academie || ""; if (!parAca.has(k)) parAca.set(k, []); parAca.get(k).push(f.properties); }
+  for (const l of parAca.values()) {
+    l.sort((a, b) => b.Nb_signalements - a.Nb_signalements || String(b.Derniere_date).localeCompare(String(a.Derniere_date)) || a.Etablissement.localeCompare(b.Etablissement, "fr"));
+    l.forEach((p, i) => { p.Rang = i + 1; });
+  }
   return { type: "FeatureCollection", name: "signalements", features };
 }
 const xmlTexte = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -650,14 +663,22 @@ async function construireAtlas(name) {
   const fc = signalementsAtlas(), JSZip = await loadJSZip();
   const lire = async f => { const r = await fetch(new URL(`atlas/${f}`, location.href).href); if (!r.ok) throw new Error(`fichier ${f} introuvable (${r.status})`); return r.text(); };
   const [qgs, acas, deps] = await Promise.all(["atlas.qgs", "academies.geojson", "departements.geojson"].map(lire));
-  const projet = qgs.replace("@@TITRE@@", xmlTexte($("atlasTitre").value.trim() || "Signalements"))
-    .replace("@@DATE@@", xmlTexte($("atlasDate").value.trim())).replace("@@SERVICE@@", xmlTexte($("atlasService").value.trim()));
+  const lignes = Math.max(0, Math.min(5000, parseInt($("atlasLignes").value, 10) || 0)), ign = $("atlasIgn").checked;
+  let projet = qgs.replace("@@TITRE@@", xmlTexte($("atlasTitre").value.trim() || "Signalements"))
+    .replace("@@DATE@@", xmlTexte($("atlasDate").value.trim())).replace("@@SERVICE@@", xmlTexte($("atlasService").value.trim()))
+    .replace("@@LIGNES@@", String(lignes));
+  // sans fonds IGN : couches décochées (QGIS ne les demande pas au serveur), le fond uni reste
+  if (!ign) projet = projet.replace(/<layer-tree-layer [^>]*providerKey="wms"[^>]*>/g, t => t.replace('checked="Qt::Checked"', 'checked="Qt::Unchecked"'));
   const nb = new Set(fc.features.map(f => f.properties.Academie)).size;
   const lisezmoi = [`Atlas des signalements par académie — ${fc.features.length} établissement(s), ${nb} académie(s).`, "",
     "1. Dézippez le dossier (les fichiers doivent rester ensemble).", "2. Ouvrez atlas.qgs dans QGIS (3.34 ou plus récent).",
     "3. Projet › Mises en page › « Atlas par académie ».", "4. Atlas › Exporter l'atlas en PDF : une page par académie ayant des signalements.", "",
     "Titre, date et service : Projet › Propriétés › Variables (atlas_titre, atlas_date, atlas_service).",
-    "Fond de carte : relief IGN (Géoplateforme), ou « Plan IGN » à cocher dans les couches ; connexion internet nécessaire.",
+    `Tableau : ${lignes ? `les ${lignes} établissements les plus signalés de chaque académie` : "tous les établissements (pages supplémentaires si besoin)"} ; à changer dans Projet › Propriétés › Variables (atlas_lignes, 0 = tous).`,
+    `Fonds de carte : relief et plan IGN (Géoplateforme, connexion internet nécessaire)${ign ? "" : ", décochés dans cet export : à cocher dans le groupe « Fonds de carte »"}.`,
+    "Si les fonds IGN restent blancs ou si la carte met longtemps à s'afficher, QGIS n'atteint pas internet :",
+    "Préférences › Options › Réseau › cocher « Utiliser un proxy pour l'accès web », type « DefaultProxy » (proxy du poste), puis redémarrer QGIS.",
+    "Test : Explorateur › XYZ Tiles › OpenStreetMap ; si ce fond ne s'affiche pas non plus, c'est le réseau, pas le projet.",
     "Couches ajoutées (QPV, etc.) : à glisser sous « signalements » ; la légende de la mise en page se met à jour à la main.", "",
     "Sources : signalements (Grist) ; contours IGN Admin Express (Licence ouverte, via france-geojson) ; fonds IGN Géoplateforme."].join("\r\n");
   const zip = new JSZip(), dossier = zip.folder(name);
@@ -672,10 +693,13 @@ function initAtlas() {
   $("atlasTitre").value = m.titre || "Signalements";
   $("atlasDate").value = new Date().toLocaleDateString("fr-FR", { month: "short", year: "numeric" });
   $("atlasService").value = m.service || SERVICE_DEFAUT;
+  $("atlasLignes").value = Number.isInteger(m.lignes) ? m.lignes : 22;
+  $("atlasIgn").checked = m.ign !== false;
   if (!m.titre && window.Socle && window.grist && grist.docApi) window.Socle.lireConfig().then(c => { const g = c && window.Socle.general(c); if (g && g.situation && !$("atlasTitre").dataset.touche) $("atlasTitre").value = g.situation; }).catch(() => {});
-  const garder = () => { try { localStorage.setItem("socle-v2-atlas", JSON.stringify({ titre: $("atlasTitre").value, service: $("atlasService").value })); } catch (_) { /* stockage indisponible */ } };
+  const garder = () => { try { localStorage.setItem("socle-v2-atlas", JSON.stringify({ titre: $("atlasTitre").value, service: $("atlasService").value, lignes: parseInt($("atlasLignes").value, 10) || 0, ign: $("atlasIgn").checked })); } catch (_) { /* stockage indisponible */ } };
   $("atlasTitre").addEventListener("input", () => { $("atlasTitre").dataset.touche = "1"; garder(); });
   $("atlasService").addEventListener("input", garder);
+  $("atlasLignes").addEventListener("change", garder); $("atlasIgn").addEventListener("change", garder);
 }
 
 async function buildOutput() {
