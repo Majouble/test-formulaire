@@ -33,6 +33,7 @@ DANS_PAGE = '@atlas_pagename IS NULL OR "Page" IS NULL OR "Page" = @atlas_pagena
 def couche(f, nom):
     l = QgsVectorLayer(os.path.join(D, f), nom, "ogr"); assert l.isValid(), f; return l
 sig = couche("signalements.geojson", "signalements")
+marq = couche("signalements.geojson", "marques")   # marques d'une sous-table (losanges accolés au point) : catégories écrites par le widget
 det = couche("signalements_detail.geojson", "signalements_detail")   # un point par signalement, hors mise en page
 zones = couche("zones.geojson", "zones")   # zones denses calculées par le widget : cadres sur la carte et encarts de zoom
 aca = couche("academies.geojson", "academies")
@@ -88,6 +89,19 @@ for nom, c in COULEURS:
     s.symbolLayer(0).setDataDefinedProperty(QgsSymbolLayer.PropertyStrokeColor, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} THEN '255,255,255,255' ELSE '255,255,255,120' END"))
     cats.append(QgsRendererCategory(nom, s, {"École": "Écoles", "Collège": "Collèges", "Lycée": "Lycées", "Autre": "Autres"}[nom]))
 sig.setRenderer(QgsCategorizedSymbolRenderer("Categorie", cats))
+# marques : losange en haut à droite du point, couleur par catégorie (« Marque ») ; le widget remplace la catégorie modèle
+# par les valeurs de la sous-table choisie dans le profil, avec leurs couleurs Grist
+from qgis.core import QgsGeometryGeneratorSymbolLayer
+# losange décalé en haut à droite du point par un générateur de géométrie (1,9 mm sur le papier, quelle que soit l'échelle) :
+# dans la légende, le losange reste centré
+losange = QgsMarkerSymbol.createSimple({"name": "diamond", "color": "200,30,30,255", "outline_color": "255,255,255,255", "outline_width": "0.3", "size": "2.8"})
+losange.symbolLayer(0).setDataDefinedProperty(QgsSymbolLayer.PropertySize, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} THEN 2.8 ELSE 2.0 END"))
+losange.symbolLayer(0).setDataDefinedProperty(QgsSymbolLayer.PropertyStrokeColor, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} THEN '255,255,255,255' ELSE '255,255,255,120' END"))
+gen = QgsGeometryGeneratorSymbolLayer.create({"geometryModifier": "translate($geometry, 1.9 * @map_scale / 1000, 1.9 * @map_scale / 1000)", "SymbolType": "Marker"})
+gen.setSubSymbol(losange)
+sm = QgsMarkerSymbol(); sm.changeSymbolLayer(0, gen)
+marq.setRenderer(QgsCategorizedSymbolRenderer("Marque", [QgsRendererCategory("@@MARQUE@@", sm, "@@MARQUE@@")]))
+marq.setOpacity(1.0)
 # --- étiquettes : deux règles. Établissements de l'académie : jamais supprimées (chevauchement accepté en dernier recours),
 # avec un trait de rappel quand l'étiquette est déplacée ; masquées sur la carte principale dans une zone d'encart (l'encart
 # les montre). Académies voisines : plus petites, grises, retirées si elles gênent.
@@ -143,8 +157,9 @@ zones.setLabeling(QgsVectorLayerSimpleLabeling(lz)); zones.setLabelsEnabled(True
 ds = QgsMarkerSymbol.createSimple({"name": "circle", "color": "0,0,145,255", "outline_color": "255,255,255,255", "outline_width": "0.3", "size": "2.4"})
 dr = QgsPointDisplacementRenderer("Etiquette"); dr.setEmbeddedRenderer(QgsSingleSymbolRenderer(ds)); dr.setTolerance(1.5); det.setRenderer(dr)
 pages.setRenderer(QgsSingleSymbolRenderer(QgsFillSymbol.createSimple({"color": "0,0,0,0", "outline_style": "no"})))
-for l in (terres, plan, relief, dep, voile, aca, rep, sig, det, zones, pages): p.addMapLayer(l, False)
+for l in (terres, plan, relief, dep, voile, aca, rep, sig, marq, det, zones, pages): p.addMapLayer(l, False)
 arbre = p.layerTreeRoot()
+arbre.addLayer(marq)
 arbre.addLayer(zones)
 arbre.addLayer(pages).setItemVisibilityChecked(False)
 arbre.addLayer(det).setItemVisibilityChecked(False)
@@ -210,7 +225,7 @@ carte.dataDefinedProperties().setProperty(QgsLayoutObject.MapCrs, QgsProperty.fr
 leg = QgsLayoutItemLegend(lay); leg.setId("legende"); lay.addLayoutItem(leg)
 leg.setTitle("Légende :"); leg.setLinkedMap(carte); leg.setAutoUpdateModel(False); leg.setWrapString("|")
 arbre_leg = leg.model().rootGroup(); arbre_leg.removeAllChildren()   # arbre propre à la légende (enregistré dans le projet)
-for l, titre in ((sig, "Établissements signalés|(atténués : académies voisines)"), (dep, "Départements"), (aca, "Académie")):
+for l, titre in ((sig, "Établissements signalés"), (marq, "@@MARQUES_TITRE@@"), (dep, "Départements"), (aca, "Académie")):
     arbre_leg.addLayer(l).setCustomProperty("legend/title-label", titre)   # titre dans la légende, sans renommer la couche
 leg.setBackgroundEnabled(True); leg.setBackgroundColor(QColor("#ffffff")); leg.setFrameEnabled(True)
 leg.setFrameStrokeColor(QColor("#c8c8d8")); leg.setFrameStrokeWidth(QgsLayoutMeasurement(0.25, MM))
@@ -223,6 +238,7 @@ for st, haut in ((QgsLegendStyle.Title, None), (QgsLegendStyle.Group, 1.6), (Qgs
     if haut is not None: s.setMargin(QgsLegendStyle.Top, haut)
     else: s.setMargin(QgsLegendStyle.Bottom, 1.5)
     leg.setStyle(st, s)
+leg.setLegendFilterByMapEnabled(True)   # seulement les symboles présents sur la carte de la page
 leg.setColumnCount(2); leg.setSplitLayer(True); leg.setEqualColumnWidth(False); leg.setColumnSpace(3); leg.setBoxSpace(1.5)
 leg.setSymbolWidth(3.5); leg.setSymbolHeight(2.8); leg.setResizeToContents(False); place(leg, 124, 21, 80, 34)
 

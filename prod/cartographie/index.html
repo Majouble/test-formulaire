@@ -194,6 +194,15 @@
         <label>zone = au moins <input type="number" id="atlasEncartsMin" min="2" max="50" style="width:3.5em"> établissements</label>
         <label>à moins de <input type="number" id="atlasEncartsEcart" min="1" max="30" step="0.5" style="width:4em"> mm les uns des autres sur la carte</label>
       </div>
+      <div class="row" style="margin:6px 0 0;align-items:center">
+        <label>Marques d'une sous-table (question tableau) <select id="atlasMarqueTable"></select></label>
+      </div>
+      <div id="atlasMarqueBloc" class="row" style="margin:2px 0 4px 22px;align-items:center">
+        <label>couleur selon <select id="atlasMarqueColonne"></select></label>
+        <label>titre dans la légende <input type="text" id="atlasMarqueTitre" placeholder="Atteintes aux personnes" style="width:16em"></label>
+        <label class="check"><input type="checkbox" id="atlasMarqueInclure"> retenir aussi les établissements qui n'ont que des lignes dans cette sous-table</label>
+        <span class="hint">Un losange en haut à droite du point ; une seule étiquette par établissement.</span>
+      </div>
       <p style="margin:8px 0 4px"><b>Modèle QGIS</b> : <span id="atlasModeleEtat"></span></p>
       <div class="row" style="margin:0;align-items:center">
         <label>Déposer un modèle (.qgs) <input type="file" id="atlasModeleFichier" accept=".qgs"></label>
