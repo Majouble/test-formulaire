@@ -583,6 +583,8 @@ function render() {
    départements (IGN Admin Express), et les établissements signalés de l'export, un point par établissement, aux
    champs attendus par le projet : Etiquette, Categorie, Academie, DSDEN, Commune, UAI, Type_libelle, Etablissement, REP, Internat,
    Nb_signalements et Rang (rang dans l'académie, du plus signalé au moins signalé : le tableau garde les N premiers).
+   Les colonnes viennent des rôles réglés dans le socle (Type, Libelle_nature, Commune…), à défaut des noms usuels.
+   S'y ajoute signalements_detail.geojson : un point par signalement (Qualification, Date), hors mise en page.
    --------------------------------------------------------------------------- */
 let zipLoading = null;
 function loadJSZip() {
@@ -618,35 +620,54 @@ function signalementsAtlas() {
   const cles = new Set(); recs.forEach(r => Object.keys(r).forEach(k => cles.add(k)));
   const trouve = (...noms) => noms.find(n => n && cles.has(n)) || null;
   const motif = re => [...cles].find(k => re.test(k)) || null;
+  const R = (socle && socle.champs) || {};   // rôles du socle d'abord, puis noms usuels, puis motifs
   const C = { nom: trouve(cols.Nom, "Nom_etablissement", "Etab_Nom", "Nom"), uai: trouve(socle && socle.uai, "UAI", "Etab_UAI"),
-    commune: trouve("Commune", "Etab_Commune"), dep: trouve("Departement", "Etab_Departement"), aca: trouve("Academie", "Etab_Academie", "Academie_carte"),
-    type: trouve("Type", "Etab_Type"), nature: trouve("Libelle_nature", "Etab_Libelle_nature"), rep: motif(/education_prioritaire|^(etab_)?rep(_rep_plus)?$/i),
-    internat: motif(/hebergement|internat/i), qualif: socle && socle.qualif, date: trouve("Date_faits", "Cree_le") };
+    commune: trouve(R.Commune, "Commune", "Etab_Commune") || motif(/^(etab_)?(nom_|libelle_)?commune$/i),
+    dep: trouve(R.Departement, "Departement", "Etab_Departement") || motif(/^(etab_)?(libelle_)?departement$/i),
+    aca: trouve(R.Academie, "Academie", "Etab_Academie", "Academie_carte") || motif(/^(etab_)?(libelle_)?academie$/i),
+    type: trouve(R.Type, "Type", "Etab_Type", "Type_etablissement", "Etab_Type_etablissement") || motif(/^(etab_)?type_?(d_)?etab/i),
+    nature: trouve(R.Libelle_nature, "Libelle_nature", "Etab_Libelle_nature") || motif(/libelle_?nature/i),
+    rep: motif(/education_prioritaire|^(etab_)?rep(_rep_plus)?$/i), internat: motif(/hebergement|internat/i),
+    qualif: (socle && socle.qualif) || trouve("Qualification"), date: trouve(R.Date_faits, "Date_faits", R.Cree_le, "Cree_le") };
   const texte = v => Array.isArray(v) ? v.filter(x => x !== "L").join(", ") : v == null ? "" : String(v);
-  const parEtab = new Map();
+  // date en secondes (Grist), objet Date ou texte ISO → secondes ; puis « AAAA-MM-JJ »
+  const secondes = d => typeof d === "number" ? d : d instanceof Date ? d.getTime() / 1000 : typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d) ? Date.parse(d) / 1000 : null;
+  const jour = d => { const t = secondes(d); return t ? new Date(t * 1000).toISOString().slice(0, 10) : ""; };
+  // champs de l'établissement, communs à son point et à chacun de ses signalements
+  const etabProps = (r, lat, lon, uai) => {
+    const lieu = G ? G.localiser(lat, lon) : null;
+    const academie = (G && C.aca && G.acaKey(texte(r[C.aca]))) || (lieu && lieu.academie) || texte(C.aca ? r[C.aca] : "");
+    const depCode = (G && uai && G.depFromUai(uai)) || (lieu && lieu.dep) || "";
+    const depNom = (G && G.DEP_NAMES[depCode]) || (C.dep ? texte(r[C.dep]) : "") || (lieu && lieu.departement) || "";
+    const typeSource = C.type ? texte(r[C.type]) : "", natureSource = C.nature ? texte(r[C.nature]) : "";
+    const n = natureCourte(natureSource, typeSource), nom = nomCourt(C.nom ? texte(r[C.nom]) : ""), intern = C.internat ? r[C.internat] : null;
+    return { Etiquette: `${n.court} ${nom}`.trim(), Etablissement: nom, Type_court: n.court, Type_libelle: n.libelle, Categorie: n.categorie,
+      Type_etablissement: typeSource, Nature: natureSource,   // valeurs brutes du référentiel, pour d'autres regroupements dans QGIS
+      UAI: uai, Commune: C.commune ? texte(r[C.commune]) : "", DSDEN: depCode ? `${depCode} - ${depNom}` : depNom, Academie: academie,
+      REP: (C.rep && texte(r[C.rep]).trim()) || "-", Internat: intern === true || intern === 1 || /^(1|oui|o|true|vrai)$/i.test(texte(intern).trim()) ? "Oui" : "-" };
+  };
+  const parEtab = new Map(), detail = [];
   for (const r of recs) {
     const lat = toNumber(r[cols.Latitude]), lon = toNumber(r[cols.Longitude]);
     if (isNaN(lat) || isNaN(lon)) continue;
     const uai = C.uai ? texte(r[C.uai]).trim() : "", cle = uai || `${lat.toFixed(5)},${lon.toFixed(5)}`;
-    if (!parEtab.has(cle)) parEtab.set(cle, { r, lat, lon, uai, n: 0, qualifs: new Set(), date: null });
+    if (!parEtab.has(cle)) parEtab.set(cle, { lat, lon, uai, n: 0, qualifs: new Map(), date: null, props: etabProps(r, lat, lon, uai) });
     const e = parEtab.get(cle); e.n++;
-    if (C.qualif) texte(r[C.qualif]).split(", ").filter(Boolean).forEach(q => e.qualifs.add(q));
-    const d = C.date ? r[C.date] : null; if (typeof d === "number" && (!e.date || d > e.date)) e.date = d;
+    const qs = C.qualif ? texte(r[C.qualif]).split(", ").map(q => q.trim()).filter(Boolean) : [];
+    const d = C.date ? secondes(r[C.date]) : null;
+    qs.forEach(q => { const x = e.qualifs.get(q) || { n: 0, date: 0 }; x.n++; if (typeof d === "number" && d > x.date) x.date = d; e.qualifs.set(q, x); });
+    if (typeof d === "number" && (!e.date || d > e.date)) e.date = d;
+    // couche de détail : un point par signalement (une ligne de la table), pour catégoriser par qualification
+    detail.push({ type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] }, properties: { ...e.props,
+      Qualification: qs[0] || "", Qualifications: qs.join(", "), Date: jour(d), Dossier: R.Dossier ? texte(r[R.Dossier]) : "", grist_id: r.id } });
   }
   const features = [];
   for (const e of parEtab.values()) {
-    const r = e.r, lieu = G ? G.localiser(e.lat, e.lon) : null;
-    const academie = (G && C.aca && G.acaKey(texte(r[C.aca]))) || (lieu && lieu.academie) || texte(C.aca ? r[C.aca] : "");
-    const depCode = (G && e.uai && G.depFromUai(e.uai)) || (lieu && lieu.dep) || "";
-    const depNom = (G && G.DEP_NAMES[depCode]) || (C.dep ? texte(r[C.dep]) : "") || (lieu && lieu.departement) || "";
-    const n = natureCourte(C.nature ? texte(r[C.nature]) : "", C.type ? texte(r[C.type]) : "");
-    const nom = nomCourt(C.nom ? texte(r[C.nom]) : "");
-    const intern = C.internat ? r[C.internat] : null;
-    features.push({ type: "Feature", geometry: { type: "Point", coordinates: [e.lon, e.lat] }, properties: {
-      Etiquette: `${n.court} ${nom}`.trim(), Etablissement: nom, Type_court: n.court, Type_libelle: n.libelle, Categorie: n.categorie,
-      UAI: e.uai, Commune: C.commune ? texte(r[C.commune]) : "", DSDEN: depCode ? `${depCode} - ${depNom}` : depNom, Academie: academie,
-      REP: (C.rep && texte(r[C.rep]).trim()) || "-", Internat: intern === true || intern === 1 || /^(1|oui|o|true|vrai)$/i.test(texte(intern).trim()) ? "Oui" : "-",
-      Nb_signalements: e.n, Qualifications: [...e.qualifs].join(", "), Derniere_date: e.date ? new Date(e.date * 1000).toISOString().slice(0, 10) : "" } });
+    // qualification principale : la plus fréquente pour l'établissement, à égalité la plus récente
+    const principale = [...e.qualifs.entries()].sort((a, b) => b[1].n - a[1].n || b[1].date - a[1].date || a[0].localeCompare(b[0], "fr"))[0];
+    features.push({ type: "Feature", geometry: { type: "Point", coordinates: [e.lon, e.lat] }, properties: { ...e.props,
+      Nb_signalements: e.n, Qualification_principale: principale ? principale[0] : "", Qualifications: [...e.qualifs.keys()].join(", "),
+      Derniere_date: e.date ? jour(e.date) : "" } });
   }
   if (!features.length) throw new Error("Aucun établissement localisé à mettre dans l'atlas.");
   // Rang dans l'académie : le tableau de l'atlas garde les N premiers (plus de signalements, puis le plus récent)
@@ -656,11 +677,11 @@ function signalementsAtlas() {
     l.sort((a, b) => b.Nb_signalements - a.Nb_signalements || String(b.Derniere_date).localeCompare(String(a.Derniere_date)) || a.Etablissement.localeCompare(b.Etablissement, "fr"));
     l.forEach((p, i) => { p.Rang = i + 1; });
   }
-  return { type: "FeatureCollection", name: "signalements", features };
+  return { fc: { type: "FeatureCollection", name: "signalements", features }, detail: { type: "FeatureCollection", name: "signalements_detail", features: detail } };
 }
 const xmlTexte = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 async function construireAtlas(name) {
-  const fc = signalementsAtlas(), JSZip = await loadJSZip();
+  const { fc, detail } = signalementsAtlas(), JSZip = await loadJSZip();
   const lire = async f => { const r = await fetch(new URL(`atlas/${f}`, location.href).href); if (!r.ok) throw new Error(`fichier ${f} introuvable (${r.status})`); return r.text(); };
   const [qgs, acas, deps] = await Promise.all(["atlas.qgs", "academies.geojson", "departements.geojson"].map(lire));
   const lignes = Math.max(0, Math.min(5000, parseInt($("atlasLignes").value, 10) || 0)), ign = $("atlasIgn").checked;
@@ -680,9 +701,15 @@ async function construireAtlas(name) {
     "Préférences › Options › Réseau › cocher « Utiliser un proxy pour l'accès web », type « DefaultProxy » (proxy du poste), puis redémarrer QGIS.",
     "Test : Explorateur › XYZ Tiles › OpenStreetMap ; si ce fond ne s'affiche pas non plus, c'est le réseau, pas le projet.",
     "Couches ajoutées (QPV, etc.) : à glisser sous « signalements » ; la légende de la mise en page se met à jour à la main.", "",
+    "Deux couches de points :",
+    "- signalements : un point par établissement (carte et tableau de l'atlas). Nb_signalements, Qualification_principale (la plus fréquente,",
+    "  à égalité la plus récente), Qualifications (toutes), Derniere_date, Categorie (École / Collège / Lycée / Autre),",
+    "  Type_etablissement et Nature (valeurs brutes du référentiel).",
+    "- signalements_detail (décochée) : un point par signalement, avec sa Qualification et sa Date, pour symboliser ou",
+    "  compter par qualification. Les points d'un même établissement sont superposés (style « Déplacement de points » conseillé).", "",
     "Sources : signalements (Grist) ; contours IGN Admin Express (Licence ouverte, via france-geojson) ; fonds IGN Géoplateforme."].join("\r\n");
   const zip = new JSZip(), dossier = zip.folder(name);
-  dossier.file("atlas.qgs", projet); dossier.file("signalements.geojson", JSON.stringify(fc));
+  dossier.file("atlas.qgs", projet); dossier.file("signalements.geojson", JSON.stringify(fc)); dossier.file("signalements_detail.geojson", JSON.stringify(detail));
   dossier.file("academies.geojson", acas); dossier.file("departements.geojson", deps); dossier.file("LISEZMOI.txt", lisezmoi);
   return { name: name + ".zip", blob: await zip.generateAsync({ type: "blob", compression: "DEFLATE" }) };
 }
@@ -1233,6 +1260,9 @@ async function enrichirSocle(records) {
     colTypes[etabCol] = "Text";
     socle = { referentiel: refTable, etabCol, auto: { Latitude: nom(c("Latitude")), Longitude: nom(c("Longitude")), Nom: c("Nom") ? nom(c("Nom")) : etabCol },
       uai: c("UAI") ? nom(c("UAI")) : null, dv: rr.Derniere_version && rr.Derniere_version.col, qualif: rr.Qualification && rr.Qualification.col,
+      // colonnes du référentiel et de la réponse selon les rôles réglés dans le socle (noms propres à chaque document)
+      champs: { ...Object.fromEntries(["Type", "Libelle_nature", "Commune", "Academie", "Departement"].filter(c).map(k => [k, nom(c(k))])),
+        ...Object.fromEntries(["Date_faits", "Cree_le", "Dossier"].filter(k => rr[k] && rr[k].col).map(k => [k, rr[k].col])) },
       ajoutees: [...refCols.map(nom), ...terr.map(([col]) => col)] };
     return out;
   } catch (e) { diagError = e && e.message ? e.message : String(e); return records; }

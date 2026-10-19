@@ -9,7 +9,7 @@ from qgis.core import (QgsApplication, QgsProject, QgsCoordinateReferenceSystem,
     QgsLayoutItemLabel, QgsLayoutItemMap, QgsLayoutItemLegend, QgsLayoutItemScaleBar, QgsLayoutItemAttributeTable, QgsLayoutFrame,
     QgsLayoutTableColumn, QgsLayoutMultiFrame, QgsLayoutPoint, QgsLayoutSize, QgsUnitTypes, QgsExpressionContextUtils, QgsLayerTree,
     QgsLayoutExporter, QgsLegendStyle, Qgis, QgsSingleSymbolRenderer, QgsLayoutMeasurement)
-from qgis.core import QgsInvertedPolygonRenderer
+from qgis.core import QgsInvertedPolygonRenderer, QgsPointDisplacementRenderer
 from qgis.PyQt.QtGui import QColor, QFont, QPainter
 from qgis.PyQt.QtCore import Qt
 
@@ -29,6 +29,7 @@ DANS_PAGE = '@atlas_pagename IS NULL OR "Academie" IS NULL OR "Academie" = @atla
 def couche(f, nom):
     l = QgsVectorLayer(os.path.join(D, f), nom, "ogr"); assert l.isValid(), f; return l
 sig = couche("signalements.geojson", "signalements")
+det = couche("signalements_detail.geojson", "signalements_detail")   # un point par signalement, hors mise en page
 aca = couche("academies.geojson", "academies")
 dep = couche("departements.geojson", "Départements")
 rep = couche("academies.geojson", "academies (repérage)")
@@ -92,8 +93,12 @@ ddl.setProperty(P.Priority, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} T
 lab.setDataDefinedProperties(ddl)
 sig.setLabeling(QgsVectorLayerSimpleLabeling(lab)); sig.setLabelsEnabled(True)
 
-for l in (terres, plan, relief, dep, voile, aca, rep, sig): p.addMapLayer(l, False)
+# détail : points superposés d'un même établissement écartés en cercle ; à catégoriser par « Qualification » dans QGIS
+ds = QgsMarkerSymbol.createSimple({"name": "circle", "color": "0,0,145,255", "outline_color": "255,255,255,255", "outline_width": "0.3", "size": "2.4"})
+dr = QgsPointDisplacementRenderer("Etiquette"); dr.setEmbeddedRenderer(QgsSingleSymbolRenderer(ds)); dr.setTolerance(1.5); det.setRenderer(dr)
+for l in (terres, plan, relief, dep, voile, aca, rep, sig, det): p.addMapLayer(l, False)
 arbre = p.layerTreeRoot()
+arbre.addLayer(det).setItemVisibilityChecked(False)
 for l in (sig, aca, voile, dep): arbre.addLayer(l)
 fonds = arbre.addGroup("Fonds de carte")
 for l in (relief, plan, terres): fonds.addLayer(l)   # les fonds IGN demandent une connexion internet (Géoplateforme)
@@ -187,7 +192,7 @@ print("projet écrit :", p.fileName(), "| pages d'atlas :", atlas.updateFeatures
 # chemins de secours (couverture de l'atlas, table, légende) : relatifs eux aussi, pour un projet déplaçable
 # (selon la version de QGIS, le chemin relatif écrit peut être « ../fichier » quand le projet n'existait pas encore : on normalise)
 import re
-txt = re.sub(r'(?:\.\./|\./|' + re.escape(D) + r'/)((?:academies|departements|signalements)\.geojson)', r'./\1', open(p.fileName(), encoding="utf-8").read())
+txt = re.sub(r'(?:\.\./|\./|' + re.escape(D) + r'/)((?:academies|departements|signalements_detail|signalements)\.geojson)', r'./\1', open(p.fileName(), encoding="utf-8").read())
 open(p.fileName(), "w", encoding="utf-8").write(txt)
 
 if DEMO:   # rendu de contrôle (sans fond IGN hors ligne)
