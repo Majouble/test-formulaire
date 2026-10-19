@@ -173,6 +173,22 @@
   #planning .pl-mini { font: inherit; border: 1px solid var(--trait); background: var(--x-ffffff); border-radius: 4px; width: 26px; height: 26px; cursor: pointer; padding: 0; margin-left: auto; }
   #planning .pl-mini.danger { color: var(--alerte); }
   #planning .pl-ajout-agent { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+  #planning .pl-selecteur { border: 1px solid var(--trait); border-radius: 6px; padding: 10px; margin: 8px 0 12px; background: var(--carte); }
+  #planning .pl-sel-haut { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  #planning .pl-sel-haut input[type="search"] { font: inherit; padding: 5px 8px; border: 1px solid var(--x-bbbbbb); border-radius: 4px; flex: 1 1 220px; min-width: 0; background: var(--x-ffffff); }
+  #planning .pl-cibles { display: flex; gap: 10px; flex-wrap: wrap; }
+  #planning .pl-cibles label { display: inline-flex; gap: 4px; align-items: center; white-space: nowrap; }
+  #planning .pl-choix { max-height: 260px; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 2px 12px; padding: 4px; border: 1px solid var(--trait); border-radius: 4px; background: var(--x-ffffff); }
+  #planning .pl-choix-groupe { grid-column: 1 / -1; font-size: 12px; font-weight: 600; color: var(--doux); margin-top: 4px; }
+  #planning .pl-choix-ag { display: flex; gap: 6px; align-items: baseline; padding: 3px 4px; border-radius: 4px; cursor: pointer; }
+  #planning .pl-choix-ag:hover { background: var(--x-eeeeee); }
+  #planning .pl-choix-ag small { color: var(--doux); font-size: 11px; }
+  #planning .pl-choix-ag.pris { opacity: .55; cursor: default; }
+  #planning .pl-choix .vide { grid-column: 1 / -1; }
+  #planning .pl-aff { padding: 5px 8px; }
+  #planning .pl-aff.ouvert { padding: 8px; }
+  #planning .pl-aff-haut .pl-mini { margin-left: 0; }
+  #planning .pl-lien { font: inherit; font-size: 12px; background: none; border: none; color: var(--accent); cursor: pointer; text-decoration: underline; padding: 0; margin-left: auto; }
   #planning .pl-ajout-agent select { width: auto; }
   #planning .pl-detail { margin-top: 12px; }
   #planning .pl-detail h3 { font-size: 14px; margin: 0 0 6px; }

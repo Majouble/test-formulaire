@@ -198,33 +198,66 @@
       return `<button type="button" class="eq-puce${on ? " on" : ""}" ${attrs} data-col="${esc(c)}" data-val="${esc(x.v)}" aria-pressed="${on}" title="${x.n} établissement(s)">${esc(x.v)}</button>`; }).join("")}</span></div>`).join("");
   }
   function carteEdition() { return edition.mode === "jour" ? carteJour() : carteCellule(); }
+  // Agents déjà dans cette fonction les jours précédents (les plus récents d'abord) : proposés en tête de liste
+  function habitues(fonction, avant) {
+    const parId = new Map(planning.creneaux.map(c => [c.id, c])), vus = new Map();
+    planning.affectations.forEach(a => { const c = parId.get(a.creneau);
+      if ((a.fonction || "(sans fonction)") === fonction && c && c.debut < avant) vus.set(a.agent, Math.max(vus.get(a.agent) || 0, c.debut)); });
+    return [...vus.entries()].sort((x, y) => y[1] - x[1]).map(([id]) => id);
+  }
   function carteCellule() {
     const e = edition, cs = creneauxDu(e.jour);
     if (!cs.length) return `<section class="carte" id="pl-edition"><h2>${esc(e.fonction)} — ${esc(jourLong(e.jour))}</h2>
       <p class="vide">Aucun créneau ce jour-là : créez d'abord les créneaux du jour.</p>
       <div class="boutons"><button class="primaire" data-jour="${e.jour}">Régler les créneaux du jour</button><button class="secondaire" id="pl-fermer">Fermer</button></div></section>`;
-    const actifs = agents.filter(a => a.actif);
-    const surCreneau = (cId, agentId) => e.lignes.find(l => l.creneau === cId && l.agent === agentId)
-      || planning.affectations.find(a => a.creneau === cId && a.agent === agentId && a.fonction !== e.fonction);
-    const option = (a, cId) => { const x = cId ? surCreneau(cId, a.id) : null;
-      const autre = x && x.fonction && x.fonction !== e.fonction && !e.lignes.includes(x) ? x.fonction : null;
-      return `<option value="${a.id}"${x ? " disabled" : ""}>${esc(a.nom)}${autre ? ` — déjà ${esc(autre.toLowerCase())}` : x ? " — déjà là" : ""}</option>`; };
+    if (!e.cible || (e.cible !== "jour" && !cs.some(c => String(c.id) === e.cible))) e.cible = cs.length > 1 ? "jour" : String(cs[0].id);
+    const cibles = e.cible === "jour" ? cs.map(c => c.id) : [+e.cible];
+    // situation d'un agent sur les créneaux visés : libre, déjà là (cette fonction), ou pris dans une autre fonction
+    const situation = a => {
+      const ici = cibles.filter(cId => e.lignes.some(l => l.creneau === cId && l.agent === a.id));
+      const ailleurs = cibles.map(cId => planning.affectations.find(x => x.creneau === cId && x.agent === a.id && (x.fonction || "(sans fonction)") !== e.fonction)).filter(Boolean);
+      if (ici.length === cibles.length) return { pris: true, texte: "déjà là" };
+      if (ailleurs.length + ici.length >= cibles.length) return { pris: true, texte: `déjà ${[...new Set(ailleurs.map(x => (x.fonction || "").toLowerCase()))].join(", ")}` };
+      if (ici.length || ailleurs.length) return { pris: false, texte: "déjà sur une partie de la journée" };
+      return { pris: false, texte: "" };
+    };
+    const actifs = agents.filter(a => a.actif), avant = Math.min(...cs.map(c => c.debut || Infinity));
+    const tete = habitues(e.fonction, avant).map(agentDe).filter(a => a && a.actif);
+    const autres = actifs.filter(a => !tete.includes(a)).sort((x, y) => x.nom.localeCompare(y.nom, "fr"));
+    const ligneChoix = a => { const st = situation(a), coche = e.choix.has(a.id) && !st.pris;
+      return `<label class="pl-choix-ag${st.pris ? " pris" : ""}" data-nom="${esc(S.norm(a.nom))}"><input type="checkbox" value="${a.id}"${coche ? " checked" : ""}${st.pris ? " disabled" : ""}>
+        <span>${esc(a.nom)}</span>${st.texte ? `<small>${esc(st.texte)}</small>` : ""}</label>`; };
+    const n = [...e.choix].filter(id => { const a = agentDe(id); return a && !situation(a).pris; }).length;
+    const selecteur = `<div class="pl-selecteur">
+      <div class="pl-sel-haut">
+        <input type="search" id="pl-cherche" placeholder="Rechercher un agent… (Entrée coche le premier)" value="${esc(e.recherche || "")}" aria-label="Rechercher un agent">
+        ${cs.length > 1 ? `<span class="pl-cibles" role="radiogroup" aria-label="Créneaux visés">${[["jour", "Toute la journée"], ...cs.map(c => [String(c.id), c.nom])].map(([v, t]) =>
+          `<label><input type="radio" name="pl-cible" value="${v}"${e.cible === v ? " checked" : ""}> ${esc(t)}</label>`).join("")}</span>` : `<span class="aide">${esc(cs[0].nom)} · ${esc(plage(cs[0]))}</span>`}
+      </div>
+      <div class="pl-choix" id="pl-choix">
+        ${tete.length ? `<div class="pl-choix-groupe">Récemment ${esc(e.fonction.toLowerCase())}</div>${tete.map(ligneChoix).join("")}<div class="pl-choix-groupe">Tous les agents</div>` : ""}
+        ${autres.map(ligneChoix).join("")}
+        <p class="vide" id="pl-choix-vide" style="display:none">Aucun agent ne correspond.</p>
+      </div>
+      <div class="boutons"><button type="button" class="primaire" id="pl-mobiliser"${n ? "" : " disabled"}>Mobiliser la sélection (${n})</button>
+        <button type="button" class="secondaire" id="pl-decocher"${n ? "" : " disabled"}>Tout décocher</button>
+        <small class="aide">Champ et périmètre : ceux du dernier créneau de chaque agent, modifiables ensuite.</small></div></div>`;
     const blocs = cs.map(c => {
-      const ls = e.lignes.map((l, i) => ({ l, i })).filter(x => x.l.creneau === c.id);
-      return `<div class="pl-bloc-creneau"><div class="pl-bloc-tete"><strong>${esc(c.nom)}</strong> <span class="aide">${esc(plage(c))}</span></div>
-        ${ls.map(({ l, i }) => { const ag = agentDe(l.agent); return `<div class="pl-aff" data-i="${i}">
+      const ls = e.lignes.map((l, i) => ({ l, i })).filter(x => x.l.creneau === c.id)
+        .sort((x, y) => ((agentDe(x.l.agent) || {}).nom || "").localeCompare((agentDe(y.l.agent) || {}).nom || "", "fr"));
+      return `<div class="pl-bloc-creneau"><div class="pl-bloc-tete"><strong>${esc(c.nom)}</strong> <span class="aide">${esc(plage(c))} · ${ls.length} agent${ls.length > 1 ? "s" : ""}</span></div>
+        ${ls.map(({ l, i }) => { const ag = agentDe(l.agent), ouvert = e.ouverts.has(i); return `<div class="pl-aff${ouvert ? " ouvert" : ""}" data-i="${i}">
           <div class="pl-aff-haut"><strong>${esc(ag ? ag.nom : "?")}</strong><small class="aide">${esc(texteChamps(l.champ))} · ${esc(resume(l.perimetre))}</small>
+            <button type="button" class="pl-lien" data-deplier="${i}" aria-expanded="${ouvert}">${ouvert ? "replier" : "modifier"}</button>
             <button type="button" class="pl-mini danger" data-retirer="${i}" title="Retirer de ce créneau" aria-label="Retirer ${esc(ag ? ag.nom : "")} du créneau ${esc(c.nom)}">×</button></div>
-          <div class="pl-crit"><span class="eq-crit-lib">Champ</span><span class="eq-puces">${CHAMPS.map(ch => { const on = l.champ.includes(ch);
+          ${ouvert ? `<div class="pl-crit"><span class="eq-crit-lib">Champ</span><span class="eq-puces">${CHAMPS.map(ch => { const on = l.champ.includes(ch);
             return `<button type="button" class="eq-puce${on ? " on" : ""}" data-champ-ligne="${i}" data-val="${ch}" aria-pressed="${on}" title="${esc((S.CHAMPS.find(x => x.id === ch) || {}).libelle || ch)}">${ch}</button>`; }).join("")}</span></div>
-          ${puces(l.perimetre, `data-ligne="${i}"`)}</div>`; }).join("") || `<p class="vide">Personne sur ce créneau.</p>`}
-        <select data-ajout-creneau="${c.id}" aria-label="Mobiliser un agent sur le créneau ${esc(c.nom)}"><option value="">+ mobiliser sur ce créneau…</option>${actifs.map(a => option(a, c.id)).join("")}</select></div>`;
+          ${puces(l.perimetre, `data-ligne="${i}"`)}` : ""}</div>`; }).join("") || `<p class="vide">Personne sur ce créneau.</p>`}</div>`;
     }).join("");
     return `<section class="carte" id="pl-edition"><h2>${esc(e.fonction)} — ${esc(jourLong(e.jour))}</h2>
-      ${cs.length > 1 ? `<div class="pl-ajout-agent"><select id="pl-ajout-journee"><option value="">+ mobiliser sur toute la journée…</option>${actifs.map(a => `<option value="${a.id}">${esc(a.nom)}</option>`).join("")}</select>
-        <small class="aide">L'agent est ajouté à chaque créneau du jour où il n'est pas déjà.</small></div>` : ""}
+      ${selecteur}
       ${blocs}
-      <p class="aide">Champ : les formulaires (EN, ESR) sur lesquels l'agent est mobilisé ; sa page de saisie de l'autre champ le lui signale. Le champ et le périmètre proposés sont ceux de son dernier créneau. Aucune valeur cochée : tous les établissements. Un agent absent de la liste se crée dans l'onglet Équipe › Agents.</p>
+      <p class="aide">Champ : les formulaires (EN, ESR) sur lesquels l'agent est mobilisé ; sa page de saisie de l'autre champ le lui signale. Aucune valeur de périmètre cochée : tous les établissements. Un agent absent de la liste se crée dans l'onglet Équipe › Agents.</p>
       <div class="boutons"><button class="primaire" id="pl-enregistrer">Enregistrer</button>
         <button class="secondaire" id="pl-fermer">Fermer</button>
         <span class="statut" id="pl-edition-statut" role="status"></span></div></section>`;
@@ -381,7 +414,7 @@
     const ids = new Set(creneauxDu(iso).map(c => c.id));
     const lignes = planning.affectations.filter(a => ids.has(a.creneau) && (a.fonction || "(sans fonction)") === fonction)
       .map(a => ({ id: a.id, creneau: a.creneau, agent: a.agent, perimetre: R.perimetreObjet(ref, a.perimetre), champ: S.champsDe(a), note: a.note }));
-    edition = { mode: "cellule", jour: iso, fonction, lignes, origine: JSON.parse(JSON.stringify(lignes)) };
+    edition = { mode: "cellule", jour: iso, fonction, lignes, origine: JSON.parse(JSON.stringify(lignes)), choix: new Set(), ouverts: new Set(), recherche: "", cible: null };
     dessiner(); versEdition();
   }
   function ouvrirJour(iso) {
@@ -404,13 +437,40 @@
       const t = c ? c.debut : Date.now() / 1000;
       e.lignes.push({ id: null, creneau: cId, agent: agentId, perimetre: dernierPerimetre(agentId, t), champ: dernierChamp(agentId, t), note: "" });
     };
+    // sélection : filtrage et cases à cocher sans redessiner (la recherche garde le curseur)
+    const compter = () => {
+      const n = [...zone.querySelectorAll("#pl-choix input:checked:not(:disabled)")].length;
+      $("pl-mobiliser").textContent = `Mobiliser la sélection (${n})`; $("pl-mobiliser").disabled = !n; $("pl-decocher").disabled = !n;
+    };
+    const filtrer = () => {
+      // chaque mot tapé doit se retrouver dans le nom (« so lau » trouve Sophie Laurent)
+      const mots = String(e.recherche || "").split(/\s+/).map(m => S.norm(m)).filter(Boolean); let vus = 0;
+      zone.querySelectorAll(".pl-choix-ag").forEach(l => { const ok = mots.every(m => l.dataset.nom.includes(m)); l.style.display = ok ? "" : "none"; if (ok) vus++; });
+      zone.querySelectorAll(".pl-choix-groupe").forEach(g => { g.style.display = mots.length ? "none" : ""; });
+      $("pl-choix-vide").style.display = vus ? "none" : "";
+    };
+    filtrer();
+    const cherche = $("pl-cherche");
+    if (cherche) {
+      cherche.addEventListener("input", () => { e.recherche = cherche.value; filtrer(); });
+      cherche.addEventListener("keydown", ev => {
+        if (ev.key !== "Enter") return; ev.preventDefault();
+        const b = [...zone.querySelectorAll(".pl-choix-ag")].find(l => l.style.display !== "none" && !l.querySelector("input").disabled && !l.querySelector("input").checked);
+        if (b) { b.querySelector("input").checked = true; e.choix.add(+b.querySelector("input").value); compter(); }
+        cherche.value = ""; e.recherche = ""; filtrer();
+      });
+    }
     zone.addEventListener("change", ev => {
-      const t = ev.target, v = +t.value;
-      if (!v) return;
-      if (t.id === "pl-ajout-journee") creneauxDu(e.jour).forEach(c => ajouter(v, c.id));
-      else if (t.dataset.ajoutCreneau) ajouter(v, +t.dataset.ajoutCreneau);
-      else return;
-      dessiner(); versEdition();
+      const t = ev.target;
+      if (t.name === "pl-cible") { e.cible = t.value; dessiner(); versEdition(); if ($("pl-cherche")) $("pl-cherche").focus(); return; }
+      if (t.closest("#pl-choix")) { t.checked ? e.choix.add(+t.value) : e.choix.delete(+t.value); compter(); }
+    });
+    $("pl-decocher").addEventListener("click", () => { e.choix.clear(); zone.querySelectorAll("#pl-choix input").forEach(b => { b.checked = false; }); compter(); });
+    $("pl-mobiliser").addEventListener("click", () => {
+      const cibles = e.cible === "jour" ? creneauxDu(e.jour).map(c => c.id) : [+e.cible];
+      [...e.choix].forEach(id => cibles.forEach(cId => ajouter(id, cId)));
+      e.choix.clear(); e.recherche = ""; dessiner(); versEdition();
+      dire("pl-edition-statut", "Agents ajoutés : enregistrez pour valider.");
     });
     zone.addEventListener("click", ev => {
       const ch = ev.target.closest(".eq-puce[data-champ-ligne]");
@@ -430,8 +490,10 @@
         const r = p.closest(".pl-aff").querySelector(".pl-aff-haut small"); if (r) r.textContent = `${texteChamps(l.champ)} · ${resume(l.perimetre)}`;
         return;
       }
+      const d = ev.target.closest("[data-deplier]");
+      if (d) { const i = +d.dataset.deplier; e.ouverts.has(i) ? e.ouverts.delete(i) : e.ouverts.add(i); dessiner(); versEdition(); return; }
       const r = ev.target.closest("[data-retirer]");
-      if (r) { e.lignes.splice(+r.dataset.retirer, 1); dessiner(); versEdition(); }
+      if (r) { const i = +r.dataset.retirer; e.lignes.splice(i, 1); e.ouverts = new Set([...e.ouverts].filter(x => x !== i).map(x => x > i ? x - 1 : x)); dessiner(); versEdition(); }
     });
     $("pl-enregistrer").addEventListener("click", enregistrerCellule);
   }
