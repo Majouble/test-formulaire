@@ -1,7 +1,9 @@
 /* =====================================================================
    Administration v2 — onglet « Équipe » : les agents de la cellule
    ---------------------------------------------------------------------
-   Table Agents du socle : nom, adresse, téléphone, actif (la fonction se règle par créneau, Équipe › Planning).
+   Table Agents du socle : nom, adresse, téléphone, actif, équipe et fonction habituelle
+   (la fonction réelle se règle par créneau, Équipe › Planning ; la fonction habituelle y est proposée).
+   - Liste filtrable (recherche, équipe, fonction, inactifs) et triable (en-têtes) ; équipe et fonction modifiables dans la liste.
    - Le périmètre n'est pas sur la fiche : il change d'un créneau à l'autre et se règle dans Équipe › Planning.
    - L'adresse servira aux règles d'accès.
    - Une liste peut être collée depuis un tableur ; les pages de saisie existantes peuvent être reprises.
@@ -16,7 +18,11 @@
   const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
   let config = null, general = null, agents = null, pages = null, planning = null;
-  let edition = null;       // agent en cours de modification : { id|null, nom, email, telephone, actif }
+  let edition = null;       // agent en cours de modification : { id|null, nom, email, telephone, actif, equipe, fonction }
+  // filtres et tri de la liste, mémorisés par poste
+  const CLE_LISTE = "socle-v2-equipe-liste";
+  let liste = (() => { try { return { q: "", equipe: "", fonction: "", inactifs: true, tri: "nom", sens: 1, ...JSON.parse(localStorage.getItem(CLE_LISTE) || "{}"), q: "" }; } catch (_) { return { q: "", equipe: "", fonction: "", inactifs: true, tri: "nom", sens: 1 }; } })();
+  const memoriserListe = () => { try { localStorage.setItem(CLE_LISTE, JSON.stringify({ ...liste, q: "" })); } catch (_) { /* stockage indisponible */ } };
   let colonnesManquantes = [];   // colonnes du socle absentes de la table Agents (document d'une version antérieure)
   let racine = null;
 
@@ -66,29 +72,109 @@
     lier();
   }
 
-  function carteEquipe() {
-    const actifs = agents.filter(a => a.actif);
-    // pages de saisie : agent retrouvé, ou page orpheline à reprendre
+  // Équipe et fonction : colonnes présentes (document d'une version antérieure : « Compléter la table »)
+  const avecEquipe = () => !colonnesManquantes.includes("Equipe");
+  const avecFonction = () => !colonnesManquantes.includes("Fonction");
+  const fonctionsConnues = () => { const r = S.reglagesPlanning(config).fonctions.map(f => f.nom); return [...r, ...[...new Set(agents.map(a => a.fonction).filter(f => f && !r.includes(f)))]]; };
+  const equipesConnues = () => [...new Set(agents.map(a => a.equipe).filter(Boolean))].sort((x, y) => x.localeCompare(y, "fr", { numeric: true }));
+  const SANS = "\u0000";   // valeur du filtre « sans équipe » / « sans fonction »
+  const optionsFiltre = (vals, v, tous, sans) => `<option value="">${tous}</option>${vals.map(x => `<option${x === v ? " selected" : ""}>${esc(x)}</option>`).join("")}<option value="${SANS}"${v === SANS ? " selected" : ""}>${sans}</option>`;
+  function agentsFiltres() {
+    const mots = String(liste.q || "").split(/\s+/).map(m => S.norm(m)).filter(Boolean);
+    const vise = (v, f) => !f || (f === SANS ? !v : v === f);
+    const cle = { nom: a => a.nom, equipe: a => a.equipe, fonction: a => a.fonction }[liste.tri] || (a => a.nom);
+    return agents.filter(a => (liste.inactifs || a.actif) && vise(a.equipe, liste.equipe) && vise(a.fonction, liste.fonction)
+        && mots.every(m => S.norm(`${a.nom} ${a.email} ${a.equipe} ${a.fonction}`).includes(m)))
+      .sort((x, y) => { const p = cle(x), q = cle(y);
+        if (!p !== !q) return p ? -1 : 1;   // vides en dernier, quel que soit le sens
+        return liste.sens * String(p).localeCompare(String(q), "fr", { numeric: true }) || x.nom.localeCompare(y.nom, "fr"); });
+  }
+  // pages de saisie : agent retrouvé, ou page orpheline à reprendre
+  function pagesParAgent() {
     const pageDe = new Map(), orphelines = [];
     (pages || []).forEach(p => { const a = R.agentDePage(p, agents); if (a) { if (!pageDe.has(a.id)) pageDe.set(a.id, []); pageDe.get(a.id).push(p); } else if (p.libelle || /^Formulaire\s+\S/i.test(p.page)) orphelines.push(p); });
-    const lignes = agents.map(a => {
+    return { pageDe, orphelines };
+  }
+  function blocOrphelines() {
+    const { orphelines } = pagesParAgent();
+    return orphelines.length ? `<div class="eq-reprise"><strong>Pages de saisie sans agent dans l'équipe</strong>
+        <ul>${orphelines.map(p => `<li>${esc(p.page)}</li>`).join("")}</ul>
+        <button class="secondaire" id="eq-reprendre">Ajouter ces agents à l'équipe (nom repris des pages)</button></div>` : "";
+  }
+  const compteEquipe = actifs => { const n = agentsFiltres().length;
+    return `${actifs.length} agent${actifs.length > 1 ? "s" : ""} actif${actifs.length > 1 ? "s" : ""}${n !== agents.length ? ` · ${n} affiché${n > 1 ? "s" : ""} sur ${agents.length}` : ""}. Cliquez sur une ligne pour ouvrir la fiche.`; };
+  function lignesEquipe() {
+    const { pageDe } = pagesParAgent(), fns = fonctionsConnues(), ls = agentsFiltres();
+    const nbCol = 4 + avecEquipe() + avecFonction();
+    // tri par équipe ou par fonction : une ligne de titre par groupe
+    const groupe = liste.tri === "equipe" ? (a => a.equipe || "Sans équipe") : liste.tri === "fonction" ? (a => a.fonction || "Sans fonction habituelle") : null;
+    let dernier = null;
+    return ls.map(a => {
       const pg = pageDe.get(a.id) || [];
-      return `<tr data-id="${a.id}" class="eq-ligne${a.actif ? "" : " inactif"}" tabindex="0">
+      let titre = "";
+      if (groupe && groupe(a) !== dernier) { dernier = groupe(a); const n = ls.filter(x => groupe(x) === dernier).length;
+        titre = `<tr class="eq-groupe"><td colspan="${nbCol}">${esc(dernier)} <span class="aide">(${n})</span></td></tr>`; }
+      return `${titre}<tr data-id="${a.id}" class="eq-ligne${a.actif ? "" : " inactif"}" tabindex="0">
         <td><strong>${esc(a.nom) || "<em>sans nom</em>"}</strong>${a.actif ? "" : ` <span class="pastille">inactif</span>`} ${etatSaisie(a)}${a.cle ? ` <span class="pastille reco" title="Accès par lien personnel, sans compte Grist">invité</span> ${etatLien(a)}
           <button class="lien-btn" data-renouveler="${a.id}" title="Nouvelle clé : l'ancien lien cesse de fonctionner">Nouveau lien</button>` : ""}</td>
+        ${avecEquipe() ? `<td class="eq-modif"><input type="text" data-equipe="${a.id}" value="${esc(a.equipe)}" list="eq-equipes" placeholder="—" aria-label="Équipe de ${esc(a.nom)}" autocomplete="off"></td>` : ""}
+        ${avecFonction() ? `<td class="eq-modif"><select data-fonction="${a.id}" aria-label="Fonction habituelle de ${esc(a.nom)}"><option value="">—</option>${fns.map(f => `<option${f === a.fonction ? " selected" : ""}>${esc(f)}</option>`).join("")}</select></td>` : ""}
         <td>${a.email ? esc(a.email) : a.cle ? `<span class="vide">accès par lien</span>` : `<span class="pastille manque">adresse manquante</span>`}</td>
         <td>${a.telephone ? esc(a.telephone) : `<span class="vide">—</span>`}</td>
         <td>${pg.length ? pg.map(p => esc(p.page)).join("<br>") : `<span class="vide">—</span>`}</td></tr>`;
-    }).join("");
+    }).join("") || `<tr><td colspan="${nbCol}" class="vide">Aucun agent ne correspond.</td></tr>`;
+  }
+  // corps de la liste seul (recherche, filtres, tri, modification en ligne) : la saisie garde le focus
+  function redessinerListe() {
+    const c = $("eq-corps"); if (!c) return;
+    c.innerHTML = lignesEquipe(); $("eq-compte").innerHTML = compteEquipe(agents.filter(a => a.actif)); lierLignes();
+  }
+  // équipe ou fonction modifiée dans la liste : écrite aussitôt
+  async function modifierEnLigne(id, champ, valeur) {
+    const a = agents.find(x => x.id === id); if (!a || a[champ] === valeur) return;
+    const avant = a[champ]; a[champ] = valeur;
+    try {
+      await grist.docApi.applyUserActions([["UpdateRecord", table(), id, { [champ === "equipe" ? "Equipe" : "Fonction"]: valeur, Modifie_le: maintenant() }]]);
+      dire("eq-statut", `${a.nom} : ${champ === "equipe" ? "équipe" : "fonction habituelle"} ${valeur ? `« ${valeur} »` : "retirée"}.`);
+      if (champ === "equipe") {   // nouvelle équipe : proposée aussitôt dans la saisie et le filtre
+        if ($("eq-equipes")) $("eq-equipes").innerHTML = equipesConnues().map(x => `<option value="${esc(x)}">`).join("");
+        if ($("eq-f-equipe")) $("eq-f-equipe").innerHTML = optionsFiltre(equipesConnues(), liste.equipe, "toutes", "sans équipe");
+      }
+    } catch (e) { a[champ] = avant; dire("eq-statut", `Écriture refusée par Grist (${e.message || e}).`, true); redessinerListe(); }
+  }
+  function lierLignes() {
+    racine.querySelectorAll(".eq-ligne").forEach(tr => {
+      const ouvrir = () => { const a = agents.find(x => x.id === +tr.dataset.id); if (a) { edition = JSON.parse(JSON.stringify(a)); edition.invite = !!a.cle; dessiner(); $("eq-fiche").scrollIntoView({ block: "nearest" }); $("eq-nom").focus(); } };
+      tr.addEventListener("click", e => { if (!e.target.closest(".eq-modif")) ouvrir(); });
+      tr.addEventListener("keydown", e => { if (e.target === tr && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); ouvrir(); } });
+    });
+    racine.querySelectorAll("[data-renouveler]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); renouveler([+b.dataset.renouveler]); }));
+    racine.querySelectorAll("[data-equipe]").forEach(i => {
+      i.addEventListener("change", () => modifierEnLigne(+i.dataset.equipe, "equipe", i.value.trim()));
+      i.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); i.blur(); } });
+    });
+    racine.querySelectorAll("[data-fonction]").forEach(sl => sl.addEventListener("change", () => modifierEnLigne(+sl.dataset.fonction, "fonction", sl.value)));
+  }
+  function carteEquipe() {
+    const actifs = agents.filter(a => a.actif), eqs = equipesConnues(), fns = fonctionsConnues();
+    const enTete = (cle, titre) => `<th aria-sort="${liste.tri === cle ? (liste.sens > 0 ? "ascending" : "descending") : "none"}"><button type="button" class="eq-tri" data-tri="${cle}">${titre}${liste.tri === cle ? (liste.sens > 0 ? " ▲" : " ▼") : ""}</button></th>`;
+    const options = optionsFiltre;
     return `<section class="carte"><h2>Équipe de la cellule</h2>
-      <p class="aide">Une ligne par agent. La fonction et le périmètre de chacun changent d'un créneau à l'autre : ils se règlent dans Équipe › Planning.</p>
-      ${agents.length ? `<table class="eq-table"><thead><tr><th>Agent</th><th>Adresse</th><th>Téléphone</th><th>Page de saisie</th></tr></thead><tbody>${lignes}</tbody></table>
-        <p class="aide" style="margin:6px 0 0">${actifs.length} agent${actifs.length > 1 ? "s" : ""} actif${actifs.length > 1 ? "s" : ""}. Cliquez sur une ligne pour la modifier.</p>`
+      <p class="aide">Une ligne par agent. L'équipe et la fonction habituelle se modifient directement dans la liste ; le planning les propose et permet de filtrer et trier par équipe. La fonction et le périmètre réels se règlent créneau par créneau dans Équipe › Planning.</p>
+      ${agents.length ? `<div class="eq-outils">
+          <input type="search" id="eq-cherche" placeholder="Rechercher (nom, adresse, équipe…)" value="${esc(liste.q)}" aria-label="Rechercher un agent">
+          ${avecEquipe() ? `<label>Équipe <select id="eq-f-equipe">${options(eqs, liste.equipe, "toutes", "sans équipe")}</select></label>` : ""}
+          ${avecFonction() ? `<label>Fonction <select id="eq-f-fonction">${options(fns, liste.fonction, "toutes", "sans fonction")}</select></label>` : ""}
+          <label class="eq-case"><input type="checkbox" id="eq-f-inactifs"${liste.inactifs ? " checked" : ""}> inactifs</label>
+        </div>
+        <datalist id="eq-equipes">${eqs.map(x => `<option value="${esc(x)}">`).join("")}</datalist>
+        <div class="eq-defile"><table class="eq-table"><thead><tr>${enTete("nom", "Agent")}${avecEquipe() ? enTete("equipe", "Équipe") : ""}${avecFonction() ? enTete("fonction", "Fonction habituelle") : ""}<th>Adresse</th><th>Téléphone</th><th>Page de saisie</th></tr></thead>
+        <tbody id="eq-corps">${lignesEquipe()}</tbody></table></div>
+        <p class="aide" style="margin:6px 0 0" id="eq-compte">${compteEquipe(actifs)}</p>`
         : `<p class="vide">Aucun agent pour l'instant.</p>`}
-      ${orphelines.length ? `<div class="eq-reprise"><strong>Pages de saisie sans agent dans l'équipe</strong>
-        <ul>${orphelines.map(p => `<li>${esc(p.page)}</li>`).join("")}</ul>
-        <button class="secondaire" id="eq-reprendre">Ajouter ces agents à l'équipe (nom repris des pages)</button></div>` : ""}
+      ${blocOrphelines()}
       ${agents.some(a => a.cle) || avecExpiration() ? `<div class="eq-invites-reglage"><strong>Liens des invités</strong>
+
         ${avecExpiration() ? `<label>durée de validité <select id="eq-duree">${S.DUREES_INVITE.map(([v, l]) => `<option value="${v}"${v === dureeInvite() ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></label>` : ""}
         ${agents.some(a => a.cle) ? `<button class="secondaire" id="eq-renouveler-tous" title="Chaque invité reçoit un nouveau lien ; les anciens cessent de fonctionner">Nouveau lien pour tous les invités (${agents.filter(a => a.cle).length})</button>` : ""}
         <span class="aide">Un lien expiré ou remplacé ne donne plus aucun accès (prise en compte par Grist dans l'heure pour l'expiration, aussitôt pour un remplacement).</span></div>
@@ -103,6 +189,8 @@
         <label class="champ"><span>Nom</span><small>Prénom ou prénom et nom : il donne son nom à la page de saisie.</small><input type="text" id="eq-nom" value="${esc(a.nom)}" autocomplete="off"></label>
         <label class="champ"><span>Adresse électronique</span><small>Celle du compte Grist de l'agent : elle servira aux règles d'accès.</small><input type="text" id="eq-email" value="${esc(a.email)}" autocomplete="off" spellcheck="false"></label>
         <label class="champ"><span>Téléphone</span><small>Facultatif.</small><input type="text" id="eq-tel" value="${esc(a.telephone)}" autocomplete="off"></label>
+        ${avecEquipe() ? `<label class="champ"><span>Équipe</span><small>Groupe de travail (« Équipe A », « Nuit »…) : sert à filtrer et trier l'équipe et le planning.</small><input type="text" id="eq-equipe" value="${esc(a.equipe || "")}" list="eq-equipes" autocomplete="off"></label>` : ""}
+        ${avecFonction() ? `<label class="champ"><span>Fonction habituelle</span><small>Proposée en premier sur le planning ; la fonction réelle se règle à chaque créneau.</small><select id="eq-fonction"><option value="">—</option>${fonctionsConnues().map(f => `<option${f === a.fonction ? " selected" : ""}>${esc(f)}</option>`).join("")}</select></label>` : ""}
         <label class="champ"><span>Statut</span><small>Un agent inactif garde son historique mais n'est plus proposé sur le planning.</small>
           <span class="eq-case"><input type="checkbox" id="eq-actif"${a.actif ? " checked" : ""}> Actif</span></label>
       </div>
@@ -170,20 +258,22 @@
 
   function carteImport() {
     return `<section class="carte"><details id="eq-import"><summary><strong>Importer une liste d'agents</strong></summary>
-      <p class="aide">Une ligne par agent : <code>Nom ; adresse ; téléphone</code>. Un copier-coller depuis un tableur (colonnes dans cet ordre) convient aussi. Un agent déjà présent (même adresse, sinon même nom) est mis à jour.</p>
-      <textarea id="eq-liste" rows="6" placeholder="Alice Martin ; alice.martin@education.gouv.fr ; 01 23 45 67 89&#10;Bruno Petit ; bruno.petit@education.gouv.fr"></textarea>
+      <p class="aide">Une ligne par agent : <code>Nom ; adresse ; téléphone ; équipe ; fonction</code> (les trois dernières facultatives). Un copier-coller depuis un tableur (colonnes dans cet ordre) convient aussi. Un agent déjà présent (même adresse, sinon même nom) est mis à jour.</p>
+      <textarea id="eq-liste" rows="6" placeholder="Alice Martin ; alice.martin@education.gouv.fr ; 01 23 45 67 89 ; Équipe A ; Opérateur&#10;Bruno Petit ; bruno.petit@education.gouv.fr ; ; Équipe B"></textarea>
       <div class="boutons"><button class="secondaire" id="eq-analyser">Vérifier</button><button class="primaire" id="eq-importer" disabled>Importer</button><span class="statut" id="eq-import-statut" role="status"></span></div>
       <div id="eq-import-bilan"></div></details></section>`;
   }
 
   /* ---------- Événements ---------- */
   function lier() {
-    racine.querySelectorAll(".eq-ligne").forEach(tr => {
-      const ouvrir = () => { const a = agents.find(x => x.id === +tr.dataset.id); if (a) { edition = JSON.parse(JSON.stringify(a)); edition.invite = !!a.cle; dessiner(); $("eq-fiche").scrollIntoView({ block: "nearest" }); $("eq-nom").focus(); } };
-      tr.addEventListener("click", ouvrir);
-      tr.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ouvrir(); } });
-    });
-    racine.querySelectorAll("[data-renouveler]").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); renouveler([+b.dataset.renouveler]); }));
+    lierLignes();
+    if ($("eq-cherche")) $("eq-cherche").addEventListener("input", e => { liste.q = e.target.value; redessinerListe(); });
+    [["eq-f-equipe", "equipe"], ["eq-f-fonction", "fonction"]].forEach(([id, k]) => { if ($(id)) $(id).addEventListener("change", e => { liste[k] = e.target.value; memoriserListe(); redessinerListe(); }); });
+    if ($("eq-f-inactifs")) $("eq-f-inactifs").addEventListener("change", e => { liste.inactifs = e.target.checked; memoriserListe(); redessinerListe(); });
+    racine.querySelectorAll("[data-tri]").forEach(b => b.addEventListener("click", () => {
+      liste.sens = liste.tri === b.dataset.tri ? -liste.sens : 1; liste.tri = b.dataset.tri; memoriserListe();
+      const y = window.scrollY; dessiner(); window.scrollTo(0, y); const n = racine.querySelector(`[data-tri="${liste.tri}"]`); if (n) n.focus();
+    }));
     if ($("eq-renouveler-tous")) $("eq-renouveler-tous").addEventListener("click", () => renouveler(agents.filter(a => a.cle).map(a => a.id)));
     if ($("eq-duree")) $("eq-duree").addEventListener("change", async e => {
       try { await S.ecrireConfig("acces_invites", { ...((config && config.valeurs.acces_invites) || {}), duree: e.target.value }); config = await S.lireConfig(); }
@@ -191,7 +281,7 @@
       dire("eq-statut", `Durée des liens d'invités : ${libelleDuree(e.target.value)}. Elle s'applique aux prochains liens créés ou prolongés.`);
     });
     $("eq-ajouter").addEventListener("click", () => {
-      edition = { id: null, nom: "", email: "", telephone: "", actif: true };
+      edition = { id: null, nom: "", email: "", telephone: "", actif: true, equipe: liste.equipe && liste.equipe !== SANS ? liste.equipe : "", fonction: liste.fonction && liste.fonction !== SANS ? liste.fonction : "" };
       dessiner(); $("eq-fiche").scrollIntoView({ block: "nearest" }); $("eq-nom").focus();
     });
     if ($("eq-reprendre")) $("eq-reprendre").addEventListener("click", reprendrePages);
@@ -204,6 +294,8 @@
     const lireChamps = () => {
       edition.nom = $("eq-nom").value; edition.email = $("eq-email").value.trim(); edition.telephone = $("eq-tel").value.trim();
       edition.actif = $("eq-actif").checked;
+      if ($("eq-equipe")) edition.equipe = $("eq-equipe").value.trim();
+      if ($("eq-fonction")) edition.fonction = $("eq-fonction").value;
       if ($("eq-invite")) edition.invite = $("eq-invite").checked;
     };
     if ($("eq-invite")) $("eq-invite").addEventListener("change", () => { lireChamps(); const y = window.scrollY; dessiner(); window.scrollTo(0, y); });
@@ -214,7 +306,7 @@
     });
     if ($("eq-nouvelle-cle")) $("eq-nouvelle-cle").addEventListener("click", () => { lireChamps(); edition.cle = nouvelleCle(); edition.renouveler = true; enregistrer("Nouveau lien créé : l'ancien ne fonctionne plus. Copiez le nouveau et transmettez-le à l'agent."); });
     if ($("eq-prolonger")) $("eq-prolonger").addEventListener("click", () => { lireChamps(); edition.renouveler = true; enregistrer(`Lien prolongé de ${libelleDuree(dureeInvite())} (même lien).`); });
-    ["eq-nom", "eq-email", "eq-tel", "eq-actif"].forEach(id => $(id).addEventListener("input", () => { lireChamps(); $("eq-resume").innerHTML = resumeFiche(); }));
+    ["eq-nom", "eq-email", "eq-tel", "eq-actif", "eq-equipe", "eq-fonction"].filter(id => $(id)).forEach(id => $(id).addEventListener("input", () => { lireChamps(); $("eq-resume").innerHTML = resumeFiche(); }));
     $("eq-annuler").addEventListener("click", () => { edition = null; dessiner(); });
     racine.querySelectorAll("[data-sous-aller]").forEach(b => b.addEventListener("click", () => window.OngletEquipeGroupe.afficher(b.dataset.sousAller)));
     if ($("eq-pages-agent")) $("eq-pages-agent").addEventListener("click", async () => {
@@ -235,6 +327,8 @@
   const nouvelleCle = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join("");
   const champs = a => {
     const c = { Nom: a.nom.trim(), Email: a.email.trim(), Telephone: a.telephone.trim(), Actif: !!a.actif, Modifie_le: maintenant() };
+    if (avecEquipe() && a.equipe !== undefined) c.Equipe = String(a.equipe || "").trim();
+    if (avecFonction() && a.fonction !== undefined) c.Fonction = a.fonction || "";
     if (!colonnesManquantes.includes(S.INVITE.cle) && a.invite !== undefined) {
       c[S.INVITE.cle] = a.invite ? (a.cle || nouvelleCle()) : "";
       if (avecExpiration() && (!a.invite || !a.cle || a.renouveler)) c[S.INVITE.expire] = a.invite ? finValidite() : null;
@@ -331,14 +425,18 @@
     const lus = [], erreurs = [];
     lignes.forEach((l, i) => {
       const morceaux = (l.includes("\t") ? l.split("\t") : l.split(/\s*[;|]\s*/)).map(x => x.trim());
-      // « nom ; adresse ; téléphone » ; ancienne forme à 4 colonnes « nom ; adresse ; fonction ; téléphone » : la fonction est ignorée
-      let [nom, email = "", telephone = ""] = morceaux.length >= 4 ? [morceaux[0], morceaux[1], morceaux[3]] : morceaux;
+      // « nom ; adresse ; téléphone ; équipe ; fonction » (les dernières facultatives) ;
+      // ancienne forme « nom ; adresse ; fonction ; téléphone » reconnue quand la 3e colonne est une fonction
+      const fns = fonctionsConnues(), fonctionDe = t => fns.find(f => S.norm(f) === S.norm(t)) || "";
+      let [nom, email = "", telephone = "", equipe = "", fonction = ""] = morceaux.length === 4 && fonctionDe(morceaux[2]) && !/\d/.test(morceaux[2])
+        ? [morceaux[0], morceaux[1], morceaux[3], "", morceaux[2]] : morceaux;
       // tolère l'ordre « adresse ; nom »
       if (EMAIL.test(nom) && email && !EMAIL.test(email)) [nom, email] = [email, nom];
       if (/^nom$/i.test(nom)) return;   // ligne d'en-tête
       if (!nom) { erreurs.push(`ligne ${i + 1} : nom manquant`); return; }
       if (email && !EMAIL.test(email)) { erreurs.push(`ligne ${i + 1} : adresse « ${email} » invalide`); return; }
-      lus.push({ nom, email, telephone });
+      if (fonction && !fonctionDe(fonction)) { erreurs.push(`ligne ${i + 1} : fonction « ${fonction} » inconnue (fonctions : ${fns.join(", ")})`); return; }
+      lus.push({ nom, email, telephone, equipe: equipe.trim(), fonction: fonctionDe(fonction) });
     });
     const ajouts = [], majs = [];
     for (const x of lus) {
@@ -355,7 +453,8 @@
     if (!importer || erreurs.length) return;
     const acts = [
       ...ajouts.map(x => ["AddRecord", table(), null, champs({ ...x, actif: true })]),
-      ...majs.map(({ a, x }) => ["UpdateRecord", table(), a.id, { Nom: x.nom, ...(x.email ? { Email: x.email } : {}), ...(x.telephone ? { Telephone: x.telephone } : {}), Modifie_le: maintenant() }]),
+      ...majs.map(({ a, x }) => ["UpdateRecord", table(), a.id, { Nom: x.nom, ...(x.email ? { Email: x.email } : {}), ...(x.telephone ? { Telephone: x.telephone } : {}),
+        ...(x.equipe && avecEquipe() ? { Equipe: x.equipe } : {}), ...(x.fonction && avecFonction() ? { Fonction: x.fonction } : {}), Modifie_le: maintenant() }]),
     ];
     try {
       await grist.docApi.applyUserActions(acts);

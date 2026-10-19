@@ -114,6 +114,7 @@
       id, nom: String(col("Nom", i) || "").trim(), email: String(col("Email", i) || "").trim(),
       fonction: String(col("Fonction", i) || "").trim() || FONCTION_ANCIEN_ROLE[String(col("Role", i) || "").trim()] || "",
       telephone: String(col("Telephone", i) || "").trim(), actif: col("Actif", i) !== false,
+      equipe: String(col("Equipe", i) || "").trim(),   // équipe (groupe de travail) : filtre et tri dans Équipe et Planning
       champsAcces: t.Champs_acces ? S().listeChoix(col("Champs_acces", i)) : null,   // null : colonne absente
       cle: String(col("Cle_acces", i) || "").trim(), pageSaisie: col("Page_saisie", i) || null,   // invité : accès par lien
       lienAcces: typeof col("Lien_acces", i) === "string" ? col("Lien_acces", i) : "", invitesPossibles: !!t.Cle_acces,

@@ -226,10 +226,13 @@
     };
     const actifs = agents.filter(a => a.actif), avant = Math.min(...cs.map(c => c.debut || Infinity));
     const tete = habitues(e.fonction, avant).map(agentDe).filter(a => a && a.actif);
-    const autres = actifs.filter(a => !tete.includes(a)).sort((x, y) => x.nom.localeCompare(y.nom, "fr"));
+    // fonction habituelle (fiche de l'agent) : groupe à part, par équipe
+    const parEquipe = (x, y) => (!x.equipe - !y.equipe) || (x.equipe || "").localeCompare(y.equipe || "", "fr", { numeric: true }) || x.nom.localeCompare(y.nom, "fr");
+    const attitres = actifs.filter(a => a.fonction === e.fonction && !tete.includes(a)).sort(parEquipe);
+    const autres = actifs.filter(a => !tete.includes(a) && !attitres.includes(a)).sort(parEquipe);
     const ligneChoix = a => { const st = situation(a), coche = e.choix.has(a.id) && !st.pris;
-      return `<label class="pl-choix-ag${st.pris ? " pris" : ""}" data-nom="${esc(S.norm(a.nom))}"><input type="checkbox" value="${a.id}"${coche ? " checked" : ""}${st.pris ? " disabled" : ""}>
-        <span>${esc(a.nom)}</span>${st.texte ? `<small>${esc(st.texte)}</small>` : ""}</label>`; };
+      return `<label class="pl-choix-ag${st.pris ? " pris" : ""}" data-nom="${esc(S.norm(`${a.nom} ${a.equipe || ""}`))}"><input type="checkbox" value="${a.id}"${coche ? " checked" : ""}${st.pris ? " disabled" : ""}>
+        <span>${esc(a.nom)}${a.equipe ? ` <small class="aide">· ${esc(a.equipe)}</small>` : ""}</span>${st.texte ? `<small>${esc(st.texte)}</small>` : ""}</label>`; };
     const n = [...e.choix].filter(id => { const a = agentDe(id); return a && !situation(a).pris; }).length;
     const selecteur = `<div class="pl-selecteur">
       <div class="pl-sel-haut">
@@ -238,7 +241,9 @@
           `<label><input type="radio" name="pl-cible" value="${v}"${e.cible === v ? " checked" : ""}> ${esc(t)}</label>`).join("")}</span>` : `<span class="aide">${esc(cs[0].nom)} · ${esc(plage(cs[0]))}</span>`}
       </div>
       <div class="pl-choix" id="pl-choix">
-        ${tete.length ? `<div class="pl-choix-groupe">Récemment ${esc(e.fonction.toLowerCase())}</div>${tete.map(ligneChoix).join("")}<div class="pl-choix-groupe">Tous les agents</div>` : ""}
+        ${tete.length ? `<div class="pl-choix-groupe">Récemment ${esc(e.fonction.toLowerCase())}</div>${tete.map(ligneChoix).join("")}` : ""}
+        ${attitres.length ? `<div class="pl-choix-groupe">Fonction habituelle : ${esc(e.fonction.toLowerCase())}</div>${attitres.map(ligneChoix).join("")}` : ""}
+        ${tete.length || attitres.length ? `<div class="pl-choix-groupe">Autres agents</div>` : ""}
         ${autres.map(ligneChoix).join("")}
         <p class="vide" id="pl-choix-vide" style="display:none">Aucun agent ne correspond.</p>
       </div>
@@ -424,6 +429,7 @@
     return new Map(noms.map(n => [n, res.get(n)]));
   }
   const cleCase = (agent, cr) => `${agent}|${cr}`;
+  const HABITUELLE = {};
   const toutChamp = ch => !ch || !ch.length || ch.length === CHAMPS.length;
   function colonnesGrille() {
     const cols = [];
@@ -438,7 +444,18 @@
     if (grille && grille.lundi === lundi) return;
     const cases = new Map(), ids = new Set(colonnesGrille().filter(c => c.cr).map(c => c.cr.id));
     planning.affectations.filter(a => ids.has(a.creneau)).forEach(a => cases.set(cleCase(a.agent, a.creneau), { f: a.fonction, ch: S.champsDe(a), id: a.id }));
-    grille = { lundi, cases, orig: new Map([...cases].map(([k, v]) => [k, { ...v, ch: [...v.ch] }])), sel: { r: 0, c: 0, ar: 0, ac: 0 }, filtre: "", message: "", presse: null };
+    const pref = (() => { try { return JSON.parse(localStorage.getItem("socle-v2-planning-grille") || "{}") || {}; } catch (_) { return {}; } })();
+    grille = { lundi, cases, orig: new Map([...cases].map(([k, v]) => [k, { ...v, ch: [...v.ch] }])), sel: { r: 0, c: 0, ar: 0, ac: 0 }, filtre: "", message: "",
+      equipe: (grille && grille.equipe) || pref.equipe || "", fonction: (grille && grille.fonction) || pref.fonction || "", tri: (grille && grille.tri) || pref.tri || "nom" };
+  }
+  const memoriserGrille = () => { try { localStorage.setItem("socle-v2-planning-grille", JSON.stringify({ equipe: grille.equipe, fonction: grille.fonction, tri: grille.tri })); } catch (_) { /* stockage indisponible */ } };
+  const SANS = "\u0000";   // filtre « sans équipe » / « sans fonction »
+  const equipesConnues = () => [...new Set(agents.map(a => a.equipe).filter(Boolean))].sort((x, y) => x.localeCompare(y, "fr", { numeric: true }));
+  // titre de groupe d'un agent selon le tri (null : pas de groupes)
+  function groupeGrille(a) {
+    if (grille.tri === "equipe") return a.equipe || "Sans équipe";
+    if (grille.tri === "fonction") return a.fonction || "Sans fonction habituelle";
+    return null;
   }
   const memeCase = (x, y) => (!x && !y) || (x && y && x.f === y.f && toutChamp(x.ch) === toutChamp(y.ch) && (toutChamp(x.ch) || x.ch.join() === y.ch.join()));
   function nbModifs() {
@@ -449,9 +466,19 @@
   function lignesGrille() {
     const ids = new Set(colonnesGrille().filter(c => c.cr).map(c => c.cr.id));
     const presents = new Set(planning.affectations.filter(a => ids.has(a.creneau)).map(a => a.agent));
-    const mots = String(grille.filtre || "").split(/\s+/).map(m => S.norm(m)).filter(Boolean);
-    return agents.filter(a => a.actif || presents.has(a.id)).filter(a => mots.every(m => S.norm(a.nom).includes(m)))
-      .sort((x, y) => x.nom.localeCompare(y.nom, "fr"));
+    const mots = String(grille.filtre || "").split(/\s+/).map(m => S.norm(m)).filter(Boolean), g = grille;
+    const vise = (v, f) => !f || (f === SANS ? !v : v === f);
+    const nb = a => [...ids].filter(id => g.cases.has(cleCase(a.id, id))).length;
+    const rang = f => { const i = reglages.fonctions.findIndex(x => x.nom === f); return f ? (i < 0 ? 99 : i) : 999; };
+    const cmp = {
+      nom: (x, y) => 0,
+      equipe: (x, y) => (!x.equipe - !y.equipe) || x.equipe.localeCompare(y.equipe, "fr", { numeric: true }),
+      fonction: (x, y) => rang(x.fonction) - rang(y.fonction),
+      mobilise: (x, y) => nb(y) - nb(x),
+    }[g.tri] || (() => 0);
+    return agents.filter(a => a.actif || presents.has(a.id)).filter(a => vise(a.equipe, g.equipe) && vise(a.fonction, g.fonction))
+      .filter(a => mots.every(m => S.norm(`${a.nom} ${a.equipe}`).includes(m)))
+      .sort((x, y) => cmp(x, y) || x.nom.localeCompare(y.nom, "fr"));
   }
   function contenuGrille() {
     preparerGrille();
@@ -463,7 +490,11 @@
     const fonctionsSaisie = new Set(reglages.fonctions.filter(f => f.saisie).map(f => f.nom));
     const tete1 = parJour.map(j => `<th colspan="${j.n}" scope="colgroup" class="pg-jour${j.iso === aujourdhui() ? " auj" : ""}">${esc(jourCourt(j.iso))}</th>`).join("");
     const tete2 = cols.map(c => c.vide ? `<th class="pg-cr"><button type="button" class="lien" data-pg-jour="${c.iso}">créneaux…</button></th>` : `<th class="pg-cr" title="${esc(plage(c.cr))}">${esc(c.cr.nom)}</th>`).join("");
-    const corps = lignes.map((a, r) => `<tr><th scope="row" class="pg-nom">${esc(a.nom)}${a.actif ? "" : ' <small class="aide">(inactif)</small>'}</th>${cols.map((c, ci) => {
+    let dernier = null;
+    const titreGroupe = a => { const t = groupeGrille(a); if (t === null || t === dernier) return ""; dernier = t;
+      return `<tr class="pg-groupe"><th colspan="${cols.length + 2}" scope="rowgroup">${esc(t)} <span class="aide">(${lignes.filter(x => groupeGrille(x) === t).length})</span></th></tr>`; };
+    const sousTitre = a => [g.tri !== "equipe" && a.equipe, g.tri !== "fonction" && a.fonction].filter(Boolean).join(" · ");
+    const corps = lignes.map((a, r) => `${titreGroupe(a)}<tr><th scope="row" class="pg-nom">${esc(a.nom)}${a.actif ? "" : ' <small class="aide">(inactif)</small>'}${sousTitre(a) ? `<small class="pg-sous">${esc(sousTitre(a))}</small>` : ""}</th>${cols.map((c, ci) => {
       if (c.vide) return `<td class="pg-sans"></td>`;
       const v = g.cases.get(cleCase(a.id, c.cr.id)), choisi = r >= b.r1 && r <= b.r2 && ci >= b.c1 && ci <= b.c2;
       const modif = !memeCase(v, g.orig.get(cleCase(a.id, c.cr.id))), code = v ? (codes.get(v.f) || "?") : "", ch = v && !toutChamp(v.ch) ? v.ch.join("+") : "";
@@ -486,7 +517,12 @@
         ${basculeVue()}
         <button type="button" class="secondaire petit" id="pl-ouvrir-reglages">⚙ Lignes et réglages</button></div>
       <div class="pg-outils">
-        <label>Filtrer <input type="search" id="pg-filtre" value="${esc(g.filtre)}" placeholder="nom de l'agent"></label>
+        <label>Filtrer <input type="search" id="pg-filtre" value="${esc(g.filtre)}" placeholder="nom ou équipe"></label>
+        <label>Équipe <select id="pg-f-equipe"><option value="">toutes</option>${equipesConnues().map(x => `<option${x === g.equipe ? " selected" : ""}>${esc(x)}</option>`).join("")}<option value="${SANS}"${g.equipe === SANS ? " selected" : ""}>sans équipe</option></select></label>
+        <label>Fonction habituelle <select id="pg-f-fonction"><option value="">toutes</option>${[...codes.keys()].map(x => `<option${x === g.fonction ? " selected" : ""}>${esc(x)}</option>`).join("")}<option value="${SANS}"${g.fonction === SANS ? " selected" : ""}>sans fonction</option></select></label>
+        <label>Trier par <select id="pg-tri">${[["nom", "nom"], ["equipe", "équipe"], ["fonction", "fonction habituelle"], ["mobilise", "créneaux de la semaine"]].map(([v, t]) => `<option value="${v}"${g.tri === v ? " selected" : ""}>${t}</option>`).join("")}</select></label>
+      </div>
+      <div class="pg-outils">
         <span class="aide">Remplir la sélection :</span>
         ${[...codes].map(([f, k]) => { const rang = reglages.fonctions.findIndex(x => x.nom === f);
           return `<button type="button" class="pg-b pg-f${rang < 0 ? 9 : Math.min(rang, 8)}" data-pg-fonction="${esc(f)}" title="${esc(f)} (touche${k.length > 1 ? "s" : ""} ${k.split("").join(" puis ")})">${esc(k)} · ${esc(f)}</button>`; }).join("")}
@@ -503,7 +539,7 @@
       <div class="boutons"><button class="primaire" id="pg-enregistrer"${n ? "" : " disabled"}>Enregistrer${n ? ` (${n} case${n > 1 ? "s" : ""})` : ""}</button>
         <button class="secondaire" id="pg-annuler"${n ? "" : " disabled"}>Annuler les modifications</button>
         <span class="statut" id="pg-statut" role="status">${esc(g.message)}</span></div>
-      <p class="aide">Cliquez une case et tapez la lettre d'une fonction (${[...codes].map(([f, k]) => `${k} = ${f}`).join(", ")}) ; <b>1</b> = EN seulement, <b>2</b> = ESR seulement, <b>3</b> = les deux ; <b>Suppr</b> vide.
+      <p class="aide">Cliquez une case et tapez la lettre d'une fonction (${[...codes].map(([f, k]) => `${k} = ${f}`).join(", ")}), ou <b>Espace</b> pour la fonction habituelle de l'agent ; <b>1</b> = EN seulement, <b>2</b> = ESR seulement, <b>3</b> = les deux ; <b>Suppr</b> vide.
         Flèches pour se déplacer, <b>Maj</b> + flèches ou <b>Maj</b> + clic pour un bloc, puis une lettre pour le remplir. <b>Ctrl + C</b> / <b>Ctrl + V</b> copient un bloc, y compris depuis Excel (codes ou noms de fonction, avec « EN » ou « ESR » au besoin).
         Une case nouvelle prend le champ et le périmètre du dernier créneau de l'agent ; double-clic sur une case pour régler le périmètre dans la vue « Par fonction ». Les cases modifiées sont soulignées jusqu'à l'enregistrement.</p>`;
   }
@@ -512,15 +548,29 @@
     sec.innerHTML = contenuGrille(); lierGrille();
     if (focus) { const b = sec.querySelector(`.pg-c[data-r="${grille.sel.r}"][data-c="${grille.sel.c}"]`); if (b) b.focus({ preventScroll: false }); }
   }
+  // navigation de semaine, réglages et bascule de vue (en tête de la vue affichée)
+  function lierNav() {
+    const semaine = l => { if (!quitterGrille()) return; lundi = l; grille = null; dessiner(); };
+    $("pl-prec").addEventListener("click", () => semaine(plusJours(lundi, -7)));
+    $("pl-suiv").addEventListener("click", () => semaine(plusJours(lundi, 7)));
+    $("pl-auj").addEventListener("click", () => semaine(lundiDe(aujourdhui())));
+    $("pl-ouvrir-reglages").addEventListener("click", () => { const d = $("pl-reglages"); d.open = true; reglagesOuverts = true; d.scrollIntoView({ block: "start" }); });
+    racine.querySelectorAll("[data-vue]").forEach(b => b.addEventListener("click", () => changerVue(b.dataset.vue)));
+  }
   function lierGrille() {
     const sec = $("pl-grille"), table = $("pg-table"); if (!sec || !table) return;
+    lierNav();
     const cols = colonnesGrille(), lignes = lignesGrille(), codes = codesFonctions(), g = grille;
     const bornes = () => ({ r1: Math.min(g.sel.r, g.sel.ar), r2: Math.max(g.sel.r, g.sel.ar), c1: Math.min(g.sel.c, g.sel.ac), c2: Math.max(g.sel.c, g.sel.ac) });
     const chaque = fn => { const b = bornes(); for (let r = b.r1; r <= b.r2; r++) for (let c = b.c1; c <= b.c2; c++) if (lignes[r] && cols[c] && cols[c].cr) fn(lignes[r], cols[c].cr); };
+    // f : nom de fonction, null pour vider, HABITUELLE pour la fonction habituelle de chaque agent (agents sans fonction habituelle laissés tels quels)
     const poser = f => {
-      chaque((a, cr) => { const k = cleCase(a.id, cr.id), v = g.cases.get(k);
-        if (!f) g.cases.delete(k);
-        else g.cases.set(k, { ...(v || {}), f, ch: v ? v.ch : dernierChamp(a.id, cr.debut || Date.now() / 1000) }); });
+      let sans = 0;
+      chaque((a, cr) => { const k = cleCase(a.id, cr.id), v = g.cases.get(k), fa = f === HABITUELLE ? a.fonction : f;
+        if (f === HABITUELLE && !fa) { sans++; return; }
+        if (!fa) g.cases.delete(k);
+        else g.cases.set(k, { ...(v || {}), f: fa, ch: v ? v.ch : dernierChamp(a.id, cr.debut || Date.now() / 1000) }); });
+      if (sans) { g.message = "Agent sans fonction habituelle : réglez-la dans Équipe › Agents, ou tapez la lettre d'une fonction."; redessinerGrille(); return; }
       const b = bornes();
       if (b.r1 === b.r2 && b.c1 === b.c2 && f) { let c = g.sel.c + 1; while (cols[c] && cols[c].vide) c++; if (cols[c]) g.sel = { r: g.sel.r, c, ar: g.sel.r, ac: c }; }
       g.message = ""; redessinerGrille();
@@ -551,6 +601,7 @@
       if (fleches[k] && !ctrl) { e.preventDefault(); deplacer(fleches[k][0], fleches[k][1], e.shiftKey && k !== "Enter"); return; }
       if (k === "Delete" || k === "Backspace") { e.preventDefault(); poser(null); return; }
       if (k === "Escape") { g.sel = { ...g.sel, ar: g.sel.r, ac: g.sel.c }; redessinerGrille(); return; }
+      if (k === " " && !ctrl) { e.preventDefault(); poser(HABITUELLE); return; }
       if (ctrl || e.altKey || k.length !== 1) return;
       if ("123".includes(k)) { e.preventDefault(); champ({ 1: "EN", 2: "ESR", 3: "" }[k]); return; }
       // codes d'une ou deux lettres : la seconde lettre est attendue un court instant quand un code plus long commence pareil
@@ -591,9 +642,11 @@
     sec.querySelectorAll("[data-pg-fonction]").forEach(b => b.addEventListener("click", () => poser(b.dataset.pgFonction)));
     sec.querySelectorAll("[data-pg-vider]").forEach(b => b.addEventListener("click", () => poser(null)));
     sec.querySelectorAll("[data-pg-champ]").forEach(b => b.addEventListener("click", () => champ(b.dataset.pgChamp)));
+    [["pg-f-equipe", "equipe"], ["pg-f-fonction", "fonction"], ["pg-tri", "tri"]].forEach(([id, k]) => $(id).addEventListener("change", e => {
+      g[k] = e.target.value; g.sel = { r: 0, c: g.sel.c, ar: 0, ac: g.sel.c }; memoriserGrille(); redessinerGrille(false); }));
     const filtre = $("pg-filtre");
     filtre.addEventListener("input", () => { g.filtre = filtre.value; g.sel = { r: 0, c: g.sel.c, ar: 0, ac: g.sel.c }; const pos = filtre.selectionStart; redessinerGrille(false); const f = $("pg-filtre"); f.focus(); f.setSelectionRange(pos, pos); });
-    $("pg-annuler").addEventListener("click", () => { grille = null; preparerGrille(); grille.message = "Modifications annulées."; redessinerGrille(false); });
+    $("pg-annuler").addEventListener("click", () => { const f = g.filtre; grille.lundi = null; preparerGrille(); grille.filtre = f; grille.message = "Modifications annulées."; redessinerGrille(false); });
     $("pg-enregistrer").addEventListener("click", enregistrerGrille);
     sec.querySelectorAll("[data-pg-jour]").forEach(b => b.addEventListener("click", () => { if (quitterGrille()) { vue = "fonction"; grille = null; ouvrirJour(b.dataset.pgJour); } }));
   }
@@ -612,7 +665,7 @@
       $("pg-enregistrer").disabled = true;
       await actions(acts);
       planning = await S.lirePlanning(general); emargements = await S.lireEmargements(general);
-      const sel = g.sel, filtre = g.filtre; grille = null; preparerGrille(); grille.sel = sel; grille.filtre = filtre;
+      const sel = g.sel, filtre = g.filtre; grille.lundi = null; preparerGrille(); grille.sel = sel; grille.filtre = filtre;
       grille.message = acts.length ? `Enregistré : ${ajouts} mobilisation(s) ajoutée(s), ${changes} modifiée(s), ${retraits} retirée(s).` : "Aucun changement.";
       dessiner();
     } catch (err) { g.message = `Enregistrement refusé par Grist (${err.message || err}).`; redessinerGrille(false); }
@@ -622,14 +675,9 @@
   function lier() {
     racine.querySelectorAll("[data-cellule]").forEach(b => b.addEventListener("click", () => ouvrirCellule(b.dataset.cellule, b.dataset.fonction)));
     racine.querySelectorAll("[data-jour]").forEach(b => b.addEventListener("click", () => ouvrirJour(b.dataset.jour)));
-    const semaine = l => { if (!quitterGrille()) return; lundi = l; grille = null; dessiner(); };
-    $("pl-prec").addEventListener("click", () => semaine(plusJours(lundi, -7)));
-    $("pl-suiv").addEventListener("click", () => semaine(plusJours(lundi, 7)));
-    $("pl-auj").addEventListener("click", () => semaine(lundiDe(aujourdhui())));
-    $("pl-ouvrir-reglages").addEventListener("click", () => { const d = $("pl-reglages"); d.open = true; reglagesOuverts = true; d.scrollIntoView({ block: "start" }); });
+    if (vue !== "grille") lierNav();   // vue Grille : lierGrille() s'en charge à chaque rendu de la grille
     if ($("pl-appliquer-modeles")) $("pl-appliquer-modeles").addEventListener("click", appliquerModeles);
     if ($("pl-copier")) $("pl-copier").addEventListener("click", copierSemaine);
-    racine.querySelectorAll("[data-vue]").forEach(b => b.addEventListener("click", () => changerVue(b.dataset.vue)));
     if (vue === "grille") lierGrille();
     racine.querySelectorAll("[data-suivi]").forEach(tr => {
       const f = () => { suivi = suivi === +tr.dataset.suivi ? null : +tr.dataset.suivi; dessiner(); };

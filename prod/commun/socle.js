@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.8.0 (19/10/2026)";
+  const VERSION = "2.9.0 (19/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -327,7 +327,7 @@ return "".join(resultat)`;
   ];
 
   /* ---------- Équipe et planning ----------
-     Agents : la fiche de chaque agent (nom, adresse, téléphone) ; sa fonction se règle par créneau dans le planning.
+     Agents : la fiche de chaque agent (nom, adresse, téléphone, équipe, fonction habituelle) ; la fonction réelle se règle par créneau dans le planning.
      Creneaux : créneaux nommés de chaque jour (Debut et Fin datés : un créneau de nuit finit le lendemain).
      Affectations : un agent sur un créneau, avec sa fonction et son périmètre pour ce créneau
      (Perimetre : JSON { <colonne du référentiel>: [valeurs] } ; vide = tous les établissements).
@@ -431,6 +431,9 @@ return sorted(champs)`;
     return [
       { id: "Nom", type: "Text" }, { id: "Email", type: "Text" },
       { id: "Telephone", type: "Text" }, { id: "Actif", type: "Bool" },
+      // équipe (texte libre : « Équipe A », « Nuit »…) et fonction habituelle (proposée sur le planning, qui reste maître créneau par créneau)
+      { id: "Equipe", type: "Text" },
+      { id: "Fonction", type: "Choice", widgetOptions: choix(reglagesPlanning(config).fonctions.map(f => f.nom)) },
       { id: "Modifie_le", type: "DateTime:Europe/Paris" },
       { id: INVITE.cle, type: "Text" }, { id: INVITE.page, type: "Int" }, { id: INVITE.expire, type: "DateTime:Europe/Paris" },
       { id: "Champs_acces", type: "ChoiceList", isFormula: true, formula: formuleChampsAcces(g), widgetOptions: choix(CHAMPS.map(c => c.id)) },
@@ -715,7 +718,7 @@ return sorted(champs)`;
     ajouterTableTechnique(TABLE_CELLULE, [{ id: "Note", type: "Text" }], "Table vide qui porte la page « Cellule » : les pages rangées dessous (réponses, référentiel, tableaux de bord…) sont invisibles des établissements et des invités (onglet Accès).");
     ajouterTableTechnique(g.formulaires, COLONNES_FORMULAIRES, "Formulaires en brouillon et publiés.");
     const colsAgents = colonnesAgents(config);
-    ajouterTableTechnique(g.agents, colsAgents.filter(c => !c.isFormula), "Équipe de la cellule : nom, adresse, téléphone (onglet Équipe).");
+    ajouterTableTechnique(g.agents, colsAgents.filter(c => !c.isFormula), "Équipe de la cellule : nom, adresse, téléphone, équipe et fonction habituelle (onglet Équipe).");
     ajouterTableTechnique(g.creneaux, COLONNES_CRENEAUX, "Planning : créneaux de chaque jour (Équipe › Planning).");
     ajouterTableTechnique(g.affectations, colonnesAffectations(g, config), "Planning : agents affectés à chaque créneau, avec leur fonction et leur périmètre.");
     ajouterTableTechnique(g.actions, colonnesActions(g, config), "Suivi des actions de la cellule : kanban des coordinateurs (onglet Actions).");
