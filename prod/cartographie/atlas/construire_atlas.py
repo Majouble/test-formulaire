@@ -133,12 +133,28 @@ texte("[% @atlas_date %]", 174, 5, 30, 12, 10.5, ORANGE, True, Qt.AlignHCenter, 
 loc = QgsLayoutItemMap(lay); loc.setId("reperage"); lay.addLayoutItem(loc); place(loc, 6, 24, 36, 32)
 loc.setLayers([rep]); loc.setKeepLayerSet(True); loc.setCrs(QgsCoordinateReferenceSystem("EPSG:2154"))
 loc.zoomToExtent(QgsRectangle(90000, 6040000, 1250000, 7120000)); loc.setFrameEnabled(True); loc.setBackgroundColor(QColor("#ffffff"))
+# Outre-mer : chaque territoire dans sa projection officielle (UTM locale), nord en haut ; en Lambert-93 ils seraient
+# fortement tournés, loin du méridien central. Carte principale et carte de repérage suivent l'académie de la page.
+CRS_PAGE = ("CASE WHEN @atlas_pagename IN ('Guadeloupe', 'Martinique') THEN 'EPSG:5490' WHEN @atlas_pagename = 'Guyane' THEN 'EPSG:2972' "
+            "WHEN @atlas_pagename = 'La Réunion' THEN 'EPSG:2975' WHEN @atlas_pagename = 'Mayotte' THEN 'EPSG:4471' ELSE 'EPSG:2154' END")
+OUTRE_MER = "@atlas_pagename IN ('Guadeloupe', 'Martinique', 'Guyane', 'La Réunion', 'Mayotte')"
+from qgis.core import QgsLayoutObject
+loc.dataDefinedProperties().setProperty(QgsLayoutObject.MapCrs, QgsProperty.fromExpression(CRS_PAGE))
+# repérage outre-mer : le territoire et ses abords (carré centré, 1,6 fois sa plus grande dimension)
+G_PAGE = f"transform(@atlas_geometry, 'EPSG:2154', {CRS_PAGE})"
+def bord(fixe, axe, signe):
+    centre = f"{axe}(centroid(@g))"; demi = "max(bounds_width(@g), bounds_height(@g)) * 0.8"
+    return QgsProperty.fromExpression(f"CASE WHEN {OUTRE_MER} THEN with_variable('g', {G_PAGE}, {centre} {signe} {demi}) ELSE {fixe} END")
+for prop, fixe, axe, signe in ((QgsLayoutObject.MapXMin, 90000, "x", "-"), (QgsLayoutObject.MapXMax, 1250000, "x", "+"),
+                               (QgsLayoutObject.MapYMin, 6040000, "y", "-"), (QgsLayoutObject.MapYMax, 7120000, "y", "+")):
+    loc.dataDefinedProperties().setProperty(prop, bord(fixe, axe, signe))
 texte("Académie :", 46, 25, 76, 9, 14, "#9a9a9a", True, nom="academie_etiquette")
 texte("[% @atlas_pagename %]", 46, 35, 76, 14, 19, MARINE, True, nom="academie_nom")
 
 carte = QgsLayoutItemMap(lay); carte.setId("carte"); lay.addLayoutItem(carte); place(carte, 6, 56, 198, 134)
 carte.setCrs(QgsCoordinateReferenceSystem("EPSG:2154")); carte.zoomToExtent(QgsRectangle(800000, 6200000, 1080000, 6420000))
 carte.setAtlasDriven(True); carte.setAtlasScalingMode(QgsLayoutItemMap.Auto); carte.setAtlasMargin(0.06); carte.setFrameEnabled(True)
+carte.dataDefinedProperties().setProperty(QgsLayoutObject.MapCrs, QgsProperty.fromExpression(CRS_PAGE))
 
 leg = QgsLayoutItemLegend(lay); leg.setId("legende"); lay.addLayoutItem(leg)
 leg.setTitle("Légende :"); leg.setLinkedMap(carte); leg.setAutoUpdateModel(False); leg.setWrapString("|")
