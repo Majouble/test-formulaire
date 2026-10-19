@@ -32,6 +32,7 @@ const CHAMPS_ATLAS = [
   ["Nb_signalements", "Nombre de signalements", "nombre"], ["Nb_jours", "Jours de mobilisation", "nombre"],
   ["Qualification_principale", "Qualification principale", "texte"], ["Qualifications", "Qualifications (toutes)", "texte"],
   ["Derniere_date", "Date du dernier signalement", "date"], ["Rang", "Rang dans la page", "nombre"],
+  ["Jour", "Jour (point par jour ou par signalement)", "date"],
   ["Marque", "Marque (sous-table)", "texte"], ["Marque_nb", "Lignes de la sous-table", "nombre"], ["Marque_valeurs", "Valeurs de la sous-table", "texte"],
 ];
 const AGREGATS = { liste: "valeurs distinctes", max: "maximum", min: "minimum", somme: "somme", derniere: "valeur la plus récente", nb: "nombre de lignes renseignées" };
@@ -55,6 +56,8 @@ const PROFIL_DEFAUT = {
   // marques : losange accolé au point pour les établissements ayant des lignes dans une sous-table (question tableau),
   // coloré selon une colonne de cette sous-table ; « inclure » retient aussi ces établissements hors du filtre de qualification
   marques: { table: "", colonne: "", titre: "", inclure: true },
+  // un point par établissement (défaut), par établissement et par jour, ou par signalement ; une page par jour en option
+  regroupement: "etablissement", pagesParJour: true,
 };
 const copie = o => JSON.parse(JSON.stringify(o));
 
@@ -176,6 +179,9 @@ function signalementsAtlas(profil) {
   if (ST) ST.data.id.forEach((id, i) => { const v = ST.data[ST.ref][i], k = typeof v === "number" ? v : refIdOf(v); if (k) { if (!lignesDe.has(k)) lignesDe.set(k, []); lignesDe.get(k).push(i); } });
   const sousDe = r => ST ? [...new Set([...(lignesDe.get(r.id) || []), ...(R.Dossier && refIdOf(r[R.Dossier]) && refIdOf(r[R.Dossier]) !== r.id ? (lignesDe.get(refIdOf(r[R.Dossier])) || []) : [])])] : [];
   if (F.qualifs.length) { const garde = r => qualifsDe(r).some(q => F.qualifs.includes(q)) || (ST && M.inclure && sousDe(r).length > 0); tous = tous.filter(garde); recs = recs.filter(garde); }
+  // période (date des faits, à défaut de saisie), bornes comprises
+  if (F.debut || F.fin) { const dansPeriode = r => { const d = jourDe(dateDe(r)); return !!d && (!F.debut || d >= F.debut) && (!F.fin || d <= F.fin); }; tous = tous.filter(dansPeriode); recs = recs.filter(dansPeriode); }
+  const REG = ["jour", "aucun"].includes(P.regroupement) ? P.regroupement : "etablissement";
   const cleDe = r => { const lat = toNumber(r[cols.Latitude]), lon = toNumber(r[cols.Longitude]); if (isNaN(lat) || isNaN(lon)) return null;
     return (C.uai ? texteCellule(r[C.uai]).trim() : "") || `${lat.toFixed(5)},${lon.toFixed(5)}`; };
   // colonnes de la table recopiées dans les deux couches (détail : telles quelles ; établissement : regroupées)
@@ -210,9 +216,11 @@ function signalementsAtlas(profil) {
     if (isNaN(lat) || isNaN(lon)) continue;
     const exclu = estExclu(r);
     if (exclu && P.exclureTout) continue;
-    const uai = C.uai ? texteCellule(r[C.uai]).trim() : "", cle = cleDe(r);
-    if (!parEtab.has(cle)) parEtab.set(cle, { cle, lat, lon, uai, n: 0, qualifs: new Map(), date: null, lignes: [], sous: new Set(), props: etabProps(r, lat, lon, uai) });
-    const e = parEtab.get(cle); e.n++;
+    const uai = C.uai ? texteCellule(r[C.uai]).trim() : "", cle = cleDe(r), dr = dateDe(r);
+    // groupe : l'établissement, l'établissement un jour donné, ou la ligne elle-même
+    const gk = REG === "aucun" ? `${cle}|r${r.id}` : REG === "jour" ? `${cle}|${jourDe(dr)}` : cle;
+    if (!parEtab.has(gk)) parEtab.set(gk, { cle, lat, lon, uai, n: 0, qualifs: new Map(), date: null, jour: REG === "etablissement" ? null : jourDe(dr), lignes: [], sous: new Set(), props: etabProps(r, lat, lon, uai) });
+    const e = parEtab.get(gk); e.n++;
     sousDe(r).forEach(i => e.sous.add(i));
     const qs = qualifsDe(r), d = dateDe(r);
     e.lignes.push({ r, d });
@@ -259,7 +267,7 @@ function signalementsAtlas(profil) {
     features.push({ _cle: e.cle, type: "Feature", geometry: { type: "Point", coordinates: [e.lon, e.lat] }, properties: { ...e.props, ...regroupees,
       Nb_signalements: e.n, Qualification_principale: principale ? principale[0] : "", Qualifications: [...e.qualifs.keys()].join(", "),
       Nb_jours: j ? (j.max !== null ? j.max : j.jours.size || null) : null,
-      Derniere_date: e.date ? jourDe(e.date) : "", ...marqueDe(e) } });
+      Derniere_date: e.date ? jourDe(e.date) : "", Jour: e.jour, ...marqueDe(e) } });
   }
   // filtre du profil sur les établissements : catégorie, nombre de signalements, jours de mobilisation
   const avantFiltre = features.length;
@@ -322,7 +330,8 @@ function calculerEncarts(features, academies, opts) {
     if (OUTRE_MER.has(aca.properties.academie || page) || !pts.some(p => p.aca === page)) continue;
     const { E, k, anneaux } = emprisePage(aca);   // emprise de la page, mètres par mm
     const papier = (x, y) => [CARTE_MM.x + (x - E.x1) / k, CARTE_MM.y + (E.y2 - y) / k];
-    const visibles = pts.filter(p => p.x >= E.x1 && p.x <= E.x2 && p.y >= E.y1 && p.y <= E.y2).map(p => ({ ...p, pp: papier(p.x, p.y) }));
+    const jourPage = aca.properties.jour;   // page d'un jour : seuls les points de ce jour sont dessinés
+    const visibles = pts.filter(p => p.x >= E.x1 && p.x <= E.x2 && p.y >= E.y1 && p.y <= E.y2 && (jourPage == null || (p.f.properties.Jour || "") === jourPage)).map(p => ({ ...p, pp: papier(p.x, p.y) }));
     const dePage = visibles.filter(p => p.aca === page);
     // grappes de proche en proche (distance sur le papier), redécoupées si elles sont trop étendues pour un encart
     const grappes = (liste, seuil, niveau) => {
@@ -405,9 +414,9 @@ function placerEtiquettes(features, academies, zones, taille, protege) {
   const chevauche = (a, b) => a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2;
   const pts = features.map(f => { const [x, y] = versL93(f.geometry.coordinates[0], f.geometry.coordinates[1]); return { f, x, y }; });
   // une carte : cadre papier, emprise, étiquettes à poser, obstacles fixes ; écrit les champs (préfixe L ou E)
-  const poser = (cadre, E, k, aPoser, obstacles, prefixe) => {
+  const poser = (cadre, E, k, aPoser, obstacles, prefixe, base) => {
     const papier = (x, y) => [cadre.x + (x - E.x1) / k, cadre.y + (E.y2 - y) / k];
-    const dedans = pts.filter(p => p.x >= E.x1 && p.x <= E.x2 && p.y >= E.y1 && p.y <= E.y2);
+    const dedans = base.filter(p => p.x >= E.x1 && p.x <= E.x2 && p.y >= E.y1 && p.y <= E.y2);
     const occupes = [...obstacles, ...dedans.flatMap(p => { const [u, v] = papier(p.x, p.y);
       const b = [{ x1: u - 1.7, y1: v - 1.7, x2: u + 1.7, y2: v + 1.7, point: p }];
       if (p.f.properties.Marque) b.push({ x1: u + 0.4, y1: v - 3.4, x2: u + 3.4, y2: v - 0.4, point: p });   // losange de la marque
@@ -446,15 +455,16 @@ function placerEtiquettes(features, academies, zones, taille, protege) {
     const page = aca.properties.cle || aca.properties.nom; if (OUTRE_MER.has(aca.properties.academie || page)) continue;
     const dePage = pts.filter(p => (p.f.properties.Page || p.f.properties.Academie) === page); if (!dePage.length) continue;
     const { E, k } = emprisePage(aca), zs = zonesDe.get(page) || [];
+    const jourPage = aca.properties.jour, base = pts.filter(p => jourPage == null || (p.f.properties.Jour || "") === jourPage);
     // carte principale : sans les établissements montrés dans un encart ; les encarts et l'échelle sont des obstacles
     const obst = [{ x1: ECHELLE_MM.x, y1: ECHELLE_MM.y, x2: ECHELLE_MM.x + ECHELLE_MM.l, y2: ECHELLE_MM.y + ECHELLE_MM.h },
       ...zs.map(z => ({ x1: z.px - 1, y1: z.py - 1, x2: z.px + z.pw + 1, y2: z.py + z.ph + 1 }))];
-    poser(CARTE_MM, E, k, dePage.filter(p => !p.f.properties.Zoom), obst, "L");
+    poser(CARTE_MM, E, k, dePage.filter(p => !p.f.properties.Zoom), obst, "L", base);
     // encarts : les établissements de l'académie qui tombent dans l'emprise de l'encart
     zs.forEach(z => {
       const Ez = { x1: z.xmin, y1: z.ymin, x2: z.xmax, y2: z.ymax };
       const dans = dePage.filter(p => p.x >= Ez.x1 && p.x <= Ez.x2 && p.y >= Ez.y1 && p.y <= Ez.y2 && p.f.properties.Ex == null);
-      poser({ x: z.px, y: z.py, l: z.pw, h: z.ph }, Ez, (Ez.x2 - Ez.x1) / z.pw, dans, [{ x1: z.px, y1: z.py, x2: z.px + 5.5, y2: z.py + 5.5 }], "E");
+      poser({ x: z.px, y: z.py, l: z.pw, h: z.ph }, Ez, (Ez.x2 - Ez.x1) / z.pw, dans, [{ x1: z.px, y1: z.py, x2: z.px + 5.5, y2: z.py + 5.5 }], "E", base);
     });
   }
 }
@@ -476,14 +486,21 @@ function preparerPages(features, acasJson, depsJson, P, lignes) {
     titre: a.properties.nom, surtitre: "Académie :" } });
   const pageDep = (d, aca) => ({ type: "Feature", geometry: d.geometry, properties: { cle: `${aca} – ${d.properties.code} ${d.properties.nom}`, type: "departement", academie: aca, dep: d.properties.code,
     titre: d.properties.nom, surtitre: `${aca} — département ${d.properties.code} :` } });
+  // une page par jour (points par jour ou par signalement) : chaque page de base est déclinée sur les jours où elle a des points
+  const parJour = P.regroupement && P.regroupement !== "etablissement" && P.pagesParJour !== false;
+  const libelleJour = j => j ? new Date(j + "T12:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "date inconnue";
+  const dansBase = (pg, p) => pg.properties.academie === p.Academie && (!pg.properties.dep || pg.properties.dep === p.Dep);
+  const decliner = bases => !parJour ? bases : bases.flatMap(pg => [...new Set(features.filter(f => dansBase(pg, f.properties)).map(f => f.properties.Jour || ""))].sort()
+    .map(j => ({ ...pg, properties: { ...pg.properties, cle: `${pg.properties.cle} · ${j || "sans date"}`, jour: j, jour_libelle: libelleJour(j) } })))
+    .sort((a, b) => a.properties.jour.localeCompare(b.properties.jour));   // tri stable : par jour, puis dans l'ordre des académies
   const academiesUtiles = acasJson.features.filter(a => features.some(f => f.properties.Academie === a.properties.nom));
   const depsDe = aca => depsJson.features.filter(d => d.properties.academie === aca && features.some(f => f.properties.Academie === aca && f.properties.Dep === d.properties.code));
   const proteges = lignes || 22;
   // met en page un ensemble de pages : rattachement, rang, encarts, étiquettes ; renvoie la part d'étiquettes sans place par page
   const evaluer = pages => {
     features.forEach(f => {
-      const p = f.properties, pg = pages.find(x => x.properties.academie === p.Academie && (!x.properties.dep || x.properties.dep === p.Dep))
-        || pages.find(x => x.properties.academie === p.Academie);
+      const p = f.properties, jourOk = x => x.properties.jour == null || x.properties.jour === (p.Jour || "");
+      const pg = pages.find(x => dansBase(x, p) && jourOk(x)) || pages.find(x => x.properties.academie === p.Academie && jourOk(x));
       p.Page = pg ? pg.properties.cle : p.Academie;
       ["Zoom", "Lx", "Ly", "La", "Lv", "Lh", "Ex", "Ey", "Ea", "Ev", "Eh"].forEach(c => { p[c] = null; });
     });
@@ -498,15 +515,16 @@ function preparerPages(features, acasJson, depsJson, P, lignes) {
     for (const [k, l] of parPage) sansPlace.set(k, l.filter(p => p.Lh === 1 || p.Eh === 1).length / l.length);
     return { enc, sansPlace };
   };
-  let pages = academiesUtiles.map(pageAca), decoupees = [];
+  let pages = decliner(academiesUtiles.map(pageAca)), decoupees = [];
   const decoupable = a => !OUTRE_MER.has(a.properties.nom) && depsDe(a.properties.nom).length > 1;
   if (P.decoupage === "departement") decoupees = academiesUtiles.filter(decoupable).map(a => a.properties.nom);
   else if (P.decoupage !== "academie") {
     const essai = evaluer(pages), seuil = Math.max(0, Math.min(1, (+P.seuilIllisible || 20) / 100));
-    decoupees = academiesUtiles.filter(a => decoupable(a) && (essai.sansPlace.get(a.properties.nom) || 0) > seuil).map(a => a.properties.nom);
+    // académie illisible : au moins une de ses pages (un jour donné, le cas échéant) au-delà du seuil
+    decoupees = academiesUtiles.filter(a => decoupable(a) && pages.some(pg => pg.properties.academie === a.properties.nom && (essai.sansPlace.get(pg.properties.cle) || 0) > seuil)).map(a => a.properties.nom);
     if (!decoupees.length) { pages.forEach(pg => { pg.properties.Nb_etablissements = features.filter(f => f.properties.Page === pg.properties.cle).length; }); return { pages, enc: essai.enc, decoupees }; }
   }
-  pages = academiesUtiles.flatMap(a => decoupees.includes(a.properties.nom) ? depsDe(a.properties.nom).map(d => pageDep(d, a.properties.nom)) : [pageAca(a)]);
+  pages = decliner(academiesUtiles.flatMap(a => decoupees.includes(a.properties.nom) ? depsDe(a.properties.nom).map(d => pageDep(d, a.properties.nom)) : [pageAca(a)]));
   const res = evaluer(pages);
   pages.forEach(pg => { pg.properties.Nb_etablissements = features.filter(f => f.properties.Page === pg.properties.cle).length; });
   return { pages, enc: res.enc, decoupees };
@@ -669,6 +687,7 @@ async function construireAtlas(name) {
       return l.length ? ` (${l.join(" ; ")})` : ""; })()}.`,
     `- Marques : ${infos.marques ? `table « ${infos.marques.table} »${infos.marques.colonne ? `, couleur selon « ${infos.marques.colonne.libelle} »` : ""} — ${fc.features.filter(f => f.properties.Marque).length} établissement(s) marqué(s) (losange en haut à droite du point ; champs Marque, Marque_nb, Marque_valeurs)` : "aucune"}.`,
     `- Étiquettes : ${+P.etiquettes || 5} pt (variable atlas_etiquette)${P.etiquettesPlacees !== false ? " ; placées par le widget (champs Lx/Ly sur la carte, Ex/Ey dans les encarts, traits de rappel), retirées faute de place sauf pour les établissements du tableau (Lh/Eh = 1)" : " ; placement automatique de QGIS"}.`,
+    `- Points : ${{ etablissement: "un par établissement", jour: "un par établissement et par jour", aucun: "un par signalement" }[P.regroupement || "etablissement"]}${P.regroupement && P.regroupement !== "etablissement" && P.pagesParJour !== false ? ", une page par jour (date en haut à droite)" : ""}${(P.filtre || {}).debut || (P.filtre || {}).fin ? ` ; période ${(P.filtre || {}).debut || "…"} → ${(P.filtre || {}).fin || "…"}` : ""}.`,
     `- Pages : ${pages.length} (${pages.filter(p => p.properties.type === "departement").length} départementales)${decoupees.length ? ` ; académies découpées en départements : ${decoupees.join(", ")}` : ""} ; découpage ${{ academie: "par académie", departement: "par département", auto: `automatique (plus de ${+P.seuilIllisible || 20} % d'étiquettes sans place)` }[P.decoupage || "auto"]}.`,
     ...(sansPage.length ? [`- Académie non reconnue (établissements sans page) : ${sansPage.map(x => x || "(vide)").join(", ")}.`] : []),
     ...notes.map(n => "- " + n), "",
@@ -864,6 +883,9 @@ const AtlasUI = (() => {
     const vq = valeursQualif();
     el("atlasFiltreQualif").innerHTML = vq.length ? `<span>Qualifications :</span>` + vq.map(q => `<label><input type="checkbox" data-qualif="${htmlTexte(q)}"${F.qualifs.includes(q) ? " checked" : ""}> ${htmlTexte(q)}</label>`).join("") + `<span class="hint">aucune cochée = toutes</span>` : "";
     el("atlasMinSig").value = F.minSignalements; el("atlasMinJours").value = F.minJours;
+    el("atlasDebut").value = F.debut || ""; el("atlasFin").value = F.fin || "";
+    el("atlasRegroupement").value = P.regroupement || "etablissement"; el("atlasParJour").checked = P.pagesParJour !== false;
+    el("atlasParJourBloc").style.display = (P.regroupement || "etablissement") === "etablissement" ? "none" : "";
     compterPlusTard();
     const ordre = choixColonne((socle && socle.qualif) || "Qualification");
     el("atlasOrdreAide").textContent = ordre.length ? `Ordre actuel : ${ordre.join(" › ")}.` : "La colonne de qualification n'a pas de liste de choix.";
@@ -891,7 +913,9 @@ const AtlasUI = (() => {
     p.etiquettes = Math.max(3, Math.min(9, parseFloat(el("atlasEtiquettes").value) || 5)); p.etiquettesPlacees = el("atlasPlacees").checked;
     p.filtre = { categories: [...el("atlasFiltreCat").querySelectorAll("input:checked")].map(b => b.dataset.cat),
       qualifs: [...el("atlasFiltreQualif").querySelectorAll("input:checked")].map(b => b.dataset.qualif),
-      minSignalements: Math.max(1, parseInt(el("atlasMinSig").value, 10) || 1), minJours: Math.max(0, parseInt(el("atlasMinJours").value, 10) || 0) };
+      minSignalements: Math.max(1, parseInt(el("atlasMinSig").value, 10) || 1), minJours: Math.max(0, parseInt(el("atlasMinJours").value, 10) || 0),
+      debut: el("atlasDebut").value || "", fin: el("atlasFin").value || "" };
+    p.regroupement = el("atlasRegroupement").value; p.pagesParJour = el("atlasParJour").checked;
     p.encarts = el("atlasEncarts").checked; p.encartsMax = Math.max(1, Math.min(3, parseInt(el("atlasEncartsMax").value, 10) || 3));
     p.encartsMin = Math.max(2, parseInt(el("atlasEncartsMin").value, 10) || 4); p.encartsEcart = Math.max(1, Math.min(30, parseFloat(el("atlasEncartsEcart").value) || 6));
     ecrireLocal();
@@ -923,7 +947,7 @@ const AtlasUI = (() => {
       if (e.target.closest("#atlasProfilBloc") || e.target.id === "atlasDate" || e.target.id === "atlasModeleFichier") return;
       changer();
       // un champ changé : en-tête proposé, regroupement par défaut ; tableau réglé ici ou non
-      if (e.target.dataset.k === "champ" || e.target.id === "atlasTableauWidget" || e.target.id === "atlasEncarts" || e.target.id === "atlasDecoupage" || e.target.id === "atlasMarqueTable") {
+      if (e.target.dataset.k === "champ" || e.target.id === "atlasTableauWidget" || e.target.id === "atlasEncarts" || e.target.id === "atlasDecoupage" || e.target.id === "atlasMarqueTable" || e.target.id === "atlasRegroupement") {
         const d = e.target.closest(".atlas-col");
         if (d) { const p = etat.profils[etat.actif], c = p.colonnes[+d.dataset.i], o = e.target.selectedOptions[0];
           c.titre = (o ? o.textContent : c.champ).replace(/\s*\(.*\)$/, ""); delete c.agregat; }

@@ -150,6 +150,11 @@
       <p class="hint" style="margin:0 0 4px">En plus des filtres du widget. Les zones de zoom et le classement sont calculés sur les établissements retenus.</p>
       <div id="atlasFiltreCat" class="row" style="margin:0;gap:4px 12px"><span>Catégories :</span></div>
       <div id="atlasFiltreQualif" class="row" style="margin:4px 0 0;gap:4px 12px"></div>
+      <div class="row" style="margin:4px 0 0;align-items:center">
+        <label>Un point par <select id="atlasRegroupement"><option value="etablissement">établissement</option><option value="jour">établissement et par jour</option><option value="aucun">signalement (sans regroupement)</option></select></label>
+        <label class="check" id="atlasParJourBloc"><input type="checkbox" id="atlasParJour"> une page par jour</label>
+        <label>du <input type="date" id="atlasDebut"></label><label>au <input type="date" id="atlasFin"></label>
+      </div>
       <div class="row" style="margin:4px 0 0">
         <label>au moins <input type="number" id="atlasMinSig" min="1" step="1" style="width:4em"> signalement(s)</label>
         <label>au moins <input type="number" id="atlasMinJours" min="0" step="1" style="width:4em"> jour(s) de mobilisation</label>

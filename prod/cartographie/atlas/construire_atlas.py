@@ -29,6 +29,8 @@ COULEURS = [("École", "#f2c12e"), ("Collège", "#d1336a"), ("Lycée", "#5f59c6"
 # Chaque établissement porte le champ Page (cle de sa page).
 ACA_PAGE = "coalesce(attribute(@atlas_feature, 'academie'), @atlas_pagename)"
 DANS_PAGE = '@atlas_pagename IS NULL OR "Page" IS NULL OR "Page" = @atlas_pagename'   # hors atlas (canevas) et légende : tous les points
+# page d'un jour (atlas sur plusieurs jours) : les points des autres jours ne sont pas dessinés
+MEME_JOUR = "(attribute(@atlas_feature, 'jour') IS NULL OR coalesce(attribute(@feature, 'Jour'), '') = attribute(@atlas_feature, 'jour'))"
 
 def couche(f, nom):
     l = QgsVectorLayer(os.path.join(D, f), nom, "ogr"); assert l.isValid(), f; return l
@@ -84,7 +86,7 @@ for nom, c in COULEURS:
     s = QgsMarkerSymbol.createSimple({"name": "circle", "color": c, "outline_color": "255,255,255,255", "outline_width": "0.4", "size": "3.2"})
     rgb = ",".join(str(v) for v in QColor(c).getRgb()[:3])
     # établissements des académies voisines : affichés, plus petits et atténués (comme sur le modèle)
-    s.symbolLayer(0).setDataDefinedProperty(QgsSymbolLayer.PropertySize, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} THEN 3.2 ELSE 2.4 END"))
+    s.symbolLayer(0).setDataDefinedProperty(QgsSymbolLayer.PropertySize, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} THEN 3.2 WHEN {MEME_JOUR} THEN 2.4 ELSE 0 END"))
     s.symbolLayer(0).setDataDefinedProperty(QgsSymbolLayer.PropertyFillColor, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} THEN '{rgb},255' ELSE '{rgb},120' END"))
     s.symbolLayer(0).setDataDefinedProperty(QgsSymbolLayer.PropertyStrokeColor, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} THEN '255,255,255,255' ELSE '255,255,255,120' END"))
     cats.append(QgsRendererCategory(nom, s, {"École": "Écoles", "Collège": "Collèges", "Lycée": "Lycées", "Autre": "Autres"}[nom]))
@@ -95,7 +97,7 @@ from qgis.core import QgsGeometryGeneratorSymbolLayer
 # losange décalé en haut à droite du point par un générateur de géométrie (1,9 mm sur le papier, quelle que soit l'échelle) :
 # dans la légende, le losange reste centré
 losange = QgsMarkerSymbol.createSimple({"name": "diamond", "color": "200,30,30,255", "outline_color": "255,255,255,255", "outline_width": "0.3", "size": "2.8"})
-losange.symbolLayer(0).setDataDefinedProperty(QgsSymbolLayer.PropertySize, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} THEN 2.8 ELSE 2.0 END"))
+losange.symbolLayer(0).setDataDefinedProperty(QgsSymbolLayer.PropertySize, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} THEN 2.8 WHEN {MEME_JOUR} THEN 2.0 ELSE 0 END"))
 losange.symbolLayer(0).setDataDefinedProperty(QgsSymbolLayer.PropertyStrokeColor, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} THEN '255,255,255,255' ELSE '255,255,255,120' END"))
 gen = QgsGeometryGeneratorSymbolLayer.create({"geometryModifier": "translate($geometry, 1.9 * @map_scale / 1000, 1.9 * @map_scale / 1000)", "SymbolType": "Marker"})
 gen.setSubSymbol(losange)
@@ -132,7 +134,7 @@ def etiquettes(taille, couleur, gras, priorite, chevauchement, montrer=None, pos
 regles = QgsRuleBasedLabeling.Rule(None)
 r_page = QgsRuleBasedLabeling.Rule(etiquettes(6.5, "#1d1d4f", True, 9, Qgis.LabelOverlapHandling.AllowOverlapIfRequired,
     "NOT (@map_id = 'carte' AND coalesce(attribute(@feature, 'Zoom'), 0) > 0) AND coalesce(" + POS("Lh", "Eh") + ", 0) = 0", positions=True), 0, 0, DANS_PAGE, "Académie de la page")
-r_voisins = QgsRuleBasedLabeling.Rule(etiquettes(5.5, "#696982", False, 3, Qgis.LabelOverlapHandling.PreventOverlap), 0, 0, "ELSE", "Établissements voisins (autres pages)")
+r_voisins = QgsRuleBasedLabeling.Rule(etiquettes(5.5, "#696982", False, 3, Qgis.LabelOverlapHandling.PreventOverlap, MEME_JOUR), 0, 0, "ELSE", "Établissements voisins (autres pages)")
 r_voisins.setIsElse(True); regles.appendChild(r_page); regles.appendChild(r_voisins)
 sig.setLabeling(QgsRuleBasedLabeling(regles)); sig.setLabelsEnabled(True)
 
@@ -193,7 +195,7 @@ def texte(t, x, y, w, h, taille, couleur="#161616", gras=False, ha=Qt.AlignLeft,
 texte("[% @atlas_service %]", 6, 5, 48, 17, 7.5, nom="service")
 # titre sur deux lignes au besoin
 texte("[% @atlas_titre %]", 56, 5, 116, 12, 10, "#ffffff", True, Qt.AlignHCenter, fond=MARINE, nom="titre")
-texte("[% @atlas_date %]", 174, 5, 30, 12, 10.5, ORANGE, True, Qt.AlignHCenter, cadre=ORANGE, nom="date")
+texte("[% coalesce(attribute(@atlas_feature, 'jour_libelle'), @atlas_date) %]", 174, 5, 30, 12, 10.5, ORANGE, True, Qt.AlignHCenter, cadre=ORANGE, nom="date")   # page d'un jour : sa date
 
 loc = QgsLayoutItemMap(lay); loc.setId("reperage"); lay.addLayoutItem(loc); place(loc, 6, 24, 36, 32)
 loc.setLayers([rep]); loc.setKeepLayerSet(True); loc.setCrs(QgsCoordinateReferenceSystem("EPSG:2154"))
