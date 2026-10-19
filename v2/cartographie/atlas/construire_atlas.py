@@ -225,7 +225,7 @@ ech.setBackgroundEnabled(True); ech.setBackgroundColor(QColor(255, 255, 255, 200
 # sur une partie peu chargée de la carte) ; hors page et exclus de l'export quand la page en a moins
 from qgis.core import QgsLayoutObject, QgsLayoutItemMap as _M
 for k in (1, 2, 3):
-    zone = f"get_feature('zones', 'cle', @atlas_pagename || '#{k}')"
+    zone = f"get_feature('{zones.id()}', 'cle', @atlas_pagename || '#{k}')"   # couche désignée par son identifiant : renommable
     absent = f"{zone} IS NULL"
     val = lambda champ, defaut: QgsProperty.fromExpression(f"coalesce(attribute({zone}, '{champ}'), {defaut})")
     enc = QgsLayoutItemMap(lay); enc.setId(f"encart{k}"); lay.addLayoutItem(enc); place(enc, 230, 60 + 50 * k, 60, 44)
@@ -242,7 +242,8 @@ for k in (1, 2, 3):
     dn.setProperty(QgsLayoutObject.ExcludeFromExports, QgsProperty.fromExpression(absent)); num.setDataDefinedProperties(dn)
 texte("Sources : signalements (Grist) ; IGN Admin Express ; fond IGN Géoplateforme", 6, 190.5, 104, 4, 5.5, "#666666", nom="sources")
 # compte des établissements de l'académie, et rappel quand le tableau n'en montre qu'une partie
-NB = "array_length(array_filter(aggregate('signalements', 'array_agg', \"Academie\"), @element = @atlas_pagename))"
+# nombre d'établissements de la page : champ Nb_etablissements des académies, écrit par le widget
+NB = "coalesce(attribute(@atlas_feature, 'Nb_etablissements'), 0)"
 texte("[% with_variable('n', " + NB + ", CASE WHEN to_int(@atlas_lignes) > 0 AND @n > to_int(@atlas_lignes) "
       "THEN @n || ' établissements signalés — le tableau présente les ' || @atlas_lignes || ' plus signalés' "
       "ELSE @n || CASE WHEN @n > 1 THEN ' établissements signalés' ELSE ' établissement signalé' END END) %]",
@@ -272,7 +273,9 @@ cad = QgsLayoutFrame(lay, tab); place(cad, 6, 196, 198, 96); tab.addFrame(cad); 
 
 atlas = lay.atlas(); atlas.setCoverageLayer(aca); atlas.setEnabled(True); atlas.setHideCoverage(False)
 atlas.setPageNameExpression('"nom"'); atlas.setSortFeatures(True); atlas.setSortExpression('"nom"')
-atlas.setFilterFeatures(True); atlas.setFilterExpression("aggregate('signalements', 'count', \"UAI\", \"Academie\" = attribute(@parent, 'nom')) > 0")
+# pages : académies ayant au moins un établissement retenu (champ écrit par le widget ; aucune référence au nom
+# d'une couche, qu'on peut donc renommer librement dans QGIS)
+atlas.setFilterFeatures(True); atlas.setFilterExpression("coalesce(\"Nb_etablissements\", 0) > 0")
 atlas.setFilenameExpression("'atlas_' || \"nom\"")
 p.layoutManager().addLayout(lay)
 assert p.write(), "écriture du projet impossible"

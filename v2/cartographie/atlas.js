@@ -470,7 +470,9 @@ function verifierModele(qgs, champsConnus) {
   if (inconnus.length) alertes.push(`Champs utilisés par le modèle et absents de l'export : ${inconnus.slice(0, 12).join(", ")}${inconnus.length > 12 ? "…" : ""}.`);
   return { ok: true, alertes };
 }
-const CHAMPS_CONTOURS = ["nom", "departements", "code", "dsden", "academie"];
+const CHAMPS_CONTOURS = ["nom", "departements", "code", "dsden", "academie", "Nb_etablissements",
+  "cle", "page", "num", "nb", "px", "py", "pw", "ph", "xmin", "xmax", "ymin", "ymax", "zoom",   // zones d'encart
+  "Zoom", "Lx", "Ly", "La", "Lv", "Lh", "Ex", "Ey", "Ea", "Ev", "Eh"];                          // positions d'étiquettes
 
 async function lireFichierAtlas(f) {
   const r = await fetch(new URL(`atlas/${f}`, location.href).href);
@@ -484,12 +486,17 @@ async function construireAtlas(name) {
   const modele = await AtlasUI.modeleCourant();          // { texte, origine } ou null (modèle intégré)
   const [qgsBase, acas, deps] = await Promise.all([modele ? Promise.resolve(modele.texte) : lireFichierAtlas("atlas.qgs"), lireFichierAtlas("academies.geojson"), lireFichierAtlas("departements.geojson")]);
   const lignes = Math.max(0, Math.min(5000, parseInt(P.lignes, 10) || 0));
+  // académies : nombre d'établissements retenus (pages de l'atlas et compte sous la carte)
+  const acasJson = JSON.parse(acas), parAcademie = new Map();
+  fc.features.forEach(f => parAcademie.set(f.properties.Academie, (parAcademie.get(f.properties.Academie) || 0) + 1));
+  acasJson.features.forEach(a => { a.properties.Nb_etablissements = parAcademie.get(a.properties.nom) || 0; });
+  const sansPage = [...parAcademie.keys()].filter(k => !acasJson.features.some(a => a.properties.nom === k));
   // encarts : zones denses (un fichier zones.geojson toujours présent ; une ligne vide garde au fichier son type)
-  const enc = P.encarts !== false ? calculerEncarts(fc.features, JSON.parse(acas), { max: P.encartsMax, min: P.encartsMin, ecart: P.encartsEcart }) : { zones: [], zoomDe: new Map() };
+  const enc = P.encarts !== false ? calculerEncarts(fc.features, acasJson, { max: P.encartsMax, min: P.encartsMin, ecart: P.encartsEcart }) : { zones: [], zoomDe: new Map() };
   fc.features.forEach(f => { f.properties.Zoom = enc.zoomDe.get(f) || null; ["Lx", "Ly", "La", "Lv", "Lh", "Ex", "Ey", "Ea", "Ev", "Eh"].forEach(c => { f.properties[c] = null; }); });
   // établissements dont l'étiquette reste toujours affichée : ceux du tableau (ou les 22 premiers si le tableau les prend tous)
   const proteges = lignes || 22;
-  if (P.etiquettesPlacees !== false) placerEtiquettes(fc.features, JSON.parse(acas), enc.zones, +P.etiquettes || 5, pr => (pr.Rang || 1e9) <= proteges);
+  if (P.etiquettesPlacees !== false) placerEtiquettes(fc.features, acasJson, enc.zones, +P.etiquettes || 5, pr => (pr.Rang || 1e9) <= proteges);
   const vide = { type: "Feature", geometry: { type: "Polygon", coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] }, properties: { cle: "", page: "", num: 0, nb: 0, px: 0, py: 0, pw: 0, ph: 0, xmin: 0, xmax: 1, ymin: 0, ymax: 1, zoom: 1 } };
   const zonesFc = { type: "FeatureCollection", name: "zones", crs: { type: "name", properties: { name: "urn:ogc:def:crs:EPSG::2154" } }, features: enc.zones.length ? enc.zones : [vide] };
   let projet = poserVariables(qgsBase.replace("@@TITRE@@", "").replace("@@DATE@@", "").replace("@@SERVICE@@", "").replace("@@LIGNES@@", "22"),
@@ -503,6 +510,11 @@ async function construireAtlas(name) {
       projet = r.qgs; if (!r.trouve) notes.push("Aucun tableau du modèle n'utilise la couche « signalements » : colonnes du profil non appliquées.");
     }
   }
+  // modèle antérieur à 2.3.1 : pages choisies par aggregate('signalements', …), qui casse si la couche est renommée
+  projet = projet.split("array_length(array_filter(aggregate('signalements', 'array_agg', &quot;Academie&quot;), @element = @atlas_pagename))")
+    .join("coalesce(attribute(@atlas_feature, 'Nb_etablissements'), 0)");
+  // (les valeurs d'attributs peuvent contenir « > » : on cible directement l'attribut featureFilter de l'élément Atlas)
+  projet = projet.replace(/(<Atlas\s[^]*?featureFilter=")([^"]*)(")/, (m, a, v, b) => /aggregate\(/.test(v) ? `${a}coalesce(&quot;Nb_etablissements&quot;, 0) &gt; 0${b}` : m);
   projet = cocherCouches(projet, t => /providerKey="wms"/.test(t), P.fondsIgn !== false);
   projet = cocherCouches(projet, t => /name="voile hors académie"/.test(t), P.voile !== false);
   const nb = new Set(fc.features.map(f => f.properties.Academie)).size;
@@ -523,6 +535,7 @@ async function construireAtlas(name) {
       const l = [F.categories.length ? `catégories ${F.categories.join(", ")}` : "", F.qualifs.length ? `qualifications ${F.qualifs.join(", ")}` : "", F.minSignalements > 1 ? `au moins ${F.minSignalements} signalements` : "", F.minJours > 0 ? `au moins ${F.minJours} jours de mobilisation` : ""].filter(Boolean);
       return l.length ? ` (${l.join(" ; ")})` : ""; })()}.`,
     `- Étiquettes : ${+P.etiquettes || 5} pt (variable atlas_etiquette)${P.etiquettesPlacees !== false ? " ; placées par le widget (champs Lx/Ly sur la carte, Ex/Ey dans les encarts, traits de rappel), retirées faute de place sauf pour les établissements du tableau (Lh/Eh = 1)" : " ; placement automatique de QGIS"}.`,
+    ...(sansPage.length ? [`- Académie non reconnue (établissements sans page) : ${sansPage.map(x => x || "(vide)").join(", ")}.`] : []),
     ...notes.map(n => "- " + n), "",
     "Variables du projet (Projet › Propriétés › Variables) : atlas_titre, atlas_date, atlas_service, atlas_lignes (0 = tous).",
     "Si les fonds IGN restent blancs ou si la carte met longtemps à s'afficher, QGIS n'atteint pas internet :",
@@ -542,7 +555,7 @@ async function construireAtlas(name) {
   const zip = new JSZip(), dossier = zip.folder(name);
   dossier.file("atlas.qgs", projet); dossier.file("signalements.geojson", JSON.stringify(fcL93)); dossier.file("signalements_detail.geojson", JSON.stringify(detailL93));
   dossier.file("zones.geojson", JSON.stringify(zonesFc));
-  dossier.file("academies.geojson", acas); dossier.file("departements.geojson", deps); dossier.file("LISEZMOI.txt", lisezmoi);
+  dossier.file("academies.geojson", JSON.stringify(acasJson)); dossier.file("departements.geojson", deps); dossier.file("LISEZMOI.txt", lisezmoi);
   return { name: name + ".zip", blob: await zip.generateAsync({ type: "blob", compression: "DEFLATE" }) };
 }
 const agregatDeProfil = (P, c) => { const x = (P.colonnes || []).find(k => k.champ === "col:" + c.col); return (x && x.agregat) || agregatParDefaut(c.type); };
