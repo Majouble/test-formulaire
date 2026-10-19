@@ -11,7 +11,7 @@ from qgis.core import (QgsApplication, QgsProject, QgsCoordinateReferenceSystem,
     QgsLayoutExporter, QgsLegendStyle, Qgis, QgsSingleSymbolRenderer, QgsLayoutMeasurement)
 from qgis.core import QgsInvertedPolygonRenderer, QgsPointDisplacementRenderer
 from qgis.PyQt.QtGui import QColor, QFont, QPainter
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import Qt, QSizeF
 
 QgsApplication.setPrefixPath("/usr", True)
 app = QgsApplication([], False); app.initQgis()
@@ -30,6 +30,7 @@ def couche(f, nom):
     l = QgsVectorLayer(os.path.join(D, f), nom, "ogr"); assert l.isValid(), f; return l
 sig = couche("signalements.geojson", "signalements")
 det = couche("signalements_detail.geojson", "signalements_detail")   # un point par signalement, hors mise en page
+zones = couche("zones.geojson", "zones")   # zones denses calculées par le widget : cadres sur la carte et encarts de zoom
 aca = couche("academies.geojson", "academies")
 dep = couche("departements.geojson", "Départements")
 rep = couche("academies.geojson", "academies (repérage)")
@@ -79,25 +80,52 @@ for nom, c in COULEURS:
     s.symbolLayer(0).setDataDefinedProperty(QgsSymbolLayer.PropertyStrokeColor, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} THEN '255,255,255,255' ELSE '255,255,255,120' END"))
     cats.append(QgsRendererCategory(nom, s, {"École": "Écoles", "Collège": "Collèges", "Lycée": "Lycées", "Autre": "Autres"}[nom]))
 sig.setRenderer(QgsCategorizedSymbolRenderer("Categorie", cats))
-lab = QgsPalLayerSettings()
-lab.fieldName = '"Etiquette"'; lab.isExpression = True
-tf = QgsTextFormat(); f = QFont("DejaVu Sans"); f.setBold(True); tf.setFont(f); tf.setSize(6.5); tf.setColor(QColor("#1d1d4f"))
-b = QgsTextBufferSettings(); b.setEnabled(True); b.setSize(0.8); b.setColor(QColor("white")); tf.setBuffer(b)
-lab.setFormat(tf); lab.placement = Qgis.LabelPlacement.OrderedPositionsAroundPoint; lab.dist = 1.0
+# --- étiquettes : deux règles. Établissements de l'académie : jamais supprimées (chevauchement accepté en dernier recours),
+# avec un trait de rappel quand l'étiquette est déplacée ; masquées sur la carte principale dans une zone d'encart (l'encart
+# les montre). Académies voisines : plus petites, grises, retirées si elles gênent.
+from qgis.core import QgsRuleBasedLabeling, QgsSimpleLineCallout
 P = getattr(QgsPalLayerSettings, "Property", QgsPalLayerSettings)   # énumération déplacée selon les versions de QGIS
-ddl = lab.dataDefinedProperties()
-ddl.setProperty(P.Color, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} THEN '29,29,79,255' ELSE '105,105,130,255' END"))
-ddl.setProperty(P.Bold, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} THEN 1 ELSE 0 END"))
-ddl.setProperty(P.Size, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} THEN 6.5 ELSE 5.5 END"))
-ddl.setProperty(P.Priority, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} THEN 9 ELSE 3 END"))
-lab.setDataDefinedProperties(ddl)
-sig.setLabeling(QgsVectorLayerSimpleLabeling(lab)); sig.setLabelsEnabled(True)
+def etiquettes(taille, couleur, gras, priorite, chevauchement, montrer=None):
+    lab = QgsPalLayerSettings(); lab.fieldName = '"Etiquette"'; lab.isExpression = True
+    tf = QgsTextFormat(); f = QFont("DejaVu Sans"); f.setBold(gras); tf.setFont(f); tf.setSize(taille); tf.setColor(QColor(couleur))
+    b = QgsTextBufferSettings(); b.setEnabled(True); b.setSize(0.8); b.setColor(QColor("white")); tf.setBuffer(b)
+    lab.setFormat(tf); lab.placement = Qgis.LabelPlacement.OrderedPositionsAroundPoint; lab.dist = 1.0; lab.priority = priorite
+    ps = lab.placementSettings(); ps.setOverlapHandling(chevauchement); ps.setAllowDegradedPlacement(True); lab.setPlacementSettings(ps)
+    co = QgsSimpleLineCallout(); co.setEnabled(True); co.setMinimumLength(1.5); co.setDrawCalloutToAllParts(False)
+    co.lineSymbol().setColor(QColor(couleur)); co.lineSymbol().setWidth(0.2); lab.setCallout(co)
+    if montrer:
+        ddl = lab.dataDefinedProperties(); ddl.setProperty(P.Show, QgsProperty.fromExpression(montrer)); lab.setDataDefinedProperties(ddl)
+    return lab
+regles = QgsRuleBasedLabeling.Rule(None)
+r_page = QgsRuleBasedLabeling.Rule(etiquettes(6.5, "#1d1d4f", True, 9, Qgis.LabelOverlapHandling.AllowOverlapIfRequired,
+    "NOT (@map_id = 'carte' AND coalesce(attribute(@feature, 'Zoom'), 0) > 0)"), 0, 0, DANS_PAGE, "Académie de la page")
+r_voisins = QgsRuleBasedLabeling.Rule(etiquettes(5.5, "#696982", False, 3, Qgis.LabelOverlapHandling.PreventOverlap), 0, 0, "ELSE", "Académies voisines")
+r_voisins.setIsElse(True); regles.appendChild(r_page); regles.appendChild(r_voisins)
+sig.setLabeling(QgsRuleBasedLabeling(regles)); sig.setLabelsEnabled(True)
+
+# --- zones d'encart : cadre pointillé numéroté, sur la carte principale seulement (pas dans les encarts eux-mêmes)
+ZONE_PAGE = "@map_id = 'carte' AND \"page\" = @atlas_pagename"
+rz = QgsRuleBasedRenderer.Rule(None)
+rz.appendChild(QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "0,0,0,0", "outline_color": "0,0,145,255", "outline_width": "0.45", "outline_style": "dash"}), 0, 0, ZONE_PAGE, "Zone d'encart"))
+zones.setRenderer(QgsRuleBasedRenderer(rz))
+lz = QgsPalLayerSettings(); lz.fieldName = '"num"'; lz.isExpression = True
+tz = QgsTextFormat(); fz = QFont("DejaVu Sans"); fz.setBold(True); tz.setFont(fz); tz.setSize(7); tz.setColor(QColor("white"))
+from qgis.core import QgsTextBackgroundSettings
+bg = QgsTextBackgroundSettings(); bg.setEnabled(True); bg.setFillColor(QColor("#000091")); bg.setStrokeColor(QColor("#000091")); bg.setSize(QSizeF(0.6, 0.3)); tz.setBackground(bg)
+lz.setFormat(tz); lz.placement = Qgis.LabelPlacement.OverPoint
+pz = lz.placementSettings(); pz.setOverlapHandling(Qgis.LabelOverlapHandling.AllowOverlapIfRequired); lz.setPlacementSettings(pz)
+dz = lz.dataDefinedProperties()
+dz.setProperty(P.PositionX, QgsProperty.fromExpression("x_min($geometry)")); dz.setProperty(P.PositionY, QgsProperty.fromExpression("y_max($geometry)"))
+dz.setProperty(P.Hali, QgsProperty.fromValue("Left")); dz.setProperty(P.Vali, QgsProperty.fromValue("Top"))
+dz.setProperty(P.Show, QgsProperty.fromExpression(ZONE_PAGE)); lz.setDataDefinedProperties(dz); lz.priority = 10
+zones.setLabeling(QgsVectorLayerSimpleLabeling(lz)); zones.setLabelsEnabled(True)
 
 # détail : points superposés d'un même établissement écartés en cercle ; à catégoriser par « Qualification » dans QGIS
 ds = QgsMarkerSymbol.createSimple({"name": "circle", "color": "0,0,145,255", "outline_color": "255,255,255,255", "outline_width": "0.3", "size": "2.4"})
 dr = QgsPointDisplacementRenderer("Etiquette"); dr.setEmbeddedRenderer(QgsSingleSymbolRenderer(ds)); dr.setTolerance(1.5); det.setRenderer(dr)
-for l in (terres, plan, relief, dep, voile, aca, rep, sig, det): p.addMapLayer(l, False)
+for l in (terres, plan, relief, dep, voile, aca, rep, sig, det, zones): p.addMapLayer(l, False)
 arbre = p.layerTreeRoot()
+arbre.addLayer(zones)
 arbre.addLayer(det).setItemVisibilityChecked(False)
 for l in (sig, aca, voile, dep): arbre.addLayer(l)
 fonds = arbre.addGroup("Fonds de carte")
@@ -181,6 +209,25 @@ fe = QgsTextFormat(); fe.setFont(QFont("DejaVu Sans")); fe.setSize(7); ech.setTe
 from qgis.core import QgsScaleBarSettings
 ech.setSegmentSizeMode(QgsScaleBarSettings.SegmentSizeFitWidth); ech.setMinimumBarWidth(18); ech.setMaximumBarWidth(36)
 ech.setBackgroundEnabled(True); ech.setBackgroundColor(QColor(255, 255, 255, 200)); ech.refresh(); place(ech, 152, 178, 48, 10)
+# --- encarts de zoom (jusqu'à 3 par page) : position, taille et emprise lues dans zones.geojson (calculées par le widget,
+# sur une partie peu chargée de la carte) ; hors page et exclus de l'export quand la page en a moins
+from qgis.core import QgsLayoutObject, QgsLayoutItemMap as _M
+for k in (1, 2, 3):
+    zone = f"get_feature('zones', 'cle', @atlas_pagename || '#{k}')"
+    absent = f"{zone} IS NULL"
+    val = lambda champ, defaut: QgsProperty.fromExpression(f"coalesce(attribute({zone}, '{champ}'), {defaut})")
+    enc = QgsLayoutItemMap(lay); enc.setId(f"encart{k}"); lay.addLayoutItem(enc); place(enc, 230, 60 + 50 * k, 60, 44)
+    enc.setCrs(QgsCoordinateReferenceSystem("EPSG:2154")); enc.zoomToExtent(QgsRectangle(800000, 6200000, 900000, 6270000))
+    enc.setFrameEnabled(True); enc.setFrameStrokeColor(QColor("#000091")); enc.setFrameStrokeWidth(QgsLayoutMeasurement(0.6, MM)); enc.setBackgroundColor(QColor("#ffffff"))
+    dd = enc.dataDefinedProperties()
+    for prop, champ, defaut in ((QgsLayoutObject.PositionX, "px", 230), (QgsLayoutObject.PositionY, "py", 60), (QgsLayoutObject.ItemWidth, "pw", 60), (QgsLayoutObject.ItemHeight, "ph", 44),
+                                (QgsLayoutObject.MapXMin, "xmin", 800000), (QgsLayoutObject.MapXMax, "xmax", 900000), (QgsLayoutObject.MapYMin, "ymin", 6200000), (QgsLayoutObject.MapYMax, "ymax", 6270000)):
+        dd.setProperty(prop, val(champ, defaut))
+    dd.setProperty(QgsLayoutObject.ExcludeFromExports, QgsProperty.fromExpression(absent)); enc.setDataDefinedProperties(dd)
+    num = texte(str(k), 230, 60 + 50 * k, 4.5, 4.5, 7, "#ffffff", True, Qt.AlignHCenter, fond="#000091", nom=f"encart{k}_numero")
+    dn = num.dataDefinedProperties()
+    dn.setProperty(QgsLayoutObject.PositionX, val("px", 230)); dn.setProperty(QgsLayoutObject.PositionY, val("py", 60))
+    dn.setProperty(QgsLayoutObject.ExcludeFromExports, QgsProperty.fromExpression(absent)); num.setDataDefinedProperties(dn)
 texte("Sources : signalements (Grist) ; IGN Admin Express ; fond IGN Géoplateforme", 6, 190.5, 104, 4, 5.5, "#666666", nom="sources")
 # compte des établissements de l'académie, et rappel quand le tableau n'en montre qu'une partie
 NB = "array_length(array_filter(aggregate('signalements', 'array_agg', \"Academie\"), @element = @atlas_pagename))"
@@ -222,7 +269,7 @@ print("projet écrit :", p.fileName(), "| pages d'atlas :", atlas.updateFeatures
 # chemins de secours (couverture de l'atlas, table, légende) : relatifs eux aussi, pour un projet déplaçable
 # (selon la version de QGIS, le chemin relatif écrit peut être « ../fichier » quand le projet n'existait pas encore : on normalise)
 import re
-txt = re.sub(r'(?:\.\./|\./|' + re.escape(D) + r'/)((?:academies|departements|signalements_detail|signalements)\.geojson)', r'./\1', open(p.fileName(), encoding="utf-8").read())
+txt = re.sub(r'(?:\.\./|\./|' + re.escape(D) + r'/)((?:academies|departements|signalements_detail|signalements|zones)\.geojson)', r'./\1', open(p.fileName(), encoding="utf-8").read())
 open(p.fileName(), "w", encoding="utf-8").write(txt)
 
 if DEMO:   # rendu de contrôle (sans fond IGN hors ligne)

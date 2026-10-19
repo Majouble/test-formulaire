@@ -45,6 +45,7 @@ const PROFIL_DEFAUT = {
   ],
   principale: "frequente", exclues: ["RAS"], exclureTout: false, jours: "auto",
   fondsIgn: true, voile: true,
+  encarts: true, encartsMax: 3, encartsMin: 4, encartsEcart: 6,
 };
 const copie = o => JSON.parse(JSON.stringify(o));
 
@@ -221,6 +222,105 @@ function signalementsAtlas(profil) {
     infos: { jours: C.jours, qualif: C.qualif, ordre, tableCols } };
 }
 
+/* ---------- encarts de zoom : zones denses et place libre sur la carte ----------
+   Reprend la mise en page du modèle intégré : carte principale de 198 × 134 mm en (6, 56), emprise de l'atlas = rectangle
+   de l'académie ajusté aux proportions de la carte puis agrandi de 6 % (mode « Auto » de QGIS), Lambert-93.
+   Une zone dense = des établissements de l'académie à moins de « écart » mm les uns des autres sur le papier (de proche
+   en proche), au moins « min » ; l'encart (60 × 44 mm) la montre assez grossie pour les séparer, et se place là où il
+   cache le moins : peu de points, peu de surface de l'académie, loin de l'échelle et des autres encarts. */
+const CARTE_MM = { x: 6, y: 56, l: 198, h: 134, marge: 0.06 }, ENCART_MM = { l: 60, h: 44 }, ECHELLE_MM = { x: 150, y: 176, l: 52, h: 14 };
+const OUTRE_MER = new Set(["Guadeloupe", "Martinique", "Guyane", "La Réunion", "Mayotte"]);
+// Lambert-93 (EPSG:2154) : conique conforme sécante, GRS80
+function versL93(lon, lat) {
+  const a = 6378137, e = 0.0818191910428158, rad = Math.PI / 180, l0 = 3 * rad, p0 = 46.5 * rad, p1 = 44 * rad, p2 = 49 * rad;
+  const m = p => Math.cos(p) / Math.sqrt(1 - e * e * Math.sin(p) ** 2);
+  const t = p => Math.tan(Math.PI / 4 - p / 2) / ((1 - e * Math.sin(p)) / (1 + e * Math.sin(p))) ** (e / 2);
+  const n = (Math.log(m(p1)) - Math.log(m(p2))) / (Math.log(t(p1)) - Math.log(t(p2))), F = m(p1) / (n * t(p1) ** n);
+  const r0 = a * F * t(p0) ** n, r = a * F * t(lat * rad) ** n, th = n * (lon * rad - l0);
+  return [700000 + r * Math.sin(th), 6600000 + r0 - r * Math.cos(th)];
+}
+function calculerEncarts(features, academies, opts) {
+  const max = Math.max(0, Math.min(3, opts.max | 0)), minEtab = Math.max(2, opts.min | 0), ecart = Math.max(1, +opts.ecart || 6);
+  const zones = [], zoomDe = new Map();   // zoomDe : point (feature) → numéro d'encart
+  if (!max) return { zones, zoomDe };
+  const pts = features.map(f => { const [x, y] = versL93(f.geometry.coordinates[0], f.geometry.coordinates[1]); return { f, x, y, aca: f.properties.Academie }; });
+  for (const aca of academies.features) {
+    const page = aca.properties.nom;
+    if (OUTRE_MER.has(page) || !pts.some(p => p.aca === page)) continue;
+    // emprise de la page (mode Auto de QGIS)
+    const anneaux = aca.geometry.type === "Polygon" ? aca.geometry.coordinates : aca.geometry.coordinates.flat();
+    let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+    anneaux.forEach(an => an.forEach(([x, y]) => { x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); y2 = Math.max(y2, y); }));
+    const ratio = CARTE_MM.l / CARTE_MM.h;
+    if ((x2 - x1) / (y2 - y1) < ratio) { const d = (ratio * (y2 - y1) - (x2 - x1)) / 2; x1 -= d; x2 += d; } else { const d = ((x2 - x1) / ratio - (y2 - y1)) / 2; y1 -= d; y2 += d; }
+    const cx = (x1 + x2) / 2, cy = (y1 + y2) / 2, w = (x2 - x1) * (1 + CARTE_MM.marge), h = (y2 - y1) * (1 + CARTE_MM.marge);
+    const E = { x1: cx - w / 2, y1: cy - h / 2, x2: cx + w / 2, y2: cy + h / 2 }, k = w / CARTE_MM.l;   // mètres par mm
+    const papier = (x, y) => [CARTE_MM.x + (x - E.x1) / k, CARTE_MM.y + (E.y2 - y) / k];
+    const visibles = pts.filter(p => p.x >= E.x1 && p.x <= E.x2 && p.y >= E.y1 && p.y <= E.y2).map(p => ({ ...p, pp: papier(p.x, p.y) }));
+    const dePage = visibles.filter(p => p.aca === page);
+    // grappes de proche en proche (distance sur le papier), redécoupées si elles sont trop étendues pour un encart
+    const grappes = (liste, seuil, niveau) => {
+      const parent = liste.map((_, i) => i), racine = i => parent[i] === i ? i : (parent[i] = racine(parent[i]));
+      for (let i = 0; i < liste.length; i++) for (let j = i + 1; j < liste.length; j++)
+        if (Math.hypot(liste[i].pp[0] - liste[j].pp[0], liste[i].pp[1] - liste[j].pp[1]) < seuil) parent[racine(i)] = racine(j);
+      const g = new Map(); liste.forEach((p, i) => { const r = racine(i); if (!g.has(r)) g.set(r, []); g.get(r).push(p); });
+      const res = [];
+      for (const membres of g.values()) {
+        if (membres.length < minEtab) continue;
+        const bx = membres.map(p => p.pp[0]), by = membres.map(p => p.pp[1]);
+        const bw = Math.max(...bx) - Math.min(...bx), bh = Math.max(...by) - Math.min(...by);
+        // grossissement possible (la grappe entière dans l'encart) et grossissement utile (écarter les points voisins d'environ 8 mm)
+        const z = Math.min((ENCART_MM.l - 16) / Math.max(bw, 2), (ENCART_MM.h - 10) / Math.max(bh, 2));
+        const proches = membres.map((p, i) => Math.min(...membres.filter((_, j) => j !== i).map(q => Math.hypot(p.pp[0] - q.pp[0], p.pp[1] - q.pp[1])))).sort((u, v) => u - v);
+        const zUtile = Math.min(25, 8 / Math.max(proches[Math.floor(proches.length / 2)], 0.3));
+        if ((z < 2 || z < 0.7 * zUtile) && niveau < 3) { const sous = grappes(membres, seuil * 0.6, niveau + 1); if (sous.length) { res.push(...sous); continue; } }
+        res.push({ membres, z: Math.max(2, Math.min(25, z)), cx: (Math.max(...bx) + Math.min(...bx)) / 2, cy: (Math.max(...by) + Math.min(...by)) / 2 });
+      }
+      return res;
+    };
+    const choisies = grappes(dePage, ecart, 0).sort((a, b) => b.membres.length - a.membres.length).slice(0, max);
+    if (!choisies.length) continue;
+    // grille d'occupation (2 mm) sur la carte : points et leur étiquette, surface de l'académie, échelle, cadres des zones
+    const pas = 2, nx = Math.ceil(CARTE_MM.l / pas), ny = Math.ceil(CARTE_MM.h / pas), poids = new Float64Array(nx * ny);
+    const ajouter = (x, y, l, hh, v) => { for (let j = Math.max(0, Math.floor((y - CARTE_MM.y) / pas)); j < Math.min(ny, Math.ceil((y + hh - CARTE_MM.y) / pas)); j++)
+      for (let i = Math.max(0, Math.floor((x - CARTE_MM.x) / pas)); i < Math.min(nx, Math.ceil((x + l - CARTE_MM.x) / pas)); i++) poids[j * nx + i] += v; };
+    visibles.forEach(p => ajouter(p.pp[0] - 2, p.pp[1] - 2, p.aca === page ? 26 : 18, 4, p.aca === page ? 4 : 1));
+    // surface de l'académie : balayage ligne par ligne (règle pair-impair)
+    const bords = []; anneaux.forEach(an => { for (let i = 0; i < an.length - 1; i++) bords.push([papier(...an[i]), papier(...an[i + 1])]); });
+    for (let j = 0; j < ny; j++) {
+      const yc = CARTE_MM.y + (j + 0.5) * pas, xs = [];
+      bords.forEach(([[ax, ay], [bx, by]]) => { if ((ay > yc) !== (by > yc)) xs.push(ax + (yc - ay) * (bx - ax) / (by - ay)); });
+      xs.sort((u, v) => u - v);
+      for (let q = 0; q + 1 < xs.length; q += 2) ajouter(xs[q], yc - pas / 2, xs[q + 1] - xs[q], pas, 0.35);
+    }
+    ajouter(ECHELLE_MM.x, ECHELLE_MM.y, ECHELLE_MM.l, ECHELLE_MM.h, 1e4);
+    choisies.forEach(c => { const zl = ENCART_MM.l / c.z, zh = ENCART_MM.h / c.z; ajouter(c.cx - zl / 2 - 3, c.cy - zh / 2 - 3, zl + 6, zh + 6, 30); });
+    choisies.forEach((c, n) => {
+      // somme des poids sous chaque position possible (tableau des sommes cumulées), plus un peu de distance à la zone
+      const S = new Float64Array((nx + 1) * (ny + 1));
+      for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) S[(j + 1) * (nx + 1) + i + 1] = poids[j * nx + i] + S[j * (nx + 1) + i + 1] + S[(j + 1) * (nx + 1) + i] - S[j * (nx + 1) + i];
+      const cw = Math.ceil(ENCART_MM.l / pas), ch = Math.ceil(ENCART_MM.h / pas);
+      let best = null;
+      for (let j = 1; j + ch < ny; j++) for (let i = 1; i + cw < nx; i++) {
+        const somme = S[(j + ch) * (nx + 1) + i + cw] - S[j * (nx + 1) + i + cw] - S[(j + ch) * (nx + 1) + i] + S[j * (nx + 1) + i];
+        const px = CARTE_MM.x + i * pas, py = CARTE_MM.y + j * pas;
+        const score = somme + 0.02 * Math.hypot(px + ENCART_MM.l / 2 - c.cx, py + ENCART_MM.h / 2 - c.cy);
+        if (!best || score < best.score) best = { score, px, py };
+      }
+      if (!best) return;
+      ajouter(best.px - 3, best.py - 3, ENCART_MM.l + 6, ENCART_MM.h + 6, 1e4);   // les encarts suivants l'évitent
+      // emprise de l'encart (Lambert-93) : centrée sur la grappe, grossie z fois
+      const mx = E.x1 + (c.cx - CARTE_MM.x) * k, my = E.y2 - (c.cy - CARTE_MM.y) * k, demiL = ENCART_MM.l / 2 * k / c.z, demiH = ENCART_MM.h / 2 * k / c.z;
+      const num = n + 1, cle = `${page}#${num}`;
+      c.membres.forEach(p => zoomDe.set(p.f, num));
+      zones.push({ type: "Feature", geometry: { type: "Polygon", coordinates: [[[mx - demiL, my - demiH], [mx + demiL, my - demiH], [mx + demiL, my + demiH], [mx - demiL, my + demiH], [mx - demiL, my - demiH]].map(q => q.map(v => Math.round(v)))] },
+        properties: { cle, page, num, nb: c.membres.length, px: Math.round(best.px * 10) / 10, py: Math.round(best.py * 10) / 10, pw: ENCART_MM.l, ph: ENCART_MM.h,
+          xmin: Math.round(mx - demiL), xmax: Math.round(mx + demiL), ymin: Math.round(my - demiH), ymax: Math.round(my + demiH), zoom: Math.round(c.z * 10) / 10 } });
+    });
+  }
+  return { zones, zoomDe };
+}
+
 /* ---------- projet QGIS ---------- */
 // Variables du projet (titre, date…) : remplacées ou ajoutées, quel que soit le modèle
 function poserVariables(qgs, vars) {
@@ -297,6 +397,11 @@ async function construireAtlas(name) {
   const modele = await AtlasUI.modeleCourant();          // { texte, origine } ou null (modèle intégré)
   const [qgsBase, acas, deps] = await Promise.all([modele ? Promise.resolve(modele.texte) : lireFichierAtlas("atlas.qgs"), lireFichierAtlas("academies.geojson"), lireFichierAtlas("departements.geojson")]);
   const lignes = Math.max(0, Math.min(5000, parseInt(P.lignes, 10) || 0));
+  // encarts : zones denses (un fichier zones.geojson toujours présent ; une ligne vide garde au fichier son type)
+  const enc = P.encarts !== false ? calculerEncarts(fc.features, JSON.parse(acas), { max: P.encartsMax, min: P.encartsMin, ecart: P.encartsEcart }) : { zones: [], zoomDe: new Map() };
+  fc.features.forEach(f => { f.properties.Zoom = enc.zoomDe.get(f) || null; });
+  const vide = { type: "Feature", geometry: { type: "Polygon", coordinates: [[[0, 0], [1, 0], [1, 1], [0, 0]]] }, properties: { cle: "", page: "", num: 0, nb: 0, px: 0, py: 0, pw: 0, ph: 0, xmin: 0, xmax: 1, ymin: 0, ymax: 1, zoom: 1 } };
+  const zonesFc = { type: "FeatureCollection", name: "zones", crs: { type: "name", properties: { name: "urn:ogc:def:crs:EPSG::2154" } }, features: enc.zones.length ? enc.zones : [vide] };
   let projet = poserVariables(qgsBase.replace("@@TITRE@@", "").replace("@@DATE@@", "").replace("@@SERVICE@@", "").replace("@@LIGNES@@", "22"),
     { atlas_titre: P.titre || "Signalements", atlas_date: $("atlasDate").value.trim(), atlas_service: P.service || "", atlas_lignes: String(lignes) });
   const notes = [];
@@ -323,6 +428,7 @@ async function construireAtlas(name) {
     `- Valeurs ignorées${P.exclureTout ? " (signalements écartés de l'atlas)" : " (pour la qualification principale et les jours)"} : ${(P.exclues || []).join(", ") || "aucune"}.`,
     `- Jours de mobilisation : ${infos.jours ? `valeur la plus haute de la colonne « ${infos.jours} », toutes versions` : "jours distincts (date des faits, à défaut de saisie) ayant un signalement non ignoré, toutes versions"}.`,
     `- Fonds IGN : ${P.fondsIgn !== false ? "cochés" : "décochés (à cocher dans le groupe « Fonds de carte »)"} ; voile gris hors académie : ${P.voile !== false ? "oui" : "non"}.`,
+    `- Encarts de zoom : ${P.encarts !== false ? `${enc.zones.length} sur l'ensemble des pages (au plus ${P.encartsMax} par page, zones d'au moins ${P.encartsMin} établissements à moins de ${P.encartsEcart} mm sur la carte) ; couche « zones », cadres pointillés numérotés` : "non"}.`,
     ...notes.map(n => "- " + n), "",
     "Variables du projet (Projet › Propriétés › Variables) : atlas_titre, atlas_date, atlas_service, atlas_lignes (0 = tous).",
     "Si les fonds IGN restent blancs ou si la carte met longtemps à s'afficher, QGIS n'atteint pas internet :",
@@ -337,6 +443,7 @@ async function construireAtlas(name) {
     "Sources : signalements (Grist) ; contours IGN Admin Express (Licence ouverte, via france-geojson) ; fonds IGN Géoplateforme."].join("\r\n");
   const zip = new JSZip(), dossier = zip.folder(name);
   dossier.file("atlas.qgs", projet); dossier.file("signalements.geojson", JSON.stringify(fc)); dossier.file("signalements_detail.geojson", JSON.stringify(detail));
+  dossier.file("zones.geojson", JSON.stringify(zonesFc));
   dossier.file("academies.geojson", acas); dossier.file("departements.geojson", deps); dossier.file("LISEZMOI.txt", lisezmoi);
   return { name: name + ".zip", blob: await zip.generateAsync({ type: "blob", compression: "DEFLATE" }) };
 }
@@ -494,6 +601,8 @@ const AtlasUI = (() => {
       + cols.filter(c => /^(Int|Numeric|Any)/.test(c.type) || !c.type).map(c => `<option value="${htmlTexte(c.col)}">colonne « ${htmlTexte(c.libelle)} »</option>`).join("");
     el("atlasJours").value = [...el("atlasJours").options].some(o => o.value === P.jours) ? P.jours : "auto";
     el("atlasIgn").checked = P.fondsIgn !== false; el("atlasVoile").checked = P.voile !== false;
+    el("atlasEncarts").checked = P.encarts !== false; el("atlasEncartsMax").value = P.encartsMax; el("atlasEncartsMin").value = P.encartsMin; el("atlasEncartsEcart").value = P.encartsEcart;
+    el("atlasEncartsBloc").style.display = P.encarts !== false ? "" : "none";
     const ordre = choixColonne((socle && socle.qualif) || "Qualification");
     el("atlasOrdreAide").textContent = ordre.length ? `Ordre actuel : ${ordre.join(" › ")}.` : "La colonne de qualification n'a pas de liste de choix.";
     const id = idModeleDoc();
@@ -514,6 +623,8 @@ const AtlasUI = (() => {
     p.principale = el("atlasPrincipale").value; p.exclues = el("atlasExclues").value.split(/[,;]/).map(s => s.trim()).filter(Boolean);
     p.exclureTout = el("atlasExclureTout").checked; p.jours = el("atlasJours").value;
     p.fondsIgn = el("atlasIgn").checked; p.voile = el("atlasVoile").checked;
+    p.encarts = el("atlasEncarts").checked; p.encartsMax = Math.max(1, Math.min(3, parseInt(el("atlasEncartsMax").value, 10) || 3));
+    p.encartsMin = Math.max(2, parseInt(el("atlasEncartsMin").value, 10) || 4); p.encartsEcart = Math.max(1, Math.min(30, parseFloat(el("atlasEncartsEcart").value) || 6));
     ecrireLocal();
   }
   const changer = () => { lireFormulaire(); modifie = true; el("atlasModifie").style.display = ""; };
@@ -526,7 +637,7 @@ const AtlasUI = (() => {
       if (e.target.closest("#atlasProfilBloc") || e.target.id === "atlasDate" || e.target.id === "atlasModeleFichier") return;
       changer();
       // un champ changé : en-tête proposé, regroupement par défaut ; tableau réglé ici ou non
-      if (e.target.dataset.k === "champ" || e.target.id === "atlasTableauWidget") {
+      if (e.target.dataset.k === "champ" || e.target.id === "atlasTableauWidget" || e.target.id === "atlasEncarts") {
         const d = e.target.closest(".atlas-col");
         if (d) { const p = etat.profils[etat.actif], c = p.colonnes[+d.dataset.i], o = e.target.selectedOptions[0];
           c.titre = (o ? o.textContent : c.champ).replace(/\s*\(.*\)$/, ""); delete c.agregat; }

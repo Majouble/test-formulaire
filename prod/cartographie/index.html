@@ -170,6 +170,12 @@
     <details class="atlas-bloc"><summary>Carte et modèle QGIS</summary>
       <label class="check"><input type="checkbox" id="atlasIgn"> Fonds IGN (relief et plan, Géoplateforme : connexion internet nécessaire)</label>
       <label class="check"><input type="checkbox" id="atlasVoile"> Voile gris sur les académies voisines</label>
+      <label class="check"><input type="checkbox" id="atlasEncarts"> Encarts de zoom sur les zones denses (placés là où la carte est la moins chargée)</label>
+      <div id="atlasEncartsBloc" class="row" style="margin:0 0 4px 22px;align-items:center">
+        <label>au plus <input type="number" id="atlasEncartsMax" min="1" max="3" style="width:3.5em"> par page</label>
+        <label>zone = au moins <input type="number" id="atlasEncartsMin" min="2" max="50" style="width:3.5em"> établissements</label>
+        <label>à moins de <input type="number" id="atlasEncartsEcart" min="1" max="30" step="0.5" style="width:4em"> mm les uns des autres sur la carte</label>
+      </div>
       <p style="margin:8px 0 4px"><b>Modèle QGIS</b> : <span id="atlasModeleEtat"></span></p>
       <div class="row" style="margin:0;align-items:center">
         <label>Déposer un modèle (.qgs) <input type="file" id="atlasModeleFichier" accept=".qgs"></label>
