@@ -24,7 +24,11 @@ p.setTitle("Atlas des signalements par académie")
 
 MARINE, ORANGE = "#000091", "#c3551e"
 COULEURS = [("École", "#f2c12e"), ("Collège", "#d1336a"), ("Lycée", "#5f59c6"), ("Autre", "#4cbf62")]
-DANS_PAGE = '@atlas_pagename IS NULL OR "Academie" IS NULL OR "Academie" = @atlas_pagename'   # hors atlas (canevas) et légende : tous les points
+# Pages de l'atlas (pages.geojson, écrit par le widget) : une par académie, ou une par département pour une académie
+# trop dense ; champs cle (nom de la page), academie, dep (code ou vide), titre, surtitre, ordre, Nb_etablissements.
+# Chaque établissement porte le champ Page (cle de sa page).
+ACA_PAGE = "coalesce(attribute(@atlas_feature, 'academie'), @atlas_pagename)"
+DANS_PAGE = '@atlas_pagename IS NULL OR "Page" IS NULL OR "Page" = @atlas_pagename'   # hors atlas (canevas) et légende : tous les points
 
 def couche(f, nom):
     l = QgsVectorLayer(os.path.join(D, f), nom, "ogr"); assert l.isValid(), f; return l
@@ -34,7 +38,8 @@ zones = couche("zones.geojson", "zones")   # zones denses calculées par le widg
 aca = couche("academies.geojson", "academies")
 dep = couche("departements.geojson", "Départements")
 rep = couche("academies.geojson", "academies (repérage)")
-voile = couche("academies.geojson", "voile hors académie")
+pages = couche("pages.geojson", "pages")   # couverture de l'atlas
+voile = couche("pages.geojson", "voile hors académie")
 terres = couche("academies.geojson", "fond uni (sans connexion)")
 
 def xyz(nom, couche_ign, style, fmt="image/png"):
@@ -51,21 +56,24 @@ if relief.renderer():
 relief.setBlendMode(QPainter.CompositionMode_Multiply)
 
 # --- symbologie
-dep_sym = QgsFillSymbol.createSimple({"color": "0,0,0,0", "outline_color": "90,95,168,255", "outline_width": "0.35", "outline_style": "dash"})
-dep.setRenderer(QgsSingleSymbolRenderer(dep_sym))
+# départements : tirets ; celui de la page (page départementale) en trait plein
+rd = QgsRuleBasedRenderer.Rule(None)
+rd1 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "0,0,0,0", "outline_color": "45,46,127,255", "outline_width": "0.8"}), 0, 0, "\"code\" = attribute(@atlas_feature, 'dep')", "Département affiché")
+rd2 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "0,0,0,0", "outline_color": "90,95,168,255", "outline_width": "0.35", "outline_style": "dash"}), 0, 0, "ELSE", "Départements")
+rd2.setIsElse(True); rd.appendChild(rd1); rd.appendChild(rd2); dep.setRenderer(QgsRuleBasedRenderer(rd))
 # académie de la page : trait épais ; les autres : trait fin (hors atlas, toutes en trait épais)
 ra = QgsRuleBasedRenderer.Rule(None)
-ra1 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "0,0,0,0", "outline_color": "45,46,127,255", "outline_width": "1.1", "joinstyle": "round"}), 0, 0, '@atlas_pagename IS NULL OR "nom" = @atlas_pagename', "Académie")
+ra1 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "0,0,0,0", "outline_color": "45,46,127,255", "outline_width": "1.1", "joinstyle": "round"}), 0, 0, '@atlas_pagename IS NULL OR "nom" = ' + ACA_PAGE, "Académie")
 ra2 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "0,0,0,0", "outline_color": "45,46,127,160", "outline_width": "0.4"}), 0, 0, "ELSE", "Académies voisines")
 ra2.setIsElse(True); ra.appendChild(ra1); ra.appendChild(ra2)
 aca.setRenderer(QgsRuleBasedRenderer(ra))
 terres.setRenderer(QgsSingleSymbolRenderer(QgsFillSymbol.createSimple({"color": "241,240,234,255", "outline_style": "no"})))
 # voile gris hors de l'académie de la page : elle ressort, les voisines restent lisibles (opacité réglable dans la symbologie)
 rv = QgsRuleBasedRenderer.Rule(None)
-rv.appendChild(QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "95,95,110,95", "outline_style": "no"}), 0, 0, '@atlas_pagename IS NULL OR "nom" = @atlas_pagename', "Académie de la page"))
+rv.appendChild(QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "95,95,110,95", "outline_style": "no"}), 0, 0, '@atlas_pagename IS NULL OR "cle" = @atlas_pagename', "Page"))
 voile.setRenderer(QgsInvertedPolygonRenderer(QgsRuleBasedRenderer(rv)))
 racine = QgsRuleBasedRenderer.Rule(None)
-r1 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "0,0,145,255", "outline_color": "255,255,255,255", "outline_width": "0.15"}), 0, 0, '"nom" = @atlas_pagename', "Académie de la page")
+r1 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "0,0,145,255", "outline_color": "255,255,255,255", "outline_width": "0.15"}), 0, 0, '"nom" = ' + ACA_PAGE, "Académie de la page")
 r2 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "214,218,232,255", "outline_color": "255,255,255,255", "outline_width": "0.15"}), 0, 0, "ELSE", "Autres académies")
 r2.setIsElse(True); racine.appendChild(r1); racine.appendChild(r2)
 rep.setRenderer(QgsRuleBasedRenderer(racine))
@@ -134,9 +142,11 @@ zones.setLabeling(QgsVectorLayerSimpleLabeling(lz)); zones.setLabelsEnabled(True
 # détail : points superposés d'un même établissement écartés en cercle ; à catégoriser par « Qualification » dans QGIS
 ds = QgsMarkerSymbol.createSimple({"name": "circle", "color": "0,0,145,255", "outline_color": "255,255,255,255", "outline_width": "0.3", "size": "2.4"})
 dr = QgsPointDisplacementRenderer("Etiquette"); dr.setEmbeddedRenderer(QgsSingleSymbolRenderer(ds)); dr.setTolerance(1.5); det.setRenderer(dr)
-for l in (terres, plan, relief, dep, voile, aca, rep, sig, det, zones): p.addMapLayer(l, False)
+pages.setRenderer(QgsSingleSymbolRenderer(QgsFillSymbol.createSimple({"color": "0,0,0,0", "outline_style": "no"})))
+for l in (terres, plan, relief, dep, voile, aca, rep, sig, det, zones, pages): p.addMapLayer(l, False)
 arbre = p.layerTreeRoot()
 arbre.addLayer(zones)
+arbre.addLayer(pages).setItemVisibilityChecked(False)
 arbre.addLayer(det).setItemVisibilityChecked(False)
 for l in (sig, aca, voile, dep): arbre.addLayer(l)
 fonds = arbre.addGroup("Fonds de carte")
@@ -175,9 +185,9 @@ loc.setLayers([rep]); loc.setKeepLayerSet(True); loc.setCrs(QgsCoordinateReferen
 loc.zoomToExtent(QgsRectangle(90000, 6040000, 1250000, 7120000)); loc.setFrameEnabled(True); loc.setBackgroundColor(QColor("#ffffff"))
 # Outre-mer : chaque territoire dans sa projection officielle (UTM locale), nord en haut ; en Lambert-93 ils seraient
 # fortement tournés, loin du méridien central. Carte principale et carte de repérage suivent l'académie de la page.
-CRS_PAGE = ("CASE WHEN @atlas_pagename IN ('Guadeloupe', 'Martinique') THEN 'EPSG:5490' WHEN @atlas_pagename = 'Guyane' THEN 'EPSG:2972' "
-            "WHEN @atlas_pagename = 'La Réunion' THEN 'EPSG:2975' WHEN @atlas_pagename = 'Mayotte' THEN 'EPSG:4471' ELSE 'EPSG:2154' END")
-OUTRE_MER = "@atlas_pagename IN ('Guadeloupe', 'Martinique', 'Guyane', 'La Réunion', 'Mayotte')"
+CRS_PAGE = (f"with_variable('aca', {ACA_PAGE}, CASE WHEN @aca IN ('Guadeloupe', 'Martinique') THEN 'EPSG:5490' WHEN @aca = 'Guyane' THEN 'EPSG:2972' "
+            "WHEN @aca = 'La Réunion' THEN 'EPSG:2975' WHEN @aca = 'Mayotte' THEN 'EPSG:4471' ELSE 'EPSG:2154' END)")
+OUTRE_MER = f"{ACA_PAGE} IN ('Guadeloupe', 'Martinique', 'Guyane', 'La Réunion', 'Mayotte')"
 from qgis.core import QgsLayoutObject
 loc.dataDefinedProperties().setProperty(QgsLayoutObject.MapCrs, QgsProperty.fromExpression(CRS_PAGE))
 # repérage outre-mer : le territoire et ses abords (carré centré, 1,6 fois sa plus grande dimension)
@@ -188,8 +198,9 @@ def bord(fixe, axe, signe):
 for prop, fixe, axe, signe in ((QgsLayoutObject.MapXMin, 90000, "x", "-"), (QgsLayoutObject.MapXMax, 1250000, "x", "+"),
                                (QgsLayoutObject.MapYMin, 6040000, "y", "-"), (QgsLayoutObject.MapYMax, 7120000, "y", "+")):
     loc.dataDefinedProperties().setProperty(prop, bord(fixe, axe, signe))
-texte("Académie :", 46, 25, 76, 9, 14, "#9a9a9a", True, nom="academie_etiquette")
-texte("[% @atlas_pagename %]", 46, 35, 76, 14, 19, MARINE, True, nom="academie_nom")
+# page académique : « Académie : » / nom ; page départementale : « Créteil — département : » / « Seine-Saint-Denis (93) »
+texte("[% coalesce(attribute(@atlas_feature, 'surtitre'), 'Académie :') %]", 46, 25, 76, 9, 12, "#9a9a9a", True, nom="academie_etiquette")
+texte("[% coalesce(attribute(@atlas_feature, 'titre'), @atlas_pagename) %]", 46, 35, 76, 14, 16, MARINE, True, nom="academie_nom")
 
 carte = QgsLayoutItemMap(lay); carte.setId("carte"); lay.addLayoutItem(carte); place(carte, 6, 56, 198, 134)
 carte.setCrs(QgsCoordinateReferenceSystem("EPSG:2154")); carte.zoomToExtent(QgsRectangle(800000, 6200000, 1080000, 6420000))
@@ -263,7 +274,7 @@ for champ in ("DSDEN", "Commune", "Etablissement"):
     c = QgsLayoutTableColumn(champ); c.setAttribute(champ); c.setSortOrder(Qt.AscendingOrder); tri.append(c)
 tab.setSortColumns(tri)
 # « Rang » : rang de l'établissement dans son académie, du plus signalé au moins signalé (calculé par le widget)
-tab.setFilterFeatures(True); tab.setFeatureFilter('"Academie" = @atlas_pagename AND (to_int(@atlas_lignes) <= 0 OR "Rang" <= to_int(@atlas_lignes))')
+tab.setFilterFeatures(True); tab.setFeatureFilter('"Page" = @atlas_pagename AND (to_int(@atlas_lignes) <= 0 OR "Rang" <= to_int(@atlas_lignes))')
 tab.setMaximumNumberOfFeatures(5000)
 fh = QgsTextFormat(); fo = QFont("DejaVu Sans"); fo.setBold(True); fh.setFont(fo); fh.setSize(7); fh.setColor(QColor(MARINE)); tab.setHeaderTextFormat(fh)
 fc = QgsTextFormat(); fc.setFont(QFont("DejaVu Sans")); fc.setSize(6.5); fc.setColor(QColor("#161616")); tab.setContentTextFormat(fc)
@@ -271,12 +282,12 @@ tab.setShowGrid(True); tab.setHorizontalGrid(True); tab.setVerticalGrid(False); 
 tab.setResizeMode(QgsLayoutMultiFrame.ExtendToNextPage)
 cad = QgsLayoutFrame(lay, tab); place(cad, 6, 196, 198, 96); tab.addFrame(cad); lay.addMultiFrame(tab)
 
-atlas = lay.atlas(); atlas.setCoverageLayer(aca); atlas.setEnabled(True); atlas.setHideCoverage(False)
-atlas.setPageNameExpression('"nom"'); atlas.setSortFeatures(True); atlas.setSortExpression('"nom"')
+atlas = lay.atlas(); atlas.setCoverageLayer(pages); atlas.setEnabled(True); atlas.setHideCoverage(False)
+atlas.setPageNameExpression('"cle"'); atlas.setSortFeatures(True); atlas.setSortExpression('"ordre"')
 # pages : académies ayant au moins un établissement retenu (champ écrit par le widget ; aucune référence au nom
 # d'une couche, qu'on peut donc renommer librement dans QGIS)
 atlas.setFilterFeatures(True); atlas.setFilterExpression("coalesce(\"Nb_etablissements\", 0) > 0")
-atlas.setFilenameExpression("'atlas_' || \"nom\"")
+atlas.setFilenameExpression("'atlas_' || \"cle\"")
 p.layoutManager().addLayout(lay)
 assert p.write(), "écriture du projet impossible"
 print("carte :", carte.sizeWithUnits().height(), "| table :", cad.positionWithUnits().y())
@@ -284,7 +295,7 @@ print("projet écrit :", p.fileName(), "| pages d'atlas :", atlas.updateFeatures
 # chemins de secours (couverture de l'atlas, table, légende) : relatifs eux aussi, pour un projet déplaçable
 # (selon la version de QGIS, le chemin relatif écrit peut être « ../fichier » quand le projet n'existait pas encore : on normalise)
 import re
-txt = re.sub(r'(?:\.\./|\./|' + re.escape(D) + r'/)((?:academies|departements|signalements_detail|signalements|zones)\.geojson)', r'./\1', open(p.fileName(), encoding="utf-8").read())
+txt = re.sub(r'(?:\.\./|\./|' + re.escape(D) + r'/)((?:academies|departements|signalements_detail|signalements|zones|pages)\.geojson)', r'./\1', open(p.fileName(), encoding="utf-8").read())
 open(p.fileName(), "w", encoding="utf-8").write(txt)
 
 if DEMO:   # rendu de contrôle (sans fond IGN hors ligne)

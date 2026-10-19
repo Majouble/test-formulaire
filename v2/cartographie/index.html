@@ -179,6 +179,10 @@
     <details class="atlas-bloc"><summary>Carte et modèle QGIS</summary>
       <label class="check"><input type="checkbox" id="atlasIgn"> Fonds IGN (relief et plan, Géoplateforme : connexion internet nécessaire)</label>
       <label class="check"><input type="checkbox" id="atlasVoile"> Voile gris sur les académies voisines</label>
+      <div class="row" style="margin:0 0 4px;align-items:center">
+        <label>Pages <select id="atlasDecoupage"><option value="auto">une par académie, découpée en départements si elle reste illisible</option><option value="academie">une par académie</option><option value="departement">une par département (académies de plusieurs départements)</option></select></label>
+        <label id="atlasSeuilBloc">illisible = plus de <input type="number" id="atlasSeuil" min="0" max="100" step="5" style="width:4em"> % d'étiquettes sans place malgré les encarts</label>
+      </div>
       <div class="row" style="margin:0;align-items:center">
         <label>Étiquettes <input type="number" id="atlasEtiquettes" min="3" max="9" step="0.5" style="width:4em"> pt</label>
         <label class="check"><input type="checkbox" id="atlasPlacees"> placées par le widget : traits de rappel, et sans place libre retirées (sauf les établissements du tableau)</label>
