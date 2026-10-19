@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.8 (19/10/2026)";
+  const VERSION = "2.0.9 (19/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -507,9 +507,11 @@ return sorted(champs)`;
       try { api.fetchTable = fetchOrig; api.applyUserActions = applyOrig; } catch (_) { /* rien */ }
       return false;
     }
-    api.__socleCache = { vider: () => { cache.clear(); invalider([]); } };
+    // oublier la structure (pages, tables, colonnes) : elle change aussi depuis Grist (page supprimée, colonne ajoutée…)
+    api.__socleCache = { vider: () => { cache.clear(); invalider([]); }, oublierStructure: () => { for (const k of [...cache.keys()]) if (k.startsWith("_grist")) cache.delete(k); } };
     return true;
   }
+  const oublierStructure = () => { const c = window.grist && grist.docApi && grist.docApi.__socleCache; if (c) c.oublierStructure(); };
   const viderCacheLecture = () => { const c = window.grist && grist.docApi && grist.docApi.__socleCache; if (c) c.vider(); };
 
   /* ---------- Lecture des métadonnées Grist ---------- */
@@ -865,7 +867,7 @@ return sorted(champs)`;
     espaces, espaceDeTable, AUTRE_CHAMP_DEFAUT, VERSION, TABLE_CONFIG, TABLE_ADMIN, TABLE_CELLULE, STYLE_LIEN, formuleLienInvite, ANCIENNE_FORMULE_LIEN_INVITE, DEFAUTS_GENERAL, NATURES, ROLES,
     colonnesEmargements, lireEmargements, STATUTS_ACTION, PRIORITES_ACTION, ACTIONS_DEFAUT, reglagesActions, optionsStatuts, colonnesActions, lireActions,
     PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
-    norm, cibleRef, lireMeta, lireConfig, activerCacheLecture, viderCacheLecture, surEcriture, general, actionConfig, ecrireConfig,
+    norm, cibleRef, lireMeta, lireConfig, activerCacheLecture, viderCacheLecture, oublierStructure, surEcriture, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer, COLONNES_ETABLISSEMENT,
     instantaneSchema, majSchemaPublic, tableauxDeBord, valeurTableauxDeBord, INVITE, DUREES_INVITE, formuleAuteur, auteurAMettreAJour,
     REGIONS_ACADEMIQUES, regionDeAcademie,

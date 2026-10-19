@@ -1,4 +1,4 @@
-# Signalements Grist — production (2.0.8 (19/10/2026))
+# Signalements Grist — production (2.0.9 (19/10/2026))
 
 Copie figée de `v2/`, produite par `outils/publier-prod.sh`. Ne pas modifier ce dossier à la main :
 les changements se font dans `v2/`, puis on republie.
@@ -97,6 +97,7 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 - Version 2.0.6 (19/10) : point de situation, surlignage « depuis le dernier point » (par défaut) : chaque cellule est comparée mot à mot à ce qu'elle était dans la version du dossier en vigueur au dernier point (dernière version saisie avant lui) ; seuls les mots ajoutés depuis sont surlignés, même après plusieurs mises à jour, et une mise à jour déjà diffusée ne l'est plus. Nouveau dossier : mention « Nouveau signalement », texte non surligné. L'ancien mode (marques de Description_Word_, dernière mise à jour) reste au choix (option `surlignage: "version"` de la clé `point_situation`, et dans la barre du widget).
 - Version 2.0.7 (19/10) : point de situation, la première publication crée la page « Point de situation » (widget en accès complet, liée à la table des signalements) ; l'en-tête de l'onglet indique la page, ou propose « Créer la page ».
 - Version 2.0.8 (19/10) : onglet « Équipe » unique, en trois sous-onglets : Agents (fiche : droit de saisie du moment, prochains créneaux, pages de saisie avec création, lien d'invité), Planning (inchangé), Pages de saisie (grille agents × formulaires publiés, admin/pages-agents.js, qui remplace le panneau « Pages de saisie par agent » de l'onglet Formulaires). Bandeau de synthèse : agents actifs, mobilisés aujourd'hui, pages à créer, règles d'accès à réappliquer. L'onglet Accès ne détaille plus les droits par agent (affichés dans Équipe › Agents).
+- Version 2.0.9 (19/10) : la structure du document (pages, tables, colonnes) est relue quand on revient dans l'administration, qu'on change d'onglet ou de sous-onglet, ou avec « ↻ Relire » (Pages de saisie) : une page supprimée dans Grist redevient « à créer ». Lien d'un invité dont la page a été supprimée : il ouvre la page d'accueil.
 
 - Thème sombre (18/10) : `commun/theme.js`, chargé par chaque widget, pose `data-theme="light"` ou `"dark"` sur `<html>` d'après, dans l'ordre, le choix de la personne (bouton ◐ de l'administration : automatique, clair, sombre ; gardé dans le navigateur, commun à tous les widgets), le thème transmis par Grist, puis le réglage du navigateur. Couleurs des feuilles de style ramenées à des variables (`--x-<couleur>`), avec des équivalents sombres (fonds gris foncés, texte clair, bleu France éclairci #8585f6, à la manière du DSFR) ; l'aperçu du point de situation reste une page blanche.
 

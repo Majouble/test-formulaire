@@ -138,7 +138,8 @@
         <tbody>${actifs().map(a => `<tr><td><strong>${esc(a.nom)}</strong>${a.cle ? ` <span class="pastille reco">invité</span>` : ""}</td>${formulaires.map(f => cellule(l.find(c => c.a.id === a.id && c.f.id === f.id))).join("")}</tr>`).join("")}</tbody></table>
       ${orph.length ? `<p class="aide" style="margin:10px 0 0">Pages sans agent actif dans l'équipe : ${orph.map(({ p, a }) => `« ${esc(p.page)} »${a ? ` (${esc(a.nom)}, inactif)` : ""}`).join(", ")}. Elles restent telles quelles ; supprimez-les dans Grist si elles ne servent plus.</p>` : ""}
       <label class="champ" style="margin-top:12px"><span>Adresse du widget de saisie (nouvelles pages)</span><input type="text" id="pa-url" value="${esc(urlProposee())}" spellcheck="false"></label>
-      <div class="boutons"><button class="primaire" id="pa-creer"${aFaire.length ? "" : " disabled"}>${aFaire.length ? `Créer et mettre à jour les pages (${aFaire.length})` : "Pages à jour"}</button><span class="statut" id="pa-statut" role="status"></span></div></section>`;
+      <div class="boutons"><button class="secondaire" id="pa-relire" title="Relire les pages du document (après une suppression dans Grist, par exemple)">↻ Relire</button><button class="primaire" id="pa-creer"${aFaire.length ? "" : " disabled"}>${aFaire.length ? `Créer et mettre à jour les pages (${aFaire.length})` : "Pages à jour"}</button><span class="statut" id="pa-statut" role="status"></span></div></section>`;
+    $("pa-relire").addEventListener("click", () => { S.oublierStructure(); afficher(); Groupe.resume(); });
     racine.querySelectorAll("[data-k]").forEach(c => c.addEventListener("change", () => { inclure.set(c.dataset.k, c.checked); dessiner(); }));
     $("pa-creer").addEventListener("click", async () => {
       $("pa-creer").disabled = true; const st = $("pa-statut"); st.textContent = "Création et mise à jour des pages…"; st.className = "statut";
@@ -183,6 +184,7 @@
       } catch (_) { z.innerHTML = ""; }
     },
     afficher(sous) {
+      S.oublierStructure();
       if (sous) sousCourant = sous;
       const nav = $("eq-sous");
       nav.innerHTML = SOUS.map(([id, lib]) => `<button type="button" role="tab" data-sous="${id}" aria-selected="${id === sousCourant}">${lib}</button>`).join("");

@@ -43,7 +43,8 @@
   const pageDeAgent = a => { const p = (pages || []).find(x => { const ag = R.agentDePage(x, agents); return ag && ag.id === a.id; }); return p ? p.viewRef : null; };
   async function majPagesInvites() {
     if (!agents || !agents.some(a => a.cle)) return;
-    const acts = agents.filter(a => a.cle && pageDeAgent(a) && pageDeAgent(a) !== a.pageSaisie).map(a => ["UpdateRecord", table(), a.id, { [S.INVITE.page]: pageDeAgent(a) }]);
+    // page supprimée dans Grist : le lien revient à la page d'accueil plutôt que de viser une page qui n'existe plus
+    const acts = agents.filter(a => a.cle && (pageDeAgent(a) || null) !== (a.pageSaisie || null)).map(a => ["UpdateRecord", table(), a.id, { [S.INVITE.page]: pageDeAgent(a) || null }]);
     if (!acts.length) return;
     try { await grist.docApi.applyUserActions(acts); agents = await R.lireAgents(general); } catch (_) { /* droits insuffisants : lien vers la page d'accueil */ }
   }

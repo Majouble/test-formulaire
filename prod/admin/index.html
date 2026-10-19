@@ -7,7 +7,11 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="../commun/theme.js"></script>
 <script src="../commun/socle.js"></script>
-<script>window.Socle.activerCacheLecture();</script>
+<script>window.Socle.activerCacheLecture();
+  // ce qui est fait directement dans Grist (page supprimée, colonne ajoutée…) n'est pas signalé au widget : la structure
+  // du document est relue quand on revient dans l'administration ou qu'on change d'onglet
+  window.addEventListener("focus", () => window.Socle.oublierStructure());
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) window.Socle.oublierStructure(); });</script>
 <script src="../commun/geo.js"></script>
 <script src="../commun/point-moteur.js"></script>
 <link rel="stylesheet" href="formulaires.css">
@@ -584,6 +588,7 @@
 <script>
   // Onglets
   document.querySelectorAll("nav button[data-onglet]").forEach(b => b.addEventListener("click", () => {
+    window.Socle.oublierStructure();
     document.querySelectorAll("nav button[data-onglet]").forEach(x => x.setAttribute("aria-selected", String(x === b)));
     document.querySelectorAll("main").forEach(m => { m.hidden = m.id !== b.dataset.onglet; });
     if (b.dataset.onglet === "referentiel") window.OngletReferentiel.afficher();
