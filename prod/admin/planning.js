@@ -224,7 +224,7 @@
       ${cs.length > 1 ? `<div class="pl-ajout-agent"><select id="pl-ajout-journee"><option value="">+ mobiliser sur toute la journée…</option>${actifs.map(a => `<option value="${a.id}">${esc(a.nom)}</option>`).join("")}</select>
         <small class="aide">L'agent est ajouté à chaque créneau du jour où il n'est pas déjà.</small></div>` : ""}
       ${blocs}
-      <p class="aide">Champ : les formulaires (EN, ESR) sur lesquels l'agent est mobilisé ; sa page de saisie de l'autre champ le lui signale. Le champ et le périmètre proposés sont ceux de son dernier créneau. Aucune valeur cochée : tous les établissements. Un agent absent de la liste se crée dans l'onglet Équipe.</p>
+      <p class="aide">Champ : les formulaires (EN, ESR) sur lesquels l'agent est mobilisé ; sa page de saisie de l'autre champ le lui signale. Le champ et le périmètre proposés sont ceux de son dernier créneau. Aucune valeur cochée : tous les établissements. Un agent absent de la liste se crée dans l'onglet Équipe › Agents.</p>
       <div class="boutons"><button class="primaire" id="pl-enregistrer">Enregistrer</button>
         <button class="secondaire" id="pl-fermer">Fermer</button>
         <span class="statut" id="pl-edition-statut" role="status"></span></div></section>`;
@@ -335,7 +335,7 @@
         ${(() => { const aj = R.criteresAjoutables(ref, config); return aj.length ? `<select id="pl-crit-ajouter" aria-label="Ajouter un critère"><option value="">+ critère…</option>${aj.map(c => `<option value="${esc(c)}">${esc(R.libelleCritere(ref, c))} (${ref.valeurs[c].length})</option>`).join("")}</select>` : ""; })()}</div>
       ${ref.absent ? `<p class="avert">Le référentiel « ${esc(ref.table)} » est introuvable : terminez l'installation.</p>` : ""}
       <div class="eq-lib" style="margin-top:14px">Fonctions : lignes du tableau</div>
-      <p class="aide">Une ligne par fonction, dans cet ordre (↑ ↓). « Ligne affichée » : la fonction a sa ligne dans le tableau. « Saisit » : les agents de cette fonction ont une page de saisie (cochée d'office dans l'onglet Formulaires) et comptent pour la couverture des créneaux. Renommer une fonction met à jour le planning.</p>
+      <p class="aide">Une ligne par fonction, dans cet ordre (↑ ↓). « Ligne affichée » : la fonction a sa ligne dans le tableau. « Saisit » : les agents de cette fonction ont une page de saisie (cochée d'office dans Équipe › Pages de saisie) et comptent pour la couverture des créneaux. Renommer une fonction met à jour le planning.</p>
       ${r.fonctions.map((f, i) => `<div class="pl-reg-ligne" data-fonction="${i}">
         <button type="button" class="pl-mini" data-monter-fonction="${i}"${i ? "" : " disabled"} aria-label="Monter">↑</button>
         <button type="button" class="pl-mini" data-descendre-fonction="${i}"${i < r.fonctions.length - 1 ? "" : " disabled"} aria-label="Descendre">↓</button>

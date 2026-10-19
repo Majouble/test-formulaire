@@ -281,7 +281,7 @@
     if (!config) { racine.innerHTML = `<div class="bandeau alerte">La table Config est absente : lancez d'abord l'installation.</div>`; return; }
     const tAgents = meta[general.agents];
     if (!tAgents || !meta[general.affectations]) {
-      racine.innerHTML = `<div class="bandeau info">Les règles d'accès s'appuient sur l'équipe et le planning : créez-les d'abord (onglets Équipe et Planning).</div>`;
+      racine.innerHTML = `<div class="bandeau info">Les règles d'accès s'appuient sur l'équipe et le planning : créez-les d'abord (onglet Équipe (Agents et Planning)).</div>`;
       return;
     }
     const sansFormule = !tAgents.colonnes.Champs_acces;
@@ -300,20 +300,15 @@
     lier();
   }
 
+  // Droits de chacun : affichés dans Équipe › Agents (pastilles « saisie EN », « lecture seule »…) ; ici, un rappel
   function carteQui() {
-    const lignes = (agents || []).map(a => {
-      const champs = a.champsAcces || [];
-      const droits = !a.actif ? `<span class="pastille">inactif : aucun accès</span>`
-        : !a.email && !a.cle ? `<span class="pastille manque">sans adresse : aucun accès</span>`
-        : champs.length ? `<span class="pastille ok">saisie ${esc(champs.join(" et "))}</span>${champs.length < S.CHAMPS.length ? ` <span class="pastille">lecture ${esc(S.CHAMPS.map(c => c.id).filter(c => !champs.includes(c)).join(", "))}</span>` : ""}`
-        : `<span class="pastille">lecture seule (aucun créneau à 7 jours)</span>`;
-      return `<tr${a.actif ? "" : ` class="inactif"`}><td><strong>${esc(a.nom)}</strong>${a.cle ? ` <span class="pastille reco">invité</span>` : ""}</td><td>${a.email ? esc(a.email) : a.cle ? "lien personnel" : "—"}</td><td>${droits}</td></tr>`;
-    }).join("");
+    const n = (agents || []).filter(a => a.actif).length;
     return `<section class="carte"><h2>Qui aura accès à quoi</h2>
-      <p class="aide">D'après l'équipe et le planning. Un agent saisit sur les formulaires d'un champ (EN, ESR) s'il y est mobilisé sur un créneau entre 7 jours avant et 7 jours après aujourd'hui ; Grist recalcule ces champs environ toutes les heures et à chaque modification du planning. Les personnes absentes de l'équipe ne voient rien ; les propriétaires du document voient et modifient tout.</p>
-      ${agents && agents.length ? `<table class="eq-table"><thead><tr><th>Agent</th><th>Adresse (compte Grist)</th><th>Droits</th></tr></thead><tbody>${lignes}</tbody></table>` : `<p class="vide">Aucun agent dans l'équipe.</p>`}
+      <p class="aide" style="margin:0">Un agent saisit sur les formulaires d'un champ (EN, ESR) s'il y est mobilisé sur un créneau entre 7 jours avant et 7 jours après aujourd'hui ; les autres agents actifs lisent ; les personnes absentes de l'équipe ne voient rien ; les propriétaires voient et modifient tout.
+      Le droit du moment de chacun des ${n} agent${n > 1 ? "s" : ""} actif${n > 1 ? "s" : ""} est affiché dans <a href="#" id="ac-vers-equipe">Équipe › Agents</a>.</p>
       ${agents && agents.some(a => a.champsAcces === null) ? `<p class="avert">Champs non calculés : ajoutez la colonne Champs_acces (bandeau ci-dessus).</p>` : ""}</section>`;
   }
+
 
   function carteRegles(propose, remplacees, ok, sansFormule) {
     return `<section class="carte"><h2>Règles proposées</h2>
@@ -421,6 +416,7 @@
 
   function lier() {
     if ($("ac-pages")) $("ac-pages").addEventListener("click", rangerPages);
+    if ($("ac-vers-equipe")) $("ac-vers-equipe").addEventListener("click", ev => { ev.preventDefault(); const b = document.querySelector('nav button[data-onglet="onglet-equipe"]'); if (b) b.click(); window.OngletEquipeGroupe.afficher("agents"); });
     if ($("ac-formule")) $("ac-formule").addEventListener("click", ajouterFormule);
     if ($("ac-appliquer")) $("ac-appliquer").addEventListener("click", appliquer);
     if ($("ac-retirer")) $("ac-retirer").addEventListener("click", retirer);
@@ -494,6 +490,13 @@
   // Après la publication d'un formulaire (nouvelle sous-table, nouvelles questions de visa…) : si les règles du socle
   // sont en place mais ne correspondent plus, elles sont réappliquées. Rien n'est fait si le document n'utilise pas
   // ces règles. Renvoie { etat: "sans-regles" | "a-jour" | "reappliquees" | "illisibles" | "incomplet" | "refusees", texte }.
+  // État des règles, sans rien modifier : { enPlace, aJour } (null si illisibles)
+  async function verifier() {
+    try { await charger(); } catch (_) { return null; }
+    if (acl === null) return null;
+    const enPlace = acl.regles.some(r => r.memo.startsWith(MEMO) || (r.userAttributes && estAttributSocle(r)));
+    return { enPlace, aJour: enPlace && aJour(reglesProposees()) };
+  }
   async function reappliquerSiBesoin() {
     try { await charger(); } catch (e) { return { etat: "illisibles", texte: "" }; }
     if (acl === null) return { etat: "illisibles", texte: "Si le document utilise les règles d'accès du socle, un propriétaire doit les réappliquer (onglet Accès)." };
@@ -525,5 +528,5 @@
     try { await charger(); pagesDoc = await lirePagesDoc(); } catch (e) { racine.innerHTML = `<div class="bandeau alerte">Lecture impossible : ${esc(e.message || e)}</div>`; return; }
     dessiner();
   }
-  window.OngletAcces = { afficher, reappliquerSiBesoin };
+  window.OngletAcces = { afficher, reappliquerSiBesoin, verifier };
 })();

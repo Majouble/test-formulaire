@@ -30,69 +30,75 @@
   nav button:disabled { cursor: default; opacity: .55; }
   main { padding: 16px; max-width: 980px; }
   main[hidden] { display: none; }
+  .sous-onglets { display: flex; gap: 4px; margin: 0 0 14px; flex-wrap: wrap; }
+  .sous-onglets button { background: none; border: 1px solid var(--trait); border-radius: 16px; padding: 5px 14px; color: var(--doux); font: inherit; cursor: pointer; }
+  .sous-onglets button[aria-selected=true] { background: var(--accent); border-color: var(--accent); color: var(--x-ffffff); font-weight: 600; }
+  .eq-synthese { font-size: 13px; color: var(--doux); margin: 0 0 10px; }
+  .eq-synthese a { color: var(--accent); font-weight: 600; }
+  #pages-agents .carte, #onglet-equipe > .carte { background: var(--carte); border: 1px solid var(--trait); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
   main#formulaires { padding: 0; max-width: none; }
   #formulaires .app { height: calc(100vh - 80px); }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .carte { background: var(--carte); border: 1px solid var(--trait); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .carte h2 { font-size: 15px; margin: 0 0 4px; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .carte > p.aide { color: var(--doux); margin: 0 0 12px; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .bandeau { border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-weight: 600; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .bandeau.ok { background: var(--ok-clair); color: var(--ok); }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .bandeau.alerte { background: var(--alerte-clair); color: var(--alerte); }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .bandeau.info { background: var(--info-clair); color: var(--accent); }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) table { width: 100%; border-collapse: collapse; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) th, :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--trait); vertical-align: top; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) th { font-size: 12px; color: var(--doux); font-weight: 600; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) select, :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) input[type="text"], :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) textarea { font: inherit; padding: 5px 8px; border: 1px solid var(--x-bbbbbb); border-radius: 4px; width: 100%; background: var(--x-ffffff); }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) textarea { min-height: 64px; resize: vertical; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) label.champ { display: block; margin-bottom: 10px; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) label.champ span { display: block; font-weight: 600; margin-bottom: 3px; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) label.champ small { display: block; color: var(--doux); font-weight: normal; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .grille { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
-  @media (max-width: 640px) { :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .grille { grid-template-columns: 1fr; } }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .pastille { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--x-eeeeee); color: var(--doux); white-space: nowrap; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .pastille.manque { background: var(--alerte-clair); color: var(--alerte); }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .pastille.reco { background: var(--info-clair); color: var(--accent); }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .pastille.ok { background: var(--ok-clair); color: var(--ok); }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .groupe { font-size: 12px; font-weight: 600; color: var(--doux); text-transform: uppercase; letter-spacing: .03em; margin: 14px 0 6px; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .etape { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--trait); }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .etape input { margin-top: 3px; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .etape .detail { color: var(--doux); font-size: 13px; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .boutons { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) button.primaire, :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) button.secondaire { font: inherit; padding: 7px 14px; border-radius: 4px; cursor: pointer; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) button.primaire { background: var(--accent); color: var(--x-ffffff); border: 1px solid var(--accent); }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) button.secondaire { background: var(--x-ffffff); color: var(--accent); border: 1px solid var(--accent); }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) button:disabled { opacity: .5; cursor: default; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .statut { font-size: 13px; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .statut.ok { color: var(--ok); }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .statut.err { color: var(--alerte); }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) ul.journal { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) ul.journal li.err { color: var(--alerte); }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) .vide { color: var(--doux); font-style: italic; }
-  :is(#installation, #referentiel, #equipe, #planning, #acces, #liens, #point-situation) code { background: var(--x-f0f0f0); padding: 0 4px; border-radius: 3px; font-size: 12.5px; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .carte { background: var(--carte); border: 1px solid var(--trait); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .carte h2 { font-size: 15px; margin: 0 0 4px; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .carte > p.aide { color: var(--doux); margin: 0 0 12px; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .bandeau { border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-weight: 600; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .bandeau.ok { background: var(--ok-clair); color: var(--ok); }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .bandeau.alerte { background: var(--alerte-clair); color: var(--alerte); }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .bandeau.info { background: var(--info-clair); color: var(--accent); }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) table { width: 100%; border-collapse: collapse; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) th, :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--trait); vertical-align: top; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) th { font-size: 12px; color: var(--doux); font-weight: 600; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) select, :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) input[type="text"], :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) textarea { font: inherit; padding: 5px 8px; border: 1px solid var(--x-bbbbbb); border-radius: 4px; width: 100%; background: var(--x-ffffff); }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) textarea { min-height: 64px; resize: vertical; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) label.champ { display: block; margin-bottom: 10px; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) label.champ span { display: block; font-weight: 600; margin-bottom: 3px; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) label.champ small { display: block; color: var(--doux); font-weight: normal; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .grille { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+  @media (max-width: 640px) { :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .grille { grid-template-columns: 1fr; } }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .pastille { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 10px; background: var(--x-eeeeee); color: var(--doux); white-space: nowrap; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .pastille.manque { background: var(--alerte-clair); color: var(--alerte); }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .pastille.reco { background: var(--info-clair); color: var(--accent); }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .pastille.ok { background: var(--ok-clair); color: var(--ok); }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .groupe { font-size: 12px; font-weight: 600; color: var(--doux); text-transform: uppercase; letter-spacing: .03em; margin: 14px 0 6px; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .etape { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--trait); }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .etape input { margin-top: 3px; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .etape .detail { color: var(--doux); font-size: 13px; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .boutons { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; align-items: center; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) button.primaire, :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) button.secondaire { font: inherit; padding: 7px 14px; border-radius: 4px; cursor: pointer; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) button.primaire { background: var(--accent); color: var(--x-ffffff); border: 1px solid var(--accent); }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) button.secondaire { background: var(--x-ffffff); color: var(--accent); border: 1px solid var(--accent); }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) button:disabled { opacity: .5; cursor: default; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .statut { font-size: 13px; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .statut.ok { color: var(--ok); }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .statut.err { color: var(--alerte); }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) ul.journal { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) ul.journal li.err { color: var(--alerte); }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) .vide { color: var(--doux); font-style: italic; }
+  :is(#installation, #referentiel, #equipe, #planning, #pages-agents, #acces, #liens, #point-situation) code { background: var(--x-f0f0f0); padding: 0 4px; border-radius: 3px; font-size: 12.5px; }
   /* onglets Équipe et Planning */
   main#planning { max-width: 1200px; }
-  :is(#equipe, #planning, #acces, #liens) .eq-table tr.eq-ligne { cursor: pointer; }
-  :is(#equipe, #planning, #acces, #liens) .eq-table tr.eq-ligne:hover, :is(#equipe, #planning, #acces, #liens) .eq-table tr.eq-ligne:focus, #planning .eq-table tr.choisi { background: var(--accent-clair); outline: none; }
+  :is(#equipe, #planning, #pages-agents, #acces, #liens) .eq-table tr.eq-ligne { cursor: pointer; }
+  :is(#equipe, #planning, #pages-agents, #acces, #liens) .eq-table tr.eq-ligne:hover, :is(#equipe, #planning, #pages-agents, #acces, #liens) .eq-table tr.eq-ligne:focus, #planning .eq-table tr.choisi { background: var(--accent-clair); outline: none; }
   #equipe .eq-table tr.inactif td { color: var(--doux); }
   #equipe .eq-criteres { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
   #equipe .eq-criteres select { width: auto; }
-  :is(#equipe, #planning, #acces, #liens) .eq-lib { display: block; font-weight: 600; margin-bottom: 4px; }
+  :is(#equipe, #planning, #pages-agents, #acces, #liens) .eq-lib { display: block; font-weight: 600; margin-bottom: 4px; }
   #equipe .eq-criteres .eq-lib { display: inline; margin: 0 4px 0 0; }
   #equipe .crit { display: inline-flex; align-items: center; gap: 2px; background: var(--accent-clair); color: var(--accent); border-radius: 12px; padding: 2px 4px 2px 10px; font-size: 13px; }
   #equipe .crit button { border: 0; background: none; color: inherit; cursor: pointer; font: inherit; padding: 0 4px; }
-  :is(#equipe, #planning, #acces, #liens) .eq-crit-lib { font-size: 12px; color: var(--doux); margin: 8px 0 4px; }
-  :is(#equipe, #planning, #acces, #liens) .eq-puces { display: flex; flex-wrap: wrap; gap: 4px; }
-  :is(#equipe, #planning, #acces, #liens) .eq-puce { font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 14px; border: 1px solid var(--trait); background: var(--x-ffffff); cursor: pointer; }
-  :is(#equipe, #planning, #acces, #liens) .eq-puce.on { background: var(--accent); border-color: var(--accent); color: var(--x-ffffff); }
+  :is(#equipe, #planning, #pages-agents, #acces, #liens) .eq-crit-lib { font-size: 12px; color: var(--doux); margin: 8px 0 4px; }
+  :is(#equipe, #planning, #pages-agents, #acces, #liens) .eq-puces { display: flex; flex-wrap: wrap; gap: 4px; }
+  :is(#equipe, #planning, #pages-agents, #acces, #liens) .eq-puce { font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 14px; border: 1px solid var(--trait); background: var(--x-ffffff); cursor: pointer; }
+  :is(#equipe, #planning, #pages-agents, #acces, #liens) .eq-puce.on { background: var(--accent); border-color: var(--accent); color: var(--x-ffffff); }
   #equipe .eq-role { display: block; margin: 4px 0; }
   #equipe .eq-case { display: flex; gap: 6px; align-items: center; font-weight: normal !important; }
-  :is(#equipe, #planning, #acces, #liens) div.champ { margin-bottom: 12px; }
-  :is(#equipe, #planning, #acces, #liens) .avert { background: var(--alerte-clair); color: var(--alerte); padding: 8px 12px; border-radius: 6px; margin: 10px 0 0; }
+  :is(#equipe, #planning, #pages-agents, #acces, #liens) div.champ { margin-bottom: 12px; }
+  :is(#equipe, #planning, #pages-agents, #acces, #liens) .avert { background: var(--alerte-clair); color: var(--alerte); padding: 8px 12px; border-radius: 6px; margin: 10px 0 0; }
   #equipe .eq-reprise { background: var(--info-clair); border-radius: 6px; padding: 10px 12px; margin-top: 12px; }
   #equipe .eq-reprise ul { margin: 6px 0 8px; padding-left: 18px; }
-  :is(#equipe, #planning, #acces, #liens) button.danger { color: var(--alerte); border-color: var(--alerte); }
-  :is(#equipe, #planning, #acces, #liens) details summary { cursor: pointer; }
-  :is(#equipe, #planning, #acces, #liens) details[open] summary { margin-bottom: 8px; }
+  :is(#equipe, #planning, #pages-agents, #acces, #liens) button.danger { color: var(--alerte); border-color: var(--alerte); }
+  :is(#equipe, #planning, #pages-agents, #acces, #liens) details summary { cursor: pointer; }
+  :is(#equipe, #planning, #pages-agents, #acces, #liens) details[open] summary { margin-bottom: 8px; }
   #planning .pl-barre { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
   #planning .pl-barre h2 { margin: 0 8px 0 0 !important; }
   #planning button.petit { padding: 4px 10px !important; font-size: 13px; }
@@ -410,8 +416,7 @@
   <nav role="tablist">
     <button role="tab" aria-selected="true" data-onglet="installation">Installation</button>
     <button role="tab" aria-selected="false" data-onglet="referentiel">Référentiel</button>
-    <button role="tab" aria-selected="false" data-onglet="equipe">Équipe</button>
-    <button role="tab" aria-selected="false" data-onglet="planning">Planning</button>
+    <button role="tab" aria-selected="false" data-onglet="onglet-equipe">Équipe</button>
     <button role="tab" aria-selected="false" data-onglet="onglet-actions">Actions</button>
     <button role="tab" aria-selected="false" data-onglet="acces">Accès</button>
     <button role="tab" aria-selected="false" data-onglet="liens">Établissements</button>
@@ -510,8 +515,13 @@
   </section>
   <p class="statut" id="ref-statut"></p>
 </main>
-<main id="equipe" hidden></main>
-<main id="planning" hidden></main>
+<main id="onglet-equipe" hidden>
+  <div id="eq-synthese-zone"></div>
+  <div class="sous-onglets" id="eq-sous" role="tablist" aria-label="Équipe"></div>
+  <div id="equipe"></div>
+  <div id="planning" hidden></div>
+  <div id="pages-agents" hidden></div>
+</main>
 <main id="onglet-actions" hidden></main>
 <main id="acces" hidden></main>
 <main id="liens" hidden></main>
@@ -566,6 +576,7 @@
 <script src="referentiel.js"></script>
 <script src="equipe.js"></script>
 <script src="planning.js"></script>
+<script src="pages-agents.js"></script>
 <script src="acces.js"></script>
 <script src="actions.js"></script>
 <script src="liens.js"></script>
@@ -576,8 +587,7 @@
     document.querySelectorAll("nav button[data-onglet]").forEach(x => x.setAttribute("aria-selected", String(x === b)));
     document.querySelectorAll("main").forEach(m => { m.hidden = m.id !== b.dataset.onglet; });
     if (b.dataset.onglet === "referentiel") window.OngletReferentiel.afficher();
-    if (b.dataset.onglet === "equipe") window.OngletEquipe.afficher();
-    if (b.dataset.onglet === "planning") window.OngletPlanning.afficher();
+    if (b.dataset.onglet === "onglet-equipe") window.OngletEquipeGroupe.afficher();
     if (b.dataset.onglet === "acces") window.OngletAcces.afficher();
     if (b.dataset.onglet === "liens") window.OngletLiens.afficher();
     if (b.dataset.onglet === "onglet-actions") window.OngletActions.afficher();

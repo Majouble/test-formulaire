@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.0.7 (19/10/2026)";
+  const VERSION = "2.0.8 (19/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -327,7 +327,7 @@ return sorted(champs)`;
      Clé dans Agents.Cle_acces, page de saisie dans Agents.Page_saisie, lien dans Agents.Lien_acces (?Invite_=<clé>).
      Attribut utilisateur « Invite » (onglet Accès) : l'invité a les droits d'un agent actif de l'équipe. */
   const INVITE = { attribut: "Invite", cle: "Cle_acces", page: "Page_saisie", lien: "Lien_acces", expire: "Lien_expire_le", valide: "Lien_valide" };
-  // Durées de validité d'un lien d'invité (clé « acces_invites » de Config, réglée dans l'onglet Équipe)
+  // Durées de validité d'un lien d'invité (clé « acces_invites » de Config, réglée dans l'onglet Équipe › Agents)
   const DUREES_INVITE = [["24h", "24 heures", 24], ["72h", "3 jours", 72], ["7j", "7 jours", 168], ["30j", "30 jours", 720], ["illimite", "sans limite", 0]];
   // Auteur d'une ligne (formule d'initialisation) : adresse du compte Grist, sinon « Invité : <nom> » pour le lien d'un agent,
   // sinon « Établissement : <UAI> <nom> » pour le lien d'un établissement (colEtab : colonne Réf. de l'établissement de la ligne).
@@ -648,10 +648,10 @@ return sorted(champs)`;
     ajouterTableTechnique(g.formulaires, COLONNES_FORMULAIRES, "Formulaires en brouillon et publiés.");
     const colsAgents = colonnesAgents(config);
     ajouterTableTechnique(g.agents, colsAgents.filter(c => !c.isFormula), "Équipe de la cellule : nom, adresse, téléphone (onglet Équipe).");
-    ajouterTableTechnique(g.creneaux, COLONNES_CRENEAUX, "Planning : créneaux de chaque jour (onglet Planning).");
+    ajouterTableTechnique(g.creneaux, COLONNES_CRENEAUX, "Planning : créneaux de chaque jour (Équipe › Planning).");
     ajouterTableTechnique(g.affectations, colonnesAffectations(g, config), "Planning : agents affectés à chaque créneau, avec leur fonction et leur périmètre.");
     ajouterTableTechnique(g.actions, colonnesActions(g, config), "Suivi des actions de la cellule : kanban des coordinateurs (onglet Actions).");
-    ajouterTableTechnique(g.emargements, colonnesEmargements(g), "Émargement : prises et fins de service des agents (page de saisie, suivi dans l'onglet Planning).");
+    ajouterTableTechnique(g.emargements, colonnesEmargements(g), "Émargement : prises et fins de service des agents (page de saisie, suivi dans Équipe › Planning).");
     // Formules de la table Agents : après Affectations, qu'elles lisent
     const formules = colsAgents.filter(c => c.isFormula && !(meta[g.agents] && meta[g.agents].colonnes[c.id]));
     if (formules.length) etapes.push({ id: `formule-${g.agents}`, groupe: "Tables", coche: true, titre: `Ajouter ${formules.map(c => `${g.agents}.${c.id}`).join(", ")}`,

@@ -1662,7 +1662,7 @@ async function publier() {
     const suite = acces.texte ? ` ${acces.texte}` : "";
     const alerteAcces = ["incomplet", "refusees"].includes(acces.etat);
     const sansPage = pagesSaisie && !pagesSaisie.some(x => x.table === courant.table);
-    message((sansPage ? "Formulaire publié. Aucune page de Grist ne l'affiche encore : utilisez « Créer la page de saisie » dans le panneau de droite."
+    message((sansPage ? "Formulaire publié. Aucune page de Grist ne l'affiche encore : créez les pages des agents dans Équipe › Pages de saisie."
       : "Formulaire publié : les pages qui l'affichent le prennent en compte dans les 30 secondes (ou au rechargement).") + suite, alerteAcces ? "err" : sansPage ? "" : "ok");
   } catch (e) { message(`Publication refusée : ${e.message || e}`, "err"); }
 }
@@ -2101,171 +2101,25 @@ function urlWidgetProposee() {
   if (deja) return deja;
   try { return new URL("../saisie/", location.href).href; } catch (_) { return "https://majouble.github.io/test-formulaire/v2/saisie/"; }
 }
-// Pages de saisie : une par agent de l'équipe (table Agents, onglet Équipe), nommée « Formulaire Alice (Versailles) ».
-// Le nom et le périmètre viennent de l'équipe ; ils sont recopiés dans les options du widget de la page
-// (formulaire, libelle, perimetre, agent), que lit le widget de saisie.
-let refInfo = null;                   // référentiel (valeurs des critères), lu par Repartition
-let agentsEquipe;                     // undefined : pas encore lu ; null : pas de table Agents
-let repartition = null;               // { cle, inclure: Map(id agent → bool) } : cases « créer sa page »
-let planningEquipe = null;   // planning (champs EN / ESR sur lesquels chaque agent a été mobilisé)
-// Champ du formulaire (EN, ESR) d'après sa version
-const champForm = () => (window.Socle.CHAMPS.find(c => c.version === versionForm()) || {}).id || "";
-// Champs sur lesquels un agent est mobilisé au planning ; null s'il n'y figure pas encore
-function champsAgent(id) {
-  const l = ((planningEquipe && planningEquipe.affectations) || []).filter(a => a.agent === id);
-  return l.length ? [...new Set(l.flatMap(window.Socle.champsDe))] : null;
-}
-// Nom de la page : « Formulaire Alice » ; « Formulaire ESR Alice » quand le document publie plusieurs formulaires établissement
-function nomPageAgent(a) {
-  const plusieurs = formulaires.filter(f => typeof f.publie === "string" && f.publie.trim() && (f.type || "etablissement") === "etablissement").length > 1;
-  return R.nomPage(plusieurs && champForm() ? `${champForm()} ${a.nom}` : a.nom, {});
-}
-async function lireEquipe() {
-  refInfo = await R.lireReferentiel(socleGeneral, socleConfig);
-  agentsEquipe = await R.lireAgents(socleGeneral, refInfo);
-  planningEquipe = await window.Socle.lirePlanning(socleGeneral);
-}
-const avecPage = a => a.actif;
-// Page de saisie cochée d'office : agent mobilisé au planning dans une fonction qui saisit (tous les agents tant que le planning est vide)
-function aUneFonctionDeSaisie(id) {
-  const l = ((planningEquipe && planningEquipe.affectations) || []).filter(a => a.agent === id);
-  return !l.length || l.some(a => fonctionDeSaisie(a.fonction));
-}
-const fonctionDeSaisie = nom => !!(window.Socle.reglagesPlanning(socleConfig).fonctions.find(f => f.nom === nom) || {}).saisie;
-// Pages de la table du formulaire par agent, et pages sans agent actif
-function etatPages() {
-  const ici = (pagesSaisie || []).filter(x => x.table === courant.table);
-  const parAgent = new Map(), orphelines = [];
-  for (const p of ici) {
-    const a = R.agentDePage(p, agentsEquipe || []);
-    if (a && avecPage(a)) { if (!parAgent.has(a.id)) parAgent.set(a.id, []); parAgent.get(a.id).push(p); } else orphelines.push({ p, a });
-  }
-  return { parAgent, orphelines };
-}
-// La page ne porte plus de périmètre fixe : celui du créneau en cours (onglet Planning) s'applique
-const pageAJour = (p, a) => p.page === nomPageAgent(a) && p.libelle === a.nom && p.agent === a.id
-  && p.formulaire === courant.nom && !Object.keys(R.nettoyer(R.perimetreObjet(refInfo, p.perimetre))).length;
-// Pourquoi une page existante est à mettre à jour
-function raisonMaj(pg, a) {
-  const nom = nomPageAgent(a), autres = pg.filter(p => p.page !== nom);
-  if (autres.length) return `actuellement « ${esc(autres.map(p => p.page).join(" », « "))} »`;
-  if (pg.some(p => Object.keys(R.nettoyer(R.perimetreObjet(refInfo, p.perimetre))).length)) return "périmètre fixe à retirer : le planning le donne";
-  if (pg.some(p => p.formulaire !== courant.nom)) return "formulaire à changer";
-  return "page à relier à la fiche de l'agent";
-}
-function planPages() {
-  const cle = `${courant.id}|${courant.table}`;
-  if (!repartition || repartition.cle !== cle) repartition = { cle, inclure: new Map() };
-  const { parAgent, orphelines } = etatPages();
-  const lignes = (agentsEquipe || []).filter(avecPage).map(a => {
-    const pg = parAgent.get(a.id) || [];
-    const ch = champsAgent(a.id);
-    if (!repartition.inclure.has(a.id)) repartition.inclure.set(a.id, aUneFonctionDeSaisie(a.id) && (!ch || ch.includes(champForm())));
-    const etat = pg.length ? (pg.every(p => pageAJour(p, a)) ? "ok" : "modif") : (repartition.inclure.get(a.id) ? "nouv" : "sans");
-    return { a, pg, etat };
-  });
-  return { lignes, orphelines, aFaire: lignes.filter(l => l.etat === "nouv" || l.etat === "modif") };
-}
-const allerEquipe = () => { const b = document.querySelector('nav button[data-onglet="equipe"]'); if (b) b.click(); };
-
+// Pages de saisie des agents : gérées dans Équipe › Pages de saisie (admin/pages-agents.js, une page par agent et par
+// formulaire publié) ; ici, un résumé pour le formulaire affiché et un raccourci.
+const allerPagesAgents = () => { const b = document.querySelector('nav button[data-onglet="onglet-equipe"]'); if (b) b.click(); window.OngletEquipeGroupe.afficher("pages"); };
 function groupePageHtml() {
   if (courant.type !== "etablissement") return "";
-  const titre = `<div class="t">Pages de saisie par agent</div>`;
-  if (pagesSaisie === null) return `<div class="groupe">${titre}<p class="note" style="margin:0">Les pages du document ne sont pas lisibles (accès complet requis).</p></div>`;
-  if (agentsEquipe === undefined) return `<div class="groupe">${titre}<p class="note">Lecture de l'équipe…</p></div>`;
-  const publiees = new Set(formulaires.filter(f => typeof f.publie === "string" && f.publie.trim()).map(f => f.table));
-  const malReliees = pagesSaisie.filter(x => !publiees.has(x.table) && x.table !== courant.table);
-  const lienEquipe = `<button type="button" class="secondaire petit" data-pg="equipe">Modifier l'équipe →</button>`;
-  if (agentsEquipe === null || !agentsEquipe.filter(avecPage).length) {
-    const ici = pagesSaisie.filter(x => x.table === courant.table);
-    return `<div class="groupe">${titre}
-      <p class="note" style="margin:0 0 8px">Une page par agent de l'équipe, limitée à son périmètre. ${agentsEquipe === null ? "La table de l'équipe n'existe pas encore" : "L'équipe ne compte aucun agent actif"} : commencez par l'onglet Équipe${ici.length ? ", qui peut reprendre les pages existantes" : ""}.</p>
-      ${ici.length ? `<ul class="liste-cols">${ici.map(x => `<li><span class="present">✓</span> ${esc(x.page)}</li>`).join("")}</ul>` : ""}
-      ${lienEquipe}</div>`;
-  }
-  const { lignes, orphelines, aFaire } = planPages();
-  const pastilles = { ok: `<span class="pastille-pg ok">à jour</span>`, modif: `<span class="pastille-pg modif">à mettre à jour</span>`, nouv: `<span class="pastille-pg nouv">à créer</span>`, sans: "" };
-  const html = lignes.map(({ a, pg, etat }) => {
-    const autre = pg.find(p => p.formulaire && p.formulaire !== courant.nom);
-    return `<div class="agent" data-id="${a.id}">
-      <div class="agent-haut">${pg.length ? `<strong>${esc(a.nom)}</strong>` : `<label class="case" style="margin:0"><input type="checkbox" data-pg="inclure"${repartition.inclure.get(a.id) ? " checked" : ""}> <strong>${esc(a.nom)}</strong></label>`}
-        <span style="margin-left:auto"></span>${pastilles[etat]}</div>
-      <small class="note">page « ${esc(nomPageAgent(a))} »${etat === "modif" ? ` (${raisonMaj(pg, a)})` : ""}${(() => { const ch = champsAgent(a.id);
-        return !ch ? " · pas encore au planning" : ch.includes(champForm()) ? ` · mobilisé ${esc(ch.join(" et "))}` : ` · <strong>jamais mobilisé ${esc(champForm())}</strong> (${esc(ch.join(", "))} seulement)`; })()}</small>
-      ${autre ? `<small class="note">affiche « ${esc(autre.formulaire)} » : sera basculée sur ce formulaire</small>` : ""}
-    </div>`;
-  }).join("");
-  return `<div class="groupe">${titre}
-    <p class="note" style="margin:0 0 8px">Une page par agent de l'équipe. Cochés d'office : les agents d'une fonction qui saisit, mobilisés au planning sur le champ de ce formulaire (${esc(champForm())}) ou pas encore au planning. La page applique le périmètre du créneau en cours (onglet Planning) ; hors créneau, elle montre tous les établissements. Le périmètre répartit le travail sans restreindre l'accès.</p>
-    ${refInfo && refInfo.absent ? `<p class="avert">Le référentiel « ${esc(refInfo.table)} » est introuvable : terminez l'installation.</p>` : ""}
-    ${malReliees.map(x => `<p class="avert">La page « ${esc(x.page)} » affiche le formulaire de saisie sur la table « ${esc(x.table)} », pour laquelle aucun formulaire n'est publié : elle reste vide.</p>`).join("")}
-    <div id="pg-agents">${html}</div>
-    ${orphelines.length ? `<p class="note">Pages sans agent actif dans l'équipe : ${orphelines.map(({ p, a }) => `« ${esc(p.page)} »${a ? ` (${esc(a.nom)} : ${a.actif ? esc(a.role) : "inactif"})` : ""}`).join(", ")}. Elles restent telles quelles ; supprimez-les dans Grist si elles ne servent plus.</p>` : ""}
-    ${lienEquipe}
-    <label class="l" for="pg-url" style="margin-top:10px">Adresse du widget de saisie (nouvelles pages)</label><input type="text" id="pg-url" value="${esc(urlWidgetProposee())}" spellcheck="false">
-    <button type="button" class="primaire petit" id="pg-creer" style="margin-top:8px"${aFaire.length ? "" : " disabled"}>${aFaire.length ? `Créer et mettre à jour les pages (${aFaire.length})` : "Pages à jour"}</button>
-    <p class="statut" id="pg-statut" role="status"></p>${courant.publie ? "" : `<p class="note">Publiez le formulaire pour que les pages l'affichent.</p>`}</div>`;
+  return `<div class="groupe"><div class="t">Pages de saisie des agents</div><p class="note" id="pf-pages" style="margin:0 0 8px">Lecture…</p>
+    <button type="button" class="secondaire petit" id="pf-pages-aller">Gérer les pages des agents →</button></div>`;
 }
-function lierPages(p) {
-  if (agentsEquipe === undefined) { lireEquipe().then(() => { if (courant && !choisi && !modeTest) dessinerPanneau(); }); return; }
-  p.querySelectorAll('[data-pg="equipe"]').forEach(b => b.addEventListener("click", allerEquipe));
-  const zone = p.querySelector("#pg-agents");
-  if (!zone) return;
-  zone.addEventListener("change", ev => {
-    const a = ev.target.closest(".agent");
-    if (!a || ev.target.dataset.pg !== "inclure") return;
-    repartition.inclure.set(+a.dataset.id, ev.target.checked);
-    const url = $("pg-url").value, haut = p.scrollTop;
-    dessinerPanneau(); p.scrollTop = haut; if ($("pg-url")) $("pg-url").value = url;
-  });
-  $("pg-creer").addEventListener("click", creerPagesAgents);
-}
-async function creerPagesAgents() {
-  const st = $("pg-statut"), btn = $("pg-creer"), url = $("pg-url").value.trim();
-  const dire = (t, err) => { st.textContent = t; st.className = `statut${err ? " err" : " ok"}`; };
-  const { aFaire } = planPages();
-  const nouvelles = aFaire.filter(l => l.etat === "nouv"), modifiees = aFaire.filter(l => l.etat === "modif");
-  if (nouvelles.length && !/^https?:\/\/\S+$/i.test(url)) { dire("Indiquez l'adresse complète du widget de saisie (https://…).", true); $("pg-url").focus(); return; }
-  if (!aFaire.length) { dire("Rien à faire : les pages sont à jour."); return; }
-  btn.disabled = true; dire("Création et mise à jour des pages…");
+async function lierPages(p) {
+  const b = p.querySelector("#pf-pages-aller"); if (!b) return;
+  b.addEventListener("click", allerPagesAgents);
+  const z = p.querySelector("#pf-pages");
   try {
-    const cibles = [];   // { a, ref, vue, url }
-    if (nouvelles.length) {
-      const [t] = metaTables, tref = t.id[t.tableId.indexOf(courant.table)];
-      if (tref == null) throw new Error(`table ${courant.table} introuvable`);
-      const res = await actions(nouvelles.map(() => ["CreateViewSection", tref, 0, "custom", null, null]));
-      const rvs = (res && res.retValues) || [];
-      nouvelles.forEach((l, i) => { const rv = rvs[i] || {}; if (!rv.sectionRef) throw new Error("Grist n'a pas indiqué la vue créée"); cibles.push({ a: l.a, ref: rv.sectionRef, vue: rv.viewRef, url }); });
-    }
-    modifiees.forEach(l => l.pg.filter(p => !pageAJour(p, l.a)).forEach(p => cibles.push({ a: l.a, ref: p.sectionRef, vue: p.viewRef, url: p.url })));
-    const sections = await grist.docApi.fetchTable("_grist_Views_section");
-    const acts = [];
-    for (const c of cibles) {
-      const i = sections.id.indexOf(c.ref), nom = nomPageAgent(c.a);
-      const { o, cv } = optionsVue(i >= 0 ? sections.options[i] : "");
-      o.customView = JSON.stringify({ ...cv, mode: "url", url: cv.url || c.url || url, access: "full",
-        widgetOptions: { ...(cv.widgetOptions || {}), formulaire: courant.nom, libelle: c.a.nom, perimetre: {}, agent: c.a.id } });
-      acts.push(["UpdateRecord", "_grist_Views_section", c.ref, { options: JSON.stringify(o), title: nom }]);
-      const vue = c.vue || (i >= 0 ? sections.parentId[i] : null);
-      if (vue) acts.push(["UpdateRecord", "_grist_Views", vue, { name: nom }]);
-    }
-    await actions(acts);
-    if (nouvelles.length) try {
-      if (!colonnesDe(TABLE_FORMULAIRES).Widget) { await actions([["AddColumn", TABLE_FORMULAIRES, "Widget", { type: "Text", isFormula: false }]]); await lireMeta(); }
-      await actions([["UpdateRecord", TABLE_FORMULAIRES, courant.id, { Widget: url }]]);
-      courant.widget = url; const f = formulaires.find(x => x.id === courant.id); if (f) f.widget = url;
-    } catch (_) { /* mémorisation facultative */ }
-    await lirePagesSaisie(); dessinerPanneau();
-    const pl = (n, un, plusieurs) => `${n} ${n > 1 ? plusieurs : un}`;
-    message([nouvelles.length ? `${pl(nouvelles.length, "page créée", "pages créées")} (liste des pages de Grist, à gauche)` : "",
-      modifiees.length ? `${pl(modifiees.length, "page mise à jour", "pages mises à jour")} : rechargez-la dans Grist si elle est ouverte` : ""].filter(Boolean).join(" ; ") + ".", "ok");
-  } catch (e) {
-    btn.disabled = false;
-    dire(`Opération refusée par Grist (${e.message || e}). Les pages déjà créées apparaissent dans la liste : relancez pour terminer.`, true);
-    await lirePagesSaisie(); dessinerPanneau();
-  }
+    await window.PagesAgents.charger();
+    const r = window.PagesAgents.resume(courant.nom);
+    if (!courant.publie) { z.textContent = "Publiez le formulaire : chaque agent pourra alors avoir sa page de saisie (Équipe › Pages de saisie)."; return; }
+    z.textContent = [`${r.aJour} page${r.aJour > 1 ? "s" : ""} à jour`, r.aCreer ? `${r.aCreer} à créer` : "", r.aMaj ? `${r.aMaj} à mettre à jour` : ""].filter(Boolean).join(" · ") + ". Une page par agent ; elle applique le périmètre de son créneau en cours.";
+  } catch (_) { z.textContent = "Pages des agents : voir Équipe › Pages de saisie."; }
 }
-
 
 /* =========================================================
    Spécificités de la saisie (version établissements scolaires / enseignement supérieur)
@@ -2607,7 +2461,7 @@ async function lireSocle() {
   TABLE_FORMULAIRES = socleGeneral.formulaires || "Formulaires";
 }
 async function afficher() {
-  if (demarre) { await lireSocle(); agentsEquipe = undefined; repartition = null; await lirePagesSaisie(); if (courant) dessinerPanneau(); return; }
+  if (demarre) { await lireSocle(); await lirePagesSaisie(); if (courant) dessinerPanneau(); return; }
   demarre = true;
   await lireSocle();
   try {

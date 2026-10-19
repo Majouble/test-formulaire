@@ -1,8 +1,8 @@
 /* =====================================================================
    Administration v2 — onglet « Équipe » : les agents de la cellule
    ---------------------------------------------------------------------
-   Table Agents du socle : nom, adresse, téléphone, actif (la fonction se règle par créneau, onglet Planning).
-   - Le périmètre n'est pas sur la fiche : il change d'un créneau à l'autre et se règle dans l'onglet Planning.
+   Table Agents du socle : nom, adresse, téléphone, actif (la fonction se règle par créneau, Équipe › Planning).
+   - Le périmètre n'est pas sur la fiche : il change d'un créneau à l'autre et se règle dans Équipe › Planning.
    - L'adresse servira aux règles d'accès.
    - Une liste peut être collée depuis un tableur ; les pages de saisie existantes peuvent être reprises.
    - Agent invité (sans compte Grist) : clé Cle_acces et lien personnel Lien_acces vers sa page de saisie
@@ -15,7 +15,7 @@
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-  let config = null, general = null, agents = null, pages = null;
+  let config = null, general = null, agents = null, pages = null, planning = null;
   let edition = null;       // agent en cours de modification : { id|null, nom, email, telephone, actif }
   let colonnesManquantes = [];   // colonnes du socle absentes de la table Agents (document d'une version antérieure)
   let racine = null;
@@ -27,8 +27,8 @@
     config = await S.lireConfig();
     general = S.general(config);
     // l'équipe n'a pas besoin du référentiel : lectures en parallèle
-    const [ag, pg, meta] = await Promise.all([R.lireAgents(general), R.lirePages(), S.lireMeta()]);
-    agents = ag; pages = pg;
+    const [ag, pg, meta, pl] = await Promise.all([R.lireAgents(general), R.lirePages(), S.lireMeta(), S.lirePlanning(general), window.PagesAgents ? window.PagesAgents.charger() : null]);
+    agents = ag; pages = pg; planning = pl;
     const t = meta[table()];
     colonnesManquantes = t ? S.colonnesAgents(config).filter(c => !c.isFormula).map(c => c.id).filter(c => !t.colonnes[c]) : [];
     if (t && !t.colonnes[S.INVITE.lien]) colonnesManquantes.push(S.INVITE.lien);
@@ -80,7 +80,7 @@
         <td>${pg.length ? pg.map(p => esc(p.page)).join("<br>") : `<span class="vide">—</span>`}</td></tr>`;
     }).join("");
     return `<section class="carte"><h2>Équipe de la cellule</h2>
-      <p class="aide">Une ligne par agent. La fonction et le périmètre de chacun changent d'un créneau à l'autre : ils se règlent dans l'onglet Planning.</p>
+      <p class="aide">Une ligne par agent. La fonction et le périmètre de chacun changent d'un créneau à l'autre : ils se règlent dans Équipe › Planning.</p>
       ${agents.length ? `<table class="eq-table"><thead><tr><th>Agent</th><th>Adresse</th><th>Téléphone</th><th>Page de saisie</th></tr></thead><tbody>${lignes}</tbody></table>
         <p class="aide" style="margin:6px 0 0">${actifs.length} agent${actifs.length > 1 ? "s" : ""} actif${actifs.length > 1 ? "s" : ""}. Cliquez sur une ligne pour la modifier.</p>`
         : `<p class="vide">Aucun agent pour l'instant.</p>`}
@@ -105,12 +105,34 @@
         <label class="champ"><span>Statut</span><small>Un agent inactif garde son historique mais n'est plus proposé sur le planning.</small>
           <span class="eq-case"><input type="checkbox" id="eq-actif"${a.actif ? " checked" : ""}> Actif</span></label>
       </div>
+      ${a.id ? blocActivite(a) : ""}
       ${blocInvite(a)}
       <p class="aide" id="eq-resume">${resumeFiche()}</p>
       <div class="boutons"><button class="primaire" id="eq-enregistrer">${a.id ? "Enregistrer" : "Ajouter à l'équipe"}</button>
         <button class="secondaire" id="eq-annuler">Annuler</button>
         ${a.id ? `<button class="secondaire danger" id="eq-supprimer">Retirer de l'équipe…</button>` : ""}
         <span class="statut" id="eq-fiche-statut" role="status"></span></div></section>`;
+  }
+  // Activité de l'agent : droit de saisie du moment, prochains créneaux (Planning), pages de saisie (Pages de saisie)
+  function blocActivite(a) {
+    const ag = agents.find(x => x.id === a.id) || a, t = maintenant();
+    const parId = new Map(((planning && planning.creneaux) || []).map(c => [c.id, c]));
+    const aVenir = ((planning && planning.affectations) || []).filter(x => x.agent === a.id).map(x => ({ x, c: parId.get(x.creneau) }))
+      .filter(o => o.c && o.c.fin > t).sort((p, q) => p.c.debut - q.c.debut).slice(0, 5);
+    const heure = s => new Date(s * 1000).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }).replace(":", "h");
+    const jour = s => new Date(s * 1000).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
+    const pg = window.PagesAgents ? window.PagesAgents.pourAgent(a.id) : [];
+    const aFaire = pg.filter(p => p.etat === "nouv" || p.etat === "modif").length;
+    return `<div class="eq-activite"><div class="grille">
+      <div><div class="groupe">Planning ${etatSaisie(ag)}</div>
+        ${aVenir.length ? `<ul class="journal">${aVenir.map(({ x, c }) => `<li>${esc(jour(c.debut))} · ${esc(c.nom)} ${esc(heure(c.debut))}–${esc(heure(c.fin))} · ${esc(x.fonction || "fonction ?")}${S.champsDe(x).length ? ` · ${esc(S.champsDe(x).join(", "))}` : ""}${c.debut <= t ? ` <span class="pastille ok">en cours</span>` : ""}</li>`).join("")}</ul>`
+          : `<p class="aide" style="margin:0">Aucun créneau à venir.</p>`}
+        <button class="lien-btn" type="button" data-sous-aller="planning">Planning →</button></div>
+      <div><div class="groupe">Pages de saisie</div>
+        ${pg.length ? `<ul class="journal">${pg.map(p => `<li>« ${esc(p.page)} » ${p.pastille}</li>`).join("")}</ul>` : `<p class="aide" style="margin:0">Aucun formulaire établissement publié.</p>`}
+        ${aFaire ? `<button class="secondaire" type="button" id="eq-pages-agent">Créer et mettre à jour ses pages (${aFaire})</button>` : ""}
+        <button class="lien-btn" type="button" data-sous-aller="pages">Toutes les pages →</button></div>
+    </div></div>`;
   }
   // Durée de validité des liens d'invités (clé « acces_invites » de Config) ; un lien expiré ne donne plus aucun accès
   const avecExpiration = () => !colonnesManquantes.includes(S.INVITE.expire);
@@ -193,6 +215,15 @@
     if ($("eq-prolonger")) $("eq-prolonger").addEventListener("click", () => { lireChamps(); edition.renouveler = true; enregistrer(`Lien prolongé de ${libelleDuree(dureeInvite())} (même lien).`); });
     ["eq-nom", "eq-email", "eq-tel", "eq-actif"].forEach(id => $(id).addEventListener("input", () => { lireChamps(); $("eq-resume").innerHTML = resumeFiche(); }));
     $("eq-annuler").addEventListener("click", () => { edition = null; dessiner(); });
+    racine.querySelectorAll("[data-sous-aller]").forEach(b => b.addEventListener("click", () => window.OngletEquipeGroupe.afficher(b.dataset.sousAller)));
+    if ($("eq-pages-agent")) $("eq-pages-agent").addEventListener("click", async () => {
+      $("eq-pages-agent").disabled = true;
+      try {
+        const r = await window.PagesAgents.creer({ agent: edition.id }); pages = await R.lirePages(); await majPagesInvites();
+        const y = window.scrollY; dessiner(); window.scrollTo(0, y); window.OngletEquipeGroupe.resume();
+        dire("eq-fiche-statut", `${r.crees ? `${r.crees} page(s) créée(s)` : ""}${r.crees && r.maj ? ", " : ""}${r.maj ? `${r.maj} mise(s) à jour` : ""}.`);
+      } catch (e) { dire("eq-fiche-statut", `Opération refusée par Grist (${e.message || e}).`, true); }
+    });
     $("eq-enregistrer").addEventListener("click", () => { lireChamps(); enregistrer(); });
     if ($("eq-supprimer")) $("eq-supprimer").addEventListener("click", supprimer);
     $("eq-fiche").addEventListener("keydown", e => { if (e.key === "Escape") { edition = null; dessiner(); } });
@@ -254,7 +285,7 @@
       if (resteOuverte) { const n = agents.find(x => S.norm(x.nom) === S.norm(nom)); if (n) { edition = JSON.parse(JSON.stringify(n)); edition.invite = true; } }
       dessiner();
       if (resteOuverte) { dire("eq-fiche-statut", messageCle || "Lien personnel créé : copiez-le et transmettez-le à l'agent. Les règles d'accès doivent inclure les invités : onglet Accès, « Appliquer les règles »."); return; }
-      dire("eq-statut", `« ${nom} » ${a.id ? "enregistré" : "ajouté à l'équipe"}.${aReporter ? " Pour renommer sa page de saisie : onglet Formulaires, « Créer et mettre à jour les pages »." : ""}${a.email ? "" : " Pensez à son adresse électronique."}`);
+      dire("eq-statut", `« ${nom} » ${a.id ? "enregistré" : "ajouté à l'équipe"}.${aReporter ? " Pour renommer sa page de saisie : Équipe › Pages de saisie, « Créer et mettre à jour les pages »." : ""}${a.email ? "" : " Pensez à son adresse électronique."}`);
     } catch (e) { dire("eq-fiche-statut", `Enregistrement refusé par Grist (${e.message || e}).`, true); }
   }
   async function supprimer() {
@@ -266,7 +297,7 @@
   async function creerTable() {
     const meta = await S.lireMeta(), plan = S.planInstallation(meta, config);
     const etape = plan.etapes.find(e => e.id === `table-${table()}` || e.id === `cols-${table()}`);
-    // formule Champs_acces : seulement si la table des affectations existe (sinon l'onglet Planning l'ajoutera)
+    // formule Champs_acces : seulement si la table des affectations existe (sinon Équipe › Planning l'ajoutera)
     const formule = meta[general.affectations || "Affectations"] ? plan.etapes.find(e => e.id === `formule-${table()}`) : null;
     if (!etape && formule) { await S.appliquer([formule]); await charger(); dessiner(); return; }
     if (!etape) { await charger(); dessiner(); return; }
@@ -328,7 +359,7 @@
     try {
       await grist.docApi.applyUserActions(acts);
       await charger(); dessiner();
-      dire("eq-statut", `${ajouts.length} agent(s) ajouté(s), ${majs.length} mis à jour. Affectez-les maintenant dans l'onglet Planning.`);
+      dire("eq-statut", `${ajouts.length} agent(s) ajouté(s), ${majs.length} mis à jour. Affectez-les maintenant dans Équipe › Planning.`);
     } catch (e) { dire("eq-import-statut", `Import refusé par Grist (${e.message || e}).`, true); }
   }
 

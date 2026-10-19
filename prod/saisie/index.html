@@ -1243,7 +1243,7 @@ let rolesAdmin = {};   // rôle -> colonne associée dans l'administration (form
    perimetre = { colonne du référentiel: [valeurs] } : un établissement en fait partie s'il remplit chaque critère.
    Ancien format : liste d'académies. Le périmètre répartit le travail ; il ne restreint pas l'accès. */
 let perimetreBrut = null, libellePage = "", voirToutPerimetre = false;
-/* Planning (onglet Planning de l'administration) : pendant un créneau où l'agent de la page est affecté, le périmètre
+/* Planning (Équipe › Planning de l'administration) : pendant un créneau où l'agent de la page est affecté, le périmètre
    du créneau s'applique (vide = tous les établissements). Hors créneau : périmètre des options de la page (vide pour
    les pages créées depuis l'équipe, donc tous les établissements). Relu chaque minute. */
 let agentPage = null, perimetreFiche = null, creneauPage = null;   // creneauPage : { creneau, affectation, horsChamp }
