@@ -1,4 +1,4 @@
-# Signalements Grist — production (2.0.6 (19/10/2026))
+# Signalements Grist — production (2.0.7 (19/10/2026))
 
 Copie figée de `v2/`, produite par `outils/publier-prod.sh`. Ne pas modifier ce dossier à la main :
 les changements se font dans `v2/`, puis on republie.
@@ -95,6 +95,7 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 - Version 2.0.4 (18/10) : deux champs dans un même document (MEN et MESRE), chacun avec sa table de réponses et son référentiel (Installation › Réglages généraux › « Second champ » ; clé `general.autres_champs` : `[{ champ, reponses, referentiel }]`, premier champ = préréglage). L'installation crée et complète les tables du second champ (mêmes rôles, colonne Site pour l'ESR, Auteur, Dernière version, colonnes de l'établissement). Formulaires, saisie et règles d'accès prennent le champ de la table (saisie selon le planning EN ou ESR) ; l'annuaire EN est importé dans le référentiel du champ EN ; tableaux de bord et export de la configuration proposent les deux tables. Équipe, planning, Config et accès restent communs.
 - Version 2.0.5 (18/10) : dupliquer une question tableau crée sa propre table (mêmes champs, libellés, choix et réglages, sans les lignes) au lieu de partager celle de l'original ; les règles d'accès la couvrent aussitôt.
 - Version 2.0.6 (19/10) : point de situation, surlignage « depuis le dernier point » (par défaut) : chaque cellule est comparée mot à mot à ce qu'elle était dans la version du dossier en vigueur au dernier point (dernière version saisie avant lui) ; seuls les mots ajoutés depuis sont surlignés, même après plusieurs mises à jour, et une mise à jour déjà diffusée ne l'est plus. Nouveau dossier : mention « Nouveau signalement », texte non surligné. L'ancien mode (marques de Description_Word_, dernière mise à jour) reste au choix (option `surlignage: "version"` de la clé `point_situation`, et dans la barre du widget).
+- Version 2.0.7 (19/10) : point de situation, la première publication crée la page « Point de situation » (widget en accès complet, liée à la table des signalements) ; l'en-tête de l'onglet indique la page, ou propose « Créer la page ».
 
 - Thème sombre (18/10) : `commun/theme.js`, chargé par chaque widget, pose `data-theme="light"` ou `"dark"` sur `<html>` d'après, dans l'ordre, le choix de la personne (bouton ◐ de l'administration : automatique, clair, sombre ; gardé dans le navigateur, commun à tous les widgets), le thème transmis par Grist, puis le réglage du navigateur. Couleurs des feuilles de style ramenées à des variables (`--x-<couleur>`), avec des équivalents sombres (fonds gris foncés, texte clair, bleu France éclairci #8585f6, à la manière du DSFR) ; l'aperçu du point de situation reste une page blanche.
 

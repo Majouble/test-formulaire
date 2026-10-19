@@ -56,6 +56,7 @@
     const meta = await S.lireMeta();
     config = await S.lireConfig(meta);
     if (!config) { $("ps-editeur").innerHTML = `<p class="statut err">La table Config n'existe pas : terminez d'abord l'installation.</p>`; return false; }
+    await lirePagesPS();
     defauts = await S.reglagesPointParDefaut(meta, config);
     ps = config.valeurs.point_situation || {};
     brouillon = copie(ps.brouillon || ps.publie || DEFAUT);
@@ -121,6 +122,52 @@
       statut("Brouillon enregistré.", "ok"); dessinerEtat();
     } catch (e) { statut(`Brouillon non enregistré : ${e.message || e}`, "err"); }
   }
+  /* ---------- Page Grist du widget ---------- */
+  const URL_PS = /\/point-situation\/?(index\.html)?(\?.*)?$/i;
+  let pagesPS = [];
+  async function lirePagesPS() {
+    try {
+      const [sec, vues] = await Promise.all([grist.docApi.fetchTable("_grist_Views_section"), grist.docApi.fetchTable("_grist_Views")]);
+      pagesPS = sec.id.map((id, i) => {
+        if (sec.parentKey[i] !== "custom") return null;
+        let cv = {}; try { const o = JSON.parse(sec.options[i] || "{}") || {}; cv = typeof o.customView === "string" ? JSON.parse(o.customView || "{}") : (o.customView || {}); } catch (_) { cv = {}; }
+        if (!URL_PS.test(cv.url || "")) return null;
+        const v = vues.id.indexOf(sec.parentId[i]);
+        return { section: id, vue: sec.parentId[i], nom: v >= 0 ? String(vues.name[v] || "") : "" };
+      }).filter(Boolean);
+    } catch (_) { pagesPS = []; }
+    return pagesPS;
+  }
+  // Page « Point de situation » : widget du point de situation (accès complet), liée à la table des signalements
+  async function creerPagePS() {
+    const o = { ...defauts, ...Object.fromEntries(Object.entries((ps.publie || brouillon).options || {}).filter(([, v]) => v !== "" && v != null)) };
+    const table = o.table || "Reponses";
+    const T = await grist.docApi.fetchTable("_grist_Tables"), ref = T.id[T.tableId.indexOf(table)];
+    if (ref == null) throw new Error(`table ${table} introuvable`);
+    const res = await grist.docApi.applyUserActions([["CreateViewSection", ref, 0, "custom", null, null]]);
+    const rv = (res && res.retValues && res.retValues[0]) || {};
+    if (!rv.sectionRef) throw new Error("Grist n'a pas indiqué la vue créée");
+    const sec = await grist.docApi.fetchTable("_grist_Views_section"), i = sec.id.indexOf(rv.sectionRef);
+    let op = {}; try { op = JSON.parse((i >= 0 && sec.options[i]) || "{}") || {}; } catch (_) { op = {}; }
+    let url; try { url = new URL("../point-situation/", location.href).href; } catch (_) { url = ""; }
+    if (!/^https?:/.test(url)) url = "https://majouble.github.io/test-formulaire/prod/point-situation/";
+    op.customView = JSON.stringify({ mode: "url", url, access: "full", widgetOptions: {} });
+    const nom = pagesPS.length ? `Point de situation (${pagesPS.length + 1})` : "Point de situation";
+    await grist.docApi.applyUserActions([["UpdateRecord", "_grist_Views_section", rv.sectionRef, { options: JSON.stringify(op), title: "" }],
+      ...(rv.viewRef ? [["UpdateRecord", "_grist_Views", rv.viewRef, { name: nom }]] : [])]);
+    await lirePagesPS();
+    return nom;
+  }
+  function dessinerPagesPS() {
+    const z = $("ps-pages"); if (!z) return;
+    z.innerHTML = pagesPS.length ? `<span class="pastille ok" title="Page Grist qui affiche le widget du point de situation">Page : ${pagesPS.map(p => `« ${esc(p.nom)} »`).join(", ")}</span>`
+      : `<button class="secondaire" id="ps-creer-page" title="Page Grist avec le widget du point de situation">Créer la page</button>`;
+    if ($("ps-creer-page")) $("ps-creer-page").addEventListener("click", async () => {
+      try { const nom = await creerPagePS(); dessinerPagesPS(); statut(`Page « ${nom} » créée : elle apparaît dans la liste des pages de Grist, à gauche.`, "ok"); }
+      catch (e) { statut(`Création de la page refusée par Grist : ${e.message || e}`, "err"); }
+    });
+  }
+
   async function publier() {
     clearTimeout(minuterie);
     if (!brouillon.sections.some(x => x.Actif !== false)) { statut("Ajoutez au moins un tableau actif avant de publier.", "err"); return; }
@@ -128,7 +175,14 @@
     try {
       ps = { ...ps, brouillon: copie(brouillon), publie: copie(brouillon), publie_le: Date.now() / 1000, modifie_le: Date.now() / 1000 };
       await S.ecrireConfig("point_situation", ps);
-      statut("Configuration publiée : actualisez le widget du point de situation pour l'appliquer.", "ok"); dessinerEditeur();
+      // première publication sans page : la page du widget est créée d'office, comme pour un formulaire
+      let page = "";
+      if (!(await lirePagesPS()).length) {
+        try { page = ` Page « ${await creerPagePS()} » créée : elle apparaît dans la liste des pages de Grist, à gauche.`; }
+        catch (e) { page = ` La page n'a pas pu être créée (${e.message || e}) : bouton « Créer la page ».`; }
+      }
+      dessinerEditeur();
+      statut(page ? `Configuration publiée.${page}` : "Configuration publiée : actualisez le widget du point de situation (bouton « Actualiser ») pour l'appliquer.", "ok");
     } catch (e) { statut(`Publication impossible : ${e.message || e}`, "err"); }
   }
   const egalPublie = () => !!ps.publie && JSON.stringify(ps.publie) === JSON.stringify(brouillon);
@@ -292,6 +346,7 @@
       <div class="ps-tete"><h2>Point de situation</h2><span id="ps-etat"></span><span style="flex:1"></span>
         ${anciennes.length ? `<button class="secondaire" id="ps-importer" title="Reprendre la configuration des tables ${anciennes.join(", ")}">Importer la configuration actuelle</button>` : ""}
         <button class="secondaire" id="ps-annuler" hidden>Revenir à la version publiée</button>
+        <span id="ps-pages"></span>
         <button class="primaire" id="ps-publier">Publier</button></div>
       <p class="aide">Le brouillon s'enregistre au fil de vos modifications et l'aperçu se met à jour en direct ; le widget du point de situation n'applique que la version publiée.</p>
     </section>
@@ -325,7 +380,7 @@
       <div class="grille">${OPTIONS_AVANCEES.map(([k, l]) => `<label class="champ"><span>${l}</span><input type="text" data-opt="${k}" value="${esc(o[k] || "")}" placeholder="${esc(defauts[k] || "")}"></label>`).join("")}</div>
       <div class="boutons"><button class="secondaire" id="ps-modele">Préparer l'emplacement du modèle Word</button></div>
     </details></section>`;
-    dessinerEtat();
+    dessinerEtat(); dessinerPagesPS();
     $("ps-publier").addEventListener("click", publier);
     if ($("ps-importer")) $("ps-importer").addEventListener("click", importer);
     $("ps-annuler").addEventListener("click", () => { brouillon = copie(ps.publie); modifie(true); });
