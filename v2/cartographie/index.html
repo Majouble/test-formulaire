@@ -617,8 +617,9 @@ function signalementsAtlas() {
   const G = window.Geo, panel = lastMappings || {}, manuel = !!(panel.Latitude && panel.Longitude);
   const cols = manuel ? panel : (socle ? socle.auto : panel);
   if (!cols.Latitude || !cols.Longitude) throw new Error("L'atlas place les établissements par leurs coordonnées : associez Latitude et Longitude, ou utilisez une table du socle.");
-  let recs = filteredRecords(); if (socle && socle.dv && dvOnly) recs = recs.filter(r => r[socle.dv]);
-  const cles = new Set(); recs.forEach(r => Object.keys(r).forEach(k => cles.add(k)));
+  // « tous » : toutes les versions (pour compter les jours de mobilisation) ; « recs » : dernière version seulement si demandé
+  const tous = filteredRecords(); let recs = tous; if (socle && socle.dv && dvOnly) recs = recs.filter(r => r[socle.dv]);
+  const cles = new Set(); tous.forEach(r => Object.keys(r).forEach(k => cles.add(k)));
   const trouve = (...noms) => noms.find(n => n && cles.has(n)) || null;
   const motif = re => [...cles].find(k => re.test(k)) || null;
   const R = (socle && socle.champs) || {};   // rôles du socle d'abord, puis noms usuels, puis motifs
@@ -629,11 +630,28 @@ function signalementsAtlas() {
     type: trouve(R.Type, "Type", "Etab_Type", "Type_etablissement", "Etab_Type_etablissement") || motif(/^(etab_)?type_?(d_)?etab/i),
     nature: trouve(R.Libelle_nature, "Libelle_nature", "Etab_Libelle_nature") || motif(/libelle_?nature/i),
     rep: motif(/education_prioritaire|^(etab_)?rep(_rep_plus)?$/i), internat: motif(/hebergement|internat/i),
-    qualif: (socle && socle.qualif) || trouve("Qualification"), date: trouve(R.Date_faits, "Date_faits", R.Cree_le, "Cree_le") };
+    qualif: (socle && socle.qualif) || trouve("Qualification"), faits: trouve(R.Date_faits, "Date_faits"), cree: trouve(R.Cree_le, "Cree_le"),
+    jours: motif(/jours?_de_mobilisation|^nb_?(de_)?jours/i) };   // colonne du document qui compte déjà les jours, s'il y en a une
   const texte = v => Array.isArray(v) ? v.filter(x => x !== "L").join(", ") : v == null ? "" : String(v);
   // date en secondes (Grist), objet Date ou texte ISO → secondes ; puis « AAAA-MM-JJ »
   const secondes = d => typeof d === "number" ? d : d instanceof Date ? d.getTime() / 1000 : typeof d === "string" && /^\d{4}-\d{2}-\d{2}/.test(d) ? Date.parse(d) / 1000 : null;
   const jour = d => { const t = secondes(d); return t ? new Date(t * 1000).toISOString().slice(0, 10) : ""; };
+  // jour d'un signalement : date des faits, à défaut date de saisie (comme la formule « Nb de jours de mobilisation » du socle V1)
+  const dateDe = r => (C.faits && secondes(r[C.faits])) || (C.cree && secondes(r[C.cree])) || null;
+  const qualifsDe = r => C.qualif ? texte(r[C.qualif]).split(", ").map(q => q.trim()).filter(Boolean) : [];
+  const estRas = r => { const q = qualifsDe(r); return q.length > 0 && q.every(x => x.toUpperCase() === "RAS"); };
+  const cleDe = r => { const lat = toNumber(r[cols.Latitude]), lon = toNumber(r[cols.Longitude]); if (isNaN(lat) || isNaN(lon)) return null;
+    return (C.uai ? texte(r[C.uai]).trim() : "") || `${lat.toFixed(5)},${lon.toFixed(5)}`; };
+  // jours de mobilisation par établissement, sur toutes les versions : la colonne du document (sa valeur la plus haute),
+  // sinon le nombre de jours distincts ayant un signalement autre que « RAS »
+  const joursEtab = new Map();
+  for (const r of tous) {
+    const k = cleDe(r); if (!k) continue;
+    if (!joursEtab.has(k)) joursEtab.set(k, { jours: new Set(), max: null });
+    const j = joursEtab.get(k), v = C.jours ? toNumber(r[C.jours]) : NaN;
+    if (!isNaN(v) && (j.max === null || v > j.max)) j.max = v;
+    const d = dateDe(r); if (d && !estRas(r)) j.jours.add(jour(d));
+  }
   // champs de l'établissement, communs à son point et à chacun de ses signalements
   const etabProps = (r, lat, lon, uai) => {
     const lieu = G ? G.localiser(lat, lon) : null;
@@ -651,17 +669,16 @@ function signalementsAtlas() {
   for (const r of recs) {
     const lat = toNumber(r[cols.Latitude]), lon = toNumber(r[cols.Longitude]);
     if (isNaN(lat) || isNaN(lon)) continue;
-    const uai = C.uai ? texte(r[C.uai]).trim() : "", cle = uai || `${lat.toFixed(5)},${lon.toFixed(5)}`;
-    if (!parEtab.has(cle)) parEtab.set(cle, { lat, lon, uai, n: 0, qualifs: new Map(), date: null, jours: new Set(), props: etabProps(r, lat, lon, uai) });
+    const uai = C.uai ? texte(r[C.uai]).trim() : "", cle = cleDe(r);
+    if (!parEtab.has(cle)) parEtab.set(cle, { cle, lat, lon, uai, n: 0, qualifs: new Map(), date: null, props: etabProps(r, lat, lon, uai) });
     const e = parEtab.get(cle); e.n++;
-    const qs = C.qualif ? texte(r[C.qualif]).split(", ").map(q => q.trim()).filter(Boolean) : [];
-    const d = C.date ? secondes(r[C.date]) : null;
+    const qs = qualifsDe(r), d = dateDe(r);
     qs.forEach(q => { const x = e.qualifs.get(q) || { n: 0, date: 0 }; x.n++; if (typeof d === "number" && d > x.date) x.date = d; e.qualifs.set(q, x); });
     if (typeof d === "number" && (!e.date || d > e.date)) e.date = d;
-    if (d) e.jours.add(jour(d));
     // couche de détail : un point par signalement (une ligne de la table), pour catégoriser par qualification
     detail.push({ type: "Feature", geometry: { type: "Point", coordinates: [lon, lat] }, properties: { ...e.props,
-      Qualification: qs[0] || "", Qualifications: qs.join(", "), Date: jour(d), Dossier: R.Dossier ? texte(r[R.Dossier]) : "", grist_id: r.id } });
+      Qualification: qs[0] || "", Qualifications: qs.join(", "), Date: jour(d), Dossier: R.Dossier ? texte(r[R.Dossier]) : "",
+      Nb_jours: C.jours && !isNaN(toNumber(r[C.jours])) ? toNumber(r[C.jours]) : null, grist_id: r.id } });
   }
   const features = [];
   for (const e of parEtab.values()) {
@@ -669,7 +686,7 @@ function signalementsAtlas() {
     const principale = [...e.qualifs.entries()].sort((a, b) => b[1].n - a[1].n || b[1].date - a[1].date || a[0].localeCompare(b[0], "fr"))[0];
     features.push({ type: "Feature", geometry: { type: "Point", coordinates: [e.lon, e.lat] }, properties: { ...e.props,
       Nb_signalements: e.n, Qualification_principale: principale ? principale[0] : "", Qualifications: [...e.qualifs.keys()].join(", "),
-      Nb_jours: e.jours.size || null,   // jours distincts ayant au moins un signalement (« jours de mobilisation »)
+      Nb_jours: (j => j ? (j.max !== null ? j.max : j.jours.size || null) : null)(joursEtab.get(e.cle)),   // jours de mobilisation
       Derniere_date: e.date ? jour(e.date) : "" } });
   }
   if (!features.length) throw new Error("Aucun établissement localisé à mettre dans l'atlas.");
@@ -725,7 +742,9 @@ async function construireAtlas(name) {
     "et signalements_detail.geojson par ceux du nouvel export (mêmes noms, même dossier).", "",
     "Deux couches de points :",
     "- signalements : un point par établissement (carte et tableau de l'atlas). Nb_signalements, Qualification_principale (la plus fréquente,",
-    "  à égalité la plus récente), Qualifications (toutes), Nb_jours (jours distincts signalés), Derniere_date,",
+    "  à égalité la plus récente), Qualifications (toutes), Derniere_date,",
+    "  Nb_jours (jours de mobilisation, toutes versions : la colonne « Nb de jours de mobilisation » du document si elle existe,",
+    "  sinon les jours distincts — date des faits, à défaut de saisie — ayant un signalement autre que RAS),",
     "  Categorie (École / Collège / Lycée / Autre),",
     "  Type_etablissement et Nature (valeurs brutes du référentiel).",
     "- signalements_detail (décochée) : un point par signalement, avec sa Qualification et sa Date, pour symboliser ou",
