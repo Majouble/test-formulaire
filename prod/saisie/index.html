@@ -714,6 +714,7 @@
           <button type="button" class="lien-texte" id="btn-voir-fiche" aria-expanded="false" aria-controls="carte-etab">Voir la fiche</button>
         </div>
         <dl class="identite" id="carte-etab" hidden></dl>
+        <div class="alerte-doublon" id="alerte-section" aria-live="polite" hidden></div>
         <div class="proposition-encours" id="proposition-encours" role="region" aria-label="Signalement déjà en cours" hidden></div>
         <div class="encadre-correction" id="bloc-fiche" hidden>
           <p class="note" style="margin:0 0 6px">Correction de la fiche dans le référentiel : elle vaut pour tous les signalements de cet établissement.
@@ -2962,6 +2963,37 @@ function formatValeur(def, v) {
    ========================================================= */
 let ligneAnnuaire = null;   // sans objet dans la version ESR (pas de recherche dans les annuaires en ligne)
 
+/* Section d'établissement (SEGPA, SEP, SGT, SES) choisie à la création : le signalement doit porter sur
+   l'établissement ; celui de rattachement probable (même adresse ou presque) est proposé en un clic. */
+function infoSection(e) {
+  if (!e) return null;
+  const c = re => (colsEtab || []).find(k => re.test(k));
+  const cNat = c(/libelle_?nature|^nature/i), cLat = c(/^(etab_)?lat(itude)?$/i), cLon = c(/^(etab_)?(lon|lng|longitude)$/i);
+  const txt = v => v == null || typeof v === "object" ? "" : String(v);
+  const lat = cLat ? +e[cLat] : NaN, lon = cLon ? +e[cLon] : NaN;
+  return { id: e.id, ligne: e, nom: txt(e[E.nom]), type: txt(e[E.type]), nature: cNat ? txt(e[cNat]) : "", commune: txt(e[E.commune]),
+    lat: isFinite(lat) && lat ? lat : null, lon: isFinite(lon) && lon ? lon : null };
+}
+let sectionGardee = null, sectionCalculee = { id: null, r: null };
+function alerterSection(e) {
+  const bloc = $("alerte-section"), S = window.Socle;
+  const x = e && S && S.genreSection ? infoSection(e) : null, genre = x ? S.genreSection(x.nature, x.type, x.nom) : null;
+  if (!genre || sectionGardee === x.id) { bloc.hidden = !(genre && sectionGardee === x.id); if (bloc.hidden) bloc.innerHTML = ""; return; }
+  if (sectionCalculee.id !== x.id) {
+    const cLat = (colsEtab || []).find(k => /^(etab_)?lat(itude)?$/i.test(k));
+    const proches = etabs.filter(y => y.id !== x.id && (x.lat == null || !cLat || Math.abs(+y[cLat] - x.lat) < 0.01)).map(infoSection);
+    sectionCalculee = { id: x.id, r: S.rattachementSection({ ...x, section: genre }, proches) };
+  }
+  const r = sectionCalculee.r;
+  bloc.innerHTML = `<strong>⚠ Vous avez choisi une ${esc(genre)}</strong>, section rattachée à un ${genre === "SEP" || genre === "SGT" ? "lycée" : "collège"} :
+    le signalement doit porter sur l'établissement, sinon il est compté à part (et souvent deux fois).
+    ${r ? `<div class="actions-doublon"><button type="button" class="lien-texte" id="btn-choisir-rattachement">Choisir ${esc(r.etab.nom || "l'établissement")}${r.etab.commune ? ` (${esc(r.etab.commune)})` : ""} à la place</button>
+      <button type="button" class="lien-texte" id="btn-garder-section">Garder la ${esc(genre)}</button></div>`
+      : `<div class="extrait">Établissement de rattachement introuvable à proximité : recherchez-le par son nom. <button type="button" class="lien-texte" id="btn-garder-section">Garder la ${esc(genre)}</button></div>`}`;
+  bloc.classList.remove("confirme"); bloc.hidden = false;
+  if (r) $("btn-choisir-rattachement").addEventListener("click", () => { etabCourant = r.etab.ligne; ligneAnnuaire = null; modifie = true; afficherEtablissement(); });
+  $("btn-garder-section").addEventListener("click", () => { sectionGardee = x.id; bloc.classList.add("confirme"); bloc.innerHTML = `${esc(genre)} conservée à votre demande.`; });
+}
 function afficherEtablissement() {
   queueMicrotask(majDescriptionAuto);   // le jour de mobilisation dépend de l'établissement
   queueMicrotask(verifierDoublons);
@@ -2971,6 +3003,7 @@ function afficherEtablissement() {
   $("btn-changer-etab").hidden = !(creation && !modeEtab && connu);
   if (typeof majBoutonsCorrection === "function") majBoutonsCorrection();
   $("carte-etab").innerHTML = connu ? carteHtml(etabCourant) : "";
+  alerterSection(creation && connu && !modeEtab ? etabCourant : null);
   majResumeEtab();
   majProposition();
 

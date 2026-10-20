@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.11.0 (20/10/2026)";
+  const VERSION = "2.12.0 (20/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -42,6 +42,43 @@
   const norm = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
     .toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
   const typeBase = t => String(t || "").split(":")[0];
+
+  /* ---------- Sections d'établissement (SEGPA, SEP, SGT, SES) ----------
+     Elles ont leur propre UAI dans l'annuaire mais font partie d'un collège ou d'un lycée : un signalement doit porter
+     sur l'établissement. genreSection : genre d'après le libellé de nature, le type ou le nom (null : établissement).
+     rattachementSection : établissement de rattachement probable parmi des candidats { id, nom, type, nature, commune,
+     lat, lon } — le plus proche (moins de 500 m) du type attendu, nom voisin en prime ; sans coordonnées, même commune
+     et nom voisin. Renvoie { etab, distance } ou null. */
+  const MAJ = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+  function genreSection(nature, type, nom) {
+    const tout = `${MAJ(nature)} | ${MAJ(type)}`, m = MAJ(nom);
+    if (/SECTION D ENSEIGNEMENT GENERAL ET PROFESSIONNEL ADAPTE|\bSEGPA\b/.test(tout) || /\bSEGPA\b/.test(m)) return "SEGPA";
+    if (/SECTION D EDUCATION SPECIALISEE|\bSES\b/.test(tout) || /^SES\b/.test(m)) return "SES";
+    if (/SECTION D ENSEIGNEMENT PROFESSIONNEL|\bSEP\b/.test(tout) || /^SEP\b/.test(m)) return "SEP";
+    if (/SECTION D ENSEIGNEMENT GENERAL ET TECHNOLOGIQUE|\bSGT\b/.test(tout) || /^SGT\b/.test(m)) return "SGT";
+    return null;
+  }
+  const PARENT_SECTION = { SEGPA: /COLLEGE|\bCLG\b/, SES: /COLLEGE|\bCLG\b/, SEP: /LYCEE|\bLPO?\b|\bLGT\b/, SGT: /LYCEE|\bLPO?\b|\bLGT\b/ };
+  const MOTS_VIDES_SECTION = new Set(["SEGPA", "SEP", "SGT", "SES", "SECTION", "D", "DE", "DU", "DES", "LA", "LE", "LES", "L", "ET", "ENSEIGNEMENT", "GENERAL",
+    "PROFESSIONNEL", "ADAPTE", "TECHNOLOGIQUE", "EDUCATION", "SPECIALISEE", "COLLEGE", "CLG", "LYCEE", "LP", "LPO", "LGT", "PUBLIC", "PRIVE", "POLYVALENT",
+    "PROFESSIONNELLE", "AU", "AUX"]);
+  const motsSection = s => new Set(MAJ(s).split(" ").filter(w => w.length > 1 && !MOTS_VIDES_SECTION.has(w)));
+  const distanceM = (a, b) => { const k = Math.PI / 180, x = (b.lon - a.lon) * Math.cos((a.lat + b.lat) / 2 * k), y = b.lat - a.lat; return Math.hypot(x, y) * 111195; };
+  function rattachementSection(x, candidats) {
+    const genre = x && (x.section || genreSection(x.nature, x.type, x.nom)); if (!genre) return null;
+    const attendu = PARENT_SECTION[genre], mots = motsSection(x.nom), geo = x.lat != null && x.lon != null;
+    let meilleur = null;
+    for (const y of candidats) {
+      if (!y || y.id === x.id || genreSection(y.nature, y.type, y.nom)) continue;
+      const d = geo && y.lat != null && y.lon != null ? distanceM(x, y) : null;
+      if (d != null ? d > 500 : MAJ(y.commune) !== MAJ(x.commune) || !MAJ(x.commune)) continue;
+      const typeOk = attendu.test(MAJ(`${y.type} ${y.nature} ${y.nom}`)), communs = [...motsSection(y.nom)].filter(w => mots.has(w)).length;
+      if (d == null && !communs) continue;
+      const score = (d == null ? 300 : d) - communs * 150 - (typeOk ? 400 : 0);
+      if ((typeOk || communs) && (!meilleur || score < meilleur.score)) meilleur = { etab: y, distance: d, score };
+    }
+    return meilleur ? { etab: meilleur.etab, distance: meilleur.distance } : null;
+  }
   const cibleRef = t => (/^Ref:(.+)$/.exec(String(t || "")) || [])[1] || null;
   const json = v => JSON.stringify(v);
   const maintenant = () => Date.now() / 1000;
@@ -939,6 +976,6 @@ return sorted(champs)`;
     norm, cibleRef, lireMeta, lireConfig, activerCacheLecture, viderCacheLecture, oublierStructure, surEcriture, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer, COLONNES_ETABLISSEMENT,
     instantaneSchema, majSchemaPublic, tableauxDeBord, valeurTableauxDeBord, INVITE, DUREES_INVITE, formuleAuteur, auteurAMettreAJour,
-    REGIONS_ACADEMIQUES, regionDeAcademie,
+    REGIONS_ACADEMIQUES, regionDeAcademie, genreSection, rattachementSection,
   };
 })();
