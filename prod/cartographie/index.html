@@ -200,13 +200,13 @@
         <label>à moins de <input type="number" id="atlasEncartsEcart" min="1" max="30" step="0.5" style="width:4em"> mm les uns des autres sur la carte</label>
       </div>
       <div class="row" style="margin:6px 0 0;align-items:center">
-        <label>Marques d'une sous-table (question tableau) <select id="atlasMarqueTable"></select></label>
+        <label>Sous-table (question tableau) <select id="atlasMarqueTable"></select></label>
       </div>
       <div id="atlasMarqueBloc" class="row" style="margin:2px 0 4px 22px;align-items:center">
         <label>couleur selon <select id="atlasMarqueColonne"></select></label>
         <label>titre dans la légende <input type="text" id="atlasMarqueTitre" placeholder="Atteintes aux personnes" style="width:16em"></label>
         <label class="check"><input type="checkbox" id="atlasMarqueInclure"> retenir aussi les établissements qui n'ont que des lignes dans cette sous-table</label>
-        <span class="hint">Un losange en haut à droite du point ; une seule étiquette par établissement.</span>
+        <span class="hint" id="atlasMarqueLieu"></span>
       </div>
       <p style="margin:8px 0 4px"><b>Modèle QGIS</b> : <span id="atlasModeleEtat"></span></p>
       <div class="row" style="margin:0;align-items:center">
@@ -1195,7 +1195,9 @@ async function enrichirSocle(records) {
       // colonnes du référentiel et de la réponse selon les rôles réglés dans le socle (noms propres à chaque document)
       champs: { ...Object.fromEntries(["Type", "Libelle_nature", "Commune", "Academie", "Departement"].filter(c).map(k => [k, nom(c(k))])),
         ...Object.fromEntries(["Date_faits", "Cree_le", "Dossier"].filter(k => rr[k] && rr[k].col).map(k => [k, rr[k].col])) },
-      ajoutees: [...refCols.map(nom), ...terr.map(([col]) => col)] };
+      ajoutees: [...refCols.map(nom), ...terr.map(([col]) => col)],
+      // référentiel brut : localise les lignes de sous-tables qui citent un établissement (atlas)
+      refData: data, refRoles: Object.fromEntries(["Latitude", "Longitude", "Nom", "UAI", "Type", "Libelle_nature", "Commune", "Academie", "Departement"].filter(c).map(k => [k, c(k)])) };
     return out;
   } catch (e) { diagError = e && e.message ? e.message : String(e); return records; }
 }

@@ -35,7 +35,10 @@ MEME_JOUR = "(attribute(@atlas_feature, 'jour') IS NULL OR coalesce(attribute(@f
 def couche(f, nom):
     l = QgsVectorLayer(os.path.join(D, f), nom, "ogr"); assert l.isValid(), f; return l
 sig = couche("signalements.geojson", "signalements")
-marq = couche("signalements.geojson", "marques")   # marques d'une sous-table (losanges accolés au point) : catégories écrites par le widget
+# marques d'une sous-table (marques.geojson, écrit par le widget) : losanges accolés au point de l'établissement qui a
+# répondu (Decale = 1), et points propres des établissements cités dans la sous-table (Decale = 0, avec étiquette) ;
+# catégories écrites par le widget
+marq = couche("marques.geojson", "marques")
 det = couche("signalements_detail.geojson", "signalements_detail")   # un point par signalement, hors mise en page
 zones = couche("zones.geojson", "zones")   # zones denses calculées par le widget : cadres sur la carte et encarts de zoom
 aca = couche("academies.geojson", "academies")
@@ -97,9 +100,9 @@ from qgis.core import QgsGeometryGeneratorSymbolLayer
 # losange décalé en haut à droite du point par un générateur de géométrie (1,9 mm sur le papier, quelle que soit l'échelle) :
 # dans la légende, le losange reste centré
 losange = QgsMarkerSymbol.createSimple({"name": "diamond", "color": "200,30,30,255", "outline_color": "255,255,255,255", "outline_width": "0.3", "size": "2.8"})
-losange.symbolLayer(0).setDataDefinedProperty(QgsSymbolLayer.PropertySize, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} THEN 2.8 WHEN {MEME_JOUR} THEN 2.0 ELSE 0 END"))
+losange.symbolLayer(0).setDataDefinedProperty(QgsSymbolLayer.PropertySize, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} THEN CASE WHEN \"Decale\" = 0 THEN 3.4 ELSE 2.8 END WHEN {MEME_JOUR} THEN 2.0 ELSE 0 END"))
 losange.symbolLayer(0).setDataDefinedProperty(QgsSymbolLayer.PropertyStrokeColor, QgsProperty.fromExpression(f"CASE WHEN {DANS_PAGE} THEN '255,255,255,255' ELSE '255,255,255,120' END"))
-gen = QgsGeometryGeneratorSymbolLayer.create({"geometryModifier": "translate($geometry, 1.9 * @map_scale / 1000, 1.9 * @map_scale / 1000)", "SymbolType": "Marker"})
+gen = QgsGeometryGeneratorSymbolLayer.create({"geometryModifier": "CASE WHEN \"Decale\" = 0 THEN $geometry ELSE translate($geometry, 1.9 * @map_scale / 1000, 1.9 * @map_scale / 1000) END", "SymbolType": "Marker"})
 gen.setSubSymbol(losange)
 sm = QgsMarkerSymbol(); sm.changeSymbolLayer(0, gen)
 marq.setRenderer(QgsCategorizedSymbolRenderer("Marque", [QgsRendererCategory("@@MARQUE@@", sm, "@@MARQUE@@")]))
@@ -137,6 +140,14 @@ r_page = QgsRuleBasedLabeling.Rule(etiquettes(6.5, "#1d1d4f", True, 9, Qgis.Labe
 r_voisins = QgsRuleBasedLabeling.Rule(etiquettes(5.5, "#696982", False, 3, Qgis.LabelOverlapHandling.PreventOverlap, MEME_JOUR), 0, 0, "ELSE", "Établissements voisins (autres pages)")
 r_voisins.setIsElse(True); regles.appendChild(r_page); regles.appendChild(r_voisins)
 sig.setLabeling(QgsRuleBasedLabeling(regles)); sig.setLabelsEnabled(True)
+# étiquettes des établissements cités dans la sous-table (points propres, Decale = 0) : mêmes réglages, positions du widget
+rm = QgsRuleBasedLabeling.Rule(None)
+rm.appendChild(QgsRuleBasedLabeling.Rule(etiquettes(6.5, "#1d1d4f", True, 9, Qgis.LabelOverlapHandling.AllowOverlapIfRequired,
+    "NOT (@map_id = 'carte' AND coalesce(attribute(@feature, 'Zoom'), 0) > 0) AND coalesce(" + POS("Lh", "Eh") + ", 0) = 0", positions=True), 0, 0,
+    f'"Decale" = 0 AND ({DANS_PAGE})', "Sous-table : établissements de la page"))
+rm.appendChild(QgsRuleBasedLabeling.Rule(etiquettes(5.5, "#696982", False, 3, Qgis.LabelOverlapHandling.PreventOverlap, MEME_JOUR), 0, 0,
+    f'"Decale" = 0 AND NOT ({DANS_PAGE})', "Établissements voisins (sous-table)"))
+marq.setLabeling(QgsRuleBasedLabeling(rm)); marq.setLabelsEnabled(True)
 
 # --- zones d'encart : cadre pointillé numéroté, sur la carte principale seulement (pas dans les encarts eux-mêmes)
 ZONE_PAGE = "@map_id = 'carte' AND \"page\" = @atlas_pagename"
@@ -272,10 +283,12 @@ for k in (1, 2, 3):
 texte("Sources : signalements (Grist) ; IGN Admin Express ; fond IGN Géoplateforme", 6, 190.5, 104, 4, 5.5, "#666666", nom="sources")
 # compte des établissements de l'académie, et rappel quand le tableau n'en montre qu'une partie
 # nombre d'établissements de la page : champ Nb_etablissements des académies, écrit par le widget
-NB = "coalesce(attribute(@atlas_feature, 'Nb_etablissements'), 0)"
+# (Nb_signales : établissements signalés seuls ; Nb_cites : établissements cités dans la sous-table, en plus)
+NB = "coalesce(attribute(@atlas_feature, 'Nb_signales'), attribute(@atlas_feature, 'Nb_etablissements'), 0)"
+CITES = "with_variable('c', coalesce(attribute(@atlas_feature, 'Nb_cites'), 0), CASE WHEN @c > 0 THEN ' + ' || @c || CASE WHEN @c > 1 THEN ' cités' ELSE ' cité' END ELSE '' END)"
 texte("[% with_variable('n', " + NB + ", CASE WHEN to_int(@atlas_lignes) > 0 AND @n > to_int(@atlas_lignes) "
       "THEN @n || ' établissements signalés — le tableau présente les ' || @atlas_lignes || ' plus signalés' "
-      "ELSE @n || CASE WHEN @n > 1 THEN ' établissements signalés' ELSE ' établissement signalé' END END) %]",
+      "ELSE @n || CASE WHEN @n > 1 THEN ' établissements signalés' ELSE ' établissement signalé' END END) || " + CITES + " %]",
       110, 190.5, 94, 4, 6, MARINE, True, Qt.AlignRight, nom="compte")
 
 tab = QgsLayoutItemAttributeTable.create(lay); tab.setVectorLayer(sig)
@@ -313,7 +326,7 @@ print("projet écrit :", p.fileName(), "| pages d'atlas :", atlas.updateFeatures
 # chemins de secours (couverture de l'atlas, table, légende) : relatifs eux aussi, pour un projet déplaçable
 # (selon la version de QGIS, le chemin relatif écrit peut être « ../fichier » quand le projet n'existait pas encore : on normalise)
 import re
-txt = re.sub(r'(?:\.\./|\./|' + re.escape(D) + r'/)((?:academies|departements|signalements_detail|signalements|zones|pages)\.geojson)', r'./\1', open(p.fileName(), encoding="utf-8").read())
+txt = re.sub(r'(?:\.\./|\./|' + re.escape(D) + r'/)((?:academies|departements|signalements_detail|signalements|marques|zones|pages)\.geojson)', r'./\1', open(p.fileName(), encoding="utf-8").read())
 open(p.fileName(), "w", encoding="utf-8").write(txt)
 
 if DEMO:   # rendu de contrôle (sans fond IGN hors ligne)
