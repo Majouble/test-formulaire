@@ -191,6 +191,10 @@ QgsExpressionContextUtils.setProjectVariable(p, "atlas_etiquette", "5")
 
 # --- mise en page A4 portrait
 lay = QgsPrintLayout(p); lay.initializeDefaults(); lay.setName("Atlas par académie")
+# PDF léger : fonds (images) à 150 dpi (Mise en page › Résolution d'export ; le widget la règle selon le profil) et textes
+# exportés comme du texte (sélectionnable, bien plus léger que des contours vectoriels) ; QGIS reprend ces choix à l'export
+lay.renderContext().setDpi(150); lay.setCustomProperty("pdfTextFormat", int(Qgis.TextRenderFormat.AlwaysText))
+_les = p.labelingEngineSettings(); _les.setDefaultTextRenderFormat(Qgis.TextRenderFormat.AlwaysText); p.setLabelingEngineSettings(_les)
 lay.pageCollection().page(0).setPageSize("A4", QgsLayoutItemPage.Portrait)
 MM = QgsUnitTypes.LayoutMillimeters
 def place(it, x, y, w, h): it.attemptMove(QgsLayoutPoint(x, y, MM)); it.attemptResize(QgsLayoutSize(w, h, MM))

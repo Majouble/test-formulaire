@@ -47,6 +47,7 @@ const PROFIL_DEFAUT = {
   ],
   principale: "frequente", exclues: ["RAS"], exclureTout: false, jours: "auto",
   fondsIgn: true, voile: true,
+  resolution: 150,   // dpi des fonds (images) dans le PDF ; les textes restent du texte
   encarts: true, encartsMax: 3, encartsMin: 4, encartsEcart: 6,
   etiquettes: 5, etiquettesPlacees: true, etiquettesVoisins: true,
   decoupage: "auto", seuilIllisible: 20,   // pages : par académie, par département, ou automatique (académies illisibles découpées)
@@ -630,6 +631,23 @@ function poserMarques(qgs, fc, m) {
 }
 
 /* ---------- projet QGIS ---------- */
+// PDF léger : résolution d'export des mises en page (dpi des images : fonds IGN, voile) et textes exportés comme du texte
+// (propriété pdfTextFormat de la mise en page, reprise par la fenêtre d'export de QGIS ; réglage par défaut du projet aussi)
+const resolutionPdf = P => [100, 150, 200, 300].includes(+P.resolution) ? +P.resolution : 150;
+function poserExportPdf(qgs, dpi) {
+  qgs = qgs.replace(/(<Layout\s[^>]*?printResolution=")\d+(")/g, `$1${dpi}$2`)
+    .replace(/(<PAL[\s>][\s\S]*?<TextFormat type="int">)\d(<\/TextFormat>)/, "$11$2");
+  // propriété de la mise en page : dans son dernier bloc <customproperties> avant <Atlas
+  return qgs.replace(/<Layout\s[\s\S]*?<\/Layout>/g, lay => {
+    if (/name="pdfTextFormat"/.test(lay)) return lay.replace(/<Option ([^>]*name="pdfTextFormat"[^>]*)\/>/, (m, a) => `<Option ${a.replace(/value="\d+"/, 'value="1"')}/>`);
+    const fin = lay.lastIndexOf("<Atlas"), debut = fin < 0 ? -1 : lay.lastIndexOf("<customproperties", fin);
+    if (debut < 0) return lay;
+    const bloc = lay.slice(debut, fin), opt = '<Option type="int" value="1" name="pdfTextFormat"/>';
+    const nouveau = /<customproperties\s*\/>/.test(bloc) ? bloc.replace(/<customproperties\s*\/>/, `<customproperties><Option type="Map">${opt}</Option></customproperties>`)
+      : bloc.replace(/(<customproperties>\s*<Option type="Map">)/, `$1${opt}`);
+    return lay.slice(0, debut) + nouveau + lay.slice(fin);
+  });
+}
 // Variables du projet (titre, date…) : remplacées ou ajoutées, quel que soit le modèle
 function poserVariables(qgs, vars) {
   return qgs.replace(/<Variables>([\s\S]*?)<\/Variables>/, (bloc, corps) => {
@@ -772,6 +790,7 @@ async function construireAtlas(name) {
   projet = maj.qgs; if (maj.note && marquesFc.features.some(f => f.properties.Couche === "sous-table")) notes.push(maj.note);
   projet = poserMarques(projet, marquesFc, infos.marques);
   projet = cocherCouches(projet, t => /providerKey="wms"/.test(t), P.fondsIgn !== false);
+  projet = poserExportPdf(projet, resolutionPdf(P));
   // étiquettes des établissements voisins (autres académies ou départements) : règle d'étiquetage activée ou non
   projet = projet.replace(/<rule ([^>]*description="(?:Académies voisines|Établissements voisins[^"]*)"[^>]*)>/g, (m, attrs) => {
     const a = attrs.replace(/\s*active="[01]"/, ""); return P.etiquettesVoisins === false ? `<rule ${a} active="0">` : `<rule ${a}>`; });
@@ -789,6 +808,7 @@ async function construireAtlas(name) {
     `- Valeurs ignorées${P.exclureTout ? " (signalements écartés de l'atlas)" : " (pour la qualification principale et les jours)"} : ${(P.exclues || []).join(", ") || "aucune"}.`,
     `- Jours de mobilisation : ${infos.jours ? `valeur la plus haute de la colonne « ${infos.jours} », toutes versions` : "jours distincts (date des faits, à défaut de saisie) ayant un signalement non ignoré, toutes versions"}.`,
     `- Fonds IGN : ${P.fondsIgn !== false ? "cochés" : "décochés (à cocher dans le groupe « Fonds de carte »)"} ; voile gris hors académie : ${P.voile !== false ? "oui" : "non"}.`,
+    `- PDF : fonds à ${resolutionPdf(P)} dpi (Mise en page › Exporter les paramètres › Résolution d'export), textes exportés comme du texte (sélectionnables, plus légers). Pour un fichier encore plus léger : 100 dpi dans le profil.`,
     `- Encarts de zoom : ${P.encarts !== false ? `${enc.zones.length} sur l'ensemble des pages (au plus ${P.encartsMax} par page, zones d'au moins ${P.encartsMin} établissements à moins de ${P.encartsEcart} mm sur la carte) ; couche « zones », cadres pointillés numérotés` : "non"}.`,
     `- Établissements retenus : ${fc.features.length} sur ${infos.avantFiltre}${(() => { const F = { categories: [], qualifs: [], minSignalements: 1, minJours: 0, ...(P.filtre || {}) };
       const l = [F.categories.length ? `catégories ${F.categories.join(", ")}` : "", F.qualifs.length ? `qualifications ${F.qualifs.join(", ")}` : "", F.minSignalements > 1 ? `au moins ${F.minSignalements} signalements` : "", F.minJours > 0 ? `au moins ${F.minJours} jours de mobilisation` : ""].filter(Boolean);
@@ -975,7 +995,7 @@ const AtlasUI = (() => {
     el("atlasJours").innerHTML = `<option value="auto">reconnue automatiquement (« Nb de jours de mobilisation »…), sinon calcul</option><option value="calcul">calcul : jours distincts signalés</option>`
       + cols.filter(c => /^(Int|Numeric|Any)/.test(c.type) || !c.type).map(c => `<option value="${htmlTexte(c.col)}">colonne « ${htmlTexte(c.libelle)} »</option>`).join("");
     el("atlasJours").value = [...el("atlasJours").options].some(o => o.value === P.jours) ? P.jours : "auto";
-    el("atlasIgn").checked = P.fondsIgn !== false; el("atlasVoile").checked = P.voile !== false;
+    el("atlasIgn").checked = P.fondsIgn !== false; el("atlasVoile").checked = P.voile !== false; el("atlasResolution").value = String(resolutionPdf(P));
     el("atlasEncarts").checked = P.encarts !== false; el("atlasEncartsMax").value = P.encartsMax; el("atlasEncartsMin").value = P.encartsMin; el("atlasEncartsEcart").value = P.encartsEcart;
     el("atlasEncartsBloc").style.display = P.encarts !== false ? "" : "none";
     el("atlasDecoupage").value = P.decoupage || "auto"; el("atlasSeuil").value = P.seuilIllisible; el("atlasSeuilBloc").style.display = (P.decoupage || "auto") === "auto" ? "" : "none";
@@ -1019,7 +1039,7 @@ const AtlasUI = (() => {
     });
     p.principale = el("atlasPrincipale").value; p.exclues = el("atlasExclues").value.split(/[,;]/).map(s => s.trim()).filter(Boolean);
     p.exclureTout = el("atlasExclureTout").checked; p.jours = el("atlasJours").value;
-    p.fondsIgn = el("atlasIgn").checked; p.voile = el("atlasVoile").checked;
+    p.fondsIgn = el("atlasIgn").checked; p.voile = el("atlasVoile").checked; p.resolution = +el("atlasResolution").value || 150;
     p.decoupage = el("atlasDecoupage").value; p.seuilIllisible = Math.max(0, Math.min(100, parseInt(el("atlasSeuil").value, 10) || 20));
     p.etiquettesVoisins = el("atlasVoisins").checked;
     p.marques = { table: el("atlasMarqueTable").value, colonne: el("atlasMarqueColonne").value, titre: el("atlasMarqueTitre").value, inclure: el("atlasMarqueInclure").checked };
