@@ -1,0 +1,42 @@
+const __C = require('./chemins');
+const { chromium } = require('playwright'); const fs=require('fs');
+const src = fs.readFileSync('run27.js','utf8'); const mkDoc = eval('('+src.slice(src.indexOf('(sansDep) =>'), src.indexOf('\n};\n')+2)+')');
+(async()=>{
+ const browser = await chromium.launch({executablePath: __C.chromium});
+ const page = await browser.newPage({viewport:{width:1450,height:1000}});
+ page.on('pageerror', e=>console.log('PAGEERROR',e.message, (e.stack||'').split('\n')[1])); page.on('console', m=>{ if(m.type()==='error'&&!/ERR_FAILED/.test(m.text())) console.log('CONSOLE',m.text().slice(0,200)); }); page.on('dialog', d=>d.accept());
+ const doc = mkDoc(false); const C=doc.__data.Config;
+ const cfg={name:'Tableau de bord',filters:[],blocks:[{id:'t1',type:'tile',title:'Signalements',measure:{agg:'count'},conds:[]},{id:'t2',type:'tile',title:'Établissements',measure:{agg:'distinct',col:'Etablissement'},conds:[]},
+   {id:'c1',type:'cross',title:'Par qualification',measure:{agg:'count'},rows:{col:'Qualification',grain:'jour'},cols:{col:'',grain:'jour'},conds:[],view:'both',sort:'value',top:20,chart:'barh'}]};
+ C.id.push(99); C.Cle.push('tableau_de_bord'); C.Valeur.push(JSON.stringify({publie:cfg,brouillon:cfg,publie_le:1792000000})); if(C.Modifie_le) C.Modifie_le.push(null);
+ await page.route('**/grist-plugin-api.js', r=>r.fulfill({contentType:'text/javascript', body:`window.__DOC__=${JSON.stringify(doc)};`+fs.readFileSync('mock.js')+fs.readFileSync('fakeapi.js')+`;grist.onRecords=()=>{};grist.getOption=async()=>null;`}));
+ await page.goto('file://' + __C.racine + '/v2/admin/index.html'); await page.waitForTimeout(400);
+ await page.click('nav button[data-onglet=onglet-tdb]'); await page.waitForTimeout(1000);
+ await page.screenshot({path:'at-1.png'});
+ await page.click('.card[data-bi="2"] .card-head h2'); await page.waitForTimeout(300);
+ console.log('PANNEAU:', (await page.textContent('#studio .st-tete')).replace(/\s+/g,' '), '| onglets:', await page.$$eval('.st-onglet', x=>x.map(e=>e.textContent).join(',')));
+ await page.screenshot({path:'at-2.png'});
+ await page.click('.st-onglet[data-k=presentation]'); await page.waitForTimeout(200);
+ await page.selectOption('#studio select[data-k=chart]', 'pie'); await page.waitForTimeout(300);
+ console.log('APRES anneau: svg pie?', await page.$$eval('.card[data-bi="2"] svg path', x=>x.length), '| onglet actif:', await page.textContent('.st-onglet.actif'));
+ await page.click('#tdb-ajouter'); await page.waitForTimeout(300);
+ console.log('FENETRE:', await page.textContent('#fenetreTitre'), await page.$$eval('.st-modele strong', x=>x.map(e=>e.textContent).join(',')));
+ await page.screenshot({path:'at-3.png'});
+ await page.click('.st-modele[data-k=map]'); await page.waitForTimeout(500);
+ console.log('NOUVEAU:', await page.textContent('#studio .st-titre strong'), '| blocs:', await page.$$eval('.card[data-bi]', x=>x.length));
+ await page.click('#tdb-reglages'); await page.waitForTimeout(300);
+ console.log('REGLAGES:', (await page.textContent('#fenetreCorps')).replace(/\s+/g,' ').slice(0,200));
+ await page.screenshot({path:'at-4.png'});
+ await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+ await page.click('#tdb-menu-btn'); await page.waitForTimeout(200);
+ await page.screenshot({path:'at-5.png'});
+ console.log('MENU:', (await page.textContent('#tdb-menu')).replace(/\s+/g,' '));
+ await page.keyboard.press('Escape'); await page.click('body', {position:{x:5,y:300}}); await page.waitForTimeout(200);
+ await page.click('.tile[data-bi="1"] h3, .card[data-bi="1"]', {position:{x:30,y:20}}).catch(e=>console.log('clic tuile', e.message.slice(0,80))); await page.waitForTimeout(300);
+ console.log('TUILE:', (await page.textContent('#studio .st-tete')).replace(/\s+/g,' '));
+ for (const k of ['donnees','presentation','detail']) { await page.click(`.st-onglet[data-k=${k}]`); await page.waitForTimeout(150); console.log(' ', k, ':', (await page.textContent('#studio .st-corps')).replace(/\s+/g,' ').slice(0,160)); }
+ await page.click('.st-onglet[data-k=presentation]'); await page.fill('#studio input[data-k=title]', 'Établissements touchés'); await page.dispatchEvent('#studio input[data-k=title]', 'change'); await page.waitForTimeout(300);
+ console.log('TITRE tuile:', await page.textContent('.card[data-bi="1"]').then(t=>t.replace(/\s+/g,' ').slice(0,60)), '| focus onglet:', await page.textContent('.st-onglet.actif'));
+ await page.screenshot({path:'at-6.png'});
+ await browser.close();
+})();

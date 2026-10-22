@@ -1,0 +1,43 @@
+const __C = require('./chemins');
+const { chromium } = require('playwright'); const fs=require('fs');
+(async()=>{
+ const browser = await chromium.launch({executablePath: __C.chromium}); const page = await browser.newPage({viewport:{width:1300,height:1400}});
+ page.on('pageerror', e=>console.log('PAGEERROR',e.message)); page.on('dialog', d=>d.accept());
+ let doc = fs.readFileSync(__C.donnees + '/' + 'doc_planning3.json');
+ await page.route('**/grist-plugin-api.js', r=>r.fulfill({contentType:'text/javascript', body:`window.__DOC__=${doc};`+fs.readFileSync('mock.js')+fs.readFileSync('fakeapi.js')+`;grist.onRecords=()=>{};grist.getOption=async()=>null;`}));
+ await page.goto('file://' + __C.racine + '/v2/admin/index.html'); await page.waitForTimeout(500);
+ await page.click('nav button[data-onglet=planning]'); await page.waitForTimeout(600);
+ console.log('BANDEAU:', (await page.textContent('#planning .bandeau')).replace(/\s+/g,' '));
+ await page.click('#pl-completer'); await page.waitForTimeout(600);
+ console.log('COLS:', JSON.stringify(await page.evaluate(()=>{const T=window.__DOC__._grist_Tables,C=window.__DOC__._grist_Tables_column; const r=T.id[T.tableId.indexOf('Emargements')]; return C.colId.map((c,i)=>C.parentId[i]===r?[c,C.type[i],C.formula[i]]:null).filter(Boolean);})));
+ doc = JSON.stringify(await page.evaluate(()=>window.__DOC__));
+ await page.unroute('**/grist-plugin-api.js');
+ // page de saisie de Bob
+ const opts = { formulaire: 'Signalements', libelle: 'Bob', perimetre: {}, agent: 2 };
+ await page.route('**/grist-plugin-api.js', r=>r.fulfill({contentType:'text/javascript', body:`window.__DOC__=${doc};window.__OPTS__=${JSON.stringify(opts)};`+fs.readFileSync('mock.js')+fs.readFileSync('fakeapi.js')+fs.readFileSync('mock-saisie.js')}));
+ await page.goto('file://' + __C.racine + '/v2/saisie/index.html'); await page.waitForTimeout(1500);
+ console.log('S1:', (await page.textContent('#bandeau-perimetre')).replace(/\s+/g,' '));
+ await page.click('#btn-service'); await page.waitForTimeout(400);
+ console.log('S2:', (await page.textContent('#bandeau-perimetre')).replace(/\s+/g,' '));
+ await page.screenshot({path:'em-1.png'});
+ await page.click('#btn-service'); await page.waitForTimeout(400);
+ console.log('S3:', (await page.textContent('#bandeau-perimetre')).replace(/\s+/g,' '));
+ // service ouvert ancien pour Alice
+ await page.evaluate(()=>grist.docApi.applyUserActions([["AddRecord","Emargements",null,{Agent:1,Creneau:0,Debut:Date.now()/1000-20*3600}]]));
+ console.log('EMARG:', JSON.stringify(await page.evaluate(()=>window.__DOC__.__data.Emargements)));
+ doc = JSON.stringify(await page.evaluate(()=>window.__DOC__));
+ await page.unroute('**/grist-plugin-api.js');
+ await page.route('**/grist-plugin-api.js', r=>r.fulfill({contentType:'text/javascript', body:`window.__DOC__=${doc};`+fs.readFileSync('mock.js')+fs.readFileSync('fakeapi.js')+`;grist.onRecords=()=>{};grist.getOption=async()=>null;`}));
+ await page.goto('file://' + __C.racine + '/v2/admin/index.html'); await page.waitForTimeout(500);
+ await page.click('nav button[data-onglet=planning]'); await page.waitForTimeout(600);
+ const cartes = await page.$$eval('#planning .carte', x=>x.map(e=>e.textContent.replace(/\s+/g,' ')));
+ console.log('JOUR:', cartes.find(c=>c.startsWith(' Cellule du jour')||c.includes('Cellule du jour')).slice(0,700));
+ await page.click('[data-suivi="2"]'); await page.waitForTimeout(300);
+ console.log('SUIVI:', (await page.textContent('.pl-detail')).replace(/\s+/g,' ').slice(0,500));
+ await page.click('[data-clore]'); await page.waitForTimeout(400);
+ console.log('CLOS:', await page.textContent('#pl-statut'), JSON.stringify(await page.evaluate(()=>window.__DOC__.__data.Emargements.Fin)));
+ await page.screenshot({path:'em-2.png', fullPage:true});
+ await page.click('nav button[data-onglet=acces]'); await page.waitForTimeout(600);
+ console.log('ACCES EM:', (await page.textContent('#acces')).replace(/\s+/g,' ').match(/Emargements — émargement.{0,300}/)?.[0]);
+ await browser.close();
+})();

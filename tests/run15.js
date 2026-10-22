@@ -1,0 +1,37 @@
+const __C = require('./chemins');
+const { chromium } = require('playwright'); const fs=require('fs');
+(async()=>{
+ const browser = await chromium.launch({executablePath: __C.chromium}); const page = await browser.newPage({viewport:{width:1300,height:1300}});
+ page.on('pageerror', e=>console.log('PAGEERROR',e.message)); page.on('dialog', d=>d.accept()); page.on('console', m=>{ if(m.type()==='error') console.log('CONSOLE',m.text()); });
+ await page.route('**/grist-plugin-api.js', r=>r.fulfill({contentType:'text/javascript', body:`window.__DOC__=${fs.readFileSync('${__C.donnees + '/'}doc_saisie.json')};`+fs.readFileSync('mock.js')+fs.readFileSync('fakeapi.js')+`;grist.onRecords=()=>{};grist.getOption=async()=>null;`}));
+ await page.goto('file://' + __C.racine + '/v2/admin/index.html'); await page.waitForTimeout(500);
+ console.log('INSTALL:', (await page.textContent('#liste-actions')).replace(/\s+/g,' ').slice(0,300));
+ await page.click('nav button[data-onglet=equipe]'); await page.waitForTimeout(500);
+ console.log('EQ1:', (await page.textContent('#equipe')).replace(/\s+/g,' ').slice(0,200));
+ await page.click('#eq-creer-table'); await page.waitForTimeout(500);
+ console.log('EQ2:', (await page.textContent('#equipe')).replace(/\s+/g,' ').slice(0,700));
+ await page.click('#eq-reprendre'); await page.waitForTimeout(500);
+ console.log('EQ3:', (await page.textContent('#equipe .carte')).replace(/\s+/g,' ').slice(0,900));
+ await page.click('.eq-ligne >> text=Alice'); await page.waitForTimeout(300);
+ await page.fill('#eq-email','alice.martin@education.gouv.fr'); await page.click('.eq-puce[data-val="Créteil"]');
+ await page.screenshot({path:'eq-1.png', fullPage:true});
+ await page.click('#eq-enregistrer'); await page.waitForTimeout(500);
+ console.log('STATUT:', await page.textContent('#eq-statut'));
+ await page.click('#eq-import summary'); await page.fill('#eq-liste','Nom\temail\trôle\nChloé Durand\tchloe@ac-creteil.fr\tCoordinatrice\t06 00 00 00 00\nBob ; bob@ac-creteil.fr ; saisie\nDavid ; david@x.fr ; observateur');
+ await page.click('#eq-analyser'); await page.waitForTimeout(200); console.log('BILAN:', (await page.textContent('#eq-import-bilan')).replace(/\s+/g,' '));
+ await page.click('#eq-importer'); await page.waitForTimeout(500);
+ console.log('EQ4:', (await page.textContent('#equipe .carte')).replace(/\s+/g,' ').slice(0,1100));
+ await page.screenshot({path:'eq-2.png', fullPage:true});
+ console.log('AGENTS:', JSON.stringify(await page.evaluate(()=>window.__DOC__.__data.Agents)));
+ await page.click('nav button[data-onglet=formulaires]'); await page.waitForTimeout(900);
+ const g = await page.$('#pg-agents'); if(!g){ console.log('NO PG SECTION'); }
+ console.log('FORM PAGES:', (await page.evaluate(()=>{ const x=[...document.querySelectorAll('.groupe')].find(e=>/Pages de saisie/.test(e.textContent)); return x? x.textContent:''; })).replace(/\s+/g,' '));
+ await page.evaluate(()=>document.querySelector('#pg-agents').scrollIntoView()); await page.screenshot({path:'eq-3.png'});
+ await page.click('#pg-creer'); await page.waitForTimeout(800);
+ console.log('VUES:', JSON.stringify(await page.evaluate(()=>({n:window.__DOC__._grist_Views.name, o:window.__DOC__._grist_Views_section.options.map(o=>JSON.parse(JSON.parse(o).customView).widgetOptions)}))));
+ console.log('BOUTON:', await page.textContent('#pg-creer'));
+ await page.click('[data-pg="equipe"]'); await page.waitForTimeout(500);
+ console.log('EQ5:', (await page.textContent('.eq-table')).replace(/\s+/g,' '));
+ fs.writeFileSync(__C.donnees + '/' + 'doc_equipe.json', JSON.stringify(await page.evaluate(()=>window.__DOC__)));
+ await browser.close();
+})();

@@ -1,0 +1,7 @@
+{
+  "name": "signalements-grist-tests",
+  "private": true,
+  "description": "Scénarios Playwright des widgets du socle v2 (faux Grist en mémoire)",
+  "scripts": { "suite": "sh lancer.sh" },
+  "dependencies": { "playwright": "1.64.1", "jszip": "3.10.1" }
+}

@@ -1,0 +1,35 @@
+const __C = require('./chemins');
+const { chromium } = require('playwright'); const fs=require('fs');
+(async()=>{
+ const browser = await chromium.launch({executablePath: __C.chromium}); const page = await browser.newPage({viewport:{width:1300,height:900}});
+ page.on('pageerror', e=>console.log('PAGEERROR',e.message));
+ await page.route('**/grist-plugin-api.js', r=>r.fulfill({contentType:'text/javascript', body:`window.__DOC__=${fs.readFileSync('${__C.donnees + '/'}doc_planning3.json')};`+fs.readFileSync('mock.js')+fs.readFileSync('fakeapi.js')+`;grist.onRecords=()=>{};grist.getOption=async()=>null;`}));
+ await page.goto('file://' + __C.racine + '/v2/admin/index.html'); await page.waitForTimeout(500);
+ await page.click('nav button[data-onglet=onglet-actions]'); await page.waitForTimeout(500);
+ console.log('A0:', (await page.textContent('#onglet-actions')).replace(/\s+/g,' ').slice(0,150));
+ await page.click('#ak-creer-table'); await page.waitForTimeout(500);
+ const creer = async (titre, statut, prio, resp, ech) => {
+   await page.click('#ak-nouvelle'); await page.waitForTimeout(100);
+   await page.fill('#ak-titre', titre); await page.selectOption('#ak-statut-f', statut); await page.selectOption('#ak-priorite', prio);
+   if (resp) await page.selectOption('#ak-responsable', String(resp)); if (ech) await page.fill('#ak-echeance', ech);
+   await page.fill('#ak-description', 'Détail de ' + titre);
+   await page.click('#ak-enregistrer'); await page.waitForTimeout(250);
+ };
+ await creer('Rappeler le proviseur du lycée Rolland', 'À faire', 'Haute', 2, '2026-10-16');
+ await creer('Préparer le point de 16 h', 'En cours', 'Moyenne', 3, '2026-10-17');
+ await creer('Informer le cabinet', 'À faire', 'Basse', null, null);
+ console.log('A1:', (await page.textContent('.ak-tableau')).replace(/\s+/g,' '));
+ console.log('STATS:', (await page.textContent('.ak-stats')).replace(/\s+/g,' '));
+ await page.dragAndDrop('.ak-carte[data-id="1"]', '.ak-cartes[data-statut="Fait"]'); await page.waitForTimeout(400);
+ console.log('APRES DnD:', JSON.stringify(await page.evaluate(()=>{const t=window.__DOC__.__data.Actions; return t.id.map((id,i)=>[id,t.Statut[i],!!t.Fait_le[i]]);})));
+ await page.click('.ak-carte[data-id="2"]'); await page.waitForTimeout(150);
+ await page.screenshot({path:'ak-2.png'});
+ await page.click('#ak-annuler');
+ await page.selectOption('#ak-resp', '3'); await page.waitForTimeout(150);
+ console.log('FILTRE:', (await page.textContent('.ak-tableau')).replace(/\s+/g,' '));
+ await page.selectOption('#ak-resp', ''); await page.waitForTimeout(150);
+ await page.screenshot({path:'ak-1.png'});
+ await page.click('.ak-carte[data-id="3"]'); await page.click('#ak-supprimer'); await page.click('#ak-supprimer'); await page.waitForTimeout(300);
+ console.log('APRES SUPPR:', await page.evaluate(()=>window.__DOC__.__data.Actions.id.length), await page.textContent('#ak-statut'));
+ await browser.close();
+})();

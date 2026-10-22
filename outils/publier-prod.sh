@@ -21,3 +21,4 @@ done
   sed '1d' v2/README.md | sed 's#test-formulaire/v2/#test-formulaire/prod/#g'
 } > prod/README.md
 echo "prod/ = $version"
+echo "Après le commit : git tag -a v${version%% *} -m \"Production $version\" && git push --tags   (retour arrière : sh outils/revenir-prod.sh <version>)"

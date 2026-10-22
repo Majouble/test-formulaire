@@ -1,0 +1,20 @@
+const __C = require('./chemins');
+const { chromium } = require('playwright'); const fs = require('fs');
+(async () => {
+  const browser = await chromium.launch({ executablePath: __C.chromium });
+  const doc = JSON.parse(fs.readFileSync(__C.donnees + '/' + 'doc_planning3.json'));
+  const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+  page.on('pageerror', e => console.log('PAGEERROR', e.message)); page.on('dialog', d => d.accept());
+  await page.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__DOC__=${JSON.stringify(doc)};` + fs.readFileSync('mock.js') + fs.readFileSync('fakeapi.js') + `;grist.onRecords=()=>{};grist.getOption=async()=>null;` }));
+  await page.goto('file://' + __C.racine + '/v2/admin/index.html'); await page.waitForTimeout(1500);
+  await page.click('nav button[data-onglet=point-situation]'); await page.waitForTimeout(2500);
+  console.log('AVANT :', (await page.textContent('#ps-pages')).trim());
+  await page.click('#ps-publier'); await page.waitForTimeout(2000);
+  console.log('STATUT :', (await page.textContent('#ps-statut')).trim());
+  console.log('APRÈS :', (await page.textContent('#ps-pages')).trim());
+  console.log('VUES :', await page.evaluate(() => JSON.stringify(window.__DOC__._grist_Views.name)));
+  await page.click('#ps-publier'); await page.waitForTimeout(1500);
+  console.log('2e PUBLICATION :', (await page.textContent('#ps-statut')).trim(), await page.evaluate(() => window.__DOC__._grist_Views.name.length));
+  await page.locator('.ps-entete-carte').screenshot({ path: 'ps-page.png' });
+  await browser.close();
+})();

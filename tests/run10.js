@@ -1,0 +1,24 @@
+const __C = require('./chemins');
+const { chromium } = require('playwright'); const fs=require('fs');
+(async()=>{
+ const doc = JSON.parse(fs.readFileSync(__C.donnees + '/' + 'doc_saisie2.json'));
+ const browser = await chromium.launch({executablePath: __C.chromium}); const page = await browser.newPage({viewport:{width:1100,height:1000}});
+ page.on('pageerror', e=>console.log('PAGEERROR',e.message)); page.on('dialog', d=>{ console.log('DIALOG', d.message().slice(0,120)); d.accept(); });
+ await page.route('**/grist-plugin-api.js', r=>r.fulfill({contentType:'text/javascript', body:`window.__DOC__=${JSON.stringify(doc)};`+fs.readFileSync('mock.js')+fs.readFileSync('fakeapi.js')+`;grist.onRecords=()=>{};grist.getOption=async()=>null;`}));
+ await page.goto('file://' + __C.racine + '/v2/admin/index.html'); await page.waitForTimeout(400);
+ await page.click('nav button[data-onglet="point-situation"]'); await page.waitForTimeout(600);
+ console.log('ETAT:', await page.textContent('#ps-etat'));
+ await page.fill('[data-opt=bandeau]', 'Mouvements lycéens'); await page.fill('[data-opt=perimetre_long]', 'ÉDUCATION NATIONALE');
+ await page.fill('input[data-liste=sections][data-i="0"][data-cle=Condition]', 'Qualification = Blocage');
+ await page.click('input[data-liste=colonnes][data-i="4"][data-cle=Contenu], textarea[data-liste=colonnes][data-i="4"]');
+ await page.click('[data-act=inserer][data-champ="Etablissement.Commune"]');
+ await page.waitForTimeout(1000);
+ console.log('STATUT:', await page.textContent('#ps-statut'), '|', await page.textContent('#ps-etat'));
+ await page.click('#ps-publier'); await page.waitForTimeout(600);
+ console.log('PUBLIE:', await page.textContent('#ps-etat'), '|', await page.textContent('#ps-statut'));
+ const v = await page.evaluate(()=>{const t=window.__DOC__.__data.Config; return JSON.parse(t.Valeur[t.Cle.indexOf('point_situation')]);});
+ console.log('CONFIG options:', JSON.stringify(v.publie.options), 'sections:', JSON.stringify(v.publie.sections.map(s=>s.Condition)), 'col5:', JSON.stringify(v.publie.colonnes[4].Contenu));
+ await page.screenshot({path:'ps-admin.png', fullPage:true});
+ fs.writeFileSync(__C.donnees + '/' + 'doc_ps.json', JSON.stringify(await page.evaluate(()=>window.__DOC__)));
+ await browser.close();
+})();

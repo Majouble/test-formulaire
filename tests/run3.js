@@ -1,0 +1,34 @@
+const __C = require('./chemins');
+const { chromium } = require('playwright'); const fs=require('fs');
+(async()=>{
+ const browser = await chromium.launch({executablePath: __C.chromium}); const page = await browser.newPage({viewport:{width:1300,height:900}});
+ page.on('pageerror', e=>console.log('PAGEERROR',e.message)); page.on('console', m=>{ if(m.type()==='error'||m.type()==='warning') console.log('console:',m.text())});
+ page.on('dialog', d=>{ console.log('DIALOG', d.message().slice(0,200)); d.accept(); });
+ await page.route('**/grist-plugin-api.js', r=>r.fulfill({contentType:'text/javascript', body:`window.__DOC__=${fs.readFileSync('${__C.donnees + '/'}blank.json')};`+fs.readFileSync('mock.js')+fs.readFileSync('fakeapi.js')+`;grist.onRecords=()=>{};grist.getOption=async()=>null;`}));
+ await page.goto('file://' + __C.racine + '/v2/admin/index.html'); await page.waitForTimeout(400);
+ await page.click('#btn-appliquer'); await page.waitForTimeout(500);
+ await page.fill('#g-academies','Versailles\nCréteil'); await page.click('#btn-general'); await page.waitForTimeout(300);
+ await page.click('nav button[data-onglet=formulaires]'); await page.waitForTimeout(800);
+ await page.screenshot({path:'form-1.png'});
+ console.log('APERCU:', (await page.textContent('#apercu')).replace(/\s+/g,' ').slice(0,300));
+ await page.click('#btn-nouveau'); await page.waitForTimeout(300);
+ console.log('NF-TABLE:', await page.inputValue('#nf-table'), 'NF-ETAB:', await page.inputValue('#nf-etab').catch(()=>'?'));
+ await page.fill('#nf-nom','Formulaire test'); await page.click('#nf-valider'); await page.waitForTimeout(800);
+ console.log('MSG:', (await page.textContent('#app')).replace(/\s+/g,' ').slice(0,200));
+ await page.screenshot({path:'form-2.png'});
+ const pub = await page.$('#btn-publier'); await pub.click(); await page.waitForTimeout(800);
+ console.log('FORMULAIRES:', JSON.stringify(await page.evaluate(()=>{const t=window.__DOC__.__data.Formulaires; return {Nom:t.Nom, Table:t.Table, pub: (t.Publie||[]).map(x=>x?x.slice(0,80):x)};})));
+ await page.screenshot({path:'form-3.png', fullPage:false});
+ // page de saisie avec périmètre
+ await page.evaluate(()=>document.getElementById('pg-nom').scrollIntoView());
+ await page.fill('#pg-nom','Bob — Versailles'); await page.fill('#pg-libelle','Bob'); await page.fill('#pg-url','https://majouble.github.io/test-formulaire/v2/saisie/'); await page.check('#pg-perimetre input[value="Versailles"]');
+ await page.click('#pg-creer'); await page.waitForTimeout(800); console.log('PGSTATUT:', await page.textContent('#pg-statut').catch(()=>'?'), '|', (await page.textContent('#app')).match(/Page[^.]*./g));
+ const sec = await page.evaluate(()=>JSON.stringify(window.__DOC__._grist_Views_section)); console.log('SECTION:', sec.slice(0,600));
+ await page.selectOption('#pg-cible', {index:1}); await page.waitForTimeout(200);
+ console.log('RELU:', await page.inputValue('#pg-libelle'), await page.isChecked('#pg-perimetre input[value="Versailles"]'), await page.textContent('#pg-creer'));
+ await page.check('#pg-perimetre input[value="Créteil"]'); await page.click('#pg-creer'); await page.waitForTimeout(600);
+ console.log('MAJ:', JSON.stringify(JSON.parse(JSON.parse(await page.evaluate(()=>window.__DOC__._grist_Views_section.options[0])).customView).widgetOptions));
+ await page.screenshot({path:'form-4.png'});
+ await page.click('nav button[data-onglet=installation]'); await page.waitForTimeout(300); await page.screenshot({path:'inst-after.png'});
+ await browser.close();
+})();
