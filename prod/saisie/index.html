@@ -4032,13 +4032,18 @@ document.addEventListener("keydown", ev => {
    - Les champs de chaque ligne sont les colonnes de la table NomDeTable (type, choix, libellé et
      repères de description : *, [si …], [liste], [boutons], [positif], [min], [max], [confidentiel]).
      Sont ignorées : les colonnes formules, Dossier (référence vers les signalements), Ligne_id, Ordre.
-   - À chaque enregistrement, la table NomDeTable est réécrite pour le dossier, à partir de sa dernière
-     version : une ligne Grist par ligne saisie (Dossier, Ligne_id, Ordre + les champs).
+   - Table historisée (colonne Version, référence vers la table des signalements) : chaque version du signalement
+     écrit sa propre copie des lignes (Dossier, Version, Ligne_id, Ordre, Mouvement + les champs). Mouvement compare
+     à la version précédente du dossier : Ajout, Modification, Inchangée, ou Retrait (ligne retirée, recopiée avec ses
+     dernières valeurs). Une correction de version réécrit les lignes de cette version. Stock = colonne formule
+     Etat_actuel (lignes de la version la plus récente, hors retraits) ; flux = Mouvement par Date_version.
+   - Table sans colonne Version (ancienne) : réécrite pour le dossier à partir de sa dernière version, une ligne Grist
+     par ligne saisie (Dossier, Ligne_id, Ordre + les champs) ; aucun historique.
    - Les champs [confidentiel] ne sont enregistrés que dans NomDeTable (protégeables par une règle
      d'accès de colonne), jamais dans la colonne JSON, l'historique ni la description.
    ========================================================= */
 const tableaux = {};   // identifiant du champ → contrôleur
-const RESERVES_TABLEAU = ["id", "manualSort", "Ligne_id", "Ordre", "Version"];
+const RESERVES_TABLEAU = ["id", "manualSort", "Ligne_id", "Ordre", "Version", "Mouvement"];
 const nouvelIdLigne = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const videSous = v => v == null || v === "" || (Array.isArray(v) && !v.length);
 function lireTableauJson(v) {
@@ -4265,9 +4270,12 @@ class Tableau {
     try { cols = await colonnesDeTable(tid); } catch (_) {}
     if (!cols) { this.erreur = `Table « ${tid} » introuvable : vérifiez le repère [tableau ${tid}] dans la description de la colonne « ${this.def.libelle} ».`; this.dessiner(); return; }
     this.table = tid;
-    this.colDossier = (cols.find(c => c.colId === "Dossier") || cols.find(c => c.type === `Ref:${tableId}`) || {}).colId || null;
+    this.colDossier = (cols.find(c => c.colId === "Dossier") || cols.find(c => c.type === `Ref:${tableId}` && c.colId !== "Version") || {}).colId || null;
     this.colLigne = cols.some(c => c.colId === "Ligne_id") ? "Ligne_id" : null;
     this.colOrdre = cols.some(c => c.colId === "Ordre") ? "Ordre" : null;
+    // historique : une copie des lignes par version (colonne Version vers la table des signalements)
+    this.colVersion = cols.some(c => c.colId === "Version" && c.type === `Ref:${tableId}`) ? "Version" : null;
+    this.colMouvement = this.colVersion && cols.some(c => c.colId === "Mouvement") ? "Mouvement" : null;
     this.sousDefs = cols.filter(c => !c.formule && !RESERVES_TABLEAU.includes(c.colId) && c.colId !== this.colDossier && !c.colId.startsWith("gristHelper"))
       .map(avecRegles).filter(d => !d.masque);   // [masqué] : colonne absente du formulaire (sa valeur dans la table est conservée)
     // [ordre N] : les champs numérotés d'abord, dans cet ordre, puis les autres dans l'ordre des colonnes de Grist
@@ -4345,8 +4353,13 @@ class Tableau {
     try {
       const t = await grist.docApi.fetchTable(this.table);
       if (confs.some(d => !(d.colId in t))) this.confLisible = false;
+      // table historisée : les lignes de la version la plus récente qui en a (sinon les lignes sans version)
+      const duDossier = t.id.map((_, i) => i).filter(i => refId(t[this.colDossier][i]) === dossier || t[this.colDossier][i] === dossier);
+      const vDe = i => this.colVersion && t[this.colVersion] ? refId(t[this.colVersion][i]) || 0 : 0;
+      const vMax = Math.max(0, ...duDossier.map(vDe));
       t.id.forEach((id, i) => {
         if (refId(t[this.colDossier][i]) !== dossier && t[this.colDossier][i] !== dossier) return;
+        if (vDe(i) !== vMax || (this.colMouvement && t[this.colMouvement] && t[this.colMouvement][i] === "Retrait")) return;
         const v = {};
         for (const d of confs) {
           const x = t[d.colId] ? t[d.colId][i] : undefined;
@@ -4586,9 +4599,10 @@ class Tableau {
     }, true);
   }
   // ----- table dédiée : réécriture des lignes d'un dossier
-  async synchroniser(dossier, complet, t, lignesSource, avecConf = true) {
+  async synchroniser(dossier, complet, t, lignesSource, avecConf = true, version = null) {
     if (!this.pret || !this.colDossier) return 0;
     t = t || await grist.docApi.fetchTable(this.table);
+    if (this.colVersion && t[this.colVersion]) return this.synchroniserVersions(dossier, complet, t, lignesSource, avecConf, version);
     const lignes = lignesSource || this.lignesValides();
     const existantes = t.id.map((id, i) => ({ id, d: t[this.colDossier][i], ligne: this.colLigne ? t[this.colLigne][i] : null }))
       .filter(x => refId(x.d) === dossier || x.d === dossier);
@@ -4625,6 +4639,88 @@ class Tableau {
     if (suppr.length) await ops.destroy(suppr);
     return maj.length + ajout.length + suppr.length;
   }
+  /* ----- table historisée : copie des lignes pour une version du dossier
+     version : la version écrite (création, mise à jour, correction, reconstruction) ; absente et complet = false :
+     seules les données confidentielles des lignes de la version la plus récente changent (aucune nouvelle version). */
+  async synchroniserVersions(dossier, complet, t, lignesSource, avecConf, version) {
+    const ops = grist.getTable(this.table), cV = this.colVersion, cM = this.colMouvement && t[this.colMouvement] ? this.colMouvement : null;
+    const lignes = lignesSource || this.lignesValides();
+    const lignesT = t.id.map((id, i) => ({ id, i, v: refId(t[cV][i]) || 0, ligne: this.colLigne ? t[this.colLigne][i] : null, m: cM ? t[cM][i] : null }))
+      .filter(x => refId(t[this.colDossier][x.i]) === dossier || t[this.colDossier][x.i] === dossier);
+    // versions connues du dossier (ordre de création)
+    const cD = col("Dossier"), versionsDossier = enregistrements.filter(l => (refId(cD && l[cD]) || l.id) === dossier).map(l => l.id).sort((a, b) => a - b);
+    const plusRecente = Math.max(0, ...versionsDossier, ...lignesT.map(x => x.v));
+    let n = 0;
+    // lignes d'avant l'historique (sans version) : rattachées à la version qui précède celle écrite (ou à la plus récente)
+    const anciennes = lignesT.filter(x => !x.v);
+    if (anciennes.length) {
+      const avant = version ? Math.max(0, ...versionsDossier.filter(v => v < version)) : 0;
+      const cible = avant || version || plusRecente || dossier;
+      await ops.update(anciennes.map(x => ({ id: x.id, fields: { [cV]: cible, ...(cM && !x.m ? { [cM]: "Ajout" } : {}) } })));
+      anciennes.forEach(x => { x.v = cible; if (cM && !x.m) x.m = "Ajout"; });
+      n += anciennes.length;
+    }
+    const brut = (x, d) => t[d.colId] ? t[d.colId][x.i] : undefined;
+    const lisibleBrut = v => v !== undefined && !(Array.isArray(v) && v[0] === "C");
+    // données confidentielles seules : lignes de la version la plus récente du dossier
+    if (!version && !complet) {
+      const vMax = Math.max(0, ...lignesT.map(x => x.v)), parLigne = new Map(lignesT.filter(x => x.v === vMax && x.m !== "Retrait").map(x => [x.ligne, x]));
+      const maj = lignes.map(l => parLigne.get(l._id) && { id: parLigne.get(l._id).id, fields: this.champsGrist(l, 0, true, avecConf) }).filter(x => x && Object.keys(x.fields).length);
+      if (maj.length && avecConf) await ops.update(maj);
+      return n + maj.length;
+    }
+    const v = version || plusRecente || dossier;
+    const courantes = lignesT.filter(x => x.v === v);
+    const vPrec = Math.max(0, ...lignesT.filter(x => x.v && x.v < v).map(x => x.v));
+    const prec = new Map(lignesT.filter(x => x.v === vPrec && x.m !== "Retrait").map(x => [x.ligne, x]));
+    const norm = x => x == null || x === "" || (Array.isArray(x) && x.length <= 1 && (x[0] === "L" || !x.length)) ? null : JSON.stringify(x);
+    const voulues = [];
+    lignes.forEach((l, k) => {
+      const f = this.champsGrist(l, k, false, avecConf), p = prec.get(l._id);
+      // confidentiel non lu ou non écrit : repris de la version précédente
+      if (p) for (const d of this.sousDefs) if (d.confidentiel && !(d.colId in f) && lisibleBrut(brut(p, d))) f[d.colId] = brut(p, d);
+      const identique = p && this.sousDefs.filter(d => !d.confidentiel).every(d => norm(brut(p, d)) === norm(f[d.colId]));
+      f[this.colDossier] = dossier; f[cV] = v;
+      if (cM) f[cM] = !p ? "Ajout" : identique ? "Inchangée" : "Modification";
+      voulues.push({ ligne: l._id, fields: f });
+    });
+    // lignes retirées depuis la version précédente : recopiées avec leurs dernières valeurs
+    const gardes = new Set(lignes.map(l => l._id));
+    for (const [lid, p] of prec) {
+      if (gardes.has(lid)) continue;
+      const f = { [this.colDossier]: dossier, [cV]: v };
+      if (this.colLigne) f[this.colLigne] = lid;
+      if (this.colOrdre && t[this.colOrdre]) f[this.colOrdre] = t[this.colOrdre][p.i];
+      for (const d of this.sousDefs) { const x = brut(p, d); if (lisibleBrut(x)) f[d.colId] = x; }
+      if (cM) f[cM] = "Retrait";
+      voulues.push({ ligne: lid, fields: f });
+    }
+    // lignes de cette version : mises à jour (correction), ajoutées, ou supprimées si elles n'ont plus lieu d'être
+    const parLigne = new Map(courantes.filter(x => x.ligne).map(x => [x.ligne, x])), maj = [], ajout = [], gardees = new Set();
+    for (const w of voulues) {
+      const x = parLigne.get(w.ligne);
+      if (x && !gardees.has(x.id)) { maj.push({ id: x.id, fields: w.fields }); gardees.add(x.id); } else ajout.push({ fields: w.fields });
+    }
+    const suppr = courantes.filter(x => !gardees.has(x.id)).map(x => x.id);
+    if (maj.length) await ops.update(maj);
+    if (ajout.length) await ops.create(ajout);
+    if (suppr.length) await ops.destroy(suppr);
+    return n + maj.length + ajout.length + suppr.length;
+  }
+  // champs Grist d'une ligne saisie (seulementConf : les confidentiels seuls) ; un confidentiel non lu n'est pas écrit
+  champsGrist(l, k, seulementConf, avecConf = true) {
+    const f = {};
+    for (const d of this.sousDefs) {
+      if (seulementConf && !d.confidentiel) continue;
+      const vis = this.visible(l, d), v = vis ? l.valeurs[d.colId] : null;
+      if (d.confidentiel && (!avecConf || (!this.confLisible && videSous(v)))) continue;
+      f[d.colId] = this.versGrist(d, v);
+    }
+    if (seulementConf) return f;
+    if (this.colLigne) f[this.colLigne] = l._id;
+    if (this.colOrdre) f[this.colOrdre] = k + 1;
+    return f;
+  }
   lignesDepuisJson(json) {
     return lireTableauJson(json).map(o => { const { _id, ...valeurs } = o; return { _id: _id || nouvelIdLigne(), valeurs }; })
       .filter(l => !this.ligneVide(l));
@@ -4632,15 +4728,17 @@ class Tableau {
 }
 const controleursTableau = prefix => Object.values(tableaux).filter(c => c.prefix === prefix && document.body.contains(c.el));
 // Après enregistrement d'une version : réécrit les tables dédiées pour ce dossier
-async function synchroniserTableaux(dossier, complet) {
+// version : ligne de la version écrite (tables historisées) ; sans elle et complet = false : confidentiels seuls
+async function synchroniserTableaux(dossier, complet, version = null) {
   const erreurs = [];
   for (const c of controleursTableau("q")) {
-    try { await c.synchroniser(dossier, complet); }
+    try { await c.synchroniser(dossier, complet, null, null, true, version); }
     catch (e) { erreurs.push(`table « ${c.table} » : ${e.message || e}`); }
   }
   return erreurs;
 }
-// Réglages : reconstruit les tables dédiées à partir de la dernière version de chaque dossier
+// Réglages : reconstruit les tables dédiées à partir de la dernière version de chaque dossier ;
+// table historisée : à partir de chaque version, dans l'ordre (tout l'historique, mouvements compris)
 async function reconstruireTableaux() {
   const ctrl = controleursTableau("q").filter(c => c.pret && c.colDossier);
   if (!ctrl.length) { statut("statut-tableaux", "Aucune question « tableau » associée au widget.", "err"); return; }
@@ -4648,6 +4746,14 @@ async function reconstruireTableaux() {
   try {
     for (const c of ctrl) {
       const t = await grist.docApi.fetchTable(c.table);
+      if (c.colVersion && t[c.colVersion]) {
+        const cD = col("Dossier");
+        for (const l of dossiersInit) {
+          const vs = enregistrements.filter(x => (refId(cD && x[cD]) || x.id) === l.id).sort((a, b) => a.id - b.id);
+          for (const v of vs) n += await c.synchroniser(l.id, true, null, c.lignesDepuisJson(v[c.def.colId]), false, v.id);
+        }
+        continue;
+      }
       for (const l of dossiersInit) {
         const der = derniereDe(l);
         n += await c.synchroniser(l.id, true, t, c.lignesDepuisJson(der[c.def.colId]), false);
@@ -5383,11 +5489,13 @@ async function reprendreSurJours(etabId, valeurs, jours, origine) {
     if (cDos && nouveaux.length) await etape("Rattachement de chaque signalement à son propre dossier", tableId || "réponses",
       () => table.update(nouveaux.map(id => ({ id, fields: { [cDos]: id } }))));
   }
-  if (completer.length) ids(await etape("Mise à jour des signalements des jours suivants", tableId || "réponses",
-    () => table.create(completer.map(x => ({ fields: x.fields }))))).forEach(id => idsCreesIci.add(id));
-  // questions « tableau » : chaque dossier reçoit ses lignes dans la table dédiée
+  let idsCompletes = [];
+  if (completer.length) (idsCompletes = ids(await etape("Mise à jour des signalements des jours suivants", tableId || "réponses",
+    () => table.create(completer.map(x => ({ fields: x.fields })))))).forEach(id => idsCreesIci.add(id));
+  // questions « tableau » : chaque dossier reçoit ses lignes dans la table dédiée (avec la version créée)
   const errT = [];
-  for (const d of [...nouveaux, ...completer.map(x => x.d)]) errT.push(...await synchroniserTableaux(d, true));
+  for (const d of nouveaux) errT.push(...await synchroniserTableaux(d, true, d));
+  for (const [k, x] of completer.entries()) errT.push(...await synchroniserTableaux(x.d, true, idsCompletes[k] || null));
   return { jours, crees: nouveaux.length, joursCrees: creer.map(x => x.t), completes: completer.map(x => x.t), inchanges, errT };
 }
 const pluriel = (n, s, p) => `${n} ${n > 1 ? p : s}`;
@@ -5637,7 +5745,7 @@ async function enregistrerSignalement(correction = false) {
       await etape("Correction de la dernière version", tableId || "réponses", () => table.update({ id: derniere.id, fields }));
       Object.assign(derniere, fields);
       modifie = false;
-      const errT = await synchroniserTableaux(dossierId, true);
+      const errT = await synchroniserTableaux(dossierId, true, derniere.id);
       statut("statut-signalement", "Dernière étape corrigée (aucune nouvelle étape créée)." + texteErreursTableaux(errT), errT.length ? "err" : "ok");
       confirmer("Dernière étape corrigée", `La dernière étape du dossier n° ${dossierId} a été corrigée ; aucune nouvelle étape n'a été créée (pas de nouveau message Tchap).` + texteErreursTableaux(errT));
     } else if (dossierId && initiale) {
@@ -5674,7 +5782,7 @@ async function enregistrerSignalement(correction = false) {
       const serie = id && jours.length ? await reprendreSurJours(refId(val(initiale, "Etablissement")), valeurs, jours, faitsNouveaux) : null;
       modifie = false;
       $("commentaire").value = "";
-      const errT = id ? await synchroniserTableaux(dossierId, devientDerniere) : []; finConfidentiels();
+      const errT = id ? await synchroniserTableaux(dossierId, devientDerniere, id) : []; finConfidentiels();
       statut("statut-signalement", "Mise à jour enregistrée : une nouvelle étape a été ajoutée." + texteSerie(serie) + texteErreursTableaux(errT), errT.length ? "err" : "ok");
       confirmer("Mise à jour enregistrée", `Étape ${versions.length + 1} du dossier n° ${dossierId}${etabCourant ? " (" + etabCourant[E.nom] + ")" : ""}.` + texteSerie(serie) + texteErreursTableaux(errT));
       if (id) { try { await grist.setCursorPos({ rowId: id }); } catch (_) {} }
@@ -5691,7 +5799,7 @@ async function enregistrerSignalement(correction = false) {
       const serie = id && jours.length ? await reprendreSurJours(etabId, valeurs, jours, lireDateFaits()) : null;
       modifie = false;
       selectionAttendue = id;
-      const errT = id ? await synchroniserTableaux(id, true) : []; finConfidentiels();
+      const errT = id ? await synchroniserTableaux(id, true, id) : []; finConfidentiels();
       statut("statut-signalement", (modeEtab ? "Signalement enregistré." :
         "Signalement enregistré. Vous pouvez transmettre le lien à l'établissement.") + texteSerie(serie) + texteErreursTableaux(errT), errT.length ? "err" : "ok");
       confirmer("Signalement enregistré", `Dossier n° ${id} créé${etabCourant ? " pour " + etabCourant[E.nom] : ""}.` + texteSerie(serie) +

@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.12.0 (20/10/2026)";
+  const VERSION = "2.13.0 (22/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -729,6 +729,31 @@ return sorted(champs)`;
   /* ---------- Plan d'installation ----------
      Renvoie la liste des étapes à proposer. Chaque étape : { id, titre, detail, actions, coche, groupe }.
      Rien n'est appliqué ici. Dans un document existant, rien n'est renommé ni supprimé. */
+  /* Sous-table d'une question « tableau », historisée : chaque version du signalement écrit sa propre copie des lignes.
+     Version (référence vers la version), Mouvement (Ajout, Modification, Inchangée, Retrait — par rapport à la
+     version précédente du dossier), Etat_actuel (ligne de la version la plus récente du dossier, hors retraits :
+     le stock), Date_version (date des faits de la version, à défaut sa date de saisie). */
+  const MOUVEMENTS_TABLEAU = { Ajout: "#B8FEC9", Modification: "#FEECC2", "Inchangée": "#EEEEEE", Retrait: "#FFE9E6" };
+  function colonnesHistoriqueTableau(table, rep, colDos, rolesRep) {
+    const c = r => rolesRep && rolesRep[r] && rolesRep[r].col;
+    const dv = c("Derniere_version"), faits = c("Date_faits"), cree = c("Cree_le");
+    const cols = [
+      { id: "Version", type: `Ref:${rep}` },
+      { id: "Mouvement", type: "Choice", widgetOptions: json({ choices: Object.keys(MOUVEMENTS_TABLEAU), choiceOptions: Object.fromEntries(Object.entries(MOUVEMENTS_TABLEAU).map(([k, v]) => [k, { fillColor: v }])) }) },
+      { id: "Etat_actuel", type: "Bool", isFormula: true, formula: [
+        "# ligne de la version la plus récente du dossier (hors retraits) : le stock",
+        "if not $Version:", "  return True",
+        "if $Mouvement == \"Retrait\":", "  return False",
+        `versions = [r.Version for r in ${table}.lookupRecords(${colDos}=$${colDos}) if r.Version]`,
+        `derniere = max(versions, key=lambda v: (${dv ? `bool(v.${dv}), ` : ""}v.id))`,
+        "return $Version.id == derniere.id"].join("\n") },
+    ];
+    if (faits || cree) cols.push({ id: "Date_version", type: "Date", isFormula: true, formula: [
+      "v = $Version", "if not v:", "  return None",
+      ...(faits ? [`if v.${faits}:`, `  return v.${faits}.date() if hasattr(v.${faits}, "date") else v.${faits}`] : []),
+      ...(cree ? [`return v.${cree}.date() if v.${cree} else None`] : ["return None"])].join("\n") });
+    return cols;
+  }
   function planInstallation(meta, config, choix = {}) {
     const g = general(config);
     const assoc = (config && config.valeurs && config.valeurs.roles) || {};
@@ -861,6 +886,17 @@ return sorted(champs)`;
           detail: `Formules qui recopient le référentiel (${ajout.map(c => c.formula).join(", ")}) : lignes par UAI, cartes par département, académie ou établissement, exports CSV.`,
           actions: ajout.map(c => ["AddColumn", rep, c.id, { type: c.type, isFormula: true, formula: c.formula, label: c.label, untieColIdFromLabel: true }]) });
       }
+      // 4 ter. Questions « tableau » : sous-tables historisées (une ligne par version du signalement et par ligne saisie)
+      if (tRep) for (const [nomT, tm] of Object.entries(meta)) {
+        if (nomT === rep || nomT.startsWith("_grist") || !tm.colonnes.Ligne_id) continue;
+        const colDos = tm.colonnes.Dossier && tm.colonnes.Dossier.type === `Ref:${rep}` ? "Dossier" : (Object.values(tm.colonnes).find(c => c.type === `Ref:${rep}` && c.colId !== "Version") || {}).colId;
+        if (!colDos) continue;
+        const ajout = colonnesHistoriqueTableau(nomT, rep, colDos, rolesRep).filter(c => !tm.colonnes[c.id]);
+        if (ajout.length) etapes.push({ id: `tableau-historique-${nomT}`, groupe: "Colonnes", coche: true,
+          titre: `Historiser la sous-table ${nomT} : ${ajout.map(c => c.id).join(", ")}`,
+          detail: "Une ligne par version du signalement et par ligne du tableau (Version), avec son mouvement (ajout, modification, inchangée, retrait) : stock (Etat_actuel), flux et évolution mesurables. Les lignes existantes sont rattachées à la dernière version à la prochaine saisie ; « Reconstruire les tables des questions tableau » (réglages du widget de saisie) refait tout l'historique.",
+          actions: ajout.map(c => ["AddColumn", nomT, c.id, { type: c.type, isFormula: !!c.isFormula, formula: c.formula || "", ...(c.widgetOptions ? { widgetOptions: c.widgetOptions } : {}), label: c.id }]) });
+      }
       return { referentiel, rolesRep, rolesRef, tRep };
     };
     const principal = planEspace(g.reponses, g.referentiel, assoc.reponses || {}, assoc.referentiel || {}, "", choix.referentiel, g.preset);
@@ -976,6 +1012,6 @@ return sorted(champs)`;
     norm, cibleRef, lireMeta, lireConfig, activerCacheLecture, viderCacheLecture, oublierStructure, surEcriture, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer, COLONNES_ETABLISSEMENT,
     instantaneSchema, majSchemaPublic, tableauxDeBord, valeurTableauxDeBord, INVITE, DUREES_INVITE, formuleAuteur, auteurAMettreAJour,
-    REGIONS_ACADEMIQUES, regionDeAcademie, genreSection, rattachementSection,
+    REGIONS_ACADEMIQUES, regionDeAcademie, genreSection, rattachementSection, colonnesHistoriqueTableau, MOUVEMENTS_TABLEAU,
   };
 })();

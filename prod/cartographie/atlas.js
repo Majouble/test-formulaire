@@ -130,12 +130,13 @@ async function chargerSousTables() {
     const parId = new Map(metaT.id.map((id, i) => [id, metaT.tableId[i]])), res = new Map();
     metaC.id.forEach((_, i) => {
       const t = parId.get(metaC.parentId[i]);
-      if (t && t !== mainTableId && !t.startsWith("_grist") && metaC.type[i] === `Ref:${mainTableId}` && !res.has(t)) res.set(t, metaC.colId[i]);
+      // lien vers le dossier : la colonne Dossier de préférence (Version, si elle existe, désigne la version)
+      if (t && t !== mainTableId && !t.startsWith("_grist") && metaC.type[i] === `Ref:${mainTableId}` && metaC.colId[i] !== "Version" && (!res.has(t) || metaC.colId[i] === "Dossier")) res.set(t, metaC.colId[i]);
     });
     sousTablesAtlas = [];
     for (const [table, ref] of res) {
       const tid = metaT.id[metaT.tableId.indexOf(table)];
-      const colonnes = metaC.id.map((_, i) => i).filter(i => metaC.parentId[i] === tid && !["id", "manualSort", ref, "Ligne_id", "Ordre", "Version"].includes(metaC.colId[i]) && !metaC.colId[i].startsWith("gristHelper_"))
+      const colonnes = metaC.id.map((_, i) => i).filter(i => metaC.parentId[i] === tid && !["id", "manualSort", ref, "Ligne_id", "Ordre", "Version", "Mouvement", "Etat_actuel", "Date_version"].includes(metaC.colId[i]) && !metaC.colId[i].startsWith("gristHelper_"))
         .map(i => { let o = {}; try { o = JSON.parse(metaC.widgetOptions[i] || "{}"); } catch (_) { o = {}; }
           return { col: metaC.colId[i], libelle: metaC.label[i] || metaC.colId[i], type: metaC.type[i], choix: o.choices || [], couleurs: Object.fromEntries(Object.entries(o.choiceOptions || {}).filter(([, x]) => x && x.fillColor).map(([v, x]) => [v, x.fillColor])) }; });
       let data = null; try { data = await grist.docApi.fetchTable(table); } catch (_) { data = null; }
@@ -215,9 +216,18 @@ function signalementsAtlas(profil) {
   const F = { categories: [], qualifs: [], minSignalements: 1, minJours: 0, ...(P.filtre || {}) };
   // sous-table des marques : lignes rattachées à chaque réponse (par son identifiant ou celui de son dossier)
   const M = { table: "", colonne: "", titre: "", inclure: true, ...(P.marques || {}) };
-  const ST = M.table ? sousTablesAtlas.find(t => t.table === M.table) : null, lignesDe = new Map();
-  if (ST) ST.data.id.forEach((id, i) => { const v = ST.data[ST.ref][i], k = typeof v === "number" ? v : refIdOf(v); if (k) { if (!lignesDe.has(k)) lignesDe.set(k, []); lignesDe.get(k).push(i); } });
-  const sousDe = r => ST ? [...new Set([...(lignesDe.get(r.id) || []), ...(R.Dossier && refIdOf(r[R.Dossier]) && refIdOf(r[R.Dossier]) !== r.id ? (lignesDe.get(refIdOf(r[R.Dossier])) || []) : [])])] : [];
+  const ST = M.table ? sousTablesAtlas.find(t => t.table === M.table) : null, lignesDe = new Map(), lignesDeVersion = new Map();
+  // sous-table historisée (colonne Version) : chaque version de la réponse a sa copie des lignes (retraits exclus) ;
+  // lignes sans version (antérieures à l'historique) : rattachées au dossier, comme une sous-table simple
+  const avecVersions = !!(ST && ST.data.Version);
+  if (ST) ST.data.id.forEach((id, i) => {
+    if (avecVersions && ST.data.Mouvement && ST.data.Mouvement[i] === "Retrait") return;
+    const ver = avecVersions ? refIdOf(ST.data.Version[i]) || (typeof ST.data.Version[i] === "number" ? ST.data.Version[i] : 0) : 0;
+    if (ver) { if (!lignesDeVersion.has(ver)) lignesDeVersion.set(ver, []); lignesDeVersion.get(ver).push(i); return; }
+    const v = ST.data[ST.ref][i], k = typeof v === "number" ? v : refIdOf(v); if (k) { if (!lignesDe.has(k)) lignesDe.set(k, []); lignesDe.get(k).push(i); } });
+  const parDossierAtlas = r => (R.Dossier && refIdOf(r[R.Dossier])) || r.id;
+  const sousDe = r => !ST ? [] : lignesDeVersion.has(r.id) ? lignesDeVersion.get(r.id)
+    : [...new Set([...(lignesDe.get(r.id) || []), ...(parDossierAtlas(r) !== r.id ? (lignesDe.get(parDossierAtlas(r)) || []) : [])])];
   // lignes de la sous-table qui citent leur propre établissement (référence au référentiel, UAI ou coordonnées) : points à part
   const lieuSous = localisateurSous(ST);
   // réponse retenue seulement pour sa sous-table (filtre de qualification) : pas de point à elle si ses lignes citent d'autres établissements
@@ -313,8 +323,14 @@ function signalementsAtlas(profil) {
   // marque de l'établissement : valeur de la colonne choisie (la première dans l'ordre des choix de Grist, sinon la plus
   // fréquente) parmi ses lignes de la sous-table ; sans colonne, le titre de la marque
   const colM = ST && M.colonne ? ST.colonnes.find(c => c.col === M.colonne) : null;
+  // une ligne du tableau vue dans plusieurs versions (table historisée) ne compte qu'une fois : sa version la plus récente
+  const uniques = set => { if (!avecVersions || !ST.data.Ligne_id) return [...set];
+    const m = new Map(); for (const i of set) { const k = ST.data.Ligne_id[i] || `#${i}`, p = m.get(k);
+      if (p === undefined || (refIdOf(ST.data.Version[i]) || 0) > (refIdOf(ST.data.Version[p]) || 0)) m.set(k, i); }
+    return [...m.values()]; };
   const marqueDe = e => {
     if (!ST || !e.sous.size) return { Marque: null, Marque_nb: 0, Marque_valeurs: "" };
+    e = { ...e, sous: new Set(uniques(e.sous)) };
     const vals = [...e.sous].flatMap(i => colM ? texteCellule(ST.data[colM.col][i]).split(", ").map(x => x.trim()).filter(Boolean) : []);
     const compte = new Map(); vals.forEach(v => compte.set(v, (compte.get(v) || 0) + 1));
     const rang = v => { const k = colM ? colM.choix.indexOf(v) : -1; return k < 0 ? 1e6 : k; };
@@ -333,7 +349,7 @@ function signalementsAtlas(profil) {
   }
   // établissements cités dans la sous-table (hors établissement de la réponse) : couche à part, mêmes champs de page
   const sousFeatures = [...parSous.values()].map(x => ({ type: "Feature", geometry: { type: "Point", coordinates: [x.lon, x.lat] }, properties: { ...x.props,
-    Nb_signalements: x.sous.size, Qualification_principale: "", Qualifications: "", Nb_jours: null, Derniere_date: x.date ? jourDe(x.date) : "", Jour: x.jour,
+    Nb_signalements: uniques(x.sous).length, Qualification_principale: "", Qualifications: "", Nb_jours: null, Derniere_date: x.date ? jourDe(x.date) : "", Jour: x.jour,
     Couche: "sous-table", Signale_par: [...x.parents].filter(Boolean).join(", "), ...marqueDe(x) } }));
   // filtre du profil sur les établissements : catégorie, nombre de signalements, jours de mobilisation
   const avantFiltre = features.length;

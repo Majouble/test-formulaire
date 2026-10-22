@@ -36,7 +36,14 @@ const COLS_QUESTIONNAIRE = [
   { id: "Clos", lib: "Clos", aide: "Permet de clore un signalement terminé (menu « Autres actions » du formulaire).", info: () => ({ type: "Bool", isFormula: false, label: "Clos" }) },
   { id: "Site", lib: "Site / bâtiment", aide: "Version enseignement supérieur : site, campus ou bâtiment concerné.", info: () => ({ type: "Text", isFormula: false, label: "Site / bâtiment" }) },
 ];
-const RESERVES_TABLEAU = ["id", "manualSort", "Dossier", "Ligne_id", "Ordre", "Version"];
+const RESERVES_TABLEAU = ["id", "manualSort", "Dossier", "Ligne_id", "Ordre", "Version", "Mouvement"];
+// colonnes d'historique d'une sous-table (une ligne par version et par ligne saisie), absentes de la table tid
+function actionsHistoriqueTableau(tid, colDos) {
+  const roles = Object.fromEntries(Object.entries(rolesEffectifs()).filter(([, c]) => c).map(([k, c]) => [k, { col: c }]));
+  const existantes = colonnesDe(tid) || {};
+  return window.Socle.colonnesHistoriqueTableau(tid, courant.table, colDos || "Dossier", roles).filter(c => !existantes[c.id])
+    .map(c => ["AddColumn", tid, c.id, { type: c.type, isFormula: !!c.isFormula, formula: c.formula || "", ...(c.widgetOptions ? { widgetOptions: c.widgetOptions } : {}), label: c.id }]);
+}
 const COULEURS = { rouge: "#ce0500", orange: "#e4794a", jaune: "#f5c400", vert: "#18753c", bleu: "#000091", violet: "#6a1b9a", gris: "#777777" };
 const TYPES = [
   { cle: "court", nom: "Texte court", icone: "Aa", type: "Text", reglages: { court: true } },
@@ -946,6 +953,9 @@ async function ajouterBloc(type, texte, nomTable, tableExistante) {
     if (!a.ligne) acts.push(["AddColumn", tableExistante, "Ligne_id", { type: "Text", isFormula: false }]);
     if (!a.ordre) acts.push(["AddColumn", tableExistante, "Ordre", { type: "Int", isFormula: false }]);
     if (acts.length) { await actions(acts); await lireMeta(); }
+    // historique : une ligne par version (Version, Mouvement, Etat_actuel, Date_version)
+    const hist = actionsHistoriqueTableau(tableExistante, a.colDossier || "Dossier");
+    if (hist.length) { await actions(hist); await lireMeta(); acts.push(...hist); }
     b.genre = "question";
     b.colonne = await creerColonne(courant.table, texte, "Text", null);
     b.reglages = { libelle: texte, tableau: { table: tableExistante } };
@@ -956,6 +966,9 @@ async function ajouterBloc(type, texte, nomTable, tableExistante) {
   else if (type.cle === "tableau") {
     const nomT = identifiant(nomTable || texte, tables.concat(Object.keys(meta)));
     await actions([["AddTable", nomT, [{ id: "Dossier", type: `Ref:${courant.table}`, isFormula: false }, { id: "Ligne_id", type: "Text", isFormula: false }, { id: "Ordre", type: "Int", isFormula: false }]]]);
+    await lireMeta();
+    const hist = actionsHistoriqueTableau(nomT, "Dossier");   // historique : une ligne par version et par ligne saisie
+    if (hist.length) { await actions(hist); await lireMeta(); }
     b.genre = "question";
     b.colonne = await creerColonne(courant.table, texte, "Text", null);
     b.reglages = { libelle: texte, tableau: { table: nomT } };

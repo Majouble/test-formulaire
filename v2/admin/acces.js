@@ -158,7 +158,7 @@
     (f.blocsTableaux || f.conf.blocs || []).forEach(b => {
       const st = b && b.reglages && b.reglages.tableau && b.reglages.tableau.table;
       if (!st || !meta[st] || out.some(x => x.table === st)) return;
-      const parent = Object.values(meta[st].colonnes).find(c => c.type === `Ref:${f.table}`);
+      const cs = meta[st].colonnes, parent = (cs.Dossier && cs.Dossier.type === `Ref:${f.table}` && cs.Dossier) || Object.values(cs).find(c => c.type === `Ref:${f.table}` && c.colId !== "Version");
       if (parent) out.push({ table: st, parent: parent.colId, acces: !!meta[st].colonnes[COL_ACCES] });
     });
     return out;
