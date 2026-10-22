@@ -693,6 +693,16 @@
   setTimeout(async () => {
     try { const S = window.Socle, c = await S.lireConfig(); if (c) await window.Repartition.lireReferentiel(S.general(c), c); } catch (_) { /* lu plus tard, à la demande */ }
   }, 1500);
+  // Tableau de bord : en-têtes collants empilés (administration, puis barre du tableau) ; le panneau de réglages
+  // reste visible sous eux pendant le défilement
+  const hauteursFixes = () => {
+    const h = document.querySelector("header"), t = document.querySelector("#onglet-tdb .tdb-header"), r = document.documentElement.style;
+    r.setProperty("--tdb-decalage", `${h ? Math.round(h.getBoundingClientRect().height) : 0}px`);
+    r.setProperty("--tdb-entete", `${t && t.offsetParent ? Math.round(t.getBoundingClientRect().height) : 0}px`);
+  };
+  ["scroll", "resize", "click"].forEach(ev => window.addEventListener(ev, hauteursFixes, { passive: true }));
+  if (window.ResizeObserver) new ResizeObserver(hauteursFixes).observe(document.body);
+  hauteursFixes();
   // nombre d'anomalies à vérifier, affiché sur l'onglet « À vérifier »
   setTimeout(() => { if (window.OngletQualite) window.OngletQualite.compter(); }, 4000);
 </script>

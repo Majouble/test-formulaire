@@ -40,7 +40,7 @@
   #tableau-de-bord button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
   #tableau-de-bord button.ghost { border-color: transparent; background: transparent; color: var(--ink-2); padding: 3px 6px; }
   #tableau-de-bord button.ghost:hover { border-color: var(--axis); }
-  #tableau-de-bord .tdb-header { position: sticky; top: 0; z-index: 5; background: var(--page); padding: 10px 14px 8px; border-bottom: 1px solid var(--grid); }
+  #tableau-de-bord .tdb-header { position: sticky; top: var(--tdb-decalage, 0px); z-index: 5; background: var(--page); padding: 10px 14px 8px; border-bottom: 1px solid var(--grid); }
   #tableau-de-bord .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   #tableau-de-bord .bar h1 { font-size: 10pt; margin: 0 8px 0 0; font-weight: 600; }
   #tableau-de-bord .bar .sp { flex: 1; }
@@ -160,8 +160,9 @@
 #tableau-de-bord.atelier .tdb-header .bar { padding-top: 4px; padding-bottom: 4px; min-height: 0; }
 #tableau-de-bord .atelier-cadre { display: grid; grid-template-columns: minmax(0, 1fr) 400px; align-items: start; }
 #tableau-de-bord .atelier-cadre > .tdb-main { min-width: 0; }
-#tableau-de-bord .studio { position: sticky; top: 0; max-height: 100vh; overflow: auto; background: var(--surface); border-left: 1px solid var(--grid); display: flex; flex-direction: column; min-height: 60vh; }
-@media (max-width: 1000px) { #tableau-de-bord .atelier-cadre { grid-template-columns: 1fr; } #tableau-de-bord .studio { position: static; max-height: none; border-left: 0; border-top: 1px solid var(--grid); } }
+/* panneau fixe pendant le défilement : sous les en-têtes collants (administration : --tdb-decalage ; tableau : --tdb-entete) */
+#tableau-de-bord .studio { position: sticky; top: calc(var(--tdb-decalage, 0px) + var(--tdb-entete, 0px)); height: calc(100vh - var(--tdb-decalage, 0px) - var(--tdb-entete, 0px)); max-height: calc(100vh - var(--tdb-decalage, 0px) - var(--tdb-entete, 0px)); overflow: auto; background: var(--surface); border-left: 1px solid var(--grid); display: flex; flex-direction: column; min-height: 60vh; }
+@media (max-width: 1000px) { #tableau-de-bord .atelier-cadre { grid-template-columns: 1fr; } #tableau-de-bord .studio { position: static; height: auto; max-height: none; border-left: 0; border-top: 1px solid var(--grid); } }
 #tableau-de-bord .st-tete { display: flex; gap: 10px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--grid); position: sticky; top: 0; background: var(--surface); z-index: 2; }
 #tableau-de-bord .st-titre { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 #tableau-de-bord .st-titre strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
