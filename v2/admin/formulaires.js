@@ -1127,6 +1127,7 @@ function dessinerPanneauBase() {
       <label class="l" for="pa-lignes">Nombre de lignes fixé par</label><select id="pa-lignes"><option value="">— (lignes ajoutées à la main)</option>${
         blocs().filter(x => x.genre === "question" && meta[x.colonne] && ["Int", "Numeric"].includes(typeBase(meta[x.colonne].type))).map(x => `<option value="${esc(x.colonne)}"${r.tableau.lignes === x.colonne ? " selected" : ""}>${esc(libelleQuestion(x.colonne))}</option>`).join("")}</select></div>` : ""}
 
+    ${r.tableau ? groupeSitesHtml(b) : ""}
     <div class="groupe"><div class="t">Affichage conditionnel</div><div id="pa-condition"></div></div>
     ${!r.tableau && t !== "Text" && t !== "Ref" && t !== "RefList" ? `<div class="groupe"><div class="t">Couleur du formulaire</div><div id="pa-couleur"></div></div>` : ""}
     <div class="groupe"><div class="t">Données et diffusion</div>
@@ -1152,10 +1153,43 @@ function dessinerPanneauBase() {
   lier("pa-retirer", "click", () => retirerBloc(b));
   lier("pa-supprimer", "click", () => supprimerColonne(b));
   if (choixPossibles) dessinerChoix(b);
-  if (r.tableau) dessinerSousColonnes(b);
+  if (r.tableau) { dessinerSousColonnes(b); lierSites(b); }
   dessinerCondition(b);
   if ($("pa-couleur")) dessinerCouleur(b);
   compterReponses(b);
+}
+/* ---------- Tableau des sites (formulaire par site, enseignement supérieur) ----------
+   reglages.tableau.sites = { site, libre, qualif, historique: [{ colonne, libre, site, qualif }], alias } :
+   une ligne par site ; reprise du dernier état connu de chaque site ; qualification de l'établissement déduite du
+   site le plus grave (conf.saisie.qualificationEnBas). Voir le widget de saisie. */
+function groupeSitesHtml(b) {
+  const r = b.reglages, st = r.tableau.sites, cols = Object.values(colonnesDe(r.tableau.table)).filter(c => !c.formule && !RESERVES_TABLEAU.includes(c.colId) && c.type !== `Ref:${courant.table}`);
+  const opt = (filtre, sel) => `<option value="">—</option>${cols.filter(filtre).map(c => `<option value="${esc(c.colId)}"${sel === c.colId ? " selected" : ""}>${esc(c.libelle)}</option>`).join("")}`;
+  const h = (st && st.historique && st.historique[0]) || {};
+  const autres = Object.values(meta).filter(c => /^Text/.test(c.type) && c.colId !== b.colonne && !blocs().some(x => x.colonne === c.colId && x.id === b.id));
+  return `<div class="groupe"><div class="t">Tableau des sites</div>
+    <label class="interrupteur">Une ligne par site (formulaire par site) <input type="checkbox" id="pa-sites"${st ? " checked" : ""}></label>
+    ${st ? `<label class="l" for="pa-site-ref">Site (référentiel des sites)</label><select id="pa-site-ref">${opt(c => /^(Ref|Text)/.test(c.type), st.site)}</select>
+      <label class="l" for="pa-site-libre">Site hors référentiel (texte libre)</label><select id="pa-site-libre">${opt(c => /^Text/.test(c.type), st.libre)}</select>
+      <label class="l" for="pa-site-qualif">Qualification du site</label><select id="pa-site-qualif">${opt(c => /^Choice/.test(c.type), st.qualif)}</select>
+      <label class="l" for="pa-site-hist">Reprendre aussi l'historique de la question</label><select id="pa-site-hist"><option value="">— (aucune)</option>${autres.map(c => `<option value="${esc(c.colId)}"${h.colonne === c.colId ? " selected" : ""}>${esc(libelleQuestion(c.colId))}</option>`).join("")}</select>
+      ${h.colonne ? `<div class="ligne-sc"><input type="text" id="pa-site-hist-libre" value="${esc(h.libre || "")}" placeholder="champ du nom (ex. Nom_du_site)" style="flex:1"><input type="text" id="pa-site-hist-qualif" value="${esc(h.qualif || "")}" placeholder="champ de qualification" style="flex:1"></div>` : ""}
+      <label class="l" for="pa-site-alias">Table des correspondances (libellé saisi → site)</label><input type="text" id="pa-site-alias" value="${esc(st.alias || "Sites_correspondances")}">
+      <label class="interrupteur">Qualification de l'établissement en bas, déduite du site le plus grave <input type="checkbox" id="pa-qualif-bas"${confSaisie().qualificationEnBas !== false ? " checked" : ""}></label>
+      <p class="note" style="margin:6px 0 0">Nouveau dossier : « Reprendre le dernier état de chaque site » préremplit les sites non revenus à la normale, d'après toutes les versions précédentes de l'établissement (et la question d'historique choisie). La qualification de l'établissement suit le site le plus grave (ordre des choix de Qualification, du plus grave au moins grave) ; une incohérence est signalée avant l'enregistrement.</p>` : ""}
+  </div>`;
+}
+function lierSites(b) {
+  const r = b.reglages, maj = () => { majBloc(b); sauver(); };
+  const deviner = () => { const cols = Object.values(colonnesDe(r.tableau.table)), t = (re, f) => (cols.find(c => f(c) && re.test(c.colId)) || cols.find(f) || {}).colId || null;
+    return { site: t(/site/i, c => /^Ref:/.test(c.type) && c.type !== `Ref:${courant.table}` && c.colId !== "Version"), libre: t(/libre|nom/i, c => /^Text/.test(c.type) && !RESERVES_TABLEAU.includes(c.colId)), qualif: t(/qualif/i, c => /^Choice/.test(c.type)), historique: [], alias: "Sites_correspondances" }; };
+  const sw = $("pa-sites"); if (sw) sw.addEventListener("change", () => { if (sw.checked) r.tableau.sites = deviner(); else delete r.tableau.sites; maj(); dessinerPanneau(); });
+  const st = r.tableau.sites; if (!st) return;
+  [["pa-site-ref", "site"], ["pa-site-libre", "libre"], ["pa-site-qualif", "qualif"]].forEach(([id, k]) => { const e = $(id); if (e) e.addEventListener("change", () => { st[k] = e.value || null; maj(); }); });
+  const hi = $("pa-site-hist"); if (hi) hi.addEventListener("change", () => { st.historique = hi.value ? [{ colonne: hi.value, libre: "Nom_du_site", qualif: "Qualification" }] : []; maj(); dessinerPanneau(); });
+  [["pa-site-hist-libre", "libre"], ["pa-site-hist-qualif", "qualif"]].forEach(([id, k]) => { const e = $(id); if (e) e.addEventListener("input", () => { if (st.historique[0]) st.historique[0][k] = e.value.trim(); sauver(); }); });
+  const al = $("pa-site-alias"); if (al) al.addEventListener("input", () => { st.alias = al.value.trim() || "Sites_correspondances"; sauver(); });
+  const qb = $("pa-qualif-bas"); if (qb) qb.addEventListener("change", () => { majSaisie(c => { c.qualificationEnBas = qb.checked; }); dessinerApercu(); });
 }
 const optionsParties = sel => parties().map(x => `<option value="${esc(x.id)}"${(sel || "q") === x.id ? " selected" : ""}>${esc(x.nom)}${x.role === "q" ? "" : " (visa)"}</option>`).join("");
 function ajouterPartie() {
@@ -1536,6 +1570,7 @@ function ouvrirNouveau(dupliquer) {
   $("nf-etab").dataset.devine = $("nf-etab").value;
   $("nf-bloc-table").hidden = $("nf-bloc-type").hidden = dupliquer; majChoixTable();
   if (dupliquer) $("nf-bloc-nouvelle").hidden = $("nf-bloc-import").hidden = $("nf-bloc-etab").hidden = $("nf-bloc-options").hidden = true;
+  $("nf-bloc-modele").hidden = dupliquer; $("nf-modele").value = "";
   $("nf-valider").textContent = dupliquer ? "Dupliquer" : "Créer";
   $("nf-erreur").textContent = "";
   $("dlg-nouveau").showModal(); $("nf-nom").focus(); $("nf-nom").select();
@@ -1605,7 +1640,7 @@ $("form-nouveau").addEventListener("submit", async ev => {
     const type = duplication ? courant.type : $("nf-type").value;
     if (table === "__nouvelle__") {
       const n = $("nf-nouvelle").value.trim(); if (!n) { $("nf-erreur").textContent = "Indiquez le nom de la nouvelle table."; return; }
-      table = await creerTableReponses(n, { etab: $("nf-etab").value, site: $("nf-site").checked, clos: $("nf-clos").checked });
+      table = await creerTableReponses(n, { etab: $("nf-etab").value, site: $("nf-site").checked && $("nf-modele").value !== "esr-sites", clos: $("nf-clos").checked });
     } else if (!duplication && type === "etablissement") {
       // table existante : référentiel choisi (colonne Etablissement créée, ou rattachée à un autre référentiel)
       const a = await analyserReferentiel(table, $("nf-etab").value);
@@ -1623,9 +1658,64 @@ $("form-nouveau").addEventListener("submit", async ev => {
     if (!duplication && !$("nf-bloc-import").hidden && $("nf-import").checked && Object.values(meta).some(c => c.colId !== "id" && !COMMUNS.concat(["Dossier", "Nature", "Date", "Commentaire", "Auteur", "Clos"]).includes(c.colId))) {
       const ancre = document.querySelector("[data-ajout]"); if (ancre) { ouvrirMenu("q", 0, ancre); etapeExistantes(); }
     }
+    if (!duplication && $("nf-modele").value === "esr-sites") { const r = await installerModeleSites(); message(`Formulaire « enseignement supérieur par site » créé : ${r}. Vérifiez les choix de qualification (du plus grave au moins grave), puis publiez.`, "ok"); return; }
     message(duplication ? "Formulaire dupliqué (mêmes colonnes, même table). Publiez-le pour l'utiliser sur une page." : "Formulaire créé.", "ok");
   } catch (e) { $("nf-erreur").textContent = `Échec : ${e.message || e}`; }
 });
+/* ---------- Modèle « Enseignement supérieur par site » ----------
+   Sur le formulaire qui vient d'être créé : référentiel des sites (repris s'il existe : table « …site… » qui renvoie
+   vers le référentiel des établissements, sinon Referentiel_sites créée), table des correspondances (libellé saisi →
+   site), sous-table historisée Sites_signales (Site, Site_libre, Qualification du site, Precisions), question tableau
+   « Sites concernés » réglée en tableau des sites, qualification de l'établissement en bas, déduite des sites. */
+async function installerModeleSites() {
+  const rep = courant.table, etab = tableEtab() || referentielDe(rep) || "Etablissements", faits = [];
+  const existe = t => metaTables[0].tableId.includes(t);
+  // référentiel des sites
+  let ref = metaTables[0].tableId.find(t => /site/i.test(t) && !/signal|correspond/i.test(t) && Object.values(colonnesDe(t)).some(c => c.type === `Ref:${etab}`) && !Object.values(colonnesDe(t)).some(c => c.type === `Ref:${rep}`));
+  if (!ref) {
+    ref = identifiant("Referentiel_sites", metaTables[0].tableId);
+    await actions([["AddTable", ref, [["Site_id", "Text"], ["Nom", "Text"], ["Etablissement", `Ref:${etab}`], ["Commune", "Text"], ["Latitude", "Numeric"], ["Longitude", "Numeric"], ["Source", "Choice"], ["Actif", "Bool"]]
+      .map(([id, type]) => ({ id, type, isFormula: false }))]]);
+    await actions([["ModifyColumn", ref, "Source", { widgetOptions: JSON.stringify({ choices: ["OAD", "Manuel"] }) }]]);
+    faits.push(`référentiel des sites ${ref} créé (à alimenter : export OAD, sites saisis à la main)`);
+  } else faits.push(`référentiel des sites : ${ref}`);
+  // qualifications : celles de la table des réponses (choix d'attente remplacés par une proposition)
+  await lireMeta(); meta = metaCourante();
+  const cq = rolesEffectifs().Qualification || "Qualification", oq = (meta[cq] && meta[cq].opts) || {};
+  let choixQ = Array.isArray(oq.choices) ? oq.choices : [];
+  if (!choixQ.length || choixQ.every(x => /^Catégorie \d+$/.test(x))) {
+    choixQ = ["Blocage total", "Blocage partiel", "Occupation", "Rassemblement", "RAS"];
+    if (meta[cq]) await actions([["ModifyColumn", rep, cq, { widgetOptions: JSON.stringify({ ...oq, choices: choixQ }) }]]);
+    faits.push("qualifications proposées (du plus grave au moins grave) : " + choixQ.join(", "));
+  }
+  const optsQ = JSON.stringify({ choices: choixQ, choiceOptions: oq.choiceOptions || {} });
+  // correspondances
+  if (!existe("Sites_correspondances")) {
+    await actions([["AddTable", "Sites_correspondances", [["Etablissement", `Ref:${etab}`], ["Libelle", "Text"], ["Site", `Ref:${ref}`], ["Occurrences", "Int"], ["Statut", "Choice"]]
+      .map(([id, type]) => ({ id, type, isFormula: false }))]]);
+    await actions([["ModifyColumn", "Sites_correspondances", "Statut", { widgetOptions: JSON.stringify({ choices: ["À valider", "Validé", "Écarté"], choiceOptions: { "Validé": { fillColor: "#B8FEC9" }, "Écarté": { fillColor: "#EEEEEE" } } }) }]]);
+    faits.push("table Sites_correspondances créée");
+  }
+  // sous-table des sites
+  await lireMeta();
+  const st = identifiant("Sites_signales", metaTables[0].tableId);
+  await actions([["AddTable", st, [{ id: "Dossier", type: `Ref:${rep}`, isFormula: false }, { id: "Ligne_id", type: "Text", isFormula: false }, { id: "Ordre", type: "Int", isFormula: false },
+    { id: "Site", type: `Ref:${ref}`, isFormula: false }, { id: "Site_libre", type: "Text", isFormula: false }, { id: "Qualification", type: "Choice", isFormula: false }, { id: "Precisions", type: "Text", isFormula: false }]]]);
+  await actions([["ModifyColumn", st, "Site", { label: "Site" }], ["ModifyColumn", st, "Site_libre", { label: "Site hors référentiel", description: "[court]" }],
+    ["ModifyColumn", st, "Qualification", { label: "Qualification du site", widgetOptions: optsQ, description: "*" }], ["ModifyColumn", st, "Precisions", { label: "Précisions" }]]);
+  await lireMeta();
+  const hist = actionsHistoriqueTableau(st, "Dossier"); if (hist.length) { await actions(hist); await lireMeta(); }
+  faits.push(`sous-table ${st} (historisée)`);
+  // question tableau des sites, qualification en bas
+  meta = metaCourante();
+  const colonne = await creerColonne(rep, "Sites concernés", "Text", null);
+  blocs().push({ id: nouvelId(), section: "q", genre: "question", colonne,
+    reglages: { libelle: "Sites concernés", tableau: { table: st, sites: { site: "Site", libre: "Site_libre", qualif: "Qualification", historique: [], alias: "Sites_correspondances" } } } });
+  courant.conf.saisie = { ...(courant.conf.saisie || {}), version: "esr", qualificationEnBas: true };
+  sauver(); dessinerApercu(); dessinerPanneau();
+  reglesApresTableau(st);
+  return faits.join(" ; ");
+}
 $("btn-nouveau").addEventListener("click", () => ouvrirNouveau(false));
 $("btn-dupliquer").addEventListener("click", () => courant && ouvrirNouveau(true));
 $("btn-tester").addEventListener("click", () => courant && basculerTest());

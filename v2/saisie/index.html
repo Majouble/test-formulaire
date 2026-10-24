@@ -226,6 +226,12 @@
   .etat-desc-actions { display: inline-flex; gap: 12px; margin-left: 8px; flex-wrap: wrap; }
   .apercu-generee { margin-top: 6px; padding: 8px; background: var(--x-f6f6f6); border: 1px dashed var(--x-bbbbbb); font-size: .85rem; white-space: pre-wrap; }
   .alerte-faits { color: var(--x-b34000); font-weight: 600; }
+  /* formulaire par site : sites repris du dernier état connu, qualification déduite des sites */
+  .ligne-rep.reprise { border-left: 3px solid var(--maj, #b34000); }
+  .ligne-rep .repris { font-size: 13px; color: var(--x-555555); margin: 0 0 6px; }
+  .ligne-rep .repris .repris-ok { color: var(--x-18753c, #18753c); font-weight: 600; }
+  fieldset.qualif-deduite { border-top: 2px solid var(--bleu); padding-top: 10px; margin-top: 16px; }
+  .qualif-sites { margin: 8px 0 0; }
   .plusieurs-jours { margin-top: 8px; }
   .plusieurs-jours > .case { margin: 0; }
   .jusquau { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin: 6px 0 0 26px; }
@@ -1029,6 +1035,7 @@ function S() {
   if (Array.isArray(c.fiche) && c.fiche.length) r.fiche = c.fiche.filter(x => x && x.col);
   if (Array.isArray(c.recherche)) r.recherche = c.recherche.filter(Boolean);
   if (c.colonnes && typeof c.colonnes === "object") r.colonnes = c.colonnes;
+  if (typeof c.qualificationEnBas === "boolean") r.qualificationEnBas = c.qualificationEnBas;   // formulaire par site : qualification déduite, en bas
   return r;
 }
 // Bandeau, liseré de la version, colonnes du référentiel imposées par le formulaire
@@ -1694,6 +1701,7 @@ function defDepuisBloc(b) {
   const r = b.reglages || {};
   const def = avecRegles({ ...meta, libelle: r.libelle || meta.libelle, description: reperesDepuisReglages(r) });
   def.court = !!r.court;
+  if (def.tableau && r.tableau && r.tableau.sites) def.tableau.sites = r.tableau.sites;   // tableau des sites (formulaire par site)
   if (r.format && r.format !== "defaut") def.formatDescription = r.format;
   def.depuisFormulaire = true;
   return def;
@@ -1991,6 +1999,7 @@ async function chargerConfiguration() {
   restaurerFiltre();
 
   rendreChamps($("questions"), "q", defsQuestions, () => { modifie = true; });
+  placerQualification();
   appliquerConditions("q", defsQuestions);
   rendreChamps($("champs-dep"), "vd", defsDep, () => { modifieVisa = true; });
   rendreChamps($("champs-aca"), "va", defsAca, () => { modifieVisa = true; });
@@ -2470,7 +2479,10 @@ const norm = (def, v) => estVide(def, v) ? null : v;
 
 async function optionsReference(def) {
   const t = await lireTableReference(def.type.split(":")[1]);
-  const c = def.colAffichee && t[def.colAffichee] ? def.colAffichee : null;
+  // colonne affichée de la référence, sinon une colonne de nom (Nom, Libelle…), sinon la première colonne de texte
+  const c = def.colAffichee && t[def.colAffichee] ? def.colAffichee
+    : Object.keys(t).find(k => /^(nom|libelle|intitule|denomination)(_|$)/i.test(k) && (t[k] || []).some(x => typeof x === "string"))
+      || Object.keys(t).find(k => k !== "id" && k !== "manualSort" && !k.startsWith("gristHelper") && (t[k] || []).some(x => typeof x === "string")) || null;
   const opts = t.id.map((id, i) => ({ id, libelle: String(c ? t[c][i] ?? "" : `Ligne ${id}`) }))
                    .sort((a, b) => a.libelle.localeCompare(b.libelle, "fr"));
   def._labels = new Map(opts.map(o => [o.id, o.libelle]));
@@ -3153,6 +3165,8 @@ $("onglets").addEventListener("keydown", ev => {
 async function passerEnCreation() {
   dossierId = null; versions = []; initiale = null; derniere = null;
   doublonConfirme = null;   // chaque nouveau signalement demande sa propre confirmation
+  qualifTouchee = false;    // formulaire par site : qualification déduite des sites
+  queueMicrotask(() => { if (typeof majQualifDeduite === "function") majQualifDeduite(); });
   rafraichirEtabs(false);   // sans attendre : sert seulement à la recherche d'établissement
   etabCourant = modeEtab ? (etabs[0] || null) : null;
   ligneAnnuaire = null;
@@ -4285,6 +4299,24 @@ class Tableau {
     for (const d of this.sousDefs) if (["Ref", "RefList"].includes(typeBase(d.type))) {
       try { d._options = await optionsReference({ ...d }); } catch (_) { d._options = []; }
     }
+    // tableau des sites : colonne du site (référence au référentiel des sites, ou identifiant texte), nom hors
+    // référentiel, qualification du site ; historique d'autres questions (anciens formulaires) pour la reprise
+    const st = this.def.tableau && this.def.tableau.sites, a = c => c && cols.some(x => x.colId === c) ? c : null;
+    this.sites = st && (a(st.site) || a(st.libre)) ? { site: a(st.site), libre: a(st.libre), qualif: a(st.qualif),
+      historique: Array.isArray(st.historique) ? st.historique.filter(h => h && h.colonne) : [], alias: st.alias || "Sites_correspondances" } : null;
+    this.alias = new Map();
+    if (this.sites) {
+      const ds = this.sites.site && this.sousDefs.find(x => x.colId === this.sites.site);
+      if (ds && typeBase(ds.type) === "Ref") {   // sites de l'établissement seulement (colonne du référentiel des sites vers les établissements)
+        try { const cible = ds.type.split(":")[1], m = await metaColonnes(cible), ce = Object.values(m || {}).find(c => c.type === `Ref:${ETAB.table}`);
+          if (ce) { const t = await lireTableReference(cible); ds._siteEtab = new Map(t.id.map((id, i) => [id, refId(t[ce.colId][i])])); } } catch (_) { /* tous les sites */ }
+      }
+      // correspondances validées : libellé saisi (par établissement) → site du référentiel
+      try { const m = await metaColonnes(this.sites.alias);
+        if (m && m.Libelle && m.Site) { const t = await grist.docApi.fetchTable(this.sites.alias);
+          t.id.forEach((id, i) => { if (/cart/i.test(String((t.Statut || [])[i] || ""))) return; const s = refId(t.Site[i]); if (!s) return;
+            this.alias.set(`${refId((t.Etablissement || [])[i]) || 0}|${normaliser(t.Libelle[i])}`, s); }); } } catch (_) { /* sans correspondances */ }
+    }
     const manque = [!this.colDossier && "Dossier (référence vers la table des signalements)", !this.colLigne && "Ligne_id (texte)"].filter(Boolean);
     this.avertissement = manque.length ? `Table « ${tid} » : ajoutez la colonne ${manque.join(" et la colonne ")} pour qu'elle soit tenue à jour.` : "";
     this.autos = this.sousDefs.filter(d => d.auto && typeBase(d.type) === "Text");
@@ -4437,7 +4469,9 @@ class Tableau {
       const txt = s == null ? "" : (t === "Date" ? new Date(s * 1000).toISOString().slice(0, 10) : valeurLocale(new Date(s * 1000), true));
       ctl = `<input type="${t === "Date" ? "date" : "datetime-local"}" value="${txt}" aria-labelledby="${nom}-etiq">`;
     } else if (t === "Ref") {
-      ctl = `<select aria-labelledby="${nom}-etiq"><option value="">Choisir…</option>${(d._options || []).map(o => `<option value="${o.id}"${+v === o.id ? " selected" : ""}>${esc(o.libelle)}</option>`).join("")}</select>`;
+      let opts = d._options || [];
+      if (d._siteEtab) { const e = etablissementDuFormulaire(); if (e) opts = opts.filter(o => d._siteEtab.get(o.id) === e || +v === o.id); }
+      ctl = `<select aria-labelledby="${nom}-etiq"><option value="">${d._siteEtab && !opts.length ? "Aucun site de cet établissement au référentiel" : "Choisir…"}</option>${opts.map(o => `<option value="${o.id}"${+v === o.id ? " selected" : ""}>${esc(o.libelle)}</option>`).join("")}</select>`;
     } else if (d.court) {
       ctl = `<input type="text" value="${esc(v ?? "")}" aria-labelledby="${nom}-etiq"${masque}>`;
     } else {
@@ -4450,14 +4484,21 @@ class Tableau {
   ligneHtml(l, k) {
     const actions = `<span class="actions-ligne"><button type="button" class="icone" data-action="dupliquer" title="Dupliquer cette ligne" aria-label="Dupliquer la ligne ${k + 1}">⧉</button><button type="button" class="icone" data-action="supprimer" title="Supprimer cette ligne" aria-label="Supprimer la ligne ${k + 1}">✕</button></span>`;
     // Ordre imposé par [ordre N] : les champs se suivent dans cet ordre (les champs courts côte à côte)
-    if (this.ordonne) return `<div class="ligne-rep ordonnee" data-k="${k}"><div class="tete-ligne"><span class="num" aria-label="Ligne ${k + 1}">${k + 1}</span>
+    if (this.ordonne) return `<div class="ligne-rep ordonnee${l._repris ? " reprise" : ""}" data-k="${k}">${l._repris ? `<div class="repris" aria-live="polite">${this.texteRepris(l)}</div>` : ""}<div class="tete-ligne"><span class="num" aria-label="Ligne ${k + 1}">${k + 1}</span>
       <div class="champs-ordonnes">${this.sousDefs.map(d => this.champHtml(d, k, l)).join("")}</div>${actions}</div></div>`;
     const parZone = z => this.sousDefs.filter(d => zoneSousChamp(d) === z).map(d => this.champHtml(d, k, l)).join("");
     const textes = parZone("texte");
-    return `<div class="ligne-rep" data-k="${k}">
+    return `<div class="ligne-rep${l._repris ? " reprise" : ""}" data-k="${k}">${l._repris ? `<div class="repris" aria-live="polite">${this.texteRepris(l)}</div>` : ""}
       <div class="tete-ligne"><span class="num" aria-label="Ligne ${k + 1}">${k + 1}</span>${parZone("tete")}
         <span class="actions-ligne"><button type="button" class="icone" data-action="dupliquer" title="Dupliquer cette ligne" aria-label="Dupliquer la ligne ${k + 1}">⧉</button><button type="button" class="icone" data-action="supprimer" title="Supprimer cette ligne" aria-label="Supprimer la ligne ${k + 1}">✕</button></span></div>
       ${parZone("large")}${textes ? `<div class="textes-ligne">${textes}</div>` : ""}</div>`;
+  }
+  // site repris du dernier état connu : mention, et confirmation ou modification par l'agent
+  texteRepris(l) {
+    const r = l._repris, quand = r.quand ? new Date(r.quand * 1000).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(" ", " ") : "";
+    const etat = r.etat === "confirme" ? `<span class="repris-ok">confirmé</span>` : r.etat === "modifie" ? `<span class="repris-ok">modifié</span>`
+      : `<button type="button" class="lien-texte" data-action="confirmer-site">Confirmer cet état</button>`;
+    return `Dernier état : <strong>${esc(r.qualif || "sans qualification")}</strong>${quand ? ` (${esc(quand)})` : ""} · ${etat}`;
   }
   dessiner() {
     if (this.erreur) { this.el.innerHTML = `<p class="bandeau">${esc(this.erreur)}</p>`; return; }
@@ -4484,6 +4525,7 @@ class Tableau {
       });
       div.classList.toggle("incomplete", incomplete);
       div.querySelectorAll(".regen").forEach(b => { b.hidden = !(l._touche || {})[b.dataset.sous]; });
+      const rp = div.querySelector(".repris"); if (rp && l._repris) rp.innerHTML = this.texteRepris(l);
     });
     const s = this.el.querySelector(".synthese");
     if (s) s.textContent = syntheseTableau(this.sousDefs, this.lignesValides(), false);
@@ -4536,6 +4578,7 @@ class Tableau {
     const div = sc.closest(".ligne-rep"), l = this.lignes[+div.dataset.k];
     const d = this.sousDefs.find(x => x.colId === sc.dataset.sous);
     l.valeurs[d.colId] = this.lireControle(sc, d);
+    if (l._repris && l._repris.etat !== "modifie") l._repris.etat = "modifie";
     if (d.auto) {
       if (!l._touche) l._touche = {};
       l._touche[d.colId] = !videSous(l.valeurs[d.colId]) && String(l.valeurs[d.colId]).trim() !== texteAutoLigne(this.def, l.valeurs).trim();
@@ -4549,7 +4592,16 @@ class Tableau {
   }
   signaler() {
     if (this.surChangement) this.surChangement();
-    if (this.prefix === "q") { appliquerConditions("q", defsQuestions); majDescriptionAuto(); majApercuAuto(); }
+    if (this.prefix === "q") { appliquerConditions("q", defsQuestions); majDescriptionAuto(); majApercuAuto(); if (this.sites) majQualifDeduite(); }
+  }
+  // clé d'un site : son identifiant au référentiel, sinon le libellé saisi (rattaché par les correspondances validées)
+  cleSite(etab, v) {
+    const s = this.sites, id = s.site ? refId(v[s.site]) || (typeof v[s.site] === "number" ? v[s.site] : 0) : 0;
+    if (id) return `s${id}`;
+    const lib = s.libre ? String(v[s.libre] ?? "").trim() : (s.site && typeof v[s.site] === "string" ? v[s.site].trim() : "");
+    if (!lib) return null;
+    const a = this.alias.get(`${etab || 0}|${normaliser(lib)}`) || this.alias.get(`0|${normaliser(lib)}`);
+    return a ? `s${a}` : `t${normaliser(lib)}`;
   }
   ecouter() {
     const el = this.el;
@@ -4572,6 +4624,7 @@ class Tableau {
         return;
       }
       const k = +b.closest(".ligne-rep").dataset.k, l = this.lignes[k];
+      if (action === "confirmer-site") { if (l._repris) l._repris.etat = "confirme"; this.majLignes(); this.signaler(); return; }
       if (action === "regenerer") {
         this.majAutos(l, b.closest(".ligne-rep"), b.dataset.sous);
         this.majLignes(); this.signaler();
@@ -5555,6 +5608,109 @@ $("rep-ok").addEventListener("click", () => enFile(async () => {
   finally { $("rep-ok").disabled = false; }
 }));
 
+/* ---------- Formulaire par site (enseignement supérieur) ----------
+   Tableau des sites (réglage « sites » d'une question tableau) : chaque ligne est un site, avec sa qualification.
+   - Reprise : « le dernier état connu de chaque site » parcourt toutes les versions précédentes de l'établissement
+     (tous dossiers, jours antérieurs), garde l'état le plus récent de chaque site (identifiant du référentiel, sinon
+     libellé rattaché par les correspondances) et préremplit les sites qui ne sont pas revenus à la normale (RAS…).
+     Un site retiré d'un dossier dans une version ultérieure de ce même dossier compte comme retiré.
+   - Qualification de l'établissement : en bas du formulaire, déduite du site le plus grave (ordre des choix de la
+     colonne Qualification, du plus grave au moins grave) ; contrôle de cohérence avant l'enregistrement. */
+const sitesCtrl = () => controleursTableau("q").find(c => c.sites && c.pret) || null;
+const formulaireParSite = () => defsQuestions.some(d => d.tableau && d.tableau.sites);
+const retourNormale = () => new Set((socleGeneral.retour_normale && socleGeneral.retour_normale.length ? socleGeneral.retour_normale : ["RAS"]).map(x => String(x).trim().toUpperCase()));
+// rang de gravité d'une qualification : 0 = la plus grave (premier choix) ; retour à la normale en dernier
+function rangGravite(q) {
+  if (!q) return 1e9;
+  if (retourNormale().has(String(q).trim().toUpperCase())) return 1e6;
+  const i = choix.indexOf(q); return i < 0 ? 5e5 : i;
+}
+const plusGrave = liste => [...liste].filter(Boolean).sort((a, b) => rangGravite(a) - rangGravite(b))[0] || null;
+const texteQualifSite = v => listeQualif(v).join(", ");
+function dernierEtatSites(c, etabId) {
+  const s = c.sites, cD = col("Dossier"), jour = jourDuFormulaire(), limite = col("Date_faits") && lireDateFaits() != null ? lireDateFaits() : Date.now() / 1000;
+  const versions = enregistrements.filter(l => refId(val(l, "Etablissement")) === etabId && jourDeLaVersion(l) !== jour
+    && (secondes(col("Date_faits") ? val(l, "Date_faits") : val(l, "Date")) ?? 0) < limite + 86400);
+  const parDossier = new Map();
+  versions.forEach(l => { const d = refId(cD && l[cD]) || l.id; if (!parDossier.has(d)) parDossier.set(d, []); parDossier.get(d).push(l); });
+  // lignes d'une version : la question elle-même, puis les questions des formulaires précédents (historique)
+  const lignesDe = l => {
+    const res = lireTableauJson(l[c.def.colId]).map(o => { const { _id, ...v } = o; return v; });
+    for (const h of s.historique) for (const o of lireTableauJson(l[h.colonne])) {
+      const v = {}; for (const [k, x] of Object.entries(o)) if (k !== "_id" && c.sousDefs.some(d => d.colId === k)) v[k] = x;
+      if (h.libre && s.libre) v[s.libre] = o[h.libre]; if (h.site && s.site) v[s.site] = o[h.site]; if (h.qualif && s.qualif) v[s.qualif] = o[h.qualif];
+      res.push(v);
+    }
+    return res;
+  };
+  const quandDe = l => secondes(val(l, "Date")) ?? secondes(col("Date_faits") ? val(l, "Date_faits") : null);
+  const etats = [];   // { cle, valeurs, qualif, quand, retire }
+  for (const ls of parDossier.values()) {
+    ls.sort(comparerVersions);
+    const der = ls[ls.length - 1], vues = new Map();
+    for (const l of ls) for (const v of lignesDe(l)) { const k = c.cleSite(etabId, v); if (k) vues.set(k, { l, v }); }
+    const finales = new Set(lignesDe(der).map(v => c.cleSite(etabId, v)).filter(Boolean));
+    for (const [k, x] of vues) etats.push(finales.has(k)
+      ? { cle: k, valeurs: x.v, qualif: s.qualif ? texteQualifSite(x.v[s.qualif]) : "", quand: quandDe(der), ordre: der }
+      : { cle: k, retire: true, quand: quandDe(der), ordre: der });
+  }
+  etats.sort((a, b) => comparerVersions(a.ordre, b.ordre));
+  const dernier = new Map(); etats.forEach(e => dernier.set(e.cle, e));   // le plus récent l'emporte
+  const retour = retourNormale();
+  return [...dernier.values()].filter(e => !e.retire && !(e.qualif && listeQualif(e.qualif).every(q => retour.has(String(q).trim().toUpperCase()))));
+}
+// préremplit le tableau des sites ; renvoie le nombre de sites repris
+function reprendreEtatSites(c, etabId) {
+  const etats = dernierEtatSites(c, etabId), s = c.sites;
+  c.lignes = etats.map(e => {
+    const v = {}; for (const d of c.sousDefs) if (!d.confidentiel && !videSous(e.valeurs[d.colId])) v[d.colId] = Array.isArray(e.valeurs[d.colId]) ? [...e.valeurs[d.colId]] : e.valeurs[d.colId];
+    if (s.site && e.cle.startsWith("s") && !refId(v[s.site])) { v[s.site] = +e.cle.slice(1); if (s.libre) delete v[s.libre]; }   // libellé rattaché au référentiel
+    return { _id: nouvelIdLigne(), valeurs: v, _repris: { qualif: e.qualif, quand: e.quand, etat: "a_confirmer" } };
+  });
+  c.lignes.forEach(l => c.initAuto(l));
+  c.dessiner();
+  return etats.length;
+}
+let qualifTouchee = false;
+// qualification en bas (après les sites), et mention de la qualification déduite des sites
+function placerQualification() {
+  const fs = $("qualifs-initiales").closest("fieldset"), enBas = formulaireParSite() && S().qualificationEnBas !== false;
+  if (enBas) $("questions").after(fs); else $("bloc-date-faits").after(fs);
+  fs.classList.toggle("qualif-deduite", enBas);
+  let p = $("qualif-sites");
+  if (!p) { p = document.createElement("p"); p.id = "qualif-sites"; p.className = "aide qualif-sites"; p.setAttribute("aria-live", "polite"); fs.appendChild(p); }
+  p.hidden = !enBas;
+  if (enBas) majQualifDeduite();
+}
+function qualifDesSites() {
+  const c = sitesCtrl(); if (!c || !c.sites.qualif) return null;
+  const qs = c.lignesValides().flatMap(l => listeQualif(l.valeurs[c.sites.qualif]));
+  return { nb: c.lignesValides().length, plusGrave: plusGrave(qs) };
+}
+function majQualifDeduite() {
+  const p = $("qualif-sites"); if (!p || p.hidden) return;
+  const d = qualifDesSites();
+  if (!d || !d.nb) { p.textContent = "Déduite des sites : renseignez d'abord les sites et leur qualification."; p.classList.remove("alerte-faits"); return; }
+  if (d.plusGrave && !qualifTouchee) cocherQualif(qualifMultiple ? [d.plusGrave] : d.plusGrave);
+  const actuel = plusGrave(listeQualif(lireQualificationInitiale()));
+  const ecart = d.plusGrave && actuel && actuel !== d.plusGrave;
+  p.innerHTML = d.plusGrave ? `Qualification la plus grave des sites : <strong>${esc(d.plusGrave)}</strong>${ecart ? ` — différente de celle choisie (${esc(actuel)}) : vérifiez avant d'enregistrer. <button type="button" class="lien-texte" id="btn-qualif-sites">Reprendre ${esc(d.plusGrave)}</button>` : qualifTouchee ? "" : " (reprise automatiquement)"}`
+    : "Aucun site n'a de qualification.";
+  p.classList.toggle("alerte-faits", !!ecart);
+  const b = $("btn-qualif-sites"); if (b) b.addEventListener("click", () => { qualifTouchee = false; majQualifDeduite(); modifie = true; });
+}
+$("qualifs-initiales").addEventListener("change", () => { qualifTouchee = true; majQualifDeduite(); });
+// avant l'enregistrement : qualification incohérente avec les sites, sites repris ni confirmés ni modifiés
+function controleSites() {
+  const c = sitesCtrl(); if (!c) return true;
+  const msgs = [], d = qualifDesSites(), actuel = plusGrave(listeQualif(lireQualificationInitiale()));
+  if (d && d.nb && d.plusGrave && actuel !== d.plusGrave)
+    msgs.push(`La qualification de l'établissement (${actuel || "aucune"}) ne correspond pas à celle du site le plus grave (${d.plusGrave}).`);
+  const enAttente = c.lignes.filter(l => l._repris && l._repris.etat === "a_confirmer" && !c.ligneVide(l)).length;
+  if (enAttente) msgs.push(`${enAttente} site${enAttente > 1 ? "s" : ""} repris du dernier état connu ${enAttente > 1 ? "n'ont été" : "n'a été"} ni confirmé${enAttente > 1 ? "s" : ""} ni modifié${enAttente > 1 ? "s" : ""}.`);
+  return !msgs.length || confirm(`${msgs.join("\n\n")}\n\nEnregistrer quand même ?`);
+}
+
 /* ---------- nouveau signalement : reprendre les réponses du signalement d'un jour précédent ---------- */
 async function reprendreReponses(d) {
   const der = [...versionsDe(d)].sort(comparerVersions).pop();
@@ -5562,6 +5718,9 @@ async function reprendreReponses(d) {
   cocherQualif(val(der, "Qualification"));
   if (col("Site") && val(der, "Site")) $("site").value = val(der, "Site");
   await remplirChamps("q", defsQuestions, def => der[def.colId]);
+  // formulaire par site : le tableau des sites reprend le dernier état connu de chaque site (tous les jours précédents)
+  const cs = sitesCtrl(), nbSites = cs ? reprendreEtatSites(cs, refId(val(der, "Etablissement"))) : null;
+  if (cs) { qualifTouchee = false; majQualifDeduite(); }
   appliquerConditions("q", defsQuestions);
   descriptionManuelle = false;
   majDescriptionAuto();
@@ -5569,7 +5728,8 @@ async function reprendreReponses(d) {
   modifie = true;
   propositionMasquee = etabCourant ? etabCourant.id : null;
   majProposition();
-  statut("statut-signalement", `Réponses reprises du dossier n° ${d} (${jourCourt(jourDesFaits(der))}) : modifiez ce qui a changé, puis enregistrez ce nouveau signalement.`, "ok");
+  statut("statut-signalement", cs ? `Dernier état connu repris : ${nbSites} site${nbSites > 1 ? "s" : ""} non revenu${nbSites > 1 ? "s" : ""} à la normale (autres réponses : dossier n° ${d}, ${jourCourt(jourDesFaits(der))}). Confirmez ou modifiez chaque site, puis enregistrez ce nouveau signalement.`
+    : `Réponses reprises du dossier n° ${d} (${jourCourt(jourDesFaits(der))}) : modifiez ce qui a changé, puis enregistrez ce nouveau signalement.`, "ok");
   focusPremiereQuestion();
 }
 
@@ -5594,6 +5754,9 @@ async function remplirFormulaire() {
   reinitialiserJours();
   majAideJours();
   await remplirChamps("q", defsQuestions, d => ref ? ref[d.colId] : null);
+  // formulaire par site : la qualification suit les sites tant qu'elle leur correspond
+  if (sitesCtrl()) { const dq = qualifDesSites(), q0 = plusGrave(listeQualif(lireQualificationInitiale()));
+    qualifTouchee = !!(q0 && dq && dq.plusGrave && q0 !== dq.plusGrave); majQualifDeduite(); }
   $("commentaire").value = "";
   appliquerConditions("q", defsQuestions);
   evaluerDescriptionManuelle();
@@ -5716,6 +5879,7 @@ async function enregistrerSignalement(correction = false) {
   }
   const btn = $("btn-signalement");
   if (btn.getAttribute("aria-disabled") === "true") return;   // enregistrement déjà en cours
+  if (!controleSites()) { const f = $("qualifs-initiales").closest("fieldset"); f.scrollIntoView({ block: "center" }); return; }
   if (correction && !(dossierId && initiale && derniere)) { statut("statut-signalement", "Ouvrez d'abord un signalement à corriger.", "err"); return; }
   if (dossierId && !correction && !col("Dossier")) {
     statut("statut-signalement", "Mise à jour impossible : aucune colonne « Dossier » n'est associée au widget. Ajoutez à la table une colonne « Dossier » "
@@ -6611,8 +6775,10 @@ function majProposition() {
       <button type="button" class="maj-contour petit" data-autre-evenement="1">Non, c'est un autre événement</button>`
     : `<p class="prop-titre">${avant.length > 1 ? `${avant.length} signalements récents` : "Un signalement récent"} pour cet établissement</p>
       <ul>${avant.slice(0, 3).map(x => `<li><span>${esc(ligne(x))}</span>
-        <button type="button" class="maj-plein petit" data-reprendre="${x.d}">Reprendre ses réponses</button></li>`).join("")}</ul>
-      <p class="note">Un signalement par jour : celui du ${esc(jour)} sera un nouveau dossier. Si la situation continue, reprenez les réponses du précédent, puis modifiez ce qui a changé.</p>
+        <button type="button" class="maj-plein petit" data-reprendre="${x.d}">${formulaireParSite() ? "Reprendre le dernier état de chaque site" : "Reprendre ses réponses"}</button></li>`).join("")}</ul>
+      <p class="note">Un signalement par jour : celui du ${esc(jour)} sera un nouveau dossier. ${formulaireParSite()
+        ? "Si la situation continue, reprenez le dernier état connu de chaque site (tous les jours précédents, sites revenus à la normale exclus), puis confirmez ou modifiez chaque site."
+        : "Si la situation continue, reprenez les réponses du précédent, puis modifiez ce qui a changé."}</p>
       <button type="button" class="maj-contour petit" data-autre-evenement="1">Partir d'un formulaire vide</button>`;
 }
 $("proposition-encours").addEventListener("click", ev => {

@@ -8,11 +8,11 @@ Scénarios Playwright qui ouvrent les widgets (`v2/…`) dans Chromium avec un *
 cd tests
 npm install
 npx playwright install chromium     # ou : CHROMIUM=/chemin/vers/chromium
-sh lancer.sh                        # suite actuelle (run63 à run77)
+sh lancer.sh                        # suite actuelle (run63 à run79)
 sh lancer.sh run74 run76            # quelques scénarios
 ```
 
-`lancer.sh` écrit la sortie de chaque scénario dans `sorties/journaux/` et signale un échec en cas d'erreur de page ou d'exception. Les scénarios n'ont pas d'assertions : comparez les journaux avec la description de la version dans `v2/README.md`.
+`lancer.sh` écrit la sortie de chaque scénario dans `sorties/journaux/` et signale un échec en cas d'erreur de page ou d'exception. `run68` dépend du jour : il vise les créneaux du jour dans le planning d'essai (semaine du 19/10/2026) et échoue un jour sans créneau. Les scénarios n'ont pas d'assertions : comparez les journaux avec la description de la version dans `v2/README.md`.
 
 Les scénarios de l'atlas (run63 à run69, run73) exportent un zip ; pour vérifier le rendu QGIS : `QT_QPA_PLATFORM=offscreen python3.12 qgis/rendu.py <dossier>/atlas.qgs page.png Versailles` (PyQGIS 3.34). `qgis/poids_pdf.py` mesure le poids du PDF selon la résolution ; `PYTHON=python3.12 sh qgis/refaire_modele.sh` reconstruit le modèle QGIS intégré (python3.12 : l'interpréteur qui a PyQGIS).
 
@@ -35,6 +35,8 @@ Les scénarios de l'atlas (run63 à run69, run73) exportent un zip ; pour vérif
 | `run75` | Saisie : SEGPA choisie à la création → alerte et bascule sur le collège |
 | `run76` | Question tableau historisée : une copie des lignes par version, mouvements Ajout / Modification / Inchangée / Retrait |
 | `run77` | Installation : étape « Historiser la sous-table » puis colonnes créées |
+| `run78` | Formulaire par site (ESR) : reprise du dernier état connu de chaque site, qualification déduite en bas, contrôle de cohérence |
+| `run79` | Admin : rapprochement des sites saisis (Référentiel), modèle de formulaire « Enseignement supérieur par site » |
 
 ## Scénarios plus anciens
 

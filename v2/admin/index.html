@@ -441,6 +441,12 @@
   main#onglet-tdb { max-width: none; padding: 0; }
   /* À vérifier (contrôle qualité) */
   nav .qa-badge { display: inline-block; min-width: 18px; padding: 0 6px; margin-left: 4px; border-radius: 9px; background: var(--alerte); color: #fff; font-size: 11.5px; font-weight: 700; line-height: 18px; text-align: center; }
+  #referentiel .sites-outils { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin: 8px 0 10px; }
+  #referentiel .sites-outils label { display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+  #referentiel .sites-outils select { width: auto; max-width: 320px; }
+  #referentiel .sites-defile { max-height: 520px; overflow: auto; border-top: 1px solid var(--trait); }
+  #referentiel .sites-table select { max-width: 280px; }
+  #referentiel .sites-table td { vertical-align: middle; }
   #qualite button.petit { padding: 4px 10px !important; font-size: 13px; }
   #qualite .lien-btn { background: none; border: 0; padding: 0 4px; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; font-size: 12.5px; }
   #qualite .vide { color: var(--doux); }
@@ -603,6 +609,7 @@
     <div class="boutons"><button class="primaire" id="btn-ref-importer">3. Importer dans Grist</button></div>
   </section>
   <p class="statut" id="ref-statut"></p>
+  <section class="carte" id="ref-sites"></section>
 </main>
 <main id="onglet-equipe" hidden>
   <div id="eq-synthese-zone"></div>
@@ -637,6 +644,8 @@
   <form method="dialog" id="form-nouveau">
     <h3 id="dlg-titre">Nouveau formulaire</h3>
     <div class="champ"><label for="nf-nom">Nom du formulaire</label><input type="text" id="nf-nom" required></div>
+    <div class="champ" id="nf-bloc-modele"><label for="nf-modele">Modèle<span class="aide">« Enseignement supérieur par site » : une ligne par site (référentiel des sites), reprise du dernier état connu de chaque site, qualification de l'établissement déduite du site le plus grave.</span></label>
+      <select id="nf-modele"><option value="">Formulaire vierge</option><option value="esr-sites">Enseignement supérieur par site</option></select></div>
     <div class="champ" id="nf-bloc-type"><label for="nf-type">Type de questionnaire</label><select id="nf-type"><option value="etablissement">Questionnaire établissement</option></select>
       <span class="aide">Établissement recherché par nom ou UAI et complété automatiquement ; nouveau signalement puis mises à jour (versions) ; qualification, date des faits, description automatique ; visas départemental et académique.</span></div>
     <div class="champ" id="nf-bloc-table"><label for="nf-table">Table des réponses<span class="aide">La table où chaque réponse est enregistrée (une ligne par version).</span></label><select id="nf-table"></select></div>
@@ -671,6 +680,7 @@
 <script src="actions.js"></script>
 <script src="liens.js"></script>
 <script src="qualite.js"></script>
+<script src="sites.js"></script>
 <script>if (window.SocleTheme) window.SocleTheme.bouton(document.getElementById("theme-bouton"));</script>
 <script>
   // Onglets
@@ -678,7 +688,7 @@
     window.Socle.oublierStructure();
     document.querySelectorAll("nav button[data-onglet]").forEach(x => x.setAttribute("aria-selected", String(x === b)));
     document.querySelectorAll("main").forEach(m => { m.hidden = m.id !== b.dataset.onglet; });
-    if (b.dataset.onglet === "referentiel") window.OngletReferentiel.afficher();
+    if (b.dataset.onglet === "referentiel") { window.OngletReferentiel.afficher(); if (window.OngletSitesESR) window.OngletSitesESR.afficher(); }
     if (b.dataset.onglet === "onglet-equipe") window.OngletEquipeGroupe.afficher();
     if (b.dataset.onglet === "acces") window.OngletAcces.afficher();
     if (b.dataset.onglet === "liens") window.OngletLiens.afficher();
