@@ -2314,7 +2314,14 @@ function ficheTestHtml() {
 function groupeVersionHtml() {
   if (courant.type !== "etablissement") return "";
   const o = saisieEff(), fixe = !!PRESETS[confSaisie().version], c = confSaisie();
-  return `<div class="groupe"><div class="t">Version et présentation</div>
+  const parSite = modeleCourant() === "esr-sites";
+  return `<div class="groupe"><div class="t">Modèle du formulaire</div>
+    <div class="seg2" role="group" aria-label="Modèle du formulaire"><button type="button" data-modele="" aria-pressed="${!parSite}">Standard</button><button type="button" data-modele="esr-sites" aria-pressed="${parSite}">Enseignement supérieur par site</button></div>
+    <p class="note" style="margin:0 0 4px">${parSite ? "Une ligne par site, reprise du dernier état connu de chaque site, qualification de l'établissement en bas, déduite du site le plus grave. Revenir au modèle standard garde la question des sites comme un tableau ordinaire (rien n'est supprimé)."
+      : "« Enseignement supérieur par site » : une question tableau existante qui a un site et une qualification devient le tableau des sites ; sinon la question « Sites concernés » est créée, avec ses tables (référentiel des sites, correspondances, sous-table historisée)."}</p>
+    <span class="statut" id="pv-modele-statut" role="status"></span>
+  </div>
+  <div class="groupe"><div class="t">Version et présentation</div>
     <div class="seg2" role="group" aria-label="Version du formulaire">${Object.entries(PRESETS).map(([k, p]) => `<button type="button" data-version="${k}" aria-pressed="${o.version === k}">${esc(p.libelle)}</button>`).join("")}</div>
     <p class="note" style="margin:0 0 8px">${fixe ? "" : "Déduite de la table, à confirmer. "}Choisir une version reprend ses réglages : bandeau, annuaires en ligne, en-tête de la description, fiche de l'établissement, choix multiples des tableaux.</p>
     <label class="l" for="pv-marque">Texte du bandeau</label><input type="text" id="pv-marque" value="${esc(c.marque || "")}" placeholder="${esc(PRESETS[o.version].marque)}">
@@ -2326,7 +2333,52 @@ function groupeVersionHtml() {
     <label class="interrupteur">Faits sur plusieurs jours (un signalement par jour) <input type="checkbox" id="pv-jours"${o.plusieursJours ? " checked" : ""}></label>
   </div>`;
 }
+// modèle d'un formulaire : « esr-sites » dès qu'une question tableau est réglée en tableau des sites
+const modeleCourant = () => blocs().some(b => b.reglages && b.reglages.tableau && b.reglages.tableau.sites) ? "esr-sites" : "";
+async function changerModele(v) {
+  if (v === modeleCourant()) return;
+  const st = $("pv-modele-statut"), dire = (t, err) => { if (st) { st.textContent = t; st.className = `statut${err ? " err" : " ok"}`; } };
+  try {
+    if (!v) {   // retour au modèle standard : réglages des sites retirés, la question reste un tableau ordinaire
+      if (!confirm("Revenir au modèle standard ? La question des sites reste un tableau ordinaire (sans reprise du dernier état ni qualification déduite) ; aucune donnée n'est supprimée.")) return;
+      blocs().forEach(b => { if (b.reglages && b.reglages.tableau) delete b.reglages.tableau.sites; });
+      courant.conf.saisie = { ...(courant.conf.saisie || {}) }; delete courant.conf.saisie.qualificationEnBas;
+      sauver(); dessinerApercu(); dessinerPanneau(); message("Modèle standard : pensez à publier.", "ok"); return;
+    }
+    // une question tableau dont la table a un site (référence ou texte) et une qualification : elle devient le tableau des sites
+    const cand = blocs().filter(b => b.genre === "question" && b.reglages && b.reglages.tableau && b.reglages.tableau.table).map(b => {
+      const cols = Object.values(colonnesDe(b.reglages.tableau.table)), t = (re, f) => (cols.find(c => f(c) && re.test(c.colId)) || cols.find(f) || {}).colId || null;
+      return { b, site: t(/site/i, c => /^Ref:/.test(c.type) && c.type !== `Ref:${courant.table}` && c.colId !== "Version"),
+        libre: t(/site|libre|nom/i, c => /^Text/.test(c.type) && !c.formule && !RESERVES_TABLEAU.includes(c.colId)), qualif: t(/qualif/i, c => /^Choice/.test(c.type) && !c.formule) };
+    }).filter(x => (x.site || x.libre) && x.qualif);
+    if (cand.length) {
+      const x = cand[0];
+      x.b.reglages.tableau.sites = { site: x.site, libre: x.libre, qualif: x.qualif, historique: [], alias: "Sites_correspondances" };
+      courant.conf.saisie = { ...(courant.conf.saisie || {}), version: "esr", qualificationEnBas: true };
+      sauver(); dessinerApercu(); choisir(x.b.id);
+      message(`Modèle « enseignement supérieur par site » : la question « ${libelleQuestion(x.b.colonne)} » devient le tableau des sites (site : ${x.site || "—"}, hors référentiel : ${x.libre || "—"}, qualification : ${x.qualif}). Vérifiez ses réglages, puis publiez.`, "ok");
+      return;
+    }
+    // un autre formulaire de la même table a déjà sa question des sites : même question, mêmes données
+    for (const f of formulaires) {
+      if (f.id === courant.id || f.table !== courant.table) continue;
+      let c = null; try { c = JSON.parse(f.publie || f.brouillon || "null"); } catch (_) { c = null; }
+      const b = c && (c.blocs || []).find(x => x.reglages && x.reglages.tableau && x.reglages.tableau.sites && meta[x.colonne]);
+      if (!b) continue;
+      const nb = JSON.parse(JSON.stringify(b)); nb.id = nouvelId(); nb.section = "q";
+      blocs().push(nb);
+      courant.conf.saisie = { ...(courant.conf.saisie || {}), version: "esr", qualificationEnBas: true };
+      sauver(); dessinerApercu(); choisir(nb.id);
+      message(`Modèle « enseignement supérieur par site » : question « ${libelleQuestion(nb.colonne)} » reprise du formulaire « ${f.nom} » (même table, mêmes données). Publiez pour l'utiliser.`, "ok");
+      return;
+    }
+    dire("Création des tables et de la question des sites…");
+    const r = await installerModeleSites();
+    message(`Modèle « enseignement supérieur par site » : ${r}. Vérifiez les choix de qualification (du plus grave au moins grave), puis publiez.`, "ok");
+  } catch (e) { dire(`Échec : ${e.message || e}`, true); }
+}
 function lierVersion(p) {
+  p.querySelectorAll("[data-modele]").forEach(x => x.addEventListener("click", () => changerModele(x.dataset.modele)));
   p.querySelectorAll("[data-version]").forEach(x => x.addEventListener("click", () => {
     const c = confSaisie();
     if (c.version === x.dataset.version) return;
