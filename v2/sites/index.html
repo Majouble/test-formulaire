@@ -1,0 +1,565 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Référentiel des sites</title>
+<!-- Widget Grist : mise à jour du référentiel des sites de l'enseignement supérieur (carte IGN, lieux IGN, OpenStreetMap, adresses) -->
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="../commun/theme.js"></script>
+<script src="../commun/socle.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1e1e2a; --muted: #666677; --line: #dddde6; --soft: #f5f5f8; --accent: #000091; --accent-soft: #e3e3fd;
+    --ok: #18753c; --ok-bg: #e6f4ea; --warn: #b34000; --warn-bg: #fff4e5; --err: #b42318; --err-bg: #fdecea;
+    --site: #000091; --propose: #6a6af4; --cand: #b34000; --off: #9a9aab;
+  }
+  :root[data-theme="dark"] {
+    --bg: #1f1f28; --fg: #ececf2; --muted: #a0a0b2; --line: #3a3a48; --soft: #2a2a36; --accent: #8b8bff; --accent-soft: #2c2c55;
+    --ok: #6fd08c; --ok-bg: #1d3325; --warn: #f5b454; --warn-bg: #3a2e14; --err: #ff8a80; --err-bg: #3a1c1c;
+    --site: #8b8bff; --propose: #b0b0ff; --cand: #f5a35c; --off: #6b6b80;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 10pt/1.45 Marianne, Arial, -apple-system, "Segoe UI", sans-serif; }
+  button, input, select { font: inherit; color: inherit; }
+  input[type=text], input[type=search], select { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 5px 7px; }
+  button { cursor: pointer; border-radius: 4px; padding: 5px 10px; border: 1px solid var(--accent); background: var(--bg); color: var(--accent); }
+  button.primaire { background: var(--accent); color: #fff; }
+  :root[data-theme="dark"] button.primaire { color: #11112a; }
+  button.lien { border: 0; background: none; padding: 0; text-decoration: underline; }
+  button:disabled { opacity: .5; cursor: default; }
+  .page { display: grid; grid-template-columns: minmax(300px, 400px) 1fr; height: 100vh; }
+  .gauche { border-right: 1px solid var(--line); overflow: auto; padding: 10px 12px; }
+  .droite { display: grid; grid-template-rows: minmax(260px, 1fr) auto; min-height: 0; }
+  #carte { min-height: 260px; }
+  h1 { font-size: 14px; margin: 0 0 6px; }
+  h2 { font-size: 12.5px; margin: 14px 0 6px; }
+  .aide { color: var(--muted); font-size: 12px; }
+  .statut { font-size: 12px; min-height: 1.2em; margin: 4px 0; }
+  .statut.ok { color: var(--ok); } .statut.err { color: var(--err); }
+  #statut { position: sticky; top: -10px; z-index: 5; background: var(--bg); padding: 3px 0; }
+  .recherche { position: relative; }
+  .recherche input { width: 100%; }
+  .resultats { position: absolute; z-index: 1000; left: 0; right: 0; top: 100%; margin: 2px 0 0; padding: 0; list-style: none; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; max-height: 320px; overflow: auto; box-shadow: 0 4px 14px rgba(0,0,0,.15); }
+  .resultats li { padding: 6px 9px; cursor: pointer; border-bottom: 1px solid var(--soft); }
+  .resultats li:hover, .resultats li[aria-selected=true] { background: var(--accent-soft); }
+  .resultats .meta, .site .meta { color: var(--muted); font-size: 11.5px; }
+  .fiche { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin-top: 8px; background: var(--soft); }
+  .fiche strong { font-size: 12.5px; }
+  .sites { list-style: none; margin: 0; padding: 0; }
+  .site { border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; margin: 6px 0; }
+  .site.choisi { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+  .site.inactif { opacity: .6; }
+  .site .ligne { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .site input.nom { flex: 1; min-width: 160px; font-weight: 600; }
+  .site input.mots { width: 100%; margin-top: 4px; }
+  .pastille { display: inline-block; font-size: 11px; padding: 0 7px; border-radius: 10px; background: var(--soft); border: 1px solid var(--line); white-space: nowrap; }
+  .pastille.ok { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+  .pastille.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+  .outils { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
+  .trouver { border-top: 1px solid var(--line); padding: 8px 12px 10px; max-height: 42vh; overflow: auto; }
+  .onglets { display: flex; gap: 4px; margin-bottom: 6px; flex-wrap: wrap; }
+  .onglets button[aria-selected=true] { background: var(--accent); color: #fff; }
+  :root[data-theme="dark"] .onglets button[aria-selected=true] { color: #11112a; }
+  .cands { list-style: none; margin: 6px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px; }
+  .cand { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; display: grid; gap: 3px; }
+  .cand.probable { border-color: var(--cand); }
+  .cand.deja { opacity: .65; }
+  .cand .actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .vide { color: var(--muted); font-style: italic; }
+  .leaflet-container { background: var(--soft); font: inherit; }
+  .popup-ajout input { width: 220px; margin: 4px 0; }
+  .version { color: var(--muted); font-size: 11px; }
+  @media (max-width: 760px) { .page { grid-template-columns: 1fr; height: auto; } .droite { grid-template-rows: 60vh auto; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <section class="gauche">
+    <h1>Référentiel des sites <span class="version" id="version"></span></h1>
+    <p class="aide">Choisissez un établissement : ses sites s'affichent sur la carte. Corrigez un nom, des mots-clés ou une position (glissez le repère),
+      ajoutez un site trouvé dans les lieux IGN, OpenStreetMap ou une adresse, ou d'un clic sur la carte. Les modifications sont enregistrées aussitôt dans Grist.</p>
+    <div id="contexte" class="statut"></div>
+    <div class="recherche">
+      <input type="search" id="etab-q" placeholder="Établissement : nom, sigle, ville…" autocomplete="off" aria-label="Rechercher un établissement" role="combobox" aria-expanded="false" aria-controls="etab-res">
+      <ul class="resultats" id="etab-res" role="listbox" hidden></ul>
+    </div>
+    <div id="fiche"></div>
+    <p class="statut" id="statut" role="status"></p>
+    <div id="liste"></div>
+  </section>
+  <section class="droite">
+    <div id="carte" aria-label="Carte des sites"></div>
+    <div class="trouver" id="trouver" hidden>
+      <div class="onglets" role="tablist">
+        <button type="button" role="tab" data-source="ign" aria-selected="true">Lieux IGN</button>
+        <button type="button" role="tab" data-source="osm" aria-selected="false">OpenStreetMap</button>
+        <button type="button" role="tab" data-source="adresse" aria-selected="false">Adresse</button>
+      </div>
+      <div class="outils">
+        <input type="search" id="trouver-q" style="flex:1;min-width:220px" aria-label="Recherche">
+        <button type="button" class="primaire" id="trouver-go">Chercher</button>
+        <span class="aide" id="trouver-aide"></span>
+      </div>
+      <ul class="cands" id="cands"></ul>
+    </div>
+  </section>
+</div>
+<script>
+"use strict";
+/* =====================================================================
+   Référentiel des sites — widget de mise à jour
+   ---------------------------------------------------------------------
+   Tables : référentiel des établissements (champ ESR de Config, sinon celui visé par le référentiel des sites) et
+   référentiel des sites (table « …site… » qui renvoie vers les établissements ; créée si besoin).
+   Sources de sites candidats, interrogées depuis le navigateur :
+   - lieux IGN : géocodage de la Géoplateforme, index des points d'intérêt (BD TOPO) ;
+   - OpenStreetMap : API Overpass, universités, écoles et instituts de recherche autour de l'établissement ;
+   - adresse : géocodage de la Géoplateforme (Base adresse nationale).
+   Écritures : un site ajouté reçoit un identifiant SITE-Mnnnn, statut « Validé », sa source et la précision de ses
+   coordonnées ; un repère déplacé met à jour les coordonnées (« placé sur la carte ») ; un site n'est jamais supprimé
+   (des signalements peuvent y renvoyer) : il se désactive (colonne Actif).
+   ===================================================================== */
+const S = window.Socle;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[’']/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+const refId = v => typeof v === "number" ? v : (v && typeof v === "object" && "rowId" in v) ? v.rowId : (Array.isArray(v) && v[0] === "R") ? v[2] : null;
+const num = v => { const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(",", ".")); return Number.isFinite(n) && n !== 0 ? n : null; };
+const distanceM = (a, b) => { const k = Math.PI / 180, x = (b.lon - a.lon) * Math.cos((a.lat + b.lat) / 2 * k), y = b.lat - a.lat; return Math.hypot(x, y) * 111195; };
+const km = m => m == null ? "" : m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(m < 10000 ? 1 : 0)} km`;
+const GEOCODAGE = "https://data.geopf.fr/geocodage";
+const OVERPASS = "https://overpass-api.de/api/interpreter";
+const FOND_PLAN = "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/png&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}";
+const FOND_PHOTO = "https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM&FORMAT=image/jpeg&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}";
+const DOUBLON_M = 150;   // un candidat à moins de 150 m d'un site existant est signalé « déjà au référentiel »
+const MOTS_VIDES = new Set(["universite", "ecole", "institut", "national", "nationale", "superieure", "superieur", "de", "du", "des", "la", "le", "les", "l", "d", "et", "en", "campus", "site", "france", "centre"]);
+
+let ctx = null;          // { tEtab, tSites, cols, ce, ... }
+let etabs = [];          // [{ id, nom, sigle, lib, commune, lat, lon, ratt, niveau, texte }]
+let sites = [];          // [{ id, nom, etab, comp, commune, lat, lon, statut, source, mots, actif, ... }]
+let choisi = null, siteChoisi = null, source = "ign", candidats = [];
+let carte = null, coucheSites = null, coucheCands = null, coucheEtab = null;
+
+function statut(t, type) { const e = $("statut"); e.textContent = t || ""; e.className = `statut ${type || ""}`; }
+async function lireJson(url, opts) {
+  let r;
+  try { r = await fetch(url, opts); } catch (_) { throw new Error(`${new URL(url).host} injoignable depuis votre navigateur (réseau, pare-feu ou proxy)`); }
+  if (!r.ok) throw new Error(`${new URL(url).host} a répondu ${r.status}`);
+  return r.json();
+}
+
+/* ---------- Tables et colonnes ---------- */
+// colonnes du référentiel des sites : identifiant de la colonne, type, créée si elle manque (à la première écriture)
+const COLS_SITES = {
+  id: { re: /^site_?id$/i, id: "Site_id", type: "Text", label: "Site ID" },
+  nom: { re: /^(nom|libelle|denomination|intitule)/i, id: "Nom", type: "Text", label: "Nom du site" },
+  commune: { re: /^commune$/i, id: "Commune", type: "Text", label: "Commune" },
+  cp: { re: /^code_?postal$/i, id: "Code_postal", type: "Text", label: "Code postal" },
+  adresse: { re: /^adresse$/i, id: "Adresse", type: "Text", label: "Adresse" },
+  lat: { re: /^lat(itude)?$/i, id: "Latitude", type: "Numeric", label: "Latitude" },
+  lon: { re: /^(lon|lng|longitude)$/i, id: "Longitude", type: "Numeric", label: "Longitude" },
+  precision: { re: /^precision/i, id: "Precision_coordonnees", type: "Text", label: "Précision des coordonnées" },
+  statut: { re: /^statut$/i, id: "Statut", type: "Choice", label: "Statut", choix: ["Validé", "Proposé"] },
+  source: { re: /^source$/i, id: "Source", type: "Choice", label: "Source", choix: ["OAD", "IGN", "OpenStreetMap", "Adresse", "Carte"] },
+  mots: { re: /^mots?_?cles?$/i, id: "Mots_cles", type: "Text", label: "Mots-clés" },
+  autres: { re: /^autres?_noms?$/i, id: null },
+  actif: { re: /^actif$/i, id: "Actif", type: "Bool", label: "Actif" },
+};
+async function contexte() {
+  const meta = await S.lireMeta(), config = await S.lireConfig(meta);
+  const g = config ? S.general(config) : null, esp = g ? S.espaces(g) : [];
+  const reps = esp.map(e => e.reponses);
+  const candidatsSites = etab => Object.keys(meta).find(t => !t.startsWith("_grist") && /site/i.test(t) && !/signal|correspond/i.test(t)
+    && Object.values(meta[t].colonnes).some(c => c.type === `Ref:${etab}`) && !Object.values(meta[t].colonnes).some(c => reps.includes(S.cibleRef(c.type)) || /^Ref:Reponses/.test(c.type))) || null;
+  let tEtab = (esp.find(e => e.champ === "ESR" && meta[e.referentiel]) || {}).referentiel || null, tSites = tEtab ? candidatsSites(tEtab) : null;
+  if (!tSites) for (const t of Object.keys(meta)) {   // référentiel des sites existant : il désigne le référentiel des établissements
+    if (t.startsWith("_grist") || !/site/i.test(t) || /signal|correspond/i.test(t)) continue;
+    const c = Object.values(meta[t].colonnes).find(x => /^Ref:/.test(x.type) && /etab/i.test(x.colId) && !reps.includes(S.cibleRef(x.type)));
+    if (c) { tSites = t; tEtab = S.cibleRef(c.type); break; }
+  }
+  if (!tEtab) tEtab = (esp[0] || {}).referentiel || null;
+  if (!tEtab || !meta[tEtab]) throw new Error("Référentiel des établissements introuvable : terminez l'installation du socle (administration).");
+  const tm = meta[tEtab], roles = S.resoudreRoles("referentiel", tm, { referentiel: tEtab, reponses: (esp.find(e => e.referentiel === tEtab) || {}).reponses }, {}, {});
+  const r = k => roles[k] && roles[k].col;
+  const ce = { nom: r("Nom"), commune: r("Commune"), lat: r("Latitude"), lon: r("Longitude"), academie: r("Academie"), type: r("Type"),
+    sigle: tm.colonnes.Sigle ? "Sigle" : null, lib: tm.colonnes.Libelle_consolide ? "Libelle_consolide" : null, mots: tm.colonnes.Mots_cles ? "Mots_cles" : null,
+    niveau: tm.colonnes.Niveau ? "Niveau" : null, etat: tm.colonnes.Etat ? "Etat" : null,
+    ratt: (Object.values(tm.colonnes).find(c => c.type === `Ref:${tEtab}` && /rattach|parent/i.test(c.colId)) || {}).colId || null };
+  return { meta, config, tEtab, tSites, ce };
+}
+function colonnesSites() {
+  const tm = ctx.tSites && ctx.meta[ctx.tSites]; const out = {};
+  if (!tm) return out;
+  const cols = Object.values(tm.colonnes).filter(c => !c.isFormula);
+  const versEtab = cols.filter(c => c.type === `Ref:${ctx.tEtab}`);
+  out.etab = (versEtab.find(c => c.colId === "Etablissement") || versEtab.find(c => !/compos/i.test(c.colId)) || {}).colId || null;
+  out.comp = (versEtab.find(c => /compos/i.test(c.colId)) || {}).colId || null;
+  for (const [k, d] of Object.entries(COLS_SITES)) {
+    const c = cols.find(x => d.re.test(x.colId) && (k !== "nom" || /^Text/.test(x.type)));
+    out[k] = c ? c.colId : null;
+  }
+  return out;
+}
+async function lireDonnees() {
+  ctx = await contexte();
+  const ce = ctx.ce, te = await grist.docApi.fetchTable(ctx.tEtab);
+  const v = (c, i) => c && te[c] ? te[c][i] : null;
+  etabs = te.id.map((id, i) => {
+    const e = { id, nom: String(v(ce.nom, i) ?? ""), sigle: String(v(ce.sigle, i) ?? ""), lib: String(v(ce.lib, i) ?? ""), commune: String(v(ce.commune, i) ?? ""),
+      lat: num(v(ce.lat, i)), lon: num(v(ce.lon, i)), ratt: refId(v(ce.ratt, i)), niveau: String(v(ce.niveau, i) ?? ""), mots: String(v(ce.mots, i) ?? ""),
+      etat: String(v(ce.etat, i) ?? ""), type: String(v(ce.type, i) ?? "") };
+    e.texte = norm([e.nom, e.sigle, e.lib, e.commune, e.mots].join(" "));
+    return e;
+  }).filter(e => !/^fusionn/i.test(e.etat));
+  ctx.cols = colonnesSites();
+  sites = [];
+  if (ctx.tSites) {
+    const ts = await grist.docApi.fetchTable(ctx.tSites), c = ctx.cols, w = (k, i) => c[k] && ts[c[k]] ? ts[c[k]][i] : null;
+    sites = ts.id.map((id, i) => ({ id, code: String(w("id", i) ?? ""), nom: String(w("nom", i) ?? ""), etab: refId(w("etab", i)), comp: refId(w("comp", i)),
+      commune: String(w("commune", i) ?? ""), cp: String(w("cp", i) ?? ""), adresse: String(w("adresse", i) ?? ""), lat: num(w("lat", i)), lon: num(w("lon", i)),
+      statut: String(w("statut", i) ?? ""), source: String(w("source", i) ?? ""), mots: String(w("mots", i) ?? ""), autres: String(w("autres", i) ?? ""),
+      precision: String(w("precision", i) ?? ""), actif: c.actif ? w("actif", i) !== false : true }));
+  }
+  $("contexte").innerHTML = ctx.tSites
+    ? `Établissements : <strong>${esc(ctx.tEtab)}</strong> (${etabs.length}) · sites : <strong>${esc(ctx.tSites)}</strong> (${sites.length})`
+    : `Établissements : <strong>${esc(ctx.tEtab)}</strong>. Aucun référentiel des sites : il sera créé (table Referentiel_sites) au premier site ajouté.`;
+}
+const etabDe = id => etabs.find(e => e.id === id) || null;
+const parentDe = e => { let p = e, vus = new Set(); while (p && p.ratt && !vus.has(p.id)) { vus.add(p.id); const q = etabDe(p.ratt); if (!q) break; p = q; } return p; };
+
+/* ---------- Écritures ---------- */
+async function preparerTable() {
+  if (!ctx.tSites) {
+    const tid = "Referentiel_sites";
+    const cols = [{ id: "Site_id", type: "Text" }, { id: "Nom", type: "Text" }, { id: "Etablissement", type: `Ref:${ctx.tEtab}` }, { id: "Composante", type: `Ref:${ctx.tEtab}` },
+      ...Object.entries(COLS_SITES).filter(([k, d]) => d.id && !["id", "nom"].includes(k)).map(([, d]) => ({ id: d.id, type: d.type }))];
+    await grist.docApi.applyUserActions([["AddTable", tid, cols.map(c => ({ ...c, isFormula: false }))]]);
+    ctx.tSites = tid;
+  }
+  ctx.meta = await S.lireMeta();
+  const tm = ctx.meta[ctx.tSites], acts = [];
+  for (const [k, d] of Object.entries(COLS_SITES)) {
+    if (!d.id || Object.values(tm.colonnes).some(x => d.re.test(x.colId))) continue;
+    acts.push(["AddColumn", ctx.tSites, d.id, { type: d.type, isFormula: false, label: d.label, untieColIdFromLabel: true }]);
+  }
+  if (!Object.values(tm.colonnes).some(c => /compos/i.test(c.colId) && c.type === `Ref:${ctx.tEtab}`))
+    acts.push(["AddColumn", ctx.tSites, "Composante", { type: `Ref:${ctx.tEtab}`, isFormula: false, label: "Composante concernée", untieColIdFromLabel: true }]);
+  if (acts.length) await grist.docApi.applyUserActions(acts);
+  ctx.meta = await S.lireMeta();
+  ctx.cols = colonnesSites();
+}
+async function etendreChoix(k, valeur) {
+  const c = ctx.cols[k]; if (!c || !valeur) return;
+  const m = ctx.meta[ctx.tSites].colonnes[c]; if (!m || !/^Choice/.test(m.type)) return;
+  let o = {}; try { o = JSON.parse(m.widgetOptions || "{}") || {}; } catch (_) { o = {}; }
+  const ch = Array.isArray(o.choices) ? o.choices : [];
+  const manque = [...new Set([...(COLS_SITES[k].choix || []), valeur])].filter(x => !ch.includes(x));
+  if (!manque.length) return;
+  o.choices = ch.concat(manque); m.widgetOptions = JSON.stringify(o);
+  await grist.docApi.applyUserActions([["ModifyColumn", ctx.tSites, c, { widgetOptions: m.widgetOptions }]]);
+}
+const champs = f => { const out = {}; for (const [k, v] of Object.entries(f)) if (ctx.cols[k]) out[ctx.cols[k]] = v; return out; };
+function nouveauCode() {
+  const n = sites.map(s => (/^SITE-M(\d+)$/.exec(s.code) || [])[1]).filter(Boolean).map(Number);
+  return `SITE-M${String((n.length ? Math.max(...n) : 0) + 1).padStart(4, "0")}`;
+}
+async function ajouterSite(c) {
+  const e = choisi; if (!e) return;
+  try {
+    statut("Enregistrement…");
+    await preparerTable();
+    const p = parentDe(e), estComposante = p && p.id !== e.id;
+    if (!c.commune || !c.cp) { const r = await inverse(c.lat, c.lon).catch(() => null); if (r) { c.commune = c.commune || r.commune; c.cp = c.cp || r.cp; c.adresse = c.adresse || r.adresse; } }
+    await etendreChoix("source", c.source); await etendreChoix("statut", "Validé");
+    const f = { id: nouveauCode(), nom: c.nom, commune: c.commune || "", cp: c.cp || "", adresse: c.adresse || "", lat: c.lat, lon: c.lon,
+      precision: c.precision, statut: "Validé", source: c.source, actif: true, mots: c.mots || "" };
+    const rec = { ...champs(f), [ctx.cols.etab]: (estComposante ? p : e).id, ...(estComposante && ctx.cols.comp ? { [ctx.cols.comp]: e.id } : {}) };
+    await grist.docApi.applyUserActions([["AddRecord", ctx.tSites, null, rec]]);
+    await lireDonnees();
+    const s = sites.find(x => x.code === f.id); siteChoisi = s ? s.id : null;
+    dessinerSites(); dessinerCandidats();
+    statut(`Site « ${c.nom} » ajouté (${f.id}).`, "ok");
+  } catch (err) { statut(`Site non ajouté : ${err.message || err}`, "err"); }
+}
+async function modifierSite(id, f, quoi) {
+  try {
+    await preparerTable();
+    if (f.source) await etendreChoix("source", f.source);
+    await grist.docApi.applyUserActions([["UpdateRecord", ctx.tSites, id, champs(f)]]);
+    const s = sites.find(x => x.id === id); if (s) Object.assign(s, f);
+    statut(quoi || "Enregistré.", "ok");
+  } catch (err) { statut(`Non enregistré : ${err.message || err}`, "err"); }
+}
+
+/* ---------- Géocodage (Géoplateforme) et OpenStreetMap ---------- */
+async function inverse(lat, lon) {
+  const d = await lireJson(`${GEOCODAGE}/reverse?lon=${lon}&lat=${lat}&index=address&limit=1`);
+  const p = d.features && d.features[0] && d.features[0].properties; if (!p) return null;
+  return { commune: p.city || "", cp: p.postcode || "", adresse: p.name || p.label || "" };
+}
+const centre = () => {
+  const e = choisi; if (!e) return null;
+  const pts = sitesDe(e).filter(s => s.lat != null && s.lon != null);
+  if (e.lat != null && e.lon != null) return { lat: e.lat, lon: e.lon };
+  if (pts.length) return { lat: pts.reduce((a, s) => a + s.lat, 0) / pts.length, lon: pts.reduce((a, s) => a + s.lon, 0) / pts.length };
+  const p = parentDe(e); return p && p.lat != null ? { lat: p.lat, lon: p.lon } : null;
+};
+function motsSignificatifs(e) {
+  const p = parentDe(e) || e;
+  const mots = new Set([e, p].flatMap(x => norm([x.nom, x.sigle, x.lib].join(" ")).split(" ")).filter(w => w.length > 2 && !MOTS_VIDES.has(w)));
+  return [...mots];
+}
+function dejaConnu(c) {
+  const proche = sitesDe(choisi).filter(s => s.lat != null && s.lon != null).map(s => ({ s, d: distanceM(s, c) })).sort((a, b) => a.d - b.d)[0];
+  if (proche && proche.d < DOUBLON_M) return proche.s;
+  return sitesDe(choisi).find(s => norm(s.nom) === norm(c.nom)) || null;
+}
+async function chercherIgn(q) {
+  const c = centre();
+  const d = await lireJson(`${GEOCODAGE}/search?q=${encodeURIComponent(q)}&index=poi&limit=40${c ? `&lat=${c.lat}&lon=${c.lon}` : ""}`);
+  return (d.features || []).map(f => {
+    const p = f.properties || {}, [lon, lat] = (f.geometry && f.geometry.coordinates) || [];
+    const cat = [].concat(p.category || []).join(", "), ville = [].concat(p.city || [])[0] || "", cp = [].concat(p.postcode || [])[0] || "";
+    return { nom: p.toponym || [].concat(p.name || [])[0] || "", lat, lon, detail: [cat, ville].filter(Boolean).join(" · "), commune: ville, cp,
+      source: "IGN", precision: "Lieu IGN (BD TOPO)", probable: /enseignement|universit|recherche|formation/i.test(cat) };
+  }).filter(x => x.nom && Number.isFinite(x.lat));
+}
+async function chercherOsm(q, rayonKm) {
+  const c = centre(); if (!c) throw new Error("établissement sans coordonnées : ajoutez d'abord un site, ou cherchez par adresse ou dans les lieux IGN");
+  const r = Math.round(rayonKm * 1000);
+  const requete = `[out:json][timeout:25];(nwr["amenity"~"^(university|college|research_institute)$"](around:${r},${c.lat},${c.lon});`
+    + `nwr["building"~"^(university|college)$"]["name"](around:${r},${c.lat},${c.lon}););out center tags 300;`;
+  const d = await lireJson(OVERPASS, { method: "POST", body: "data=" + encodeURIComponent(requete), headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+  const mots = motsSignificatifs(choisi), filtre = norm(q).split(" ").filter(Boolean);
+  return (d.elements || []).map(el => {
+    const t = el.tags || {}, lat = el.lat ?? (el.center && el.center.lat), lon = el.lon ?? (el.center && el.center.lon);
+    const nom = t.name || t["name:fr"] || t.official_name || "";
+    const texte = norm([nom, t.operator, t.short_name, t.alt_name, t.official_name].join(" "));
+    return { nom, lat, lon, detail: [t.amenity || t.building, t.operator, t["addr:city"]].filter(Boolean).join(" · "), commune: t["addr:city"] || "", cp: t["addr:postcode"] || "",
+      adresse: [t["addr:housenumber"], t["addr:street"]].filter(Boolean).join(" "), source: "OpenStreetMap", precision: "OpenStreetMap",
+      probable: mots.some(m => texte.includes(m)), texte };
+  }).filter(x => x.nom && Number.isFinite(x.lat) && (!filtre.length || filtre.every(m => x.texte.includes(m))))
+    .filter((x, i, a) => a.findIndex(y => norm(y.nom) === norm(x.nom) && distanceM(x, y) < 100) === i);
+}
+async function chercherAdresse(q) {
+  const c = centre();
+  const d = await lireJson(`${GEOCODAGE}/search?q=${encodeURIComponent(q)}&index=address&limit=10${c ? `&lat=${c.lat}&lon=${c.lon}` : ""}`);
+  return (d.features || []).map(f => { const p = f.properties || {}, [lon, lat] = f.geometry.coordinates;
+    return { nom: "", libelleAdresse: p.label, lat, lon, detail: `${p.type === "housenumber" ? "adresse" : p.type || ""} · score ${Math.round((p.score || 0) * 100)} %`,
+      commune: p.city || "", cp: p.postcode || "", adresse: p.name || "", source: "Adresse", precision: p.type === "housenumber" ? "Adresse (numéro)" : "Adresse (rue ou commune)", probable: false }; });
+}
+
+/* ---------- Carte ---------- */
+function initCarte() {
+  carte = L.map("carte", { zoomControl: true }).setView([46.6, 2.4], 6);
+  const plan = L.tileLayer(FOND_PLAN, { maxZoom: 19, attribution: "© IGN – Plan IGN" }).addTo(carte);
+  const photo = L.tileLayer(FOND_PHOTO, { maxZoom: 19, attribution: "© IGN – photographies aériennes" });
+  L.control.layers({ "Plan IGN": plan, "Photographies aériennes": photo }, {}, { position: "topright" }).addTo(carte);
+  coucheEtab = L.layerGroup().addTo(carte); coucheSites = L.layerGroup().addTo(carte); coucheCands = L.layerGroup().addTo(carte);
+  carte.on("click", ev => {
+    if (!choisi) return;
+    const { lat, lng } = ev.latlng;
+    const div = document.createElement("div"); div.className = "popup-ajout";
+    div.innerHTML = `<strong>Ajouter un site ici</strong><br><input type="text" placeholder="Nom du site" aria-label="Nom du site"><br><button type="button" class="primaire">Ajouter à ${esc(choisi.sigle || choisi.nom)}</button>`;
+    const pop = L.popup().setLatLng(ev.latlng).setContent(div).openOn(carte);
+    const inp = div.querySelector("input"); setTimeout(() => inp.focus(), 50);
+    const go = () => { const nom = inp.value.trim(); if (!nom) { inp.focus(); return; } carte.closePopup(pop);
+      ajouterSite({ nom, lat: +lat.toFixed(6), lon: +lng.toFixed(6), source: "Carte", precision: "Placé sur la carte" }); };
+    div.querySelector("button").addEventListener("click", go);
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+  });
+}
+const rond = (couleur, plein) => ({ radius: 7, color: couleur, weight: 2, fillColor: couleur, fillOpacity: plein ? .85 : .25 });
+function icone(couleur, lettre) {
+  return L.divIcon({ className: "", iconSize: [22, 22], iconAnchor: [11, 11],
+    html: `<div style="width:22px;height:22px;border-radius:50%;background:${couleur};border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.35);color:#fff;font:700 11px/18px Arial;text-align:center">${lettre || ""}</div>` });
+}
+const couleur = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim() || "#000091";
+function dessinerCarte(cadrer) {
+  coucheSites.clearLayers(); coucheEtab.clearLayers();
+  if (!choisi) return;
+  const pts = [];
+  if (choisi.lat != null && choisi.lon != null) {
+    L.marker([choisi.lat, choisi.lon], { icon: icone(couleur("--muted"), "É"), title: `${choisi.nom} (position de l'établissement)` }).addTo(coucheEtab)
+      .bindTooltip(`${esc(choisi.nom)} — position de l'établissement`);
+    pts.push([choisi.lat, choisi.lon]);
+  }
+  sitesDe(choisi).forEach((s, k) => {
+    if (s.lat == null || s.lon == null) return;
+    const m = L.marker([s.lat, s.lon], { draggable: true, icon: icone(!s.actif ? couleur("--off") : /propos/i.test(s.statut) ? couleur("--propose") : couleur("--site"), String(k + 1)), title: s.nom })
+      .addTo(coucheSites).bindTooltip(`${k + 1}. ${esc(s.nom)}${s.statut ? ` (${esc(s.statut)})` : ""}<br><span style="font-size:11px">Glissez pour corriger la position</span>`);
+    m.on("click", () => { siteChoisi = s.id; dessinerSites(); const el = document.querySelector(`[data-site="${s.id}"]`); if (el) el.scrollIntoView({ block: "nearest" }); });
+    m.on("dragend", () => { const p = m.getLatLng(); s.lat = +p.lat.toFixed(6); s.lon = +p.lng.toFixed(6);
+      modifierSite(s.id, { lat: s.lat, lon: s.lon, precision: "Placé sur la carte" }, `Position de « ${s.nom} » enregistrée.`); dessinerSites(false); });
+    pts.push([s.lat, s.lon]);
+  });
+  if (cadrer) { if (pts.length > 1) carte.fitBounds(pts, { padding: [40, 40], maxZoom: 16 }); else if (pts.length) carte.setView(pts[0], 14); }
+}
+function dessinerCandidatsCarte() {
+  coucheCands.clearLayers();
+  candidats.forEach((c, i) => {
+    L.circleMarker([c.lat, c.lon], rond(couleur("--cand"), c.probable)).addTo(coucheCands)
+      .bindTooltip(`${esc(c.nom || c.libelleAdresse)}<br><span style="font-size:11px">${esc(c.source)}${c.detail ? " · " + esc(c.detail) : ""}</span>`)
+      .on("click", () => { const el = document.querySelector(`[data-cand="${i}"]`); if (el) { el.scrollIntoView({ block: "nearest" }); el.querySelector("input,button").focus(); } });
+  });
+}
+
+/* ---------- Établissement ---------- */
+function sitesDe(e) {
+  if (!e) return [];
+  const p = parentDe(e), comp = p && p.id !== e.id;
+  return sites.filter(s => comp ? s.comp === e.id : s.etab === e.id).sort((a, b) => (b.actif - a.actif) || a.nom.localeCompare(b.nom, "fr"));
+}
+function rechercherEtab() {
+  const q = norm($("etab-q").value), ul = $("etab-res");
+  if (q.length < 2) { ul.hidden = true; $("etab-q").setAttribute("aria-expanded", "false"); return; }
+  const mots = q.split(" ");
+  const res = etabs.filter(e => mots.every(m => e.texte.includes(m)))
+    .map(e => ({ e, n: sites.filter(s => s.etab === e.id || s.comp === e.id).length, titre: norm([e.nom, e.sigle, e.lib].join(" ")) }))
+    .sort((a, b) => (mots.filter(m => b.titre.includes(m)).length - mots.filter(m => a.titre.includes(m)).length) || (b.n - a.n)).slice(0, 25);
+  ul.innerHTML = res.length ? res.map(({ e, n }) => `<li role="option" data-etab="${e.id}"><div>${esc(e.nom)}${e.sigle && !e.nom.includes(e.sigle) ? ` (${esc(e.sigle)})` : ""}</div>
+    <div class="meta">${esc([e.niveau && e.niveau !== "Établissement" ? e.niveau : e.type, e.commune].filter(Boolean).join(" · "))} · ${n} site${n > 1 ? "s" : ""}</div></li>`).join("")
+    : `<li class="meta" aria-disabled="true">Aucun établissement trouvé.</li>`;
+  ul.hidden = false; $("etab-q").setAttribute("aria-expanded", "true");
+}
+function choisirEtab(id) {
+  choisi = etabDe(id); siteChoisi = null; candidats = [];
+  $("etab-res").hidden = true; $("etab-q").value = choisi ? choisi.nom : "";
+  try { localStorage.setItem("socle-v2-sites-etab", String(id)); } catch (_) { /* stockage indisponible */ }
+  const p = choisi && parentDe(choisi);
+  $("fiche").innerHTML = choisi ? `<div class="fiche"><strong>${esc(choisi.nom)}</strong>${choisi.sigle && !choisi.nom.includes(choisi.sigle) ? ` (${esc(choisi.sigle)})` : ""}
+      <div class="aide">${esc([choisi.niveau, choisi.type, choisi.commune].filter(Boolean).join(" · "))}${choisi.lat == null ? " · sans coordonnées" : ""}</div>
+      ${p && p.id !== choisi.id ? `<div class="aide">Composante de <button type="button" class="lien" data-etab-parent="${p.id}">${esc(p.nom)}</button> : les sites ajoutés sont rattachés à l'établissement, avec cette composante.</div>` : ""}</div>` : "";
+  const bp = document.querySelector("[data-etab-parent]"); if (bp) bp.addEventListener("click", () => choisirEtab(+bp.dataset.etabParent));
+  $("trouver").hidden = !choisi;
+  $("trouver-q").value = choisi ? (source === "adresse" ? "" : (choisi.sigle && choisi.sigle.length > 2 ? choisi.sigle : choisi.nom)) : "";
+  dessinerSites(true); dessinerCandidats(); majAideSource();
+}
+function dessinerSites(cadrer) {
+  const z = $("liste");
+  if (!choisi) { z.innerHTML = ""; dessinerCarte(false); return; }
+  const l = sitesDe(choisi);
+  z.innerHTML = `<h2>${l.length} site${l.length > 1 ? "s" : ""} au référentiel</h2>
+    ${l.length ? `<ul class="sites">${l.map((s, k) => `<li class="site${s.id === siteChoisi ? " choisi" : ""}${s.actif ? "" : " inactif"}" data-site="${s.id}">
+      <div class="ligne"><span class="pastille">${k + 1}</span><input type="text" class="nom" value="${esc(s.nom)}" aria-label="Nom du site ${k + 1}">
+        <select class="st" aria-label="Statut du site ${k + 1}">${["Validé", "Proposé"].concat(s.statut && !["Validé", "Proposé"].includes(s.statut) ? [s.statut] : []).map(x => `<option${x === s.statut ? " selected" : ""}>${esc(x)}</option>`).join("")}</select></div>
+      <div class="meta">${esc([s.commune, s.code, s.source].filter(Boolean).join(" · "))}${s.lat == null ? ` · <span class="pastille warn">sans coordonnées : cliquez « Placer », puis sur la carte</span>` : ` · ${esc(s.precision || "coordonnées")}`}</div>
+      ${s.autres ? `<div class="meta" title="${esc(s.autres)}">Autres noms : ${esc(s.autres.length > 120 ? s.autres.slice(0, 120) + "…" : s.autres)}</div>` : ""}
+      <input type="text" class="mots" value="${esc(s.mots)}" placeholder="Mots-clés (bâtiment, ancien nom, rue…), séparés par des virgules" aria-label="Mots-clés du site ${k + 1}">
+      <div class="outils"><button type="button" class="lien" data-action="centrer">Voir sur la carte</button>
+        <button type="button" class="lien" data-action="placer">${s.lat == null ? "Placer" : "Replacer"} d'un clic sur la carte</button>
+        <button type="button" class="lien" data-action="actif">${s.actif ? "Désactiver" : "Réactiver"}</button></div></li>`).join("")}</ul>`
+      : `<p class="vide">Aucun site : cherchez-en dans les lieux IGN ou OpenStreetMap ci-contre, ou cliquez sur la carte pour en ajouter un.</p>`}`;
+  z.querySelectorAll(".site").forEach(li => {
+    const s = sites.find(x => x.id === +li.dataset.site);
+    li.querySelector(".nom").addEventListener("change", ev => { const v = ev.target.value.trim(); if (!v) { ev.target.value = s.nom; return; } s.nom = v; modifierSite(s.id, { nom: v }, "Nom enregistré."); dessinerCarte(false); });
+    li.querySelector(".st").addEventListener("change", ev => { s.statut = ev.target.value; modifierSite(s.id, { statut: s.statut }, "Statut enregistré."); dessinerCarte(false); });
+    li.querySelector(".mots").addEventListener("change", ev => { const v = ev.target.value.split(/\s*[,;|]\s*/).map(x => x.trim()).filter(Boolean).join(", "); ev.target.value = v; s.mots = v; modifierSite(s.id, { mots: v }, "Mots-clés enregistrés."); });
+    li.querySelectorAll("[data-action]").forEach(b => b.addEventListener("click", () => {
+      siteChoisi = s.id;
+      if (b.dataset.action === "centrer" && s.lat != null) carte.setView([s.lat, s.lon], Math.max(carte.getZoom(), 16));
+      if (b.dataset.action === "actif") { s.actif = !s.actif; modifierSite(s.id, { actif: s.actif }, s.actif ? "Site réactivé." : "Site désactivé : il n'est plus proposé dans les formulaires (les signalements qui y renvoient restent)."); }
+      if (b.dataset.action === "placer") {
+        statut(`Cliquez sur la carte pour placer « ${s.nom} ».`);
+        carte.once("click", ev => { L.DomEvent.stop(ev); carte.closePopup(); s.lat = +ev.latlng.lat.toFixed(6); s.lon = +ev.latlng.lng.toFixed(6);
+          modifierSite(s.id, { lat: s.lat, lon: s.lon, precision: "Placé sur la carte" }, `Position de « ${s.nom} » enregistrée.`); dessinerSites(false); });
+        setTimeout(() => carte.closePopup(), 0);
+      }
+      dessinerSites(false);
+    }));
+  });
+  dessinerCarte(cadrer);
+}
+
+/* ---------- Recherche de sites candidats ---------- */
+const AIDES = {
+  ign: "Points d'intérêt de la BD TOPO (bâtiments d'enseignement, campus, résidences…), les plus proches de l'établissement d'abord.",
+  osm: "Universités, écoles et instituts de recherche cartographiés dans OpenStreetMap à moins de 15 km ; filtrez par un mot, ou laissez vide pour tout voir.",
+  adresse: "Adresse postale (Base adresse nationale) : donnez ensuite un nom au site.",
+};
+function majAideSource() {
+  document.querySelectorAll(".onglets [data-source]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.source === source)));
+  $("trouver-aide").textContent = AIDES[source];
+  $("trouver-q").placeholder = source === "adresse" ? "ex. 23 avenue Albert Einstein La Rochelle" : source === "osm" ? "Filtrer (facultatif)" : "Nom, sigle, campus…";
+}
+async function chercher() {
+  if (!choisi) return;
+  const q = $("trouver-q").value.trim(), ul = $("cands");
+  if (!q && source !== "osm") { $("trouver-q").focus(); return; }
+  ul.innerHTML = `<li class="vide">Recherche…</li>`;
+  try {
+    candidats = source === "ign" ? await chercherIgn(q) : source === "osm" ? await chercherOsm(q, 15) : await chercherAdresse(q);
+    const c = centre();
+    candidats.forEach(x => { x.distance = c ? distanceM(c, x) : null; x.deja = dejaConnu(x); });
+    candidats.sort((a, b) => (!!a.deja - !!b.deja) || (b.probable - a.probable) || ((a.distance ?? 1e12) - (b.distance ?? 1e12)));
+    if (source === "ign" && c) candidats = candidats.filter(x => x.distance == null || x.distance < 80000);
+    candidats = candidats.slice(0, 60);
+  } catch (err) { candidats = []; ul.innerHTML = `<li class="vide">Recherche impossible : ${esc(err.message || err)}.</li>`; coucheCands.clearLayers(); return; }
+  dessinerCandidats(true);
+}
+function dessinerCandidats(cadrer) {
+  const ul = $("cands");
+  if (!candidats.length) { ul.innerHTML = choisi && document.activeElement === $("trouver-go") ? `<li class="vide">Aucun résultat.</li>` : ""; coucheCands.clearLayers(); return; }
+  candidats.forEach(x => { x.deja = dejaConnu(x); });
+  ul.innerHTML = candidats.map((c, i) => `<li class="cand${c.probable ? " probable" : ""}${c.deja ? " deja" : ""}" data-cand="${i}">
+    <div><strong>${esc(c.nom || c.libelleAdresse)}</strong>${c.probable ? ` <span class="pastille warn">probable</span>` : ""}</div>
+    <div class="meta">${esc(c.source)}${c.detail ? " · " + esc(c.detail) : ""}${c.distance != null ? ` · à ${km(c.distance)}` : ""}</div>
+    ${c.deja ? `<div class="meta">Déjà au référentiel : ${esc(c.deja.nom)}</div>` : ""}
+    <div class="actions">${source === "adresse" || !c.nom ? `<input type="text" class="nom-cand" placeholder="Nom du site" style="flex:1;min-width:120px" aria-label="Nom du site à cette adresse">` : ""}
+      <button type="button" data-action="voir">Voir</button>
+      <button type="button" class="primaire" data-action="ajouter">${c.deja ? "Ajouter quand même" : "Ajouter"}</button>
+      ${c.deja ? `<button type="button" data-action="mots" title="Ajoute « ${esc(c.nom || c.libelleAdresse)} » aux mots-clés de « ${esc(c.deja.nom)} »">Mot-clé du site existant</button>` : ""}</div></li>`).join("");
+  ul.querySelectorAll(".cand").forEach(li => {
+    const c = candidats[+li.dataset.cand];
+    li.querySelectorAll("[data-action]").forEach(b => b.addEventListener("click", () => {
+      if (b.dataset.action === "voir") { carte.setView([c.lat, c.lon], 17); return; }
+      if (b.dataset.action === "mots") {
+        const s = c.deja, v = [s.mots, c.nom].filter(Boolean).join(", "); s.mots = v;
+        modifierSite(s.id, { mots: v }, `« ${c.nom} » ajouté aux mots-clés de « ${s.nom} ».`); dessinerSites(false); return; }
+      const champ = li.querySelector(".nom-cand"), nom = (champ ? champ.value.trim() : "") || c.nom;
+      if (!nom) { champ.focus(); statut("Donnez un nom au site.", "err"); return; }
+      ajouterSite({ ...c, nom });
+    }));
+  });
+  dessinerCandidatsCarte();
+  if (cadrer) { const pts = candidats.map(c => [c.lat, c.lon]).concat(sitesDe(choisi).filter(s => s.lat != null).map(s => [s.lat, s.lon]));
+    if (pts.length) carte.fitBounds(pts, { padding: [40, 40], maxZoom: 16 }); }
+}
+
+/* ---------- Démarrage ---------- */
+$("etab-q").addEventListener("input", rechercherEtab);
+$("etab-q").addEventListener("focus", rechercherEtab);
+$("etab-q").addEventListener("blur", () => setTimeout(() => { $("etab-res").hidden = true; }, 150));
+$("etab-q").addEventListener("keydown", ev => {
+  const lis = [...$("etab-res").querySelectorAll("li[data-etab]")], i = lis.findIndex(x => x.getAttribute("aria-selected") === "true");
+  if (ev.key === "ArrowDown" || ev.key === "ArrowUp") { ev.preventDefault(); const j = Math.max(0, Math.min(lis.length - 1, i + (ev.key === "ArrowDown" ? 1 : -1))); lis.forEach((x, k) => x.setAttribute("aria-selected", String(k === j))); if (lis[j]) lis[j].scrollIntoView({ block: "nearest" }); }
+  else if (ev.key === "Enter") { const li = lis[i] || lis[0]; if (li) { ev.preventDefault(); choisirEtab(+li.dataset.etab); } }
+  else if (ev.key === "Escape") $("etab-res").hidden = true;
+});
+$("etab-res").addEventListener("mousedown", ev => { const li = ev.target.closest("li[data-etab]"); if (li) { ev.preventDefault(); choisirEtab(+li.dataset.etab); } });
+document.querySelectorAll(".onglets [data-source]").forEach(b => b.addEventListener("click", () => {
+  source = b.dataset.source; candidats = []; dessinerCandidats();
+  $("trouver-q").value = !choisi || source === "adresse" ? "" : source === "osm" ? "" : (choisi.sigle && choisi.sigle.length > 2 ? choisi.sigle : choisi.nom);
+  majAideSource(); if (source === "osm") chercher();
+}));
+$("trouver-go").addEventListener("click", chercher);
+$("trouver-q").addEventListener("keydown", ev => { if (ev.key === "Enter") chercher(); });
+if (S) $("version").textContent = `· socle ${S.VERSION}`;
+
+(async function demarrer() {
+  initCarte();
+  if (!window.grist) return;
+  grist.ready({ requiredAccess: "full" });
+  try {
+    await lireDonnees();
+    let dernier = null; try { dernier = +localStorage.getItem("socle-v2-sites-etab"); } catch (_) { /* stockage indisponible */ }
+    if (dernier && etabDe(dernier)) choisirEtab(dernier);
+    else $("etab-q").focus();
+  } catch (err) { $("contexte").textContent = err.message || String(err); $("contexte").className = "statut err"; }
+})();
+</script>
+</body>
+</html>

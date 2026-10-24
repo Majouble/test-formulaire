@@ -3519,6 +3519,7 @@ function jourCalendaire(sec) {
 /* Sites proposés pour un établissement : les siens (ou, pour une composante, ceux qui la concernent) ; une composante ou un
    site sans site propre au référentiel reprend ceux de son établissement de rattachement. Le site déjà choisi reste. */
 function sitesDeLEtablissement(d, e, opts, choisi) {
+  if (d._inactifs && d._inactifs.size) opts = opts.filter(o => !d._inactifs.has(o.id) || o.id === choisi);
   const a = opts.filter(o => d._siteEtab.get(o.id) === e || (d._siteComp && d._siteComp.get(o.id) === e) || o.id === choisi);
   const p = d._parent && d._parent.get(e);
   const r = !p || a.some(o => o.id !== choisi) ? a : opts.filter(o => d._siteEtab.get(o.id) === p || o.id === choisi);
@@ -4388,6 +4389,8 @@ class Tableau {
           if (ce) { const t = await lireTableReference(cible); ds._siteEtab = new Map(t.id.map((id, i) => [id, refId(t[ce.colId][i])]));
             // mots-clés des sites (Mots_cles, Autres_noms…) : retrouvent le site quand l'agent tape un autre nom
             const cm = m.filter(c => /^Text/.test(c.type || "") && /^(mots?_?cles?|autres?_noms?|alias)/i.test(c.colId)).map(c => c.colId);
+            // sites désactivés (colonne Actif décochée) : plus proposés, sauf sur une ligne qui y renvoie déjà
+            const ca = m.find(c => /^actif$/i.test(c.colId) && c.type === "Bool"); if (ca) ds._inactifs = new Set(t.id.filter((id, i) => t[ca.colId][i] === false));
             ds._motsSite = new Map(t.id.map((id, i) => [id, cm.map(c => t[c] && t[c][i]).filter(x => typeof x === "string" && x.trim()).join(" | ")]));
             if (cc) ds._siteComp = new Map(t.id.map((id, i) => [id, refId(t[cc.colId][i])]));
             const me = Object.values(await metaColonnes(ETAB.table) || {}).find(c => c.type === `Ref:${ETAB.table}` && /rattach|parent/i.test(c.colId));
