@@ -20,5 +20,11 @@ const { docSites } = require('./run78');
     return C.id.map((_, j) => j).filter(j => C.parentId[j] === tr && /^Site/.test(C.colId[j])).map(j => `${C.colId[j]} (${C.type[j]}, « ${C.label[j]} »)`).join(', '); }));
   console.log('RÉGLAGE :', await page.evaluate(() => { const F = window.__DOC__.__data.Formulaires, i = F.Nom.indexOf('Signalements'); return JSON.stringify(JSON.parse(F.Brouillon[i]).blocs[0].reglages.tableau.sites); }));
   console.log('SÉLECTEUR :', await page.$eval('#pa-site-ref', s => s.selectedOptions[0].textContent).catch(() => '?'));
+  // sans colonne hors référentiel : « Accepter les noms hors référentiel »
+  await page.selectOption('#pa-site-libre', ''); await page.waitForTimeout(300);
+  await page.click('[data-bloc="b1"]'); await page.waitForTimeout(400);
+  await page.click('#pa-site-libre-creer'); await page.waitForTimeout(1000);
+  console.log('HORS RÉFÉRENTIEL :', await page.evaluate(() => { const F = window.__DOC__.__data.Formulaires, i = F.Nom.indexOf('Signalements'), D = window.__DOC__, T = D._grist_Tables, C = D._grist_Tables_column, tr = T.id[T.tableId.indexOf('Sites_signales')];
+    return JSON.parse(F.Brouillon[i]).blocs[0].reglages.tableau.sites.libre + ' | colonnes : ' + C.id.map((_, j) => j).filter(j => C.parentId[j] === tr && /^Site/.test(C.colId[j])).map(j => `${C.colId[j]} « ${C.label[j]} »`).join(', '); }));
   await browser.close();
 })();

@@ -50,6 +50,12 @@ function docEsr() {
   await page.setInputFiles('#esr-fichier', CLASSEUR); await page.waitForTimeout(2000);
   console.log('RÉIMPORT :', (await texte('#ref-esr')).match(/À ajouter[^⏎]*⏎ À mettre à jour[^⏎]*⏎ Inchangées[^⏎]*/g));
   console.log('RAPPROCHEMENT (sites.js) :', (await texte('#ref-sites')).slice(0, 400));
+  // mots-clés des sites
+  await page.click('#si-mc-creer'); await page.waitForTimeout(1200);
+  await page.selectOption('#si-mc-etab', await page.$$eval('#si-mc-etab option', l => l.find(o => o.textContent.startsWith('Université de Rennes (')).value));
+  await page.waitForTimeout(300);
+  await page.fill('.si-mc >> nth=0', 'Bâtiment 41 ; Halle'); await page.press('.si-mc >> nth=0', 'Tab'); await page.waitForTimeout(400);
+  console.log('MOTS-CLÉS :', await page.textContent('#si-mc-statut'), '|', await page.evaluate(() => { const S = window.__DOC__.__data.Referentiel_sites; return S.id.map((id, i) => S.Mots_cles && S.Mots_cles[i] ? `${S.Nom[i]} → ${S.Mots_cles[i]}` : '').filter(Boolean).join(' ; '); }));
   doc = await page.evaluate(() => window.__DOC__);
 
   // formulaire par site
@@ -66,10 +72,13 @@ function docEsr() {
   console.log('RECHERCHE « IUT » :', await chercher('IUT'));
   await p2.click('#liste [role=option] >> nth=0'); await p2.waitForTimeout(600);
   const optionsSite = async () => { await p2.click('[data-action=ajouter]'); await p2.waitForTimeout(300);
-    return p2.$$eval('.ligne-rep .sous-champ[data-sous=Site] select', l => l.length ? [...l[l.length - 1].options].map(o => o.textContent).join(', ') : '(pas de ligne)'); };
+    await p2.focus('.ligne-rep:last-child .site-txt'); await p2.waitForTimeout(200);
+    return p2.$$eval('.ligne-rep:last-child .site-sugg li', l => l.map(x => x.textContent.replace(/\s+/g, ' ').trim()).join(', ')); };
   const etabChoisi = () => p2.evaluate(() => etabCourant ? etabCourant[E.nom] : null);
   console.log('IUT CHOISI → DOSSIER SUR :', await etabChoisi(), '|', await texteP2('#alerte-rattachement'));
   console.log('SITES PROPOSÉS (IUT → université, sites de l\'IUT d\'abord) :', await optionsSite());
+  await p2.fill('.ligne-rep:last-child .site-txt', 'halle'); await p2.waitForTimeout(200);
+  console.log('« halle » (mot-clé) :', await p2.$$eval('.ligne-rep:last-child .site-sugg li', l => l.map(x => x.textContent.replace(/\s+/g, ' ').trim()).join(' | ')));
   // campus sans site propre : sites de l'établissement de rattachement
   await p2.goto('file://' + __C.racine + '/v2/saisie/index.html'); await p2.waitForTimeout(1500);
   await p2.click('#porte-nouveau'); await p2.waitForTimeout(400);

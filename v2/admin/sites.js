@@ -23,7 +23,7 @@
   const mots = s => new Set(norm(s).replace(/[^a-z0-9]+/g, " ").split(" ").filter(w => w.length > 1 && !VIDES.has(w)));
   const TABLE_ALIAS = "Sites_correspondances";
 
-  let racine = null, meta = null, etat = null, filtre = "a_traiter", choixSource = "", choixRef = "";
+  let racine = null, meta = null, etat = null, filtre = "a_traiter", choixSource = "", choixRef = "", choixEtabMc = "";
   try { const p = JSON.parse(localStorage.getItem("socle-v2-sites") || "{}"); choixSource = p.source || ""; choixRef = p.ref || ""; } catch (_) { /* stockage indisponible */ }
   const memoriser = () => { try { localStorage.setItem("socle-v2-sites", JSON.stringify({ source: choixSource, ref: choixRef })); } catch (_) { /* stockage indisponible */ } };
 
@@ -50,7 +50,8 @@
       && Object.values(tm.colonnes).some(c => etabTables.has(S.cibleRef(c.type))) && !Object.values(tm.colonnes).some(c => reps.includes(S.cibleRef(c.type))))
       .map(([t, tm]) => ({ table: t, etabCol: Object.values(tm.colonnes).find(c => etabTables.has(S.cibleRef(c.type))).colId,
         nomCol: (Object.values(tm.colonnes).find(c => /^(nom|libelle|denomination|intitule)/i.test(c.colId) && /^Text/.test(c.type)) || Object.values(tm.colonnes).find(c => /^Text/.test(c.type)) || {}).colId,
-        autresCol: (Object.values(tm.colonnes).find(c => /^autres?_noms?|alias|noms_saisis/i.test(c.colId) && /^Text/.test(c.type)) || {}).colId || null }))
+        autresCol: (Object.values(tm.colonnes).find(c => /^autres?_noms?|alias|noms_saisis/i.test(c.colId) && /^Text/.test(c.type)) || {}).colId || null,
+        motsCol: (Object.values(tm.colonnes).find(c => /^mots?_?cles?$/i.test(c.colId) && /^Text/.test(c.type)) || {}).colId || null }))
       .filter(r => r.nomCol).sort((a, b) => (/site/i.test(b.table) ? 1 : 0) - (/site/i.test(a.table) ? 1 : 0));
     return { sources, refs };
   }
@@ -60,7 +61,8 @@
     const ctx = contexte(config);
     const source = ctx.sources.find(s => s.cle === choixSource) || ctx.sources.find(s => /libre|nom_du_site/i.test(s.col)) || ctx.sources[0] || null;
     const ref = ctx.refs.find(r => r.table === choixRef) || ctx.refs[0] || null;
-    if (!source || !ref) return { ctx, source, ref, groupes: [] };
+    const mc = ref ? await chargerMotsCles(ref) : null;
+    if (!source || !ref) return { ctx, source, ref, groupes: [], mc };
     const [ts, trep, tref, talias] = await Promise.all([grist.docApi.fetchTable(source.table), grist.docApi.fetchTable(source.rep), grist.docApi.fetchTable(ref.table),
       meta[TABLE_ALIAS] ? grist.docApi.fetchTable(TABLE_ALIAS) : null]);
     const idxRep = new Map(trep.id.map((id, i) => [id, i])), etabRep = id => { const i = idxRep.get(id); return i === undefined ? null : refId(trep[source.etab.col][i]); };
@@ -72,7 +74,7 @@
     const sitesDe = new Map();
     // les autres noms du site (référentiel ESR : noms OAD, noms saisis par les opérateurs) comptent pour la proposition
     tref.id.forEach((id, i) => { const e = refId(tref[ref.etabCol][i]); if (!e) return; if (!sitesDe.has(e)) sitesDe.set(e, []);
-      sitesDe.get(e).push({ id, nom: String(tref[ref.nomCol][i] ?? ""), autres: ref.autresCol && tref[ref.autresCol] ? String(tref[ref.autresCol][i] ?? "") : "" }); });
+      sitesDe.get(e).push({ id, nom: String(tref[ref.nomCol][i] ?? ""), autres: [ref.autresCol, ref.motsCol].filter(c => c && tref[c]).map(c => String(tref[c][i] ?? "")).filter(Boolean).join(", ") }); });
     // correspondances existantes
     const alias = new Map();
     if (talias) talias.id.forEach((id, i) => alias.set(`${refId(talias.Etablissement[i]) || 0}|${norm(talias.Libelle[i])}`, { id, site: refId(talias.Site[i]), statut: String(talias.Statut[i] || "") }));
@@ -96,7 +98,52 @@
       return { ...gp, nomEtab: nomsEtab.get(gp.etab) || `Établissement ${gp.etab}`, sites, alias: a || null,
         propose: a && a.site ? a.site : (notes[0] && notes[0].score >= 0.5 ? notes[0].s.id : null), score: notes[0] ? notes[0].score : 0 };
     }).sort((x, y) => x.nomEtab.localeCompare(y.nomEtab, "fr") || y.n - x.n);
-    return { ctx, source, ref, groupes: liste };
+    return { ctx, source, ref, groupes: liste, mc };
+  }
+
+  /* ---------- mots-clés des sites : autres noms sous lesquels un site est désigné (bâtiment, ancien nom, sigle…) ----------
+     Colonne Mots_cles du référentiel des sites (créée à la demande), lue par le formulaire : taper un mot-clé propose le site. */
+  async function chargerMotsCles(ref) {
+    const tm = meta[ref.table], colMots = (Object.values(tm.colonnes).find(c => /^mots?_?cles?$/i.test(c.colId) && /^Text/.test(c.type) && !c.isFormula) || {}).colId || null;
+    const tEtab = S.cibleRef(tm.colonnes[ref.etabCol].type);
+    const [t, te] = await Promise.all([grist.docApi.fetchTable(ref.table), tEtab ? grist.docApi.fetchTable(tEtab).catch(() => null) : null]);
+    let noms = new Map();
+    if (te) { const cn = Object.keys(te).find(k => /^(nom|etablissement|libelle|denomination)$/i.test(k)) || Object.keys(te).find(k => k !== "id" && (te[k] || []).some(x => typeof x === "string"));
+      noms = new Map(te.id.map((id, i) => [id, String(cn ? te[cn][i] ?? "" : id)])); }
+    const sites = t.id.map((id, i) => ({ id, nom: String(t[ref.nomCol][i] ?? ""), etab: refId(t[ref.etabCol][i]),
+      autres: ref.autresCol && t[ref.autresCol] ? String(t[ref.autresCol][i] ?? "") : "", mots: colMots && t[colMots] ? String(t[colMots][i] ?? "") : "" })).filter(x => x.etab);
+    const etabs = [...new Set(sites.map(x => x.etab))].map(id => ({ id, nom: noms.get(id) || `Établissement ${id}`, n: sites.filter(x => x.etab === id).length }))
+      .sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
+    return { table: ref.table, colMots, sites, etabs };
+  }
+  function motsClesHtml(mc) {
+    if (!mc) return "";
+    const e = mc.etabs.find(x => String(x.id) === String(choixEtabMc)) || null, liste = e ? mc.sites.filter(x => x.etab === e.id).sort((a, b) => a.nom.localeCompare(b.nom, "fr")) : [];
+    return `<h3 style="font-size:14px;margin:20px 0 4px">Mots-clés des sites</h3>
+      <p class="aide">Autres noms sous lesquels les agents désignent un site (bâtiment, ancien nom, sigle, rue…), séparés par des virgules. Dans le formulaire, taper un de ces mots propose le site.
+        Les libellés validés ci-dessus servent aussi de mots-clés pour leur établissement.</p>
+      ${!mc.colMots ? `<div class="boutons" style="margin-top:4px"><button class="secondaire" id="si-mc-creer">Créer la colonne Mots-clés dans ${esc(mc.table)}</button></div>` : `
+      <div class="sites-outils"><label>Établissement <select id="si-mc-etab"><option value="">Choisir…</option>${mc.etabs.map(x => `<option value="${x.id}"${e && e.id === x.id ? " selected" : ""}>${esc(x.nom)} (${x.n} site${x.n > 1 ? "s" : ""})</option>`).join("")}</select></label><span class="statut" id="si-mc-statut" role="status"></span></div>
+      ${e ? `<div class="sites-defile"><table class="sites-table"><thead><tr><th>Site</th><th>Autres noms (référentiel)</th><th>Mots-clés</th></tr></thead><tbody>
+        ${liste.map(x => `<tr><td><strong>${esc(x.nom)}</strong></td><td class="aide">${esc(x.autres.length > 160 ? x.autres.slice(0, 160) + "…" : x.autres)}</td>
+          <td><input type="text" class="si-mc" data-id="${x.id}" value="${esc(x.mots)}" placeholder="ex. bât. A, rue Dupont, ancien IUFM" style="width:100%;min-width:220px"></td></tr>`).join("")}
+      </tbody></table></div>` : ""}`}`;
+  }
+  function lierMotsCles() {
+    const c = $("si-mc-creer");
+    if (c) c.addEventListener("click", async () => {
+      c.disabled = true;
+      try { await grist.docApi.applyUserActions([["AddColumn", etat.mc.table, "Mots_cles", { type: "Text", isFormula: false, label: "Mots-clés", untieColIdFromLabel: true }]]); await relancer(); }
+      catch (e) { c.disabled = false; dire(`Colonne non créée (${e.message || e}).`, true); }
+    });
+    const se = $("si-mc-etab"); if (se) se.addEventListener("change", () => { choixEtabMc = se.value; dessiner(); });
+    racine.querySelectorAll(".si-mc").forEach(inp => inp.addEventListener("change", async () => {
+      const st = $("si-mc-statut"), v = inp.value.split(/\s*[,;|]\s*/).map(x => x.trim()).filter(Boolean).join(", ");
+      try { await grist.docApi.applyUserActions([["UpdateRecord", etat.mc.table, +inp.dataset.id, { [etat.mc.colMots]: v || null }]]);
+        inp.value = v; const x = etat.mc.sites.find(y => y.id === +inp.dataset.id); if (x) x.mots = v;
+        if (st) { st.textContent = "Mots-clés enregistrés."; st.className = "statut ok"; } }
+      catch (e) { if (st) { st.textContent = `Non enregistré (${e.message || e}).`; st.className = "statut err"; } }
+    }));
   }
 
   /* ---------- rendu ---------- */
@@ -128,8 +175,9 @@
           <td><select class="si-site"><option value="">— aucun (hors référentiel)</option>${gp.sites.map(s => `<option value="${s.id}"${s.id === gp.propose ? " selected" : ""}>${esc(s.nom)}</option>`).join("")}</select>
             ${!gp.alias && gp.propose ? ` <span class="pastille reco">proposé</span>` : ""}${!gp.sites.length ? ` <span class="aide">aucun site de cet établissement au référentiel</span>` : ""}</td>
           <td>${statutDe(gp) === "valide" ? `<span class="pastille ok">validé</span>` : statutDe(gp) === "ecarte" ? `<span class="pastille">écarté</span>` : `<span class="pastille manque">à traiter</span>`}</td></tr>`).join("")}
-      </tbody></table></div>` : `<p class="vide">Rien ${filtre === "a_traiter" ? "à traiter" : "à afficher"}.</p>`}`}`;
-    lier();
+      </tbody></table></div>` : `<p class="vide">Rien ${filtre === "a_traiter" ? "à traiter" : "à afficher"}.</p>`}`}
+      ${motsClesHtml(etat.mc)}`;
+    lier(); lierMotsCles();
   }
   const dire = (t, err) => { const s = $("si-statut"); if (s) { s.textContent = t; s.className = `statut${err ? " err" : " ok"}`; } };
   function lier() {

@@ -122,6 +122,12 @@
   .suggestions .nom { font-weight: 600; }
   .suggestions .meta { font-size: .8rem; color: var(--gris); }
   .suggestions .etat { padding: 10px 12px; color: var(--gris); cursor: default; }
+  /* tableau des sites : site du référentiel (nom, mots-clés) ou nom libre */
+  .site-combo { position: relative; }
+  .site-combo .site-txt { width: 100%; }
+  .site-combo .suggestions { max-height: 280px; overflow: auto; }
+  .site-combo .via, .site-combo .site-etat { font-size: .8rem; color: var(--gris); }
+  .site-combo .site-etat:empty { display: none; }
   .source { display: inline-block; font-size: .7rem; padding: 1px 6px; border-radius: 8px; background: var(--x-eeeeee); margin-left: 6px; }
   .source.connu { background: var(--x-d8f0e0); color: var(--ok); }
 
@@ -4372,7 +4378,7 @@ class Tableau {
     const sQualif = st && (a(st.qualif) || parNom(/qualif/, /^Choice/));
     this.sites = st && (sSite || sLibre) ? { site: sSite, libre: sLibre, qualif: sQualif, avecRas: st.avecRas !== false,
       historique: Array.isArray(st.historique) ? st.historique.filter(h => h && h.colonne) : [], alias: st.alias || "Sites_correspondances" } : null;
-    this.alias = new Map();
+    this.alias = new Map(); this.aliasParSite = new Map();
     if (this.sites) {
       const ds = this.sites.site && this.sousDefs.find(x => x.colId === this.sites.site);
       if (ds && typeBase(ds.type) === "Ref") {   // sites de l'établissement seulement (colonne du référentiel des sites vers les établissements)
@@ -4380,6 +4386,9 @@ class Tableau {
         try { const cible = ds.type.split(":")[1], m = Object.values(await metaColonnes(cible) || {}), versEtab = m.filter(c => c.type === `Ref:${ETAB.table}`);
           const ce = versEtab.find(c => c.colId === "Etablissement") || versEtab.find(c => !/compos/i.test(c.colId)), cc = versEtab.find(c => c !== ce && /compos/i.test(c.colId));
           if (ce) { const t = await lireTableReference(cible); ds._siteEtab = new Map(t.id.map((id, i) => [id, refId(t[ce.colId][i])]));
+            // mots-clés des sites (Mots_cles, Autres_noms…) : retrouvent le site quand l'agent tape un autre nom
+            const cm = m.filter(c => /^Text/.test(c.type || "") && /^(mots?_?cles?|autres?_noms?|alias)/i.test(c.colId)).map(c => c.colId);
+            ds._motsSite = new Map(t.id.map((id, i) => [id, cm.map(c => t[c] && t[c][i]).filter(x => typeof x === "string" && x.trim()).join(" | ")]));
             if (cc) ds._siteComp = new Map(t.id.map((id, i) => [id, refId(t[cc.colId][i])]));
             const me = Object.values(await metaColonnes(ETAB.table) || {}).find(c => c.type === `Ref:${ETAB.table}` && /rattach|parent/i.test(c.colId));
             if (me) { const te = await lireTableReference(ETAB.table); ds._parent = new Map(te.id.map((id, i) => [id, refId(te[me.colId][i])])); } } } catch (_) { /* tous les sites */ }
@@ -4388,11 +4397,14 @@ class Tableau {
       try { const m = await metaColonnes(this.sites.alias);
         if (m && m.Libelle && m.Site) { const t = await grist.docApi.fetchTable(this.sites.alias);
           t.id.forEach((id, i) => { if (/cart/i.test(String((t.Statut || [])[i] || ""))) return; const s = refId(t.Site[i]); if (!s) return;
-            this.alias.set(`${refId((t.Etablissement || [])[i]) || 0}|${normaliser(t.Libelle[i])}`, s); }); } } catch (_) { /* sans correspondances */ }
+            this.alias.set(`${refId((t.Etablissement || [])[i]) || 0}|${normaliser(t.Libelle[i])}`, s);
+            if (!this.aliasParSite.has(s)) this.aliasParSite.set(s, []); this.aliasParSite.get(s).push(String(t.Libelle[i] ?? "")); }); } } catch (_) { /* sans correspondances */ }
     }
     const manque = [!this.colDossier && "Dossier (référence vers la table des signalements)", !this.colLigne && "Ligne_id (texte)"].filter(Boolean);
     this.avertissement = manque.length ? `Table « ${tid} » : ajoutez la colonne ${manque.join(" et la colonne ")} pour qu'elle soit tenue à jour.` : "";
     this.autos = this.sousDefs.filter(d => d.auto && typeBase(d.type) === "Text");
+    // site du référentiel et nom libre réunis en un seul champ (liste des sites, recherche par mots-clés, nom libre accepté)
+    this.combo = !!(this.sites && this.sites.site && this.sites.libre && this.sousDefs.some(d => d.colId === this.sites.site && typeBase(d.type) === "Ref"));
     this.def._sousDefs = this.sousDefs;
     this.pret = true;
     this.dessiner();
@@ -4542,6 +4554,11 @@ class Tableau {
       const s = secondes(v);
       const txt = s == null ? "" : (t === "Date" ? new Date(s * 1000).toISOString().slice(0, 10) : valeurLocale(new Date(s * 1000), true));
       ctl = `<input type="${t === "Date" ? "date" : "datetime-local"}" value="${txt}" aria-labelledby="${nom}-etiq">`;
+    } else if (t === "Ref" && this.combo && d.colId === this.sites.site) {
+      const id = refId(v), lib = id ? this.libelleSite(d, id) : String(l.valeurs[this.sites.libre] ?? "");
+      const fige = l._fixe && (id || lib) ? ` disabled title="Site du dossier : il ne se remplace pas ; passez-le en RAS s'il est revenu à la normale"` : "";
+      ctl = `<div class="site-combo"><input type="text" class="site-txt" value="${esc(lib)}"${id ? ` data-id="${id}"` : ""} autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-labelledby="${nom}-etiq" placeholder="Nom du site ou mot-clé (un nom absent de la liste est accepté)"${fige}>
+        <span class="site-etat">${!id && lib ? "hors référentiel" : ""}</span><ul class="suggestions site-sugg" role="listbox" hidden></ul></div>`;
     } else if (t === "Ref") {
       let opts = d._options || [];
       if (d._siteEtab) { const e = etablissementDuFormulaire(); if (e) opts = sitesDeLEtablissement(d, e, opts, +v); }
@@ -4609,7 +4626,7 @@ class Tableau {
       let incomplete = false;
       div.querySelectorAll(".sous-champ").forEach(sc => {
         const d = this.sousDefs.find(x => x.colId === sc.dataset.sous);
-        sc.hidden = !this.visible(l, d);
+        sc.hidden = !this.visible(l, d) || (this.combo && d.colId === this.sites.libre);   // nom libre : saisi dans le champ du site
         const msg = this.montrerErreurs && !sc.hidden && !this.ligneVide(l) ? this.erreurChamp(l, d) : "";
         const m = sc.querySelector(".msg-ligne"); m.textContent = msg; m.hidden = !msg;
         sc.classList.toggle("en-erreur", !!msg);
@@ -4669,7 +4686,8 @@ class Tableau {
   changement(sc) {
     const div = sc.closest(".ligne-rep"), l = this.lignes[+div.dataset.k];
     const d = this.sousDefs.find(x => x.colId === sc.dataset.sous);
-    l.valeurs[d.colId] = this.lireControle(sc, d);
+    if (sc.querySelector(".site-combo")) this.lireSite(sc, l, d);
+    else l.valeurs[d.colId] = this.lireControle(sc, d);
     if (l._repris && l._repris.etat !== "modifie") l._repris.etat = "modifie";
     if (d.auto) {
       if (!l._touche) l._touche = {};
@@ -4685,6 +4703,53 @@ class Tableau {
   signaler() {
     if (this.surChangement) this.surChangement();
     if (this.prefix === "q") { appliquerConditions("q", defsQuestions); majDescriptionAuto(); majApercuAuto(); if (this.sites) majQualifDeduite(); }
+  }
+  // ----- champ du site : site du référentiel (nom, mots-clés, correspondances validées) ou nom libre
+  libelleSite(d, id) { const o = (d._options || []).find(x => x.id === id); return o ? o.libelle : ""; }
+  sitesProposables(d) {
+    const e = etablissementDuFormulaire();
+    return d._siteEtab && e ? sitesDeLEtablissement(d, e, d._options || [], 0) : (d._options || []);
+  }
+  // site désigné exactement par un texte : son nom, un de ses mots-clés, ou un libellé validé pour l'établissement
+  siteExact(d, txt) {
+    const n = normaliser(txt); if (!n) return 0;
+    const opts = this.sitesProposables(d), e = etablissementDuFormulaire();
+    const parNom = opts.find(o => normaliser(o.libelle) === n); if (parNom) return parNom.id;
+    const parMot = opts.find(o => String((d._motsSite && d._motsSite.get(o.id)) || "").split(/\s*[|,;]\s*/).some(x => normaliser(x) === n)); if (parMot) return parMot.id;
+    const a = this.alias.get(`${e || 0}|${n}`); return a && opts.some(o => o.id === a) ? a : 0;
+  }
+  suggestionsSite(d, q) {
+    const mots = normaliser(q).split(" ").filter(Boolean), res = [];
+    for (const o of this.sitesProposables(d)) {
+      const nomN = normaliser(o.libelle), cles = [...String((d._motsSite && d._motsSite.get(o.id)) || "").split(/\s*[|,;]\s*/), ...(this.aliasParSite.get(o.id) || [])].filter(x => x && x.trim());
+      const tout = `${nomN} ${cles.map(normaliser).join(" ")}`;
+      if (!mots.every(m => tout.includes(m))) continue;
+      const parNom = mots.every(m => nomN.includes(m));
+      res.push({ o, parNom, via: parNom || !mots.length ? "" : (cles.find(x => mots.some(m => normaliser(x).includes(m))) || "") });
+    }
+    return res.sort((a, b) => (b.parNom - a.parNom)).slice(0, 20);
+  }
+  montrerSites(inp) {
+    const sc = inp.closest(".sous-champ"), d = this.sousDefs.find(x => x.colId === sc.dataset.sous), ul = sc.querySelector(".site-sugg");
+    const q = inp.value.trim(), res = this.suggestionsSite(d, q);
+    const libre = q && !res.some(r => normaliser(r.o.libelle) === normaliser(q)) && !this.siteExact(d, q);
+    ul.innerHTML = res.map(r => `<li role="option" data-id="${r.o.id}"><span class="nom">${esc(r.o.libelle)}</span>${r.via ? ` <span class="via">mot-clé : ${esc(r.via)}</span>` : ""}</li>`).join("")
+      + (libre ? `<li role="option" data-libre="1"><span class="nom">« ${esc(q)} »</span> <span class="via">site hors référentiel</span></li>` : "")
+      + (!res.length && !q ? `<li class="etat" aria-disabled="true">Aucun site de cet établissement au référentiel : tapez le nom du site.</li>` : "");
+    ul.hidden = !ul.children.length; inp.setAttribute("aria-expanded", String(!ul.hidden));
+  }
+  choisirSite(li) {
+    const sc = li.closest(".sous-champ"), inp = sc.querySelector(".site-txt"), d = this.sousDefs.find(x => x.colId === sc.dataset.sous);
+    if (li.dataset.id) { inp.value = this.libelleSite(d, +li.dataset.id); inp.dataset.id = li.dataset.id; } else delete inp.dataset.id;
+    sc.querySelector(".site-sugg").hidden = true; inp.setAttribute("aria-expanded", "false");
+    this.changement(sc);
+  }
+  lireSite(sc, l, d) {
+    const inp = sc.querySelector(".site-txt"), txt = inp.value.trim();
+    let id = inp.dataset.id && this.libelleSite(d, +inp.dataset.id) === txt ? +inp.dataset.id : this.siteExact(d, txt);
+    l.valeurs[this.sites.site] = id || null;
+    l.valeurs[this.sites.libre] = id ? null : (txt || null);
+    const et = sc.querySelector(".site-etat"); if (et) et.textContent = txt && !id ? "hors référentiel" : "";
   }
   // clé d'un site : son identifiant au référentiel, sinon le libellé saisi (rattaché par les correspondances validées)
   cleSite(etab, v) {
@@ -4738,8 +4803,22 @@ class Tableau {
       }
       this.dessiner(); this.signaler();
     });
+    // champ du site : suggestions au fil de la frappe, choix à la souris ou au clavier
+    el.addEventListener("focusin", ev => { if (ev.target.classList && ev.target.classList.contains("site-txt")) this.montrerSites(ev.target); });
+    el.addEventListener("focusout", ev => { if (ev.target.classList && ev.target.classList.contains("site-txt")) setTimeout(() => { const ul = ev.target.closest(".site-combo") && ev.target.closest(".site-combo").querySelector(".site-sugg"); if (ul) ul.hidden = true; ev.target.setAttribute("aria-expanded", "false"); }, 150); });
+    el.addEventListener("mousedown", ev => { const li = ev.target.closest(".site-sugg li[role=option]"); if (li) { ev.preventDefault(); this.choisirSite(li); } });
+    el.addEventListener("keydown", ev => {
+      if (!ev.target.classList || !ev.target.classList.contains("site-txt")) return;
+      const ul = ev.target.closest(".site-combo").querySelector(".site-sugg"), lis = [...ul.querySelectorAll("li[role=option]")];
+      const i = lis.findIndex(x => x.getAttribute("aria-selected") === "true");
+      if (ev.key === "ArrowDown" || ev.key === "ArrowUp") { ev.preventDefault(); if (ul.hidden) this.montrerSites(ev.target);
+        const j = Math.max(0, Math.min(lis.length - 1, i + (ev.key === "ArrowDown" ? 1 : -1))); lis.forEach((x, k) => x.setAttribute("aria-selected", String(k === j))); if (lis[j]) lis[j].scrollIntoView({ block: "nearest" }); }
+      else if (ev.key === "Enter" && !ul.hidden && i >= 0) { ev.preventDefault(); this.choisirSite(lis[i]); }
+      else if (ev.key === "Escape") { ul.hidden = true; }
+    });
     const surSaisie = ev => {
       if (ev.target.classList.contains("qte")) return;
+      if (ev.target.classList.contains("site-txt") && ev.type === "input") { delete ev.target.dataset.id; this.montrerSites(ev.target); }
       const sc = ev.target.closest(".sous-champ"); if (sc) this.changement(sc);
     };
     el.addEventListener("input", surSaisie);

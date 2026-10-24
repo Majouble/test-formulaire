@@ -1172,6 +1172,8 @@ function groupeSitesHtml(b) {
     ${st && (!st.site || !/^Ref:/.test((colonnesDe(r.tableau.table)[st.site] || {}).type || "")) ? (() => { const rs = referentielSitesDuFormulaire(); return rs
       ? `<p class="note" style="margin:6px 0">Ce tableau n'a pas de colonne qui renvoie vers le référentiel des sites : les sites ne sont reconnus que par leur nom saisi. <button type="button" class="secondaire petit" id="pa-site-relier">Relier au référentiel des sites</button><br><span class="aide">Ajoute à ${esc(r.tableau.table)} une colonne « Site » (liste des sites de l'établissement, table ${esc(rs)}) ; la colonne de texte reste pour les sites hors référentiel. Les noms déjà saisis se rattachent ensuite dans l'onglet Référentiel (« Compléter les saisies »).</span></p>`
       : `<p class="note" style="margin:6px 0">Aucun référentiel des sites dans le document : importez le classeur du référentiel ESR (onglet Référentiel) pour proposer la liste des sites de chaque établissement.</p>`; })() : ""}
+    ${st && st.site && /^Ref:/.test((colonnesDe(r.tableau.table)[st.site] || {}).type || "") && !st.libre
+      ? `<p class="note" style="margin:6px 0">Les agents ne peuvent choisir qu'un site de la liste. <button type="button" class="secondaire petit" id="pa-site-libre-creer">Accepter les noms hors référentiel</button><br><span class="aide">Ajoute à ${esc(r.tableau.table)} une colonne « Site hors référentiel » : dans le formulaire, le champ du site propose la liste (recherche par nom et par mots-clés) et accepte un nom tapé librement.</span></p>` : ""}
     ${st ? `<label class="l" for="pa-site-ref">Site (référentiel des sites)</label><select id="pa-site-ref">${opt(c => /^(Ref|Text)/.test(c.type), st.site)}</select>
       <label class="l" for="pa-site-libre">Site hors référentiel (texte libre)</label><select id="pa-site-libre">${opt(c => /^Text/.test(c.type), st.libre)}</select>
       <label class="l" for="pa-site-qualif">Qualification du site</label><select id="pa-site-qualif">${opt(c => /^Choice/.test(c.type), st.qualif)}</select>
@@ -1191,6 +1193,19 @@ function referentielSitesDuFormulaire() {
 }
 function lierSites(b) {
   const r = b.reglages, maj = () => { majBloc(b); sauver(); };
+  const lib = $("pa-site-libre-creer");
+  if (lib) lib.addEventListener("click", async () => {
+    const t = r.tableau.table; if (!r.tableau.sites) return;
+    lib.disabled = true;
+    try {
+      const id = identifiant("Site_libre", Object.keys(colonnesDe(t)));
+      await actions([["AddColumn", t, id, { type: "Text", isFormula: false, label: "Site hors référentiel", untieColIdFromLabel: true }]]);
+      await lireMeta();
+      r.tableau.sites.libre = id; maj(); dessinerPanneau();
+      message(`Colonne « ${id} » ajoutée à ${t} : le champ du site accepte maintenant un nom hors référentiel. Publiez le formulaire.`, "ok");
+      reglesApresTableau(t);
+    } catch (e) { lib.disabled = false; message(`Échec : ${e.message || e}`, "err"); }
+  });
   const rel = $("pa-site-relier");
   if (rel) rel.addEventListener("click", async () => {
     const rs = referentielSitesDuFormulaire(), t = r.tableau.table; if (!rs || !r.tableau.sites) return;

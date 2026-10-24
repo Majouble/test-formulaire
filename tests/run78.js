@@ -54,7 +54,19 @@ if (require.main === module) (async () => {
   await page.click('#proposition-encours [data-reprendre] >> nth=0'); await page.waitForTimeout(800);
   console.log('STATUT :', await page.textContent('#statut-signalement'));
   console.log('SITES REPRIS :', await page.$$eval('.ligne-rep', l => l.map(x => (x.querySelector('.repris') || {}).textContent + ' | ' + [...x.querySelectorAll('select, input[type=text], textarea')].map(c => c.tagName === 'SELECT' ? (c.selectedOptions[0] || {}).textContent : c.value).filter(Boolean).join(' / ') + ' | ' + [...x.querySelectorAll('input:checked')].map(c => c.value).join(','))).then(a => a.join('\n   ')));
-  console.log('OPTIONS SITE (établissement 1) :', await page.$$eval('.ligne-rep >> nth=0', l => [...l[0].querySelectorAll('select option')].map(o => o.textContent).join(', ')).catch(() => '?'));
+  // champ du site : liste de l'établissement, recherche par mot-clé (libellé validé), nom libre accepté
+  await page.click('[data-action=ajouter]'); await page.waitForTimeout(200);
+  const champ = '.ligne-rep:last-child .site-txt', sugg = () => page.$$eval('.ligne-rep:last-child .site-sugg li', l => l.map(x => x.textContent.replace(/\s+/g, ' ').trim()).join(' | '));
+  await page.focus(champ); await page.waitForTimeout(150);
+  console.log('SITES PROPOSÉS (champ vide) :', await sugg());
+  await page.fill(champ, 'bat 12'); await page.waitForTimeout(150);
+  console.log('« bat 12 » :', await sugg());
+  await page.click('.ligne-rep:last-child .site-sugg li >> nth=0'); await page.waitForTimeout(150);
+  console.log('CHOISI :', await page.evaluate(() => { const c = controleursTableau('q')[0], l = c.lignes[c.lignes.length - 1]; return JSON.stringify(l.valeurs); }));
+  await page.fill(champ, 'Gymnase municipal'); await page.waitForTimeout(150);
+  console.log('« Gymnase municipal » :', await sugg(), '| état :', await page.textContent('.ligne-rep:last-child .site-etat'));
+  await page.keyboard.press('Escape');
+  console.log('VALEURS :', await page.evaluate(() => { const c = controleursTableau('q')[0], l = c.lignes[c.lignes.length - 1]; return JSON.stringify(l.valeurs); }));
   console.log('QUALIF :', await page.evaluate(() => lireQualificationInitiale()), '|', await page.textContent('#qualif-sites'));
   // l'agent choisit une autre qualification : incohérence signalée et confirmation demandée
   await page.check('input[name=qualif-initiale][value="Rassemblement"]', { force: true }); await page.waitForTimeout(200);
@@ -64,7 +76,7 @@ if (require.main === module) (async () => {
   // reprendre la qualification des sites, confirmer un site, modifier l'autre
   await page.click('#btn-qualif-sites'); await page.waitForTimeout(200);
   await page.click('.ligne-rep >> nth=0 >> [data-action=confirmer-site]'); await page.waitForTimeout(200);
-  console.log('BOUTONS ligne reprise :', await page.$$eval('.ligne-rep >> nth=1', l => [...l[0].querySelectorAll('.actions-ligne button')].map(b => b.dataset.action + ':' + b.textContent).join(' ')), '| site verrouillé ?', await page.$eval('.ligne-rep:nth-child(1) .sous-champ[data-sous=Site] select', x => x.disabled));
+  console.log('BOUTONS ligne reprise :', await page.$$eval('.ligne-rep >> nth=1', l => [...l[0].querySelectorAll('.actions-ligne button')].map(b => b.dataset.action + ':' + b.textContent).join(' ')), '| site verrouillé ?', await page.$eval('.ligne-rep:nth-child(1) .site-txt', x => x.disabled));
   await page.click('.ligne-rep >> nth=1 >> [data-action=ras-site]'); await page.waitForTimeout(200);
   console.log('APRÈS RAS : lignes', await page.$$eval('.ligne-rep', l => l.length), '| qualif ligne 2 :', await page.$$eval('.ligne-rep >> nth=1', l => [...l[0].querySelectorAll('input:checked')].map(c => c.value).join(',')));
   await page.click('.ligne-rep >> nth=1 >> .sous-champ[data-sous=Qualification] label:has-text("Blocage partiel")'); await page.waitForTimeout(200);
