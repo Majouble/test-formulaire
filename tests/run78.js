@@ -49,6 +49,7 @@ if (require.main === module) (async () => {
   await page.click('#porte-nouveau'); await page.waitForTimeout(400);
   console.log('ORDRE : qualification après les sites ?', await page.evaluate(() => { const q = document.getElementById('qualifs-initiales').closest('fieldset'), s = document.getElementById('questions'); return !!(s.compareDocumentPosition(q) & Node.DOCUMENT_POSITION_FOLLOWING); }));
   await page.fill('#nom', 'Jean Moulin'); await page.waitForTimeout(700); await page.click('#liste [role=option] >> nth=0'); await page.waitForTimeout(500);
+  console.log('REPRISE AUTOMATIQUE :', await page.$$eval('.ligne-rep .repris', l => l.map(x => x.textContent.replace(/\s+/g, ' ').trim()).join(' || ')));
   console.log('PROPOSITION :', (await page.textContent('#proposition-encours')).replace(/\s+/g, ' ').slice(0, 260));
   await page.click('#proposition-encours [data-reprendre] >> nth=0'); await page.waitForTimeout(800);
   console.log('STATUT :', await page.textContent('#statut-signalement'));

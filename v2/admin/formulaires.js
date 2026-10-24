@@ -1169,7 +1169,7 @@ function groupeSitesHtml(b) {
   const autres = Object.values(meta).filter(c => /^Text/.test(c.type) && c.colId !== b.colonne && !blocs().some(x => x.colonne === c.colId && x.id === b.id));
   return `<div class="groupe"><div class="t">Tableau des sites</div>
     <label class="interrupteur">Une ligne par site (formulaire par site) <input type="checkbox" id="pa-sites"${st ? " checked" : ""}></label>
-    ${st && !st.site ? (() => { const rs = referentielSitesDuFormulaire(); return rs
+    ${st && (!st.site || !/^Ref:/.test((colonnesDe(r.tableau.table)[st.site] || {}).type || "")) ? (() => { const rs = referentielSitesDuFormulaire(); return rs
       ? `<p class="note" style="margin:6px 0">Ce tableau n'a pas de colonne qui renvoie vers le référentiel des sites : les sites ne sont reconnus que par leur nom saisi. <button type="button" class="secondaire petit" id="pa-site-relier">Relier au référentiel des sites</button><br><span class="aide">Ajoute à ${esc(r.tableau.table)} une colonne « Site » (liste des sites de l'établissement, table ${esc(rs)}) ; la colonne de texte reste pour les sites hors référentiel. Les noms déjà saisis se rattachent ensuite dans l'onglet Référentiel (« Compléter les saisies »).</span></p>`
       : `<p class="note" style="margin:6px 0">Aucun référentiel des sites dans le document : importez le classeur du référentiel ESR (onglet Référentiel) pour proposer la liste des sites de chaque établissement.</p>`; })() : ""}
     ${st ? `<label class="l" for="pa-site-ref">Site (référentiel des sites)</label><select id="pa-site-ref">${opt(c => /^(Ref|Text)/.test(c.type), st.site)}</select>
@@ -1178,8 +1178,9 @@ function groupeSitesHtml(b) {
       <label class="l" for="pa-site-hist">Reprendre aussi l'historique de la question</label><select id="pa-site-hist"><option value="">— (aucune)</option>${autres.map(c => `<option value="${esc(c.colId)}"${h.colonne === c.colId ? " selected" : ""}>${esc(libelleQuestion(c.colId))}</option>`).join("")}</select>
       ${h.colonne ? `<div class="ligne-sc"><input type="text" id="pa-site-hist-libre" value="${esc(h.libre || "")}" placeholder="champ du nom (ex. Nom_du_site)" style="flex:1"><input type="text" id="pa-site-hist-qualif" value="${esc(h.qualif || "")}" placeholder="champ de qualification" style="flex:1"></div>` : ""}
       <label class="l" for="pa-site-alias">Table des correspondances (libellé saisi → site)</label><input type="text" id="pa-site-alias" value="${esc(st.alias || "Sites_correspondances")}">
+      <label class="interrupteur">Nouveau dossier : une ligne par site connu, y compris ceux revenus à la normale <input type="checkbox" id="pa-site-ras"${st.avecRas !== false ? " checked" : ""}></label>
       <label class="interrupteur">Qualification de l'établissement en bas, déduite du site le plus grave <input type="checkbox" id="pa-qualif-bas"${confSaisie().qualificationEnBas !== false ? " checked" : ""}></label>
-      <p class="note" style="margin:6px 0 0">Nouveau dossier : « Reprendre le dernier état de chaque site » préremplit les sites non revenus à la normale, d'après toutes les versions précédentes de l'établissement (et la question d'historique choisie). La qualification de l'établissement suit le site le plus grave (ordre des choix de Qualification, du plus grave au moins grave) ; une incohérence est signalée avant l'enregistrement.</p>` : ""}
+      <p class="note" style="margin:6px 0 0">Nouveau dossier : dès l'établissement choisi, le tableau se remplit d'une ligne par site déjà signalé, à son dernier état (toutes les versions précédentes de l'établissement et la question d'historique choisie) ; l'agent confirme ou modifie chaque site encore perturbé et ajoute les nouveaux. La qualification de l'établissement suit le site le plus grave (ordre des choix de Qualification, du plus grave au moins grave) ; une incohérence est signalée avant l'enregistrement.</p>` : ""}
   </div>`;
 }
 // Référentiel des sites du formulaire : table « …site… » qui renvoie vers le référentiel des établissements (import ESR, modèle par site)
@@ -1198,6 +1199,8 @@ function lierSites(b) {
       const id = identifiant("Site", Object.keys(colonnesDe(t)));
       await actions([["AddColumn", t, id, { type: `Ref:${rs}`, isFormula: false, label: "Site", untieColIdFromLabel: true }]]);
       await lireMeta();
+      const avant = r.tableau.sites.site;   // ancienne colonne du site en texte : devient la colonne « hors référentiel »
+      if (avant && !r.tableau.sites.libre) r.tableau.sites.libre = avant;
       r.tableau.sites.site = id; maj(); dessinerPanneau();
       message(`Colonne « ${id} » ajoutée à ${t} (référence vers ${rs}). Publiez le formulaire pour proposer la liste des sites.`, "ok");
       reglesApresTableau(t);
@@ -1211,6 +1214,7 @@ function lierSites(b) {
   const hi = $("pa-site-hist"); if (hi) hi.addEventListener("change", () => { st.historique = hi.value ? [{ colonne: hi.value, libre: "Nom_du_site", qualif: "Qualification" }] : []; maj(); dessinerPanneau(); });
   [["pa-site-hist-libre", "libre"], ["pa-site-hist-qualif", "qualif"]].forEach(([id, k]) => { const e = $(id); if (e) e.addEventListener("input", () => { if (st.historique[0]) st.historique[0][k] = e.value.trim(); sauver(); }); });
   const al = $("pa-site-alias"); if (al) al.addEventListener("input", () => { st.alias = al.value.trim() || "Sites_correspondances"; sauver(); });
+  const ras = $("pa-site-ras"); if (ras) ras.addEventListener("change", () => { st.avecRas = ras.checked; maj(); });
   const qb = $("pa-qualif-bas"); if (qb) qb.addEventListener("change", () => { majSaisie(c => { c.qualificationEnBas = qb.checked; }); dessinerApercu(); });
 }
 const optionsParties = sel => parties().map(x => `<option value="${esc(x.id)}"${(sel || "q") === x.id ? " selected" : ""}>${esc(x.nom)}${x.role === "q" ? "" : " (visa)"}</option>`).join("");

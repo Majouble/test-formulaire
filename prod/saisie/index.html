@@ -2008,6 +2008,7 @@ async function chargerConfigurationEtapes() {
   appliquerNomsParties();
   defsQuestions = defsDepuisFormulaire("q", "Questions", alertes) || defsDe("Questions");
   defsDep = defsDepuisFormulaire("vd", "Questions_dep", alertes) || defsDe("Questions_dep");
+  if (formulaireParSite()) $("bloc-site").hidden = true;   // les sites se saisissent dans le tableau des sites
   defsAca = defsDepuisFormulaire("va", "Questions_aca", alertes) || defsDe("Questions_aca");
   // Champs versionnés : ce dont l'historique retrace l'évolution d'une version à l'autre.
   champsVersion = [];
@@ -3066,6 +3067,7 @@ function afficherEtablissement() {
   $("carte-etab").innerHTML = connu ? carteHtml(etabCourant) : "";
   alerterSection(creation && connu && !modeEtab ? etabCourant : null);
   alerterRattachement();
+  if (creation && connu) setTimeout(reprendreSitesAuto, 0);
   majResumeEtab();
   majProposition();
 
@@ -3216,6 +3218,7 @@ async function passerEnCreation() {
   dossierId = null; versions = []; initiale = null; derniere = null;
   doublonConfirme = null;   // chaque nouveau signalement demande sa propre confirmation
   qualifTouchee = false;    // formulaire par site : qualification déduite des sites
+  sitesAutoPour = null;     // formulaire par site : reprise automatique des sites connus
   queueMicrotask(() => { if (typeof majQualifDeduite === "function") majQualifDeduite(); });
   rafraichirEtabs(false);   // sans attendre : sert seulement à la recherche d'établissement
   etabCourant = modeEtab ? (etabs[0] || null) : null;
@@ -4367,7 +4370,7 @@ class Tableau {
     const parNom = (re, ty) => (cols.find(c => !RESERVES_TABLEAU.includes(c.colId) && ty.test(c.type || "") && re.test(normColonne(`${c.colId} ${c.libelle || ""}`))) || {}).colId || null;
     const sSite = st && (a(st.site) || parNom(/(^|_)site/, /^Ref:/)), sLibre = st && (a(st.libre) || parNom(/libre|hors_referentiel/, /^Text/));
     const sQualif = st && (a(st.qualif) || parNom(/qualif/, /^Choice/));
-    this.sites = st && (sSite || sLibre) ? { site: sSite, libre: sLibre, qualif: sQualif,
+    this.sites = st && (sSite || sLibre) ? { site: sSite, libre: sLibre, qualif: sQualif, avecRas: st.avecRas !== false,
       historique: Array.isArray(st.historique) ? st.historique.filter(h => h && h.colonne) : [], alias: st.alias || "Sites_correspondances" } : null;
     this.alias = new Map();
     if (this.sites) {
@@ -4393,6 +4396,7 @@ class Tableau {
     this.def._sousDefs = this.sousDefs;
     this.pret = true;
     this.dessiner();
+    if (this.sites) setTimeout(reprendreSitesAuto, 0);
   }
   // ----- nombre de lignes piloté par une colonne nombre : lignes= du repère, sinon colonne de la condition [si …]
   colonneNombre() {
@@ -4583,6 +4587,7 @@ class Tableau {
   texteRepris(l) {
     const r = l._repris, quand = r.quand ? new Date(r.quand * 1000).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).replace(" ", " ") : "";
     const etat = r.etat === "confirme" ? `<span class="repris-ok">confirmé</span>` : r.etat === "modifie" ? `<span class="repris-ok">modifié</span>`
+      : r.etat === "normal" ? `<span class="repris-ok">revenu à la normale</span>`
       : `<button type="button" class="lien-texte" data-action="confirmer-site">Confirmer cet état</button>`;
     return `Dernier état : <strong>${esc(r.qualif || "sans qualification")}</strong>${quand ? ` (${esc(quand)})` : ""} · ${etat}`;
   }
@@ -4591,6 +4596,7 @@ class Tableau {
     if (!this.pret) { this.el.innerHTML = `<p class="note">Chargement…</p>`; return; }
     if (!this.sousDefs.length) { this.el.innerHTML = `<p class="bandeau">La table « ${esc(this.table)} » n'a aucune colonne à saisir (colonnes non formules autres que Dossier, Ligne_id et Ordre).</p>`; return; }
     this.el.innerHTML = (this.avertissement && !modeEtab ? `<p class="bandeau">${esc(this.avertissement)}</p>` : "") +
+      (this.noteAuto && this.lignes.some(l => l._repris) ? `<p class="note">${esc(this.noteAuto)}</p>` : "") +
       `<div class="lignes-rep">${this.lignes.map((l, k) => this.ligneHtml(l, k)).join("") || `<p class="vide-tableau">Aucune ligne pour l'instant.</p>`}</div>
       <div class="pied-tableau"><span class="ajout-lignes"><button type="button" class="secondaire petit" data-action="ajouter">+ Ajouter</button>
         <input type="number" class="qte" min="1" max="50" value="1" aria-label="Nombre de lignes à ajouter"><span class="note-qte">ligne(s)</span></span>
@@ -5719,7 +5725,7 @@ function rangGravite(q) {
 }
 const plusGrave = liste => [...liste].filter(Boolean).sort((a, b) => rangGravite(a) - rangGravite(b))[0] || null;
 const texteQualifSite = v => listeQualif(v).join(", ");
-function dernierEtatSites(c, etabId) {
+function dernierEtatSites(c, etabId, avecRas) {
   const s = c.sites, cD = col("Dossier"), jour = jourDuFormulaire(), limite = col("Date_faits") && lireDateFaits() != null ? lireDateFaits() : Date.now() / 1000;
   const versions = enregistrements.filter(l => refId(val(l, "Etablissement")) === etabId && jourDeLaVersion(l) !== jour
     && (secondes(col("Date_faits") ? val(l, "Date_faits") : val(l, "Date")) ?? 0) < limite + 86400);
@@ -5737,6 +5743,9 @@ function dernierEtatSites(c, etabId) {
   };
   const quandDe = l => secondes(val(l, "Date")) ?? secondes(col("Date_faits") ? val(l, "Date_faits") : null);
   const etats = [];   // { cle, valeurs, qualif, quand, retire }
+  // site retiré d'un dossier (anciennes versions) : compté comme revenu à la normale
+  const dq = s.qualif && c.sousDefs.find(d => d.colId === s.qualif), retour0 = retourNormale();
+  const ras = ((dq && dq.opts && dq.opts.choices) || []).find(x => retour0.has(String(x).trim().toUpperCase())) || [...retour0][0] || "RAS";
   for (const ls of parDossier.values()) {
     ls.sort(comparerVersions);
     const der = ls[ls.length - 1], vues = new Map();
@@ -5744,24 +5753,41 @@ function dernierEtatSites(c, etabId) {
     const finales = new Set(lignesDe(der).map(v => c.cleSite(etabId, v)).filter(Boolean));
     for (const [k, x] of vues) etats.push(finales.has(k)
       ? { cle: k, valeurs: x.v, qualif: s.qualif ? texteQualifSite(x.v[s.qualif]) : "", quand: quandDe(der), ordre: der }
-      : { cle: k, retire: true, quand: quandDe(der), ordre: der });
+      : { cle: k, retire: true, valeurs: s.qualif ? { ...x.v, [s.qualif]: dq && typeBase(dq.type) === "ChoiceList" ? ["L", ras] : ras } : x.v, qualif: ras, quand: quandDe(der), ordre: der });
   }
   etats.sort((a, b) => comparerVersions(a.ordre, b.ordre));
   const dernier = new Map(); etats.forEach(e => dernier.set(e.cle, e));   // le plus récent l'emporte
   const retour = retourNormale();
-  return [...dernier.values()].filter(e => !e.retire && !(e.qualif && listeQualif(e.qualif).every(q => retour.has(String(q).trim().toUpperCase()))));
+  const normal = e => !!e.qualif && listeQualif(e.qualif).every(q => retour.has(String(q).trim().toUpperCase()));
+  return [...dernier.values()].filter(e => avecRas ? true : !e.retire && !normal(e)).map(e => ({ ...e, normal: e.retire || normal(e) }));
 }
 // préremplit le tableau des sites ; renvoie le nombre de sites repris
-function reprendreEtatSites(c, etabId) {
-  const etats = dernierEtatSites(c, etabId), s = c.sites;
+function reprendreEtatSites(c, etabId, avecRas = c.sites.avecRas !== false) {
+  const etats = dernierEtatSites(c, etabId, avecRas), s = c.sites;
   c.lignes = etats.map(e => {
     const v = {}; for (const d of c.sousDefs) if (!d.confidentiel && !videSous(e.valeurs[d.colId])) v[d.colId] = Array.isArray(e.valeurs[d.colId]) ? [...e.valeurs[d.colId]] : e.valeurs[d.colId];
     if (s.site && e.cle.startsWith("s") && !refId(v[s.site])) { v[s.site] = +e.cle.slice(1); if (s.libre) delete v[s.libre]; }   // libellé rattaché au référentiel
-    return { _id: nouvelIdLigne(), valeurs: v, _fixe: true, _repris: { qualif: e.qualif, quand: e.quand, etat: "a_confirmer" } };
+    // site revenu à la normale : repris pour mémoire (une ligne par site connu), sans confirmation à donner
+    return { _id: nouvelIdLigne(), valeurs: v, _fixe: true, _repris: { qualif: e.qualif, quand: e.quand, etat: e.normal ? "normal" : "a_confirmer" } };
   });
   c.lignes.forEach(l => c.initAuto(l));
   c.dessiner();
   return etats.length;
+}
+/* « Une ligne par site connu » : nouveau dossier d'un établissement déjà signalé, le tableau des sites se remplit seul
+   du dernier état connu de chaque site (sites revenus à la normale compris, sauf réglage contraire). Refait si
+   l'établissement change tant qu'aucune ligne n'a été touchée. */
+let sitesAutoPour = null;
+function reprendreSitesAuto() {
+  const c = sitesCtrl(); if (!c || dossierId || !etabCourant || modeEtab) return;
+  const e = etabCourant.id; if (sitesAutoPour === e) return;
+  const intactes = c.lignes.every(l => c.ligneVide(l) || (l._repris && !["modifie", "confirme"].includes(l._repris.etat)));
+  if (!intactes) return;
+  sitesAutoPour = e;
+  const n = reprendreEtatSites(c, e);
+  c.noteAuto = n ? `${n} site${n > 1 ? "s" : ""} connu${n > 1 ? "s" : ""} de cet établissement, au dernier état signalé : confirmez ou modifiez ceux qui ne sont pas revenus à la normale, ajoutez les nouveaux.` : "";
+  c.dessiner();
+  qualifTouchee = false; majQualifDeduite();
 }
 let qualifTouchee = false;
 // qualification en bas (après les sites), et mention de la qualification déduite des sites
@@ -5820,7 +5846,7 @@ async function reprendreReponses(d) {
   modifie = true;
   propositionMasquee = etabCourant ? etabCourant.id : null;
   majProposition();
-  statut("statut-signalement", cs ? `Dernier état connu repris : ${nbSites} site${nbSites > 1 ? "s" : ""} non revenu${nbSites > 1 ? "s" : ""} à la normale (autres réponses : dossier n° ${d}, ${jourCourt(jourDesFaits(der))}). Confirmez ou modifiez chaque site, puis enregistrez ce nouveau signalement.`
+  statut("statut-signalement", cs ? `Dernier état connu repris : ${nbSites} site${nbSites > 1 ? "s" : ""} (autres réponses : dossier n° ${d}, ${jourCourt(jourDesFaits(der))}). Confirmez ou modifiez chaque site, puis enregistrez ce nouveau signalement.`
     : `Réponses reprises du dossier n° ${d} (${jourCourt(jourDesFaits(der))}) : modifiez ce qui a changé, puis enregistrez ce nouveau signalement.`, "ok");
   focusPremiereQuestion();
 }
@@ -6877,7 +6903,7 @@ function majProposition() {
       <ul>${avant.slice(0, 3).map(x => `<li><span>${esc(ligne(x))}</span>
         <button type="button" class="maj-plein petit" data-reprendre="${x.d}">${formulaireParSite() ? "Reprendre le dernier état de chaque site" : "Reprendre ses réponses"}</button></li>`).join("")}</ul>
       <p class="note">Un signalement par jour : celui du ${esc(jour)} sera un nouveau dossier. ${formulaireParSite()
-        ? "Si la situation continue, reprenez le dernier état connu de chaque site (tous les jours précédents, sites revenus à la normale exclus), puis confirmez ou modifiez chaque site."
+        ? "Si la situation continue, reprenez le dernier état connu de chaque site (tous les jours précédents), puis confirmez ou modifiez chaque site."
         : "Si la situation continue, reprenez les réponses du précédent, puis modifiez ce qui a changé."}</p>
       <button type="button" class="maj-contour petit" data-autre-evenement="1">Partir d'un formulaire vide</button>`;
 }
