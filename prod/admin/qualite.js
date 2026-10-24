@@ -23,8 +23,8 @@
 
   /* ---------- types d'anomalies : ordre d'affichage, gravité, explication ---------- */
   const TYPES = {
-    section: { titre: "Section choisie au lieu de l'établissement", gravite: 3,
-      aide: "SEGPA, SEP, SGT ou SES ont leur propre UAI dans l'annuaire mais font partie d'un collège ou d'un lycée : le signalement doit porter sur l'établissement, sinon il est compté à part (et souvent deux fois)." },
+    section: { titre: "Section ou composante choisie au lieu de l'établissement", gravite: 3,
+      aide: "SEGPA, SEP, SGT ou SES font partie d'un collège ou d'un lycée ; IUT, INSPÉ, écoles internes, sites et campus font partie d'une université ou d'un établissement (colonne Rattachement du référentiel) : le signalement doit porter sur l'établissement, sinon il est compté à part (et souvent deux fois)." },
     doublon: { titre: "Doublons probables", gravite: 3,
       aide: "Plusieurs dossiers pour le même établissement le même jour (une section compte pour son établissement) : les chiffres et la carte comptent l'établissement plusieurs fois. Si les faits sont bien distincts, marquez « vérifié »." },
     dossier: { titre: "Dossier sur plusieurs établissements", gravite: 3,
@@ -69,6 +69,10 @@
       const rf = S.resoudreRoles("referentiel", meta[refTable], { reponses: e.reponses, referentiel: refTable }, assocRef, {});
       ["Nom", "UAI", "Type", "Libelle_nature", "Commune", "Academie", "Latitude", "Longitude"].forEach(k => { if (rf[k] && rf[k].col) rc[k] = rf[k].col; });
       ref = await grist.docApi.fetchTable(refTable);
+      // référentiel ESR : composantes et sites rattachés à leur établissement (colonne Rattachement), niveau
+      const cR = Object.values(meta[refTable].colonnes).find(x => x.type === `Ref:${refTable}` && /rattach|parent/i.test(x.colId));
+      if (cR) rc.Rattachement = cR.colId;
+      if (meta[refTable].colonnes.Niveau) rc.Niveau = "Niveau";
       const lireAca = rc.Academie && /^Ref:/.test(meta[refTable].colonnes[rc.Academie].type) ? await texteRef(meta[refTable].colonnes[rc.Academie].type) : null;
       ref.__aca = lireAca;
     }
@@ -84,6 +88,8 @@
         x = { id, nom: texte(val("Nom")), uai: texte(val("UAI")).trim(), type: texte(val("Type")), nature: texte(val("Libelle_nature")), commune: texte(val("Commune")),
           aca: ref.__aca ? ref.__aca(val("Academie")) : texte(val("Academie")), lat: isFinite(lat) && lat ? lat : null, lon: isFinite(lon) && lon ? lon : null };
         x.section = genreSection(x.nature, x.type, x.nom);
+        x.rattId = rc.Rattachement ? refId(ref[rc.Rattachement][i]) : null;
+        if (x.rattId && x.rattId !== id && !x.section) x.section = texte(val("Niveau")) || "Composante";
       }
       etabInfo.set(id, x); return x;
     };
@@ -92,6 +98,11 @@
     const parent = x => {
       if (!x || !x.section || !ref) return null;
       if (x.parent !== undefined) return x.parent;
+      if (x.rattId) {   // composante : établissement de rattachement (en remontant les composantes de composantes)
+        const vus = new Set([x.id]); let p = info(x.rattId);
+        while (p && p.rattId && !vus.has(p.rattId) && info(p.rattId)) { vus.add(p.id); p = info(p.rattId); }
+        x.parent = p && p.id !== x.id ? p : null; x.parentDistance = null; return x.parent;
+      }
       if (!grille && rc.Latitude && rc.Longitude) {
         grille = new Map();
         ref.id.forEach((id, i) => { const lat = +ref[rc.Latitude][i], lon = +ref[rc.Longitude][i]; if (!lat || !lon) return;
@@ -137,7 +148,7 @@
       if (autres.length) ajouter("dossier", [f], `Dossier sur ${libEtab(x)}`, `${autres.length} version(s) sur ${[...new Set(autres.map(l => libEtab(info(l.etab))))].join(", ")}.`);
       if (x && x.section) {
         const p = parent(x);
-        ajouter("section", [f], `${x.section} : ${libEtab(x)}`, p ? `Établissement de rattachement probable : ${libEtab(p)}${x.parentDistance != null ? ` (à ${Math.round(x.parentDistance)} m)` : ""}.` : "Aucun établissement de rattachement trouvé à proximité : à corriger à la main.",
+        ajouter("section", [f], `${x.section} : ${libEtab(x)}`, p ? `Établissement de rattachement${x.rattId ? "" : " probable"} : ${libEtab(p)}${x.parentDistance != null ? ` (à ${Math.round(x.parentDistance)} m)` : ""}.` : "Aucun établissement de rattachement trouvé à proximité : à corriger à la main.",
           { action: p ? { genre: "rattacher", vers: p.id, libelle: `Rattacher à ${p.nom || p.uai}` } : null });
       }
       if (x && (x.lat == null || x.lon == null)) ajouter("sans_coord", [f], libEtab(x), "Latitude ou longitude manquante dans le référentiel.");
@@ -209,7 +220,7 @@
     const sectionsCorrigibles = liste.filter(a => a.type === "section" && a.action && !statutDe(a));
     racine.innerHTML = `<section class="carte">
       <h2>À vérifier</h2>
-      <p class="aide">Contrôle des signalements enregistrés : sections choisies au lieu de l'établissement, doublons, établissements mal identifiés, champs manquants.
+      <p class="aide">Contrôle des signalements enregistrés : sections ou composantes choisies au lieu de l'établissement, doublons, établissements mal identifiés, champs manquants.
         Corrigez avec l'action proposée, ou marquez « vérifié » ce qui est correct : l'anomalie ne revient pas tant que les dossiers en cause ne changent pas.</p>
       <div class="qa-outils">
         ${etat.espaces.length > 1 ? `<label>Champ <select id="qa-espace"><option value="">tous</option>${etat.espaces.map(x => `<option value="${esc(x.espace.reponses)}"${filtre.espace === x.espace.reponses ? " selected" : ""}>${esc(x.espace.libelle || x.espace.champ)}</option>`).join("")}</select></label>` : ""}
@@ -218,7 +229,7 @@
         <button type="button" class="secondaire" id="qa-relancer">Relancer l'analyse</button>
         <span class="aide">${etat.espaces.map(x => `${x.nbDossiers} dossier(s)${etat.espaces.length > 1 ? ` (${esc(x.espace.libelle || x.espace.champ)})` : ""}`).join(", ")} analysés à ${new Date(etat.le).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}.</span>
       </div>
-      ${sectionsCorrigibles.length > 1 ? `<div class="qa-lot"><button type="button" class="primaire" id="qa-tout-rattacher">Rattacher les ${sectionsCorrigibles.length} sections à leur établissement</button>
+      ${sectionsCorrigibles.length > 1 ? `<div class="qa-lot"><button type="button" class="primaire" id="qa-tout-rattacher">Rattacher les ${sectionsCorrigibles.length} sections et composantes à leur établissement</button>
         <span class="aide">Chaque dossier passe sur l'établissement proposé, toutes versions comprises. Vérifiez la liste avant.</span></div>` : ""}
       <span class="statut" id="qa-statut-msg" role="status"></span>
       ${parType.length ? parType.map(({ k, l }) => `<div class="qa-groupe"><h3>${esc(TYPES[k].titre)} <span class="pastille">${l.length}</span></h3>

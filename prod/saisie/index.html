@@ -722,6 +722,7 @@
         </div>
         <dl class="identite" id="carte-etab" hidden></dl>
         <div class="alerte-doublon" id="alerte-section" aria-live="polite" hidden></div>
+        <div class="alerte-doublon confirme" id="alerte-rattachement" aria-live="polite" hidden></div>
         <div class="proposition-encours" id="proposition-encours" role="region" aria-label="Signalement déjà en cours" hidden></div>
         <div class="encadre-correction" id="bloc-fiche" hidden>
           <p class="note" style="margin:0 0 6px">Correction de la fiche dans le référentiel : elle vaut pour tous les signalements de cet établissement.
@@ -1414,7 +1415,8 @@ const COLONNES = [
 grist.ready({ requiredAccess: "full", columns: COLONNES });
 
 let file = Promise.resolve();   // sérialise les traitements asynchrones
-const enFile = f => { file = file.then(f).catch(e => console.warn(e)); return file; };
+// une erreur pendant le chargement (référentiel pas encore prêt) est affichée ; ensuite, seulement dans la console
+const enFile = f => { file = file.then(f).catch(e => { console.warn(e); if (typeof referentielLu !== "undefined" && !referentielLu) signalerErreurChargement(e, "traitement"); }); return file; };
 
 const OPTIONS = { keepEncoded: true, expandRefs: false, includeColumns: "normal" };
 
@@ -1894,7 +1896,25 @@ function remplirDiagnostic() {
   });
 }
 
+/* Filet de sécurité : une erreur pendant le chargement ne doit pas laisser un formulaire vide et sans « ⚙ Réglages ».
+   Le message est affiché (à transmettre à l'administrateur) et les réglages restent ouverts. */
+let erreursChargement = [];
+function signalerErreurChargement(e, ou) {
+  const msg = `${ou} : ${(e && e.message) || e}${e && e.stack ? ` [${String(e.stack).split("\n").slice(0, 3).map(x => x.trim()).join(" ← ")}]` : ""}`;
+  console.error("Formulaire :", ou, e);
+  if (erreursChargement.includes(msg)) return;
+  erreursChargement.push(msg);
+  const z = $("alerte");
+  if (z) { z.textContent = `${z.hidden ? "" : z.textContent + " "}Le formulaire n'a pas pu se charger entièrement (${msg}). Copiez ce message pour l'administrateur du document ; « ⚙ Réglages » reste accessible.`; z.hidden = false; }
+  const b = $("btn-config"); if (b && !modeEtab) b.hidden = false;
+}
+window.addEventListener("error", ev => { if (ev.error && !referentielLu) signalerErreurChargement(ev.error, "erreur"); });
+window.addEventListener("unhandledrejection", ev => { if (!referentielLu) signalerErreurChargement(ev.reason, "erreur"); });
 async function chargerConfiguration() {
+  try { await chargerConfigurationEtapes(); }
+  catch (e) { signalerErreurChargement(e, "chargement de la configuration"); }
+}
+async function chargerConfigurationEtapes() {
   const alertes = [];
   await lireSocleSaisie();
   metaSig = {};
@@ -3007,6 +3027,34 @@ function alerterSection(e) {
   if (r) $("btn-choisir-rattachement").addEventListener("click", () => { etabCourant = r.etab.ligne; ligneAnnuaire = null; modifie = true; afficherEtablissement(); });
   $("btn-garder-section").addEventListener("click", () => { sectionGardee = x.id; bloc.classList.add("confirme"); bloc.innerHTML = `${esc(genre)} conservée à votre demande.`; });
 }
+/* Composante (IUT, INSPÉ, école interne…) ou site / campus du référentiel de l'enseignement supérieur (colonne
+   Rattachement) : le dossier s'ouvre sur l'établissement de rattachement, pour que l'établissement ne soit pas compté
+   deux fois ; la composante est rappelée, reprise dans la question « site » et ses sites sont proposés en premier. */
+let composanteChoisie = null;
+const colRattachement = () => (colsEtab || []).find(k => /^(rattachement|etablissement_de_rattachement|etablissement_parent)$/i.test(k)) || null;
+function rattachementDe(e) {
+  const c = colRattachement(); if (!e || !c) return null;
+  const vus = new Set([e.id]); let p = etabDe(refId(e[c]));
+  while (p && !vus.has(p.id) && refId(p[c]) && etabDe(refId(p[c]))) { vus.add(p.id); p = etabDe(refId(p[c])); }   // composante d'une composante
+  return p && p.id !== e.id ? p : null;
+}
+function versEtablissement(e) {
+  const p = rattachementDe(e);
+  composanteChoisie = p ? e : null;
+  return p || e;
+}
+const nomEtabId = id => { const x = etabDe(id); return x ? String(x[E.nom] ?? "") : ""; };
+function alerterRattachement() {
+  const b = $("alerte-rattachement"); if (!b) return;
+  const x = composanteChoisie, p = x && rattachementDe(x);
+  if (!x || !p || !etabCourant || p.id !== etabCourant.id || dossierId || modeEtab) { b.hidden = true; b.innerHTML = ""; return; }
+  const niveau = String(x.Niveau || ""), quoi = /site|campus/i.test(niveau) ? "un site rattaché" : "une composante rattachée";
+  b.innerHTML = `<strong>${esc(x[E.nom])}</strong> est ${quoi} à <strong>${esc(p[E.nom])}</strong> : le dossier est ouvert sur l'établissement,
+    pour qu'il ne soit pas compté deux fois. Précisez la composante ou son site dans le signalement.`;
+  b.hidden = false;
+  const cs = col("Site"), q = cs && $(`q-${cs}`);
+  if (q && /^(INPUT|TEXTAREA)$/.test(q.tagName) && !q.value.trim()) { q.value = String(x[E.nom] ?? ""); q.dispatchEvent(new Event("input", { bubbles: true })); }
+}
 function afficherEtablissement() {
   queueMicrotask(majDescriptionAuto);   // le jour de mobilisation dépend de l'établissement
   queueMicrotask(verifierDoublons);
@@ -3017,6 +3065,7 @@ function afficherEtablissement() {
   if (typeof majBoutonsCorrection === "function") majBoutonsCorrection();
   $("carte-etab").innerHTML = connu ? carteHtml(etabCourant) : "";
   alerterSection(creation && connu && !modeEtab ? etabCourant : null);
+  alerterRattachement();
   majResumeEtab();
   majProposition();
 
@@ -3463,8 +3512,10 @@ function jourCalendaire(sec) {
 function sitesDeLEtablissement(d, e, opts, choisi) {
   const a = opts.filter(o => d._siteEtab.get(o.id) === e || (d._siteComp && d._siteComp.get(o.id) === e) || o.id === choisi);
   const p = d._parent && d._parent.get(e);
-  if (!p || a.some(o => o.id !== choisi)) return a;
-  return opts.filter(o => d._siteEtab.get(o.id) === p || o.id === choisi);
+  const r = !p || a.some(o => o.id !== choisi) ? a : opts.filter(o => d._siteEtab.get(o.id) === p || o.id === choisi);
+  // dossier ouvert depuis une composante : ses sites d'abord
+  const c = composanteChoisie && d._siteComp ? composanteChoisie.id : null;
+  return c ? [...r.filter(o => d._siteComp.get(o.id) === c), ...r.filter(o => d._siteComp.get(o.id) !== c)] : r;
 }
 function etablissementDuFormulaire() {
   if (initiale) return refId(val(initiale, "Etablissement"));
@@ -4311,7 +4362,12 @@ class Tableau {
     // tableau des sites : colonne du site (référence au référentiel des sites, ou identifiant texte), nom hors
     // référentiel, qualification du site ; historique d'autres questions (anciens formulaires) pour la reprise
     const st = this.def.tableau && this.def.tableau.sites, a = c => c && cols.some(x => x.colId === c) ? c : null;
-    this.sites = st && (a(st.site) || a(st.libre)) ? { site: a(st.site), libre: a(st.libre), qualif: a(st.qualif),
+    /* colonne renommée par Grist d'après son libellé (Site_libre → Site_hors_referentiel, Qualification →
+       Qualification_du_site : tables créées par les versions 2.14.0 à 2.14.2) : retrouvée par son type et son nom */
+    const parNom = (re, ty) => (cols.find(c => !RESERVES_TABLEAU.includes(c.colId) && ty.test(c.type || "") && re.test(normColonne(`${c.colId} ${c.libelle || ""}`))) || {}).colId || null;
+    const sSite = st && (a(st.site) || parNom(/(^|_)site/, /^Ref:/)), sLibre = st && (a(st.libre) || parNom(/libre|hors_referentiel/, /^Text/));
+    const sQualif = st && (a(st.qualif) || parNom(/qualif/, /^Choice/));
+    this.sites = st && (sSite || sLibre) ? { site: sSite, libre: sLibre, qualif: sQualif,
       historique: Array.isArray(st.historique) ? st.historique.filter(h => h && h.colonne) : [], alias: st.alias || "Sites_correspondances" } : null;
     this.alias = new Map();
     if (this.sites) {
@@ -4485,7 +4541,8 @@ class Tableau {
     } else if (t === "Ref") {
       let opts = d._options || [];
       if (d._siteEtab) { const e = etablissementDuFormulaire(); if (e) opts = sitesDeLEtablissement(d, e, opts, +v); }
-      ctl = `<select aria-labelledby="${nom}-etiq"><option value="">${d._siteEtab && !opts.length ? "Aucun site de cet établissement au référentiel" : "Choisir…"}</option>${opts.map(o => `<option value="${o.id}"${+v === o.id ? " selected" : ""}>${esc(o.libelle)}</option>`).join("")}</select>`;
+      const libSite = o => d._siteComp && d._siteComp.get(o.id) && nomEtabId(d._siteComp.get(o.id)) ? `${o.libelle} — ${nomEtabId(d._siteComp.get(o.id))}` : o.libelle;
+      ctl = `<select aria-labelledby="${nom}-etiq"><option value="">${d._siteEtab && !opts.length ? "Aucun site de cet établissement au référentiel" : "Choisir…"}</option>${opts.map(o => `<option value="${o.id}"${+v === o.id ? " selected" : ""}>${esc(libSite(o))}</option>`).join("")}</select>`;
     } else if (d.court) {
       ctl = `<input type="text" value="${esc(v ?? "")}" aria-labelledby="${nom}-etiq"${masque}>`;
     } else {
@@ -6296,6 +6353,7 @@ function afficherResultats() {
     <li role="option" id="opt-${i}" data-i="${i}" aria-selected="false">
       <div class="nom">${esc(e.nom)}${e.hors ? '<span class="source hors">hors périmètre</span>' : ""}${!sourcesActives().length ? "" : e.source === "local" ? '<span class="source connu">référentiel</span>' : `<span class="source">${esc(e.source)}</span>`}</div>
       <div class="meta">${esc([e.uai, e.type, e.commune, e.academie].filter(Boolean).join(", "))}</div>
+      ${e.ligne && rattachementDe(e.ligne) ? `<div class="meta">→ dossier ouvert sur ${esc(rattachementDe(e.ligne)[E.nom])}</div>` : ""}
     </li>`).join("");
   ouvrir();
 }
@@ -6313,7 +6371,8 @@ function choisir(i) {
   if (reaffectation) { proposerRattachement(e); return; }
   fermer();
   const existant = (e.ligne && etabDe(e.ligne.id)) || e.ligne || etabParUai(e.uai);
-  if (existant) { etabCourant = existant; ligneAnnuaire = null; }
+  composanteChoisie = null;
+  if (existant) { etabCourant = versEtablissement(existant); ligneAnnuaire = null; }
   else {
     ligneAnnuaire = e;
     nom.value = e.nom || "";
@@ -6346,7 +6405,7 @@ nom.addEventListener("blur", () => setTimeout(fermer, 150));
 CHAMPS_NOUVEL_ETAB.forEach(k => $(k).addEventListener("input", () => $(k).classList.remove("auto")));
 $("uai").addEventListener("change", () => {
   const existant = etabParUai($("uai").value);
-  if (existant) { etabCourant = existant; ligneAnnuaire = null; afficherEtablissement(); }
+  if (existant) { etabCourant = versEtablissement(existant); ligneAnnuaire = null; afficherEtablissement(); }
 });
 
 /* =========================================================

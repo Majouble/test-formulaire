@@ -59,6 +59,7 @@ function docEsr() {
   await p2.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__DOC__=${JSON.stringify(doc)};window.__OPTS__=${JSON.stringify(opts)};` + fs.readFileSync('mock.js') + fs.readFileSync('fakeapi.js') + fs.readFileSync('mock-saisie.js') }));
   await p2.goto('file://' + __C.racine + '/v2/saisie/index.html'); await p2.waitForTimeout(1500);
   await p2.click('#porte-nouveau'); await p2.waitForTimeout(400);
+  const texteP2 = sel => p2.$eval(sel, e => e.hidden ? '(masqué)' : e.innerText.replace(/\s+/g, ' ').trim()).catch(() => '?');
   const chercher = async q => { await p2.fill('#nom', ''); await p2.fill('#nom', q); await p2.waitForTimeout(700); return p2.$$eval('#liste [role=option]', l => l.map(x => x.textContent.replace(/\s+/g, ' ').trim().slice(0, 70)).join(' | ')); };
   console.log('RECHERCHE « IEP » :', await chercher('IEP'));
   console.log('RECHERCHE « rennes » :', await chercher('rennes'));
@@ -66,12 +67,23 @@ function docEsr() {
   await p2.click('#liste [role=option] >> nth=0'); await p2.waitForTimeout(600);
   const optionsSite = async () => { await p2.click('[data-action=ajouter]'); await p2.waitForTimeout(300);
     return p2.$$eval('.ligne-rep .sous-champ[data-sous=Site] select', l => l.length ? [...l[l.length - 1].options].map(o => o.textContent).join(', ') : '(pas de ligne)'); };
-  console.log('SITES PROPOSÉS (IUT, composante) :', await optionsSite());
+  const etabChoisi = () => p2.evaluate(() => etabCourant ? etabCourant[E.nom] : null);
+  console.log('IUT CHOISI → DOSSIER SUR :', await etabChoisi(), '|', await texteP2('#alerte-rattachement'));
+  console.log('SITES PROPOSÉS (IUT → université, sites de l\'IUT d\'abord) :', await optionsSite());
   // campus sans site propre : sites de l'établissement de rattachement
   await p2.goto('file://' + __C.racine + '/v2/saisie/index.html'); await p2.waitForTimeout(1500);
   await p2.click('#porte-nouveau'); await p2.waitForTimeout(400);
   console.log('RECHERCHE « saint-malo » :', await chercher('saint-malo'));
   await p2.click('#liste [role=option] >> nth=0'); await p2.waitForTimeout(600);
+  console.log('CAMPUS CHOISI → DOSSIER SUR :', await etabChoisi(), '|', await texteP2('#alerte-rattachement'));
   console.log('SITES PROPOSÉS (campus de Saint-Malo → Rennes 2) :', await optionsSite());
+  // À vérifier : un ancien signalement posé sur l'IUT est signalé, rattachement proposé à l'université
+  doc.__data.Reponses.Etablissement[0] = 5;
+  const p3 = await browser.newPage({ viewport: { width: 1300, height: 1400 } });
+  p3.on('pageerror', e => console.log('PAGEERROR', e.message)); p3.on('dialog', d => d.accept());
+  await p3.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__DOC__=${JSON.stringify(doc)};` + fs.readFileSync('mock.js') + fs.readFileSync('fakeapi.js') + `;grist.onRecords=()=>{};grist.getOption=async()=>null;` }));
+  await p3.goto('file://' + __C.racine + '/v2/admin/index.html'); await p3.waitForTimeout(1200);
+  await p3.click('nav button[data-onglet=qualite]'); await p3.waitForTimeout(2000);
+  console.log('À VÉRIFIER :', await p3.$$eval('.qa-groupe', l => l.filter(g => /composante/i.test(g.querySelector('h3').textContent)).map(g => g.innerText.replace(/\s+/g, ' ').slice(0, 400)).join(' || ')));
   await browser.close();
 })();
