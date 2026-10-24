@@ -1620,6 +1620,8 @@ async function creerTableReponses(nom, opts = {}) {
   ]]]);
   await actions([
     ["AddColumn", tid, "Dossier", { type: `Ref:${tid}`, isFormula: false, label: "Dossier" }],
+    // identifiants détachés des libellés d'abord : sans cela, Grist renommerait Date_faits, Date, Site d'après le libellé
+    ...["Date_faits", "Date", ...(opts.site ? ["Site"] : [])].map(c => ["ModifyColumn", tid, c, { untieColIdFromLabel: true }]),
     ["ModifyColumn", tid, "Date_faits", { label: "Date des faits" }],
     ["ModifyColumn", tid, "Date", { label: "Date de saisie" }],
     ["ModifyColumn", tid, "Qualification", { widgetOptions: JSON.stringify({ choices: ["Catégorie 1", "Catégorie 2"], choiceOptions: {} }) }],
@@ -1701,7 +1703,9 @@ async function installerModeleSites() {
   const st = identifiant("Sites_signales", metaTables[0].tableId);
   await actions([["AddTable", st, [{ id: "Dossier", type: `Ref:${rep}`, isFormula: false }, { id: "Ligne_id", type: "Text", isFormula: false }, { id: "Ordre", type: "Int", isFormula: false },
     { id: "Site", type: `Ref:${ref}`, isFormula: false }, { id: "Site_libre", type: "Text", isFormula: false }, { id: "Qualification", type: "Choice", isFormula: false }, { id: "Precisions", type: "Text", isFormula: false }]]]);
-  await actions([["ModifyColumn", st, "Site", { label: "Site" }], ["ModifyColumn", st, "Site_libre", { label: "Site hors référentiel", description: "[court]" }],
+  // identifiants détachés des libellés d'abord : sans cela, Grist renommerait Site_libre, Qualification… d'après le libellé
+  await actions([...["Site", "Site_libre", "Qualification", "Precisions"].map(c => ["ModifyColumn", st, c, { untieColIdFromLabel: true }]),
+    ["ModifyColumn", st, "Site", { label: "Site" }], ["ModifyColumn", st, "Site_libre", { label: "Site hors référentiel", description: "[court]" }],
     ["ModifyColumn", st, "Qualification", { label: "Qualification du site", widgetOptions: optsQ, description: "*" }], ["ModifyColumn", st, "Precisions", { label: "Précisions" }]]);
   await lireMeta();
   const hist = actionsHistoriqueTableau(st, "Dossier"); if (hist.length) { await actions(hist); await lireMeta(); }

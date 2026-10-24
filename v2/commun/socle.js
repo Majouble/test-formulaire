@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.14.2 (24/10/2026)";
+  const VERSION = "2.15.0 (24/10/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres

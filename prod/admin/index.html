@@ -447,6 +447,14 @@
   #referentiel .sites-defile { max-height: 520px; overflow: auto; border-top: 1px solid var(--trait); }
   #referentiel .sites-table select { max-width: 280px; }
   #referentiel .sites-table td { vertical-align: middle; }
+  #referentiel .esr-outils { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin: 8px 0 6px; }
+  #referentiel .esr-outils label { display: inline-flex; gap: 6px; align-items: center; }
+  #referentiel .esr-outils select { width: auto; max-width: 320px; }
+  #referentiel .esr-titre { font-size: 13px; margin: 16px 0 4px; }
+  #referentiel .esr-bilan td:first-child { width: 230px; color: var(--doux); }
+  #referentiel .esr-options { margin: 6px 0; }
+  #referentiel .esr-options summary { cursor: pointer; font-size: 13px; color: var(--accent); }
+  #referentiel .esr-cases { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 2px 14px; margin: 6px 0; font-size: 13px; }
   #qualite button.petit { padding: 4px 10px !important; font-size: 13px; }
   #qualite .lien-btn { background: none; border: 0; padding: 0 4px; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; font-size: 12.5px; }
   #qualite .vide { color: var(--doux); }
@@ -609,6 +617,7 @@
     <div class="boutons"><button class="primaire" id="btn-ref-importer">3. Importer dans Grist</button></div>
   </section>
   <p class="statut" id="ref-statut"></p>
+  <section class="carte" id="ref-esr"></section>
   <section class="carte" id="ref-sites"></section>
 </main>
 <main id="onglet-equipe" hidden>
@@ -680,6 +689,7 @@
 <script src="actions.js"></script>
 <script src="liens.js"></script>
 <script src="qualite.js"></script>
+<script src="referentiel-esr.js"></script>
 <script src="sites.js"></script>
 <script>if (window.SocleTheme) window.SocleTheme.bouton(document.getElementById("theme-bouton"));</script>
 <script>
@@ -688,7 +698,7 @@
     window.Socle.oublierStructure();
     document.querySelectorAll("nav button[data-onglet]").forEach(x => x.setAttribute("aria-selected", String(x === b)));
     document.querySelectorAll("main").forEach(m => { m.hidden = m.id !== b.dataset.onglet; });
-    if (b.dataset.onglet === "referentiel") { window.OngletReferentiel.afficher(); if (window.OngletSitesESR) window.OngletSitesESR.afficher(); }
+    if (b.dataset.onglet === "referentiel") { window.OngletReferentiel.afficher(); if (window.OngletReferentielESR) window.OngletReferentielESR.afficher(); if (window.OngletSitesESR) window.OngletSitesESR.afficher(); }
     if (b.dataset.onglet === "onglet-equipe") window.OngletEquipeGroupe.afficher();
     if (b.dataset.onglet === "acces") window.OngletAcces.afficher();
     if (b.dataset.onglet === "liens") window.OngletLiens.afficher();

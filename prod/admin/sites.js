@@ -49,7 +49,8 @@
     const refs = Object.entries(meta).filter(([t, tm]) => !t.startsWith("_grist") && !reps.includes(t) && t !== TABLE_ALIAS
       && Object.values(tm.colonnes).some(c => etabTables.has(S.cibleRef(c.type))) && !Object.values(tm.colonnes).some(c => reps.includes(S.cibleRef(c.type))))
       .map(([t, tm]) => ({ table: t, etabCol: Object.values(tm.colonnes).find(c => etabTables.has(S.cibleRef(c.type))).colId,
-        nomCol: (Object.values(tm.colonnes).find(c => /^(nom|libelle|denomination|intitule)/i.test(c.colId) && /^Text/.test(c.type)) || Object.values(tm.colonnes).find(c => /^Text/.test(c.type)) || {}).colId }))
+        nomCol: (Object.values(tm.colonnes).find(c => /^(nom|libelle|denomination|intitule)/i.test(c.colId) && /^Text/.test(c.type)) || Object.values(tm.colonnes).find(c => /^Text/.test(c.type)) || {}).colId,
+        autresCol: (Object.values(tm.colonnes).find(c => /^autres?_noms?|alias|noms_saisis/i.test(c.colId) && /^Text/.test(c.type)) || {}).colId || null }))
       .filter(r => r.nomCol).sort((a, b) => (/site/i.test(b.table) ? 1 : 0) - (/site/i.test(a.table) ? 1 : 0));
     return { sources, refs };
   }
@@ -69,7 +70,9 @@
       nomsEtab = new Map(te.id.map((id, i) => [id, String(cn ? te[cn][i] ?? "" : id)])); } catch (_) { /* identifiants seuls */ }
     // sites du référentiel, par établissement
     const sitesDe = new Map();
-    tref.id.forEach((id, i) => { const e = refId(tref[ref.etabCol][i]); if (!e) return; if (!sitesDe.has(e)) sitesDe.set(e, []); sitesDe.get(e).push({ id, nom: String(tref[ref.nomCol][i] ?? "") }); });
+    // les autres noms du site (référentiel ESR : noms OAD, noms saisis par les opérateurs) comptent pour la proposition
+    tref.id.forEach((id, i) => { const e = refId(tref[ref.etabCol][i]); if (!e) return; if (!sitesDe.has(e)) sitesDe.set(e, []);
+      sitesDe.get(e).push({ id, nom: String(tref[ref.nomCol][i] ?? ""), autres: ref.autresCol && tref[ref.autresCol] ? String(tref[ref.autresCol][i] ?? "") : "" }); });
     // correspondances existantes
     const alias = new Map();
     if (talias) talias.id.forEach((id, i) => alias.set(`${refId(talias.Etablissement[i]) || 0}|${norm(talias.Libelle[i])}`, { id, site: refId(talias.Site[i]), statut: String(talias.Statut[i] || "") }));
@@ -84,8 +87,10 @@
     });
     const liste = [...groupes.values()].map(gp => {
       const sites = sitesDe.get(gp.etab) || [], m = mots(gp.libelle);
-      const notes = sites.map(s => { const n = mots(s.nom), communs = [...m].filter(w => n.has(w)).length;
-        return { s, score: communs ? communs / Math.max(1, Math.min(m.size, n.size)) : (norm(s.nom) && norm(gp.libelle).includes(norm(s.nom)) ? 0.8 : 0) }; })
+      const noter = nom => { const n = mots(nom), communs = [...m].filter(w => n.has(w)).length;
+        return communs ? communs / Math.max(1, Math.min(m.size, n.size)) : (norm(nom) && norm(gp.libelle).includes(norm(nom)) ? 0.8 : 0); };
+      const notes = sites.map(s => ({ s, score: Math.max(noter(s.nom), norm(gp.libelle).length >= 5 && norm(s.autres).includes(norm(gp.libelle)) ? 0.9 : 0,
+        ...String(s.autres || "").split(/\s*[,;|]\s*/).filter(x => x.length > 2).map(x => norm(x) === norm(gp.libelle) ? 1 : 0)) }))
         .sort((a, b) => b.score - a.score);
       const a = alias.get(gp.cle);
       return { ...gp, nomEtab: nomsEtab.get(gp.etab) || `Établissement ${gp.etab}`, sites, alias: a || null,

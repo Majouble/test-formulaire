@@ -924,7 +924,7 @@ const afficherCommentaire = () => !!S().commentaire;
 // (API OpenDataSoft v2.1). Clé du réglage ⚙ « Référentiel des établissements » dans la table Parametres :
 const CLE_TABLE_ETAB = "tableEtablissementsESR";
 const TABLE_ETAB_DEFAUT = "Etablissements";
-const COLONNES_RECHERCHE_EN_PLUS = ["Sigle", "Noms_rencontres_dans_les_sources"];   // ignorées si absentes
+const COLONNES_RECHERCHE_EN_PLUS = ["Sigle", "Noms_rencontres_dans_les_sources", "Libelle_consolide", "Mots_cles"];   // ignorées si absentes
 const MIN_CARACTERES = 2;
 const NB_RESULTATS = 15;
 const NB_RESULTATS_ANNUAIRE = 8, MIN_CARACTERES_ANNUAIRE = 3;
@@ -3458,6 +3458,14 @@ function jourCalendaire(sec) {
   return formateur(`jour|${tz || ""}`, { year: "numeric", month: "2-digit", day: "2-digit", timeZone: tz })
     .format(new Date(sec * 1000));
 }
+/* Sites proposés pour un établissement : les siens (ou, pour une composante, ceux qui la concernent) ; une composante ou un
+   site sans site propre au référentiel reprend ceux de son établissement de rattachement. Le site déjà choisi reste. */
+function sitesDeLEtablissement(d, e, opts, choisi) {
+  const a = opts.filter(o => d._siteEtab.get(o.id) === e || (d._siteComp && d._siteComp.get(o.id) === e) || o.id === choisi);
+  const p = d._parent && d._parent.get(e);
+  if (!p || a.some(o => o.id !== choisi)) return a;
+  return opts.filter(o => d._siteEtab.get(o.id) === p || o.id === choisi);
+}
 function etablissementDuFormulaire() {
   if (initiale) return refId(val(initiale, "Etablissement"));
   if (modeEtab) return etabs[0] ? etabs[0].id : null;
@@ -4309,8 +4317,13 @@ class Tableau {
     if (this.sites) {
       const ds = this.sites.site && this.sousDefs.find(x => x.colId === this.sites.site);
       if (ds && typeBase(ds.type) === "Ref") {   // sites de l'établissement seulement (colonne du référentiel des sites vers les établissements)
-        try { const cible = ds.type.split(":")[1], m = await metaColonnes(cible), ce = Object.values(m || {}).find(c => c.type === `Ref:${ETAB.table}`);
-          if (ce) { const t = await lireTableReference(cible); ds._siteEtab = new Map(t.id.map((id, i) => [id, refId(t[ce.colId][i])])); } } catch (_) { /* tous les sites */ }
+        // composante (IUT, école interne…) : ses propres sites, sinon ceux de son établissement de rattachement
+        try { const cible = ds.type.split(":")[1], m = Object.values(await metaColonnes(cible) || {}), versEtab = m.filter(c => c.type === `Ref:${ETAB.table}`);
+          const ce = versEtab.find(c => c.colId === "Etablissement") || versEtab.find(c => !/compos/i.test(c.colId)), cc = versEtab.find(c => c !== ce && /compos/i.test(c.colId));
+          if (ce) { const t = await lireTableReference(cible); ds._siteEtab = new Map(t.id.map((id, i) => [id, refId(t[ce.colId][i])]));
+            if (cc) ds._siteComp = new Map(t.id.map((id, i) => [id, refId(t[cc.colId][i])]));
+            const me = Object.values(await metaColonnes(ETAB.table) || {}).find(c => c.type === `Ref:${ETAB.table}` && /rattach|parent/i.test(c.colId));
+            if (me) { const te = await lireTableReference(ETAB.table); ds._parent = new Map(te.id.map((id, i) => [id, refId(te[me.colId][i])])); } } } catch (_) { /* tous les sites */ }
       }
       // correspondances validées : libellé saisi (par établissement) → site du référentiel
       try { const m = await metaColonnes(this.sites.alias);
@@ -4471,7 +4484,7 @@ class Tableau {
       ctl = `<input type="${t === "Date" ? "date" : "datetime-local"}" value="${txt}" aria-labelledby="${nom}-etiq">`;
     } else if (t === "Ref") {
       let opts = d._options || [];
-      if (d._siteEtab) { const e = etablissementDuFormulaire(); if (e) opts = opts.filter(o => d._siteEtab.get(o.id) === e || +v === o.id); }
+      if (d._siteEtab) { const e = etablissementDuFormulaire(); if (e) opts = sitesDeLEtablissement(d, e, opts, +v); }
       ctl = `<select aria-labelledby="${nom}-etiq"><option value="">${d._siteEtab && !opts.length ? "Aucun site de cet établissement au référentiel" : "Choisir…"}</option>${opts.map(o => `<option value="${o.id}"${+v === o.id ? " selected" : ""}>${esc(o.libelle)}</option>`).join("")}</select>`;
     } else if (d.court) {
       ctl = `<input type="text" value="${esc(v ?? "")}" aria-labelledby="${nom}-etiq"${masque}>`;
@@ -6226,10 +6239,16 @@ function rechercheLocale(q) {
   const colsRecherche = colsEtab.includes(E.nom)
     ? [...new Set([E.nom, E.commune, E.uai, ...COLONNES_RECHERCHE_EN_PLUS, ...S().recherche])]
     : colsEtab.filter(c => c !== "id" && c !== "manualSort" && !c.startsWith("gristHelper") && c !== E.cle && c !== E.lien);
+  // lignes fusionnées dans un autre établissement (référentiel ESR, colonne Etat) : plus proposées
   const trouves = etabs.filter(e => {
+    if (typeof e.Etat === "string" && /^fusionn/i.test(e.Etat.trim())) return false;
     const texte = sansAccent(colsRecherche.map(c => e[c]).filter(v => v != null && typeof v !== "object").join(" "));
     return mots.every(m => texte.includes(m));
   });
+  // le nom (ou le sigle, le libellé consolidé) d'abord ; les mots-clés de recherche (anciens noms, villes…) ensuite
+  const titre = e => sansAccent([e[E.nom], e.Sigle, e.Libelle_consolide].filter(v => typeof v === "string").join(" "));
+  const note = e => { const t = titre(e); return mots.filter(m => t.includes(m)).length * 2 + (t.startsWith(mots[0]) ? 1 : 0); };
+  if (colsRecherche.includes("Mots_cles") || colsRecherche.includes("Libelle_consolide")) trouves.sort((a, b) => note(b) - note(a));
   const dedans = perimetreActif() ? trouves.filter(dansPerimetre) : trouves;
   const retenus = dedans.length ? dedans : trouves;
   return retenus.slice(0, NB_RESULTATS).map(e => ({ source: "local", ligne: e, nom: e[E.nom] ?? libelleEtabDeRepli(e), uai: e[E.uai], type: e[E.type],
