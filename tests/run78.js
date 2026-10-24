@@ -63,6 +63,9 @@ if (require.main === module) (async () => {
   // reprendre la qualification des sites, confirmer un site, modifier l'autre
   await page.click('#btn-qualif-sites'); await page.waitForTimeout(200);
   await page.click('.ligne-rep >> nth=0 >> [data-action=confirmer-site]'); await page.waitForTimeout(200);
+  console.log('BOUTONS ligne reprise :', await page.$$eval('.ligne-rep >> nth=1', l => [...l[0].querySelectorAll('.actions-ligne button')].map(b => b.dataset.action + ':' + b.textContent).join(' ')), '| site verrouillé ?', await page.$eval('.ligne-rep:nth-child(1) .sous-champ[data-sous=Site] select', x => x.disabled));
+  await page.click('.ligne-rep >> nth=1 >> [data-action=ras-site]'); await page.waitForTimeout(200);
+  console.log('APRÈS RAS : lignes', await page.$$eval('.ligne-rep', l => l.length), '| qualif ligne 2 :', await page.$$eval('.ligne-rep >> nth=1', l => [...l[0].querySelectorAll('input:checked')].map(c => c.value).join(',')));
   await page.click('.ligne-rep >> nth=1 >> .sous-champ[data-sous=Qualification] label:has-text("Blocage partiel")'); await page.waitForTimeout(200);
   console.log('MENTIONS :', await page.$$eval('.repris', l => l.map(x => x.textContent.trim()).join(' || ')));
   console.log('QUALIF :', await page.evaluate(() => lireQualificationInitiale()), '|', await page.textContent('#qualif-sites'));
@@ -72,5 +75,11 @@ if (require.main === module) (async () => {
   console.log('SOUS-TABLE :', await page.evaluate(() => { const t = window.__DOC__.__data.Sites_signales; return t.id.map((id, i) => `${id}:v${t.Version[i]}/site ${t.Site[i]}/${t.Site_libre[i] || ''}/${t.Qualification[i]}/${t.Mouvement[i]}`).join('  '); }));
   console.log('RÉPONSE :', await page.evaluate(() => { const R = window.__DOC__.__data.Reponses, n = R.id.length - 1; return R.Qualification[n] + ' | ' + R.Detail_des_sites[n]; }));
   await page.screenshot({ path: __C.sorties + '/run78.png', fullPage: true });
+  // mise à jour du dossier créé : les sites du dossier ne se suppriment pas, une ligne ajoutée oui
+  doc = await page.evaluate(() => window.__DOC__);
+  await page.goto('file://' + __C.racine + '/v2/saisie/index.html'); await page.waitForTimeout(1500);
+  await page.click('#cartes-signalements li >> nth=0'); await page.waitForTimeout(900);
+  await page.click('[data-action=ajouter]'); await page.waitForTimeout(200);
+  console.log('MISE À JOUR, actions par ligne :', await page.$$eval('.ligne-rep', l => l.map(x => [...x.querySelectorAll('.actions-ligne button')].map(b => b.dataset.action).join('+')).join(' | ')));
   await browser.close();
 })();

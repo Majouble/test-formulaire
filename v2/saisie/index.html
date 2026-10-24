@@ -228,6 +228,7 @@
   .alerte-faits { color: var(--x-b34000); font-weight: 600; }
   /* formulaire par site : sites repris du dernier état connu, qualification déduite des sites */
   .ligne-rep.reprise { border-left: 3px solid var(--maj, #b34000); }
+  .actions-ligne .icone-texte { width: auto; padding: 0 6px; font-size: 11px; font-weight: 700; }
   .ligne-rep .repris { font-size: 13px; color: var(--x-555555); margin: 0 0 6px; }
   .ligne-rep .repris .repris-ok { color: var(--x-18753c, #18753c); font-weight: 600; }
   fieldset.qualif-deduite { border-top: 2px solid var(--bleu); padding-top: 10px; margin-top: 16px; }
@@ -4371,7 +4372,7 @@ class Tableau {
     this.lignes = lireTableauJson(json).map(o => {
       const { _id, ...valeurs } = o;
       const id = _id || nouvelIdLigne();
-      return { _id: id, valeurs: { ...valeurs, ...(conf.get(id) || {}) } };
+      return { _id: id, valeurs: { ...valeurs, ...(conf.get(id) || {}) }, ...(this.sites && dossier ? { _fixe: true } : {}) };
     });
     this.lignes.forEach(l => this.initAuto(l));
     this.montrerErreurs = false; this.confModifie = false; this.dernierN = undefined;
@@ -4477,12 +4478,27 @@ class Tableau {
     } else {
       ctl = `<textarea rows="2" aria-labelledby="${nom}-etiq"${masque}>${esc(v ?? "")}</textarea>`;
     }
+    // tableau des sites : le site d'une ligne du dossier (ou reprise) ne change pas ; seul son état change
+    if (this.sites && l._fixe && [this.sites.site, this.sites.libre].includes(d.colId) && !videSous(v))
+      ctl = ctl.replace(/^<(select|input|textarea)/, '<$1 disabled title="Site du dossier : il ne se remplace pas ; passez-le en RAS s\'il est revenu à la normale"');
     const regen = d.auto && typeBase(d.type) === "Text" ? `<button type="button" class="lien-texte regen" data-action="regenerer" data-sous="${esc(d.colId)}"${(l._touche || {})[d.colId] ? "" : " hidden"}>↻ Revenir au texte automatique</button>` : "";
     const aide = (d.aide ? `<span class="aide-sous">${esc(d.aide)}</span>` : "") + regen;
     return `<div class="sous-champ zone-${zoneSousChamp(d)}${d.condition ? " cond-ligne" : ""}" data-sous="${esc(d.colId)}">${titre}${ctl}${aide}<span class="msg-ligne" hidden></span></div>`;
   }
+  // tableau des sites : un site du dossier (ou repris du dernier état connu) ne se retire pas, il passe en RAS
+  actionsLigne(l, k) {
+    const fixe = this.sites && l._fixe;
+    return `<span class="actions-ligne"><button type="button" class="icone" data-action="dupliquer" title="Dupliquer cette ligne" aria-label="Dupliquer la ligne ${k + 1}">⧉</button>${fixe
+      ? `<button type="button" class="icone icone-texte" data-action="ras-site" title="Site revenu à la normale : il reste dans le dossier, en ${esc(this.valeurRas() || "RAS")}" aria-label="Passer le site de la ligne ${k + 1} en ${esc(this.valeurRas() || "RAS")}">${esc(this.valeurRas() || "RAS")}</button>`
+      : `<button type="button" class="icone" data-action="supprimer" title="Supprimer cette ligne" aria-label="Supprimer la ligne ${k + 1}">✕</button>`}</span>`;
+  }
+  valeurRas() {
+    const d = this.sites && this.sites.qualif && this.sousDefs.find(x => x.colId === this.sites.qualif); if (!d) return null;
+    const ch = (d.opts && d.opts.choices) || [], r = retourNormale();
+    return ch.find(x => r.has(String(x).trim().toUpperCase())) || [...r][0] || "RAS";
+  }
   ligneHtml(l, k) {
-    const actions = `<span class="actions-ligne"><button type="button" class="icone" data-action="dupliquer" title="Dupliquer cette ligne" aria-label="Dupliquer la ligne ${k + 1}">⧉</button><button type="button" class="icone" data-action="supprimer" title="Supprimer cette ligne" aria-label="Supprimer la ligne ${k + 1}">✕</button></span>`;
+    const actions = `${this.actionsLigne(l, k)}`;
     // Ordre imposé par [ordre N] : les champs se suivent dans cet ordre (les champs courts côte à côte)
     if (this.ordonne) return `<div class="ligne-rep ordonnee${l._repris ? " reprise" : ""}" data-k="${k}">${l._repris ? `<div class="repris" aria-live="polite">${this.texteRepris(l)}</div>` : ""}<div class="tete-ligne"><span class="num" aria-label="Ligne ${k + 1}">${k + 1}</span>
       <div class="champs-ordonnes">${this.sousDefs.map(d => this.champHtml(d, k, l)).join("")}</div>${actions}</div></div>`;
@@ -4490,7 +4506,7 @@ class Tableau {
     const textes = parZone("texte");
     return `<div class="ligne-rep${l._repris ? " reprise" : ""}" data-k="${k}">${l._repris ? `<div class="repris" aria-live="polite">${this.texteRepris(l)}</div>` : ""}
       <div class="tete-ligne"><span class="num" aria-label="Ligne ${k + 1}">${k + 1}</span>${parZone("tete")}
-        <span class="actions-ligne"><button type="button" class="icone" data-action="dupliquer" title="Dupliquer cette ligne" aria-label="Dupliquer la ligne ${k + 1}">⧉</button><button type="button" class="icone" data-action="supprimer" title="Supprimer cette ligne" aria-label="Supprimer la ligne ${k + 1}">✕</button></span></div>
+        ${this.actionsLigne(l, k)}</div>
       ${parZone("large")}${textes ? `<div class="textes-ligne">${textes}</div>` : ""}</div>`;
   }
   // site repris du dernier état connu : mention, et confirmation ou modification par l'agent
@@ -4635,6 +4651,11 @@ class Tableau {
         const copie = {};
         for (const d of this.sousDefs) if (!d.confidentiel && !videSous(l.valeurs[d.colId])) copie[d.colId] = Array.isArray(l.valeurs[d.colId]) ? [...l.valeurs[d.colId]] : l.valeurs[d.colId];
         this.lignes.splice(k + 1, 0, { _id: nouvelIdLigne(), valeurs: copie, _touche: { ...(l._touche || {}) } });
+      } else if (action === "ras-site" || (action === "supprimer" && this.sites && l._fixe)) {
+        // un site ne se retire pas d'un dossier : il passe en RAS (retour à la normale)
+        const d = this.sousDefs.find(x => x.colId === this.sites.qualif), ras = this.valeurRas();
+        if (d && ras) l.valeurs[d.colId] = typeBase(d.type) === "ChoiceList" ? [ras] : ras;
+        if (l._repris) l._repris.etat = "modifie";
       } else if (action === "supprimer") {
         if (!this.ligneVide(l) && !confirm(`Supprimer la ligne ${k + 1} ?`)) return;
         this.lignes.splice(k, 1);
@@ -5613,7 +5634,8 @@ $("rep-ok").addEventListener("click", () => enFile(async () => {
    - Reprise : « le dernier état connu de chaque site » parcourt toutes les versions précédentes de l'établissement
      (tous dossiers, jours antérieurs), garde l'état le plus récent de chaque site (identifiant du référentiel, sinon
      libellé rattaché par les correspondances) et préremplit les sites qui ne sont pas revenus à la normale (RAS…).
-     Un site retiré d'un dossier dans une version ultérieure de ce même dossier compte comme retiré.
+     Un site ne se retire pas d'un dossier : il passe en RAS (bouton « RAS » à la place de la suppression, pour les sites
+     du dossier et les sites repris). Données antérieures où un site a disparu d'un dossier : il compte comme revenu à la normale.
    - Qualification de l'établissement : en bas du formulaire, déduite du site le plus grave (ordre des choix de la
      colonne Qualification, du plus grave au moins grave) ; contrôle de cohérence avant l'enregistrement. */
 const sitesCtrl = () => controleursTableau("q").find(c => c.sites && c.pret) || null;
@@ -5665,7 +5687,7 @@ function reprendreEtatSites(c, etabId) {
   c.lignes = etats.map(e => {
     const v = {}; for (const d of c.sousDefs) if (!d.confidentiel && !videSous(e.valeurs[d.colId])) v[d.colId] = Array.isArray(e.valeurs[d.colId]) ? [...e.valeurs[d.colId]] : e.valeurs[d.colId];
     if (s.site && e.cle.startsWith("s") && !refId(v[s.site])) { v[s.site] = +e.cle.slice(1); if (s.libre) delete v[s.libre]; }   // libellé rattaché au référentiel
-    return { _id: nouvelIdLigne(), valeurs: v, _repris: { qualif: e.qualif, quand: e.quand, etat: "a_confirmer" } };
+    return { _id: nouvelIdLigne(), valeurs: v, _fixe: true, _repris: { qualif: e.qualif, quand: e.quand, etat: "a_confirmer" } };
   });
   c.lignes.forEach(l => c.initAuto(l));
   c.dessiner();
