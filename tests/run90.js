@@ -3,12 +3,13 @@ const __C = require('./chemins');
 const { chromium } = require('playwright'); const fs = require('fs');
 const { docSites } = require('./run78');
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6XqXcEAAAAASUVORK5CYII=', 'base64');
+const REF = process.argv[2] === 'ref';   // « Nom du site » : colonne référence aux sites qui garde les anciens noms (références non résolues)
 (async () => {
   const doc = docSites(), T = doc._grist_Tables, C = doc._grist_Tables_column, D = doc.__data;
   // sous-table « Sites » de l'ancien formulaire : nom du site en texte libre
   const tid = Math.max(...T.id) + 1; for (const k of Object.keys(T)) T[k].push(k === 'id' ? tid : k === 'tableId' ? 'Sites' : (typeof T[k][0] === 'number' ? 0 : ''));
-  for (const [c, ty, lab] of [['Dossier', 'Ref:Reponses', 'Dossier'], ['Nom_du_site', 'Text', 'Nom du site'], ['Qualification', 'Choice', 'Qualification']]) { const n = Math.max(...C.id) + 1; for (const k of Object.keys(C)) C[k].push(k === 'id' ? n : k === 'parentId' ? tid : k === 'colId' ? c : k === 'label' ? lab : k === 'type' ? ty : k === 'isFormula' ? false : (typeof C[k][0] === 'number' ? 0 : typeof C[k][0] === 'boolean' ? false : '')); }
-  D.Sites = { id: [1, 2, 3, 4, 5, 6], Dossier: [3, 3, 4, 4, 2, 5], Nom_du_site: ['Campus Beaulieu bat 12', 'Annexe Rue Dupont', 'campus beaulieu, bât. 12', 'Villejean', 'Bâtiment Ivry', 'Annexe rue Dupont'], Qualification: ['Blocage total', 'Rassemblement', 'Blocage total', 'Rassemblement', 'RAS', 'RAS'] };
+  for (const [c, ty, lab] of [['Dossier', 'Ref:Reponses', 'Dossier'], ['Nom_du_site', REF ? 'Ref:Referentiel_sites' : 'Text', 'Nom du site'], ['Qualification', 'Choice', 'Qualification']]) { const n = Math.max(...C.id) + 1; for (const k of Object.keys(C)) C[k].push(k === 'id' ? n : k === 'parentId' ? tid : k === 'colId' ? c : k === 'label' ? lab : k === 'type' ? ty : k === 'isFormula' ? false : (typeof C[k][0] === 'number' ? 0 : typeof C[k][0] === 'boolean' ? false : '')); }
+  D.Sites = { id: [1, 2, 3, 4, 5, 6], Dossier: [3, 3, 4, 4, 2, 5], Nom_du_site: [REF ? 2 : 'Campus Beaulieu bat 12', 'Annexe Rue Dupont', 'campus beaulieu, bât. 12', 'Villejean', 'Bâtiment Ivry', 'Annexe rue Dupont'], Qualification: ['Blocage total', 'Rassemblement', 'Blocage total', 'Rassemblement', 'RAS', 'RAS'] };
   const browser = await chromium.launch({ executablePath: __C.chromium }); const page = await browser.newPage({ viewport: { width: 1300, height: 1100 } });
   page.on('pageerror', e => console.log('PAGEERROR', e.message)); page.on('dialog', d => { console.log('CONFIRMATION :', d.message()); d.accept(); });
   await page.route('**/leaflet.min.js', r => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.js') }));
@@ -20,6 +21,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
   await page.click('[data-vue=saisies]'); await page.waitForTimeout(600);
   console.log('SOURCES :', await page.$$eval('#sx-source option', l => l.map(o => o.textContent).join(' | ')));
   await page.selectOption('#sx-source', 'Sites.Nom_du_site'); await page.waitForTimeout(600);
+  console.log('AIDE :', await page.$eval('#vue-saisies', z => [...z.querySelectorAll('p.aide')].map(p => p.textContent.trim()).join(' | ')));
   const liste = () => page.$$eval('#vue-saisies [data-sx]', l => l.map(x => x.innerText.replace(/\s+/g, ' ').trim()).join('\n   '));
   console.log('LIBELLÉS :\n  ', await liste());
   await page.check('[data-sx="campus beaulieu bat 12"] .sx-coche'); await page.waitForTimeout(200);
@@ -32,6 +34,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
   console.log('STATUT :', await page.textContent('#sx-msg'));
   console.log('LIBELLÉS :\n  ', await liste());
   console.log('TABLE Sites :', await page.evaluate(() => { const S = window.__DOC__.__data.Sites; return S.id.map((id, i) => `${id}:${S.Nom_du_site[i]}→${S.Site_referentiel ? S.Site_referentiel[i] : '∅'}`).join('  '); }));
+  console.log('COLONNES Sites :', await page.evaluate(() => { const D = window.__DOC__, T = D._grist_Tables, C = D._grist_Tables_column, t = T.id[T.tableId.indexOf('Sites')]; return C.id.map((_, i) => i).filter(i => C.parentId[i] === t).map(i => C.colId[i] + ':' + C.type[i]).join(', '); }));
   console.log('RÉFÉRENTIEL :', await page.evaluate(() => { const T = window.__DOC__.__data.Referentiel_sites; return T.id.slice(5).map((id, k) => `${id}:${T.Nom[k + 5]}|e${T.Etablissement[k + 5]}`).join('  '); }));
   console.log('CORRESPONDANCES :', await page.evaluate(() => { const t = window.__DOC__.__data.Sites_correspondances; return t.id.map((id, i) => `${t.Etablissement[i]}|${t.Libelle[i]}→${t.Site[i]}(${t.Statut[i]})`).join('  '); }));
   await browser.close();

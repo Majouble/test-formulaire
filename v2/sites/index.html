@@ -867,15 +867,19 @@ async function sourcesSaisies() {
   for (const rep of reps) {
     const ce = Object.values(meta[rep].colonnes).find(c => c.colId === "Etablissement" && c.type === `Ref:${ctx.tEtab}`) || Object.values(meta[rep].colonnes).find(c => c.type === `Ref:${ctx.tEtab}`);
     if (!ce) continue;
-    Object.values(meta[rep].colonnes).filter(c => /^Text/.test(c.type) && !c.isFormula && /site|batiment|campus/i.test(`${c.colId} ${c.label}`) && !/detail|json|tableau/i.test(c.colId))
-      .forEach(c => out.push({ cle: `${rep}.${c.colId}`, libelle: `${rep} › ${c.label}`, table: rep, col: c.colId, rep, etabCol: ce.colId, viaDossier: null }));
+    const estRefSite = c => ctx.tSites && c.type === `Ref:${ctx.tSites}`;
+    Object.values(meta[rep].colonnes).filter(c => (/^Text/.test(c.type) || estRefSite(c)) && !c.isFormula && /site|batiment|campus/i.test(`${c.colId} ${c.label}`) && !/detail|json|tableau/i.test(c.colId))
+      .forEach(c => out.push({ cle: `${rep}.${c.colId}`, libelle: `${rep} › ${c.label}${estRefSite(c) ? " (référence aux sites)" : ""}`, table: rep, col: c.colId, rep, etabCol: ce.colId, viaDossier: null, estRef: estRefSite(c) }));
     for (const [t, tm] of Object.entries(meta)) {
       if (t === rep || t.startsWith("_grist")) continue;
       const d = Object.values(tm.colonnes).find(c => c.type === `Ref:${rep}` && c.colId === "Dossier") || Object.values(tm.colonnes).find(c => c.type === `Ref:${rep}` && c.colId !== "Version"); if (!d) continue;
-      Object.values(tm.colonnes).filter(c => /^Text/.test(c.type) && !c.isFormula && /site|nom|libre|batiment/i.test(`${c.colId} ${c.label}`) && !/^Dossier_|Ligne_id/.test(c.colId))
-        .forEach(c => out.push({ cle: `${t}.${c.colId}`, libelle: `${t} › ${c.label}`, table: t, col: c.colId, rep, etabCol: ce.colId, viaDossier: d.colId }));
+      const estRefSiteT = c => ctx.tSites && c.type === `Ref:${ctx.tSites}`;
+      Object.values(tm.colonnes).filter(c => (/^Text/.test(c.type) || estRefSiteT(c)) && !c.isFormula && /site|nom|libre|batiment/i.test(`${c.colId} ${c.label}`) && !/^Dossier_|Ligne_id/.test(c.colId))
+        .forEach(c => out.push({ cle: `${t}.${c.colId}`, libelle: `${t} › ${c.label}${estRefSiteT(c) ? " (référence aux sites)" : ""}`, table: t, col: c.colId, rep, etabCol: ce.colId, viaDossier: d.colId, estRef: estRefSiteT(c) }));
     }
   }
+  // colonne référence aux sites d'abord : elle garde les anciens noms tant qu'ils ne sont pas rattachés
+  out.sort((a, b) => (b.estRef ? 1 : 0) - (a.estRef ? 1 : 0));
   return { meta, sources: out };
 }
 async function analyserSaisies() {
@@ -886,11 +890,17 @@ async function analyserSaisies() {
   const idxRep = trep ? new Map(trep.id.map((id, i) => [id, i])) : null;
   const etabDeLigne = i => src.viaDossier ? (k => k === undefined ? null : refId(trep[src.etabCol][k]))(idxRep.get(refId(t[src.viaDossier][i]))) : refId(t[src.etabCol][i]);
   // colonne de la table qui désigne un site du référentiel (déjà présente ?)
-  const refCol = (Object.values(meta[src.table].colonnes).find(c => !c.isFormula && c.type === `Ref:${ctx.tSites}`) || {}).colId || null;
+  /* Colonne référence aux sites : un site rattaché est un numéro de ligne ; un ancien nom resté sans correspondance est
+     gardé par Grist comme texte (référence non résolue, en rouge) : c'est lui qu'on rattache, dans la même colonne. */
+  const refCol = src.estRef ? src.col : (Object.values(meta[src.table].colonnes).find(c => !c.isFormula && c.type === `Ref:${ctx.tSites}`) || {}).colId || null;
+  const texteDe = v => typeof v === "string" ? v : Array.isArray(v) && typeof v[v.length - 1] === "string" ? v[v.length - 1] : "";
+  let nbRelies = 0;
   const ids = new Set([choisi.id, ...etabs.filter(e => e.ratt === choisi.id).map(e => e.id)]);   // l'établissement et ses composantes
   const groupes = new Map();
   t.id.forEach((rid, i) => {
-    const lib = String(t[src.col][i] ?? "").trim(); if (!lib || !ids.has(etabDeLigne(i))) return;
+    if (!ids.has(etabDeLigne(i))) return;
+    if (src.estRef && typeof t[src.col][i] === "number" && t[src.col][i]) { nbRelies++; return; }
+    const lib = String(src.estRef ? texteDe(t[src.col][i]) : (t[src.col][i] ?? "")).trim(); if (!lib) return;
     const k = norm(lib); if (!k) return;
     if (!groupes.has(k)) groupes.set(k, { cle: k, libelles: new Map(), lignes: [], relies: new Map() });
     const g = groupes.get(k); g.lignes.push(rid); g.libelles.set(lib, (g.libelles.get(lib) || 0) + 1);
@@ -905,7 +915,7 @@ async function analyserSaisies() {
     g.relie = g.relies.size === 1 && [...g.relies.values()][0] === g.lignes.length ? [...g.relies.keys()][0] : null;
     return g;
   }).sort((a, b) => (!!a.relie - !!b.relie) || b.lignes.length - a.lignes.length);
-  return { meta, sources, src, refCol, groupes: liste };
+  return { meta, sources, src, refCol, groupes: liste, nbRelies };
 }
 async function afficherSaisies() {
   const z = $("vue-saisies");
@@ -923,12 +933,13 @@ function dessinerSaisies() {
   const propose = sx.groupes.filter(g => sxCoches.has(g.cle)).map(g => g.propose).find(Boolean);
   z.innerHTML = `<div class="fiche"><strong>${esc(e.nom)}</strong><div class="aide">Sites saisis dans les signalements de l'établissement${etabs.some(x => x.ratt === e.id) ? " et de ses composantes" : ""}, à rattacher au référentiel (${lesSites.length} site${lesSites.length > 1 ? "s" : ""} actif${lesSites.length > 1 ? "s" : ""}).</div></div>
     <div class="outils"><label class="aide">Saisies lues dans <select id="sx-source">${sx.sources.map(x => `<option value="${esc(x.cle)}"${x.cle === sx.src.cle ? " selected" : ""}>${esc(x.libelle)}</option>`).join("")}</select></label></div>
-    <p class="aide">${sx.refCol ? `Colonne du site dans ${esc(sx.src.table)} : <code>${esc(sx.refCol)}</code>.` : `${esc(sx.src.table)} n'a pas encore de colonne vers le référentiel des sites : elle sera créée (« Site du référentiel ») au premier rattachement.`}</p>
+    <p class="aide">${sx.src.estRef ? `Colonne référence aux sites : les anciens noms (références non résolues) sont listés ci-dessous ; un rattachement les remplace par le site du référentiel, dans la même colonne.${sx.nbRelies ? ` ${sx.nbRelies} ligne(s) déjà rattachée(s).` : ""}`
+      : sx.refCol ? `Colonne du site dans ${esc(sx.src.table)} : <code>${esc(sx.refCol)}</code>.` : `${esc(sx.src.table)} n'a pas encore de colonne vers le référentiel des sites : elle sera créée (« Site du référentiel ») au premier rattachement.`}</p>
     <div class="lot">
       <div class="outils"><label><input type="checkbox" id="sx-tout"${n && n === sx.groupes.filter(g => !g.relie).length ? " checked" : ""}> Tous les non rattachés</label><span class="aide">${n ? `${n} libellé${n > 1 ? "s" : ""} coché${n > 1 ? "s" : ""}, ${nl} ligne${nl > 1 ? "s" : ""}` : "Cochez les libellés qui désignent le même site."}</span></div>
       ${n ? `<div class="outils"><select id="sx-site" aria-label="Site du référentiel">${lesSites.map(x => `<option value="${x.id}"${x.id === propose ? " selected" : ""}>${esc(x.nom)}</option>`).join("")}<option value="nouveau">+ Nouveau site du référentiel…</option></select>
           <input type="text" id="sx-nouveau" placeholder="Nom du nouveau site" hidden style="flex:1;min-width:140px"></div>
-        <label class="aide"><input type="checkbox" id="sx-remplacer"${sxRemplacer ? " checked" : ""}> Remplacer aussi le texte saisi par le nom du site</label>
+        ${sx.src.estRef ? "" : `<label class="aide"><input type="checkbox" id="sx-remplacer"${sxRemplacer ? " checked" : ""}> Remplacer aussi le texte saisi par le nom du site</label>`}
         <div class="outils"><button type="button" class="primaire" id="sx-appliquer">Rattacher les ${nl} ligne${nl > 1 ? "s" : ""} au site</button></div>` : ""}
     </div>
     <p class="statut" id="sx-msg" role="status"></p>
@@ -936,7 +947,7 @@ function dessinerSaisies() {
         <div class="ligne"><input type="checkbox" class="sx-coche"${sxCoches.has(g.cle) ? " checked" : ""} aria-label="Sélectionner « ${esc(g.libelle)} »"><strong>${esc(g.libelle)}</strong> <span class="pastille">${g.lignes.length} ligne${g.lignes.length > 1 ? "s" : ""}</span></div>
         ${g.libelles.size > 1 ? `<div class="meta">Variantes : ${[...g.libelles.keys()].map(esc).join(" ; ")}</div>` : ""}
         <div class="meta">${g.relie ? `Rattaché à « ${esc(nomSite(g.relie))} »` : g.relies.size ? `Rattaché en partie : ${[...g.relies].map(([id, c]) => `${esc(nomSite(id))} (${c})`).join(", ")}` : g.propose ? `Proposé : « ${esc(nomSite(g.propose))} »` : "Aucun site proposé"}</div></li>`).join("")}</ul>`
-      : `<p class="vide">Aucun site saisi pour cet établissement dans cette colonne.</p>`}`;
+      : `<p class="vide">${sx.src.estRef && sx.nbRelies ? "Toutes les lignes de cet établissement sont rattachées à un site du référentiel." : "Aucun site saisi pour cet établissement dans cette colonne."}</p>`}`;
   $("sx-source").addEventListener("change", ev => { sxSource = ev.target.value; memoSaisies(); sxCoches.clear(); afficherSaisies(); });
   $("sx-tout").addEventListener("change", ev => { sxCoches.clear(); if (ev.target.checked) sx.groupes.filter(g => !g.relie).forEach(g => sxCoches.add(g.cle)); dessinerSaisies(); });
   z.querySelectorAll(".sx-coche").forEach(c => c.addEventListener("change", () => { const k = c.closest("[data-sx]").dataset.sx; if (c.checked) sxCoches.add(k); else sxCoches.delete(k); dessinerSaisies(); }));
@@ -971,7 +982,7 @@ async function appliquerSaisies() {
       await grist.docApi.applyUserActions([["AddColumn", src.table, refCol, { type: `Ref:${ctx.tSites}`, isFormula: false, label: "Site du référentiel", untieColIdFromLabel: true }]]);
     }
     const lignes = choisis.flatMap(g => g.lignes);
-    const acts = lignes.map(rid => ["UpdateRecord", src.table, rid, { [refCol]: siteId, ...(sxRemplacer ? { [src.col]: nom } : {}) }]);
+    const acts = lignes.map(rid => ["UpdateRecord", src.table, rid, src.estRef ? { [src.col]: siteId } : { [refCol]: siteId, ...(sxRemplacer ? { [src.col]: nom } : {}) }]);
     // correspondances libellé saisi → site, pour les saisies à venir
     const meta = await S.lireMeta(), tA = "Sites_correspondances";
     if (!meta[tA]) {
@@ -989,7 +1000,7 @@ async function appliquerSaisies() {
     for (let k = 0; k < acts.length; k += 400) await grist.docApi.applyUserActions(acts.slice(k, k + 400));
     sxCoches.clear();
     await afficherSaisies();
-    dire(`${lignes.length} ligne(s) rattachée(s) à « ${nom} »${sxRemplacer ? ", texte remplacé" : ""} ; correspondance(s) validée(s) pour les prochaines saisies.`);
+    dire(`${lignes.length} ligne(s) rattachée(s) à « ${nom} »${sxRemplacer && !src.estRef ? ", texte remplacé" : ""} ; correspondance(s) validée(s) pour les prochaines saisies.`);
   } catch (err) { dire(`Modification refusée par Grist : ${err.message || err}`, true); }
 }
 
