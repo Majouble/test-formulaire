@@ -52,7 +52,8 @@ function docEsr() {
   console.log('RAPPROCHEMENT (sites.js) :', (await texte('#ref-sites')).slice(0, 400));
   // mots-clés des sites
   await page.click('#si-mc-creer'); await page.waitForTimeout(1200);
-  await page.selectOption('#si-mc-etab', await page.$$eval('#si-mc-etab option', l => l.find(o => o.textContent.startsWith('Université de Rennes (')).value));
+  await page.fill('#si-fe-q', 'universite de rennes'); await page.waitForTimeout(200);
+  await page.click('#si-fe-res li:has-text("Université de Rennes ·")');
   await page.waitForTimeout(300);
   await page.fill('.si-mc >> nth=0', 'Bâtiment 41 ; Halle'); await page.press('.si-mc >> nth=0', 'Tab'); await page.waitForTimeout(400);
   console.log('MOTS-CLÉS :', await page.textContent('#si-mc-statut'), '|', await page.evaluate(() => { const S = window.__DOC__.__data.Referentiel_sites; return S.id.map((id, i) => S.Mots_cles && S.Mots_cles[i] ? `${S.Nom[i]} → ${S.Mots_cles[i]}` : '').filter(Boolean).join(' ; '); }));

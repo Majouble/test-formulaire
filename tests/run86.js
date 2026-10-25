@@ -1,0 +1,34 @@
+// Référentiel : fiche de l'établissement (effectif, tutelle…), modification, ajout d'une information, mots-clés de ses sites
+const __C = require('./chemins');
+const { chromium } = require('playwright'); const fs = require('fs');
+const { docSites } = require('./run78');
+(async () => {
+  const doc = docSites(), T = doc._grist_Tables, C = doc._grist_Tables_column, D = doc.__data;
+  const ajCol = (t, c, ty, label, wo) => { const p = T.id[T.tableId.indexOf(t)], n = Math.max(...C.id) + 1; for (const k of Object.keys(C)) C[k].push(k === 'id' ? n : k === 'parentId' ? p : k === 'colId' ? c : k === 'label' ? label || c : k === 'type' ? ty : k === 'widgetOptions' ? wo || '' : k === 'isFormula' ? false : (typeof C[k][0] === 'number' ? 0 : typeof C[k][0] === 'boolean' ? false : '')); D[t][c] = D[t].id.map(() => null); };
+  ajCol('Etablissements', 'Effectif_etudiants', 'Int', 'Effectif étudiants'); D.Etablissements.Effectif_etudiants = [12000, 8000, null];
+  ajCol('Etablissements', 'Tutelle', 'Choice', 'Tutelle', JSON.stringify({ choices: ['MESR', 'Culture', 'Agriculture'] })); D.Etablissements.Tutelle = ['MESR', null, null];
+  ajCol('Etablissements', 'Rattachement', 'Ref:Etablissements', 'Établissement de rattachement');
+  ajCol('Etablissements', 'Wikidata', 'Text');
+  const browser = await chromium.launch({ executablePath: __C.chromium }); const page = await browser.newPage({ viewport: { width: 1300, height: 1600 } });
+  page.on('pageerror', e => console.log('PAGEERROR', e.message)); page.on('dialog', d => d.accept());
+  await page.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__DOC__=${JSON.stringify(doc)};` + fs.readFileSync('mock.js') + fs.readFileSync('fakeapi.js') + `;grist.onRecords=()=>{};grist.getOption=async()=>null;` }));
+  await page.goto('file://' + __C.racine + '/v2/admin/index.html'); await page.waitForTimeout(1200);
+  await page.click('nav button[data-onglet=referentiel]'); await page.waitForTimeout(2000);
+  await page.fill('#si-fe-q', 'moulin'); await page.waitForTimeout(200);
+  console.log('RECHERCHE :', await page.$$eval('#si-fe-res li', l => l.map(x => x.textContent.trim()).join(' | ')));
+  await page.click('#si-fe-res li >> nth=0'); await page.waitForTimeout(400);
+  console.log('PRINCIPALES :', await page.$$eval('.fe-grille >> nth=0', g => [...g[0].querySelectorAll('.fe-champ label')].map(x => x.textContent.trim()).join(' | ')));
+  console.log('AUTRES :', await page.$$eval('.fe-autres summary', l => l.map(x => x.textContent.trim()).join(' | ')));
+  await page.fill('#si-fe-Effectif_etudiants', '12650'); await page.press('#si-fe-Effectif_etudiants', 'Tab'); await page.waitForTimeout(300);
+  console.log('STATUT :', await page.textContent('#si-fe-statut'));
+  await page.selectOption('#si-fe-Tutelle', 'Culture'); await page.waitForTimeout(300);
+  await page.selectOption('#si-fe-Rattachement', { label: 'Lycée Romain Rolland' }); await page.waitForTimeout(300);
+  await page.click('.fe-autres summary:has-text("Ajouter")'); await page.fill('#si-fe-nouv', 'Effectif 2026 (rentrée)'); await page.selectOption('#si-fe-type', 'Int');
+  await page.click('#si-fe-ajout'); await page.waitForTimeout(1500);
+  console.log('AJOUT :', await page.textContent('#si-fe-statut'));
+  console.log('FICHE TOUJOURS OUVERTE :', await page.$eval('#si-fe-q', e => e.value), '| champ créé :', await page.$('#si-fe-Effectif_2026_rentree') ? 'oui' : 'non');
+  console.log('MOTS-CLÉS DES SITES :', await page.$$eval('.si-mc', l => l.length));
+  console.log('TABLE :', await page.evaluate(() => { const E = window.__DOC__.__data.Etablissements; return `effectif ${E.Effectif_etudiants[0]} | tutelle ${E.Tutelle[0]} | rattachement ${E.Rattachement[0]}`; }));
+  await page.screenshot({ path: __C.sorties + '/run86.png', fullPage: true });
+  await browser.close();
+})();

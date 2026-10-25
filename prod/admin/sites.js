@@ -62,7 +62,11 @@
     const source = ctx.sources.find(s => s.cle === choixSource) || ctx.sources.find(s => /libre|nom_du_site/i.test(s.col)) || ctx.sources[0] || null;
     const ref = ctx.refs.find(r => r.table === choixRef) || ctx.refs[0] || null;
     const mc = ref ? await chargerMotsCles(ref) : null;
-    if (!source || !ref) return { ctx, source, ref, groupes: [], mc };
+    // référentiel des établissements : celui du référentiel des sites, sinon celui du champ ESR, sinon le premier
+    const g = S.general(config), esp = S.espaces(g);
+    const tEtab = (ref && S.cibleRef(meta[ref.table].colonnes[ref.etabCol].type)) || (esp.find(e => e.champ === "ESR" && meta[e.referentiel]) || esp.find(e => meta[e.referentiel]) || {}).referentiel || null;
+    const fe = tEtab ? await chargerFiche(tEtab) : null;
+    if (!source || !ref) return { ctx, source, ref, groupes: [], mc, fe };
     const [ts, trep, tref, talias] = await Promise.all([grist.docApi.fetchTable(source.table), grist.docApi.fetchTable(source.rep), grist.docApi.fetchTable(ref.table),
       meta[TABLE_ALIAS] ? grist.docApi.fetchTable(TABLE_ALIAS) : null]);
     const idxRep = new Map(trep.id.map((id, i) => [id, i])), etabRep = id => { const i = idxRep.get(id); return i === undefined ? null : refId(trep[source.etab.col][i]); };
@@ -98,7 +102,7 @@
       return { ...gp, nomEtab: nomsEtab.get(gp.etab) || `Établissement ${gp.etab}`, sites, alias: a || null,
         propose: a && a.site ? a.site : (notes[0] && notes[0].score >= 0.5 ? notes[0].s.id : null), score: notes[0] ? notes[0].score : 0 };
     }).sort((x, y) => x.nomEtab.localeCompare(y.nomEtab, "fr") || y.n - x.n);
-    return { ctx, source, ref, groupes: liste, mc };
+    return { ctx, source, ref, groupes: liste, mc, fe };
   }
 
   /* ---------- mots-clés des sites : autres noms sous lesquels un site est désigné (bâtiment, ancien nom, sigle…) ----------
@@ -116,15 +120,112 @@
       .sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
     return { table: ref.table, colMots, sites, etabs };
   }
+  /* ---------- fiche de l'établissement : informations du référentiel modifiables (effectif, tutelle, type…) ----------
+     Toutes les colonnes non formules du référentiel des établissements, sauf la clé et le lien d'accès ; les principales
+     d'abord, les autres repliées ; chaque modification est enregistrée aussitôt ; « Ajouter une information » crée une colonne. */
+  const PRIORITE = [/^(nom|etablissement)$/, /libelle_consolide/, /^sigle/, /^type|typologie/, /^niveau$/, /rattach/, /secteur|public_prive/, /tutelle|ministere/,
+    /effectif|nombre.*etudiant|nb.*etudiant/, /^academie/, /^region/, /^departement/, /^commune/, /uai/, /^etat$/, /mots_cles/, /^mail|courriel/, /^site_web|url/, /^latitude/, /^longitude/];
+  const cleTxt = x => norm(x).replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const rangCol = c => PRIORITE.findIndex(re => re.test(cleTxt(c.colId)) || re.test(cleTxt(c.label)));
+  async function chargerFiche(tEtab) {
+    const tm = meta[tEtab], t = await grist.docApi.fetchTable(tEtab);
+    const cols = Object.values(tm.colonnes).filter(c => !/^(manualSort|gristHelper)/.test(c.colId) && !/^(uuid|lien|cle)$/i.test(c.colId));
+    const nomCol = (cols.find(c => /^(nom|etablissement)$/i.test(c.colId) && /^Text/.test(c.type)) || cols.find(c => /^Text/.test(c.type)) || {}).colId;
+    const ordre = c => { const k = rangCol(c); return k < 0 ? 999 : k; };
+    cols.sort((a, b) => ordre(a) - ordre(b));
+    // libellés des colonnes Référence (académie, établissement de rattachement…)
+    const refs = {};
+    for (const c of cols) { const cible = S.cibleRef(c.type); if (!cible || refs[cible]) continue;
+      try { const tc = cible === tEtab ? t : await grist.docApi.fetchTable(cible), cn = cible === tEtab ? nomCol : (Object.keys(tc).find(k => /^(nom|libelle|intitule|etablissement)/i.test(k) && (tc[k] || []).some(x => typeof x === "string")) || Object.keys(tc).find(k => k !== "id" && (tc[k] || []).some(x => typeof x === "string")));
+        refs[cible] = tc.id.map((id, i) => ({ id, lib: String(cn ? tc[cn][i] ?? "" : id) })).sort((a, b) => a.lib.localeCompare(b.lib, "fr")); } catch (_) { refs[cible] = []; } }
+    return { table: tEtab, cols, t, nomCol, pos: new Map(t.id.map((id, i) => [id, i])), principales: cols.filter(c => ordre(c) < 999).length, refs };
+  }
+  const versDate = s => typeof s === "number" ? new Date(s * 1000).toISOString().slice(0, 10) : "";
+  function champFiche(fe, c, i) {
+    const v = fe.t[c.colId] ? fe.t[c.colId][i] : null, ty = String(c.type).split(":")[0], id = `si-fe-${c.colId}`;
+    const lab = `<label for="${id}">${esc(c.label)}${c.isFormula ? ` <span class="aide">(formule)</span>` : ""}</label>`;
+    let ctl;
+    if (c.isFormula) ctl = `<div class="aide" id="${id}">${esc(Array.isArray(v) ? v.slice(1).join(", ") : v == null ? "—" : typeof v === "object" ? JSON.stringify(v) : v)}</div>`;
+    else if (ty === "Bool") ctl = `<input type="checkbox" id="${id}" data-fe="${esc(c.colId)}"${v ? " checked" : ""}>`;
+    else if (ty === "Int" || ty === "Numeric") ctl = `<input type="number" id="${id}" data-fe="${esc(c.colId)}" step="${ty === "Int" ? 1 : "any"}" value="${v ?? ""}">`;
+    else if (ty === "Date") ctl = `<input type="date" id="${id}" data-fe="${esc(c.colId)}" value="${versDate(v)}">`;
+    else if (ty === "Choice") { let ch = []; try { ch = JSON.parse(c.widgetOptions || "{}").choices || []; } catch (_) { ch = []; }
+      if (v && !ch.includes(v)) ch = [v, ...ch];
+      ctl = `<select id="${id}" data-fe="${esc(c.colId)}"><option value="">—</option>${ch.map(x => `<option${x === v ? " selected" : ""}>${esc(x)}</option>`).join("")}</select>`; }
+    else if (ty === "Ref") { const l = fe.refs[S.cibleRef(c.type)] || [], r = refId(v);
+      ctl = `<select id="${id}" data-fe="${esc(c.colId)}"><option value="">—</option>${l.map(o => `<option value="${o.id}"${o.id === r ? " selected" : ""}>${esc(o.lib)}</option>`).join("")}</select>`; }
+    else if (ty === "ChoiceList" || ty === "RefList") ctl = `<input type="text" id="${id}" data-fe="${esc(c.colId)}" data-liste="1" value="${esc(Array.isArray(v) ? v.slice(1).join(", ") : "")}" placeholder="valeurs séparées par des virgules"${ty === "RefList" ? " disabled" : ""}>`;
+    else { const txt = v == null ? "" : String(v); ctl = txt.length > 90 ? `<textarea id="${id}" data-fe="${esc(c.colId)}" rows="2">${esc(txt)}</textarea>` : `<input type="text" id="${id}" data-fe="${esc(c.colId)}" value="${esc(txt)}">`; }
+    return `<div class="fe-champ">${lab}${ctl}</div>`;
+  }
+  function ficheHtml(fe) {
+    if (!fe) return "";
+    const i = choixEtabMc ? fe.pos.get(+choixEtabMc) : undefined, nom = i !== undefined ? String(fe.t[fe.nomCol][i] ?? "") : "";
+    return `<h3 style="font-size:14px;margin:20px 0 4px">Fiche de l'établissement</h3>
+      <p class="aide">Informations du référentiel « ${esc(fe.table)} » (effectif, tutelle, type, rattachement…) et mots-clés de ses sites. Chaque modification est enregistrée aussitôt.</p>
+      <div class="fe-recherche"><input type="search" id="si-fe-q" placeholder="Établissement : nom, sigle, ville, UAI…" value="${esc(nom)}" autocomplete="off" aria-label="Rechercher un établissement">
+        <ul class="fe-res" id="si-fe-res" role="listbox" hidden></ul></div>
+      <span class="statut" id="si-fe-statut" role="status"></span>
+      ${i === undefined ? "" : `<div class="fe-grille">${fe.cols.slice(0, fe.principales).map(c => champFiche(fe, c, i)).join("")}</div>
+        ${fe.cols.length > fe.principales ? `<details class="fe-autres"><summary>Autres informations (${fe.cols.length - fe.principales})</summary><div class="fe-grille">${fe.cols.slice(fe.principales).map(c => champFiche(fe, c, i)).join("")}</div></details>` : ""}
+        <details class="fe-autres"><summary>Ajouter une information au référentiel</summary>
+          <div class="sites-outils"><label>Nom <input type="text" id="si-fe-nouv" placeholder="ex. Tutelle, Effectif 2026"></label>
+            <label>Type <select id="si-fe-type"><option value="Text">Texte</option><option value="Int">Nombre entier</option><option value="Numeric">Nombre décimal</option><option value="Choice">Liste de choix</option><option value="Bool">Case à cocher</option><option value="Date">Date</option></select></label>
+            <button type="button" class="secondaire" id="si-fe-ajout">Ajouter la colonne</button></div>
+          <p class="aide">La colonne est créée dans « ${esc(fe.table)} » pour tous les établissements. Pour une liste de choix, les choix se règlent ensuite dans Grist (options de la colonne).</p></details>`}`;
+  }
+  function lierFiche() {
+    const fe = etat && etat.fe, q = $("si-fe-q"); if (!fe || !q) return;
+    const ul = $("si-fe-res"), st = $("si-fe-statut");
+    const dire2 = (t, err) => { st.textContent = t; st.className = `statut${err ? " err" : " ok"}`; };
+    const texte = fe.t.id.map((id, i) => [id, norm(fe.cols.filter(c => /^Text/.test(c.type) && /^(nom|etablissement|sigle|libelle|commune|uai|identifiant_s_uai|mots_cles)/i.test(c.colId)).map(c => fe.t[c.colId][i]).join(" "))]);
+    const chercher = () => {
+      const mots = norm(q.value).split(" ").filter(Boolean); if (!mots.length) { ul.hidden = true; return; }
+      const res = texte.filter(([, t]) => mots.every(m => t.includes(m))).slice(0, 20);
+      ul.innerHTML = res.length ? res.map(([id]) => { const i = fe.pos.get(id), lib = String(fe.t[fe.nomCol][i] ?? ""), n = etat.mc ? etat.mc.sites.filter(x => x.etab === id).length : 0;
+        return `<li role="option" data-id="${id}">${esc(lib)}${etat.mc ? ` <span class="aide">· ${n} site${n > 1 ? "s" : ""}</span>` : ""}</li>`; }).join("") : `<li class="aide">Aucun établissement trouvé.</li>`;
+      ul.hidden = false;
+    };
+    q.addEventListener("input", chercher);
+    q.addEventListener("blur", () => setTimeout(() => { ul.hidden = true; }, 150));
+    q.addEventListener("keydown", ev => { if (ev.key === "Enter") { const li = ul.querySelector("li[data-id]"); if (li) { ev.preventDefault(); choixEtabMc = li.dataset.id; dessiner(); } } });
+    ul.addEventListener("mousedown", ev => { const li = ev.target.closest("li[data-id]"); if (li) { ev.preventDefault(); choixEtabMc = li.dataset.id; dessiner(); const z = $("si-fe-q"); if (z) z.scrollIntoView({ block: "nearest" }); } });
+    const id = +choixEtabMc, i = fe.pos.get(id);
+    racine.querySelectorAll("[data-fe]").forEach(el => el.addEventListener("change", async () => {
+      const c = fe.cols.find(x => x.colId === el.dataset.fe), ty = String(c.type).split(":")[0];
+      let v;
+      if (ty === "Bool") v = el.checked;
+      else if (ty === "Int" || ty === "Numeric") v = el.value === "" ? null : (ty === "Int" ? parseInt(el.value, 10) : parseFloat(el.value));
+      else if (ty === "Date") v = el.value ? Date.parse(el.value + "T00:00:00Z") / 1000 : null;
+      else if (ty === "Ref") v = +el.value || 0;
+      else if (el.dataset.liste) { const l = el.value.split(/\s*,\s*/).map(x => x.trim()).filter(Boolean); v = l.length ? ["L", ...l] : null; }
+      else v = el.value.trim() === "" ? null : el.value;
+      try {
+        await grist.docApi.applyUserActions([["UpdateRecord", fe.table, id, { [c.colId]: v }]]);
+        fe.t[c.colId][i] = v; dire2(`${c.label} enregistré.`);
+      } catch (e) { dire2(`${c.label} non enregistré (${e.message || e}).`, true); }
+    }));
+    const aj = $("si-fe-ajout");
+    if (aj) aj.addEventListener("click", async () => {
+      const lib = $("si-fe-nouv").value.trim(), type = $("si-fe-type").value; if (!lib) { $("si-fe-nouv").focus(); return; }
+      let cid = norm(lib).replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").replace(/^(\d)/, "C_$1") || "Information"; cid = cid.charAt(0).toUpperCase() + cid.slice(1);
+      while (meta[fe.table].colonnes[cid]) cid += "_2";
+      aj.disabled = true;
+      try { await grist.docApi.applyUserActions([["AddColumn", fe.table, cid, { type, isFormula: false, label: lib, untieColIdFromLabel: true }]]); await relancer(); const s2 = $("si-fe-statut"); if (s2) { s2.textContent = `Information « ${lib} » ajoutée (colonne ${cid}).`; s2.className = "statut ok"; } }
+      catch (e) { aj.disabled = false; dire2(`Colonne non créée (${e.message || e}).`, true); }
+    });
+  }
   function motsClesHtml(mc) {
     if (!mc) return "";
-    const e = mc.etabs.find(x => String(x.id) === String(choixEtabMc)) || null, liste = e ? mc.sites.filter(x => x.etab === e.id).sort((a, b) => a.nom.localeCompare(b.nom, "fr")) : [];
-    return `<h3 style="font-size:14px;margin:20px 0 4px">Mots-clés des sites</h3>
+    const e = choixEtabMc ? { id: +choixEtabMc } : null, liste = e ? mc.sites.filter(x => x.etab === e.id).sort((a, b) => a.nom.localeCompare(b.nom, "fr")) : [];
+    if (mc.colMots && !e) return "";
+    return `<h3 style="font-size:14px;margin:16px 0 4px">Mots-clés des sites${e && liste.length ? ` (${liste.length})` : ""}</h3>
       <p class="aide">Autres noms sous lesquels les agents désignent un site (bâtiment, ancien nom, sigle, rue…), séparés par des virgules. Dans le formulaire, taper un de ces mots propose le site.
         Les libellés validés ci-dessus servent aussi de mots-clés pour leur établissement.</p>
       ${!mc.colMots ? `<div class="boutons" style="margin-top:4px"><button class="secondaire" id="si-mc-creer">Créer la colonne Mots-clés dans ${esc(mc.table)}</button></div>` : `
-      <div class="sites-outils"><label>Établissement <select id="si-mc-etab"><option value="">Choisir…</option>${mc.etabs.map(x => `<option value="${x.id}"${e && e.id === x.id ? " selected" : ""}>${esc(x.nom)} (${x.n} site${x.n > 1 ? "s" : ""})</option>`).join("")}</select></label><span class="statut" id="si-mc-statut" role="status"></span></div>
-      ${e ? `<div class="sites-defile"><table class="sites-table"><thead><tr><th>Site</th><th>Autres noms (référentiel)</th><th>Mots-clés</th></tr></thead><tbody>
+      <span class="statut" id="si-mc-statut" role="status"></span>
+      ${e && !liste.length ? `<p class="vide">Aucun site de cet établissement au référentiel (widget « Référentiel des sites » pour en ajouter).</p>` : ""}
+      ${e && liste.length ? `<div class="sites-defile"><table class="sites-table"><thead><tr><th>Site</th><th>Autres noms (référentiel)</th><th>Mots-clés</th></tr></thead><tbody>
         ${liste.map(x => `<tr><td><strong>${esc(x.nom)}</strong></td><td class="aide">${esc(x.autres.length > 160 ? x.autres.slice(0, 160) + "…" : x.autres)}</td>
           <td><input type="text" class="si-mc" data-id="${x.id}" value="${esc(x.mots)}" placeholder="ex. bât. A, rue Dupont, ancien IUFM" style="width:100%;min-width:220px"></td></tr>`).join("")}
       </tbody></table></div>` : ""}`}`;
@@ -136,7 +237,6 @@
       try { await grist.docApi.applyUserActions([["AddColumn", etat.mc.table, "Mots_cles", { type: "Text", isFormula: false, label: "Mots-clés", untieColIdFromLabel: true }]]); await relancer(); }
       catch (e) { c.disabled = false; dire(`Colonne non créée (${e.message || e}).`, true); }
     });
-    const se = $("si-mc-etab"); if (se) se.addEventListener("change", () => { choixEtabMc = se.value; dessiner(); });
     racine.querySelectorAll(".si-mc").forEach(inp => inp.addEventListener("change", async () => {
       const st = $("si-mc-statut"), v = inp.value.split(/\s*[,;|]\s*/).map(x => x.trim()).filter(Boolean).join(", ");
       try { await grist.docApi.applyUserActions([["UpdateRecord", etat.mc.table, +inp.dataset.id, { [etat.mc.colMots]: v || null }]]);
@@ -180,8 +280,9 @@
             ${!gp.alias && gp.propose ? ` <span class="pastille reco">proposé</span>` : ""}${!gp.sites.length ? ` <span class="aide">aucun site de cet établissement au référentiel</span>` : ""}</td>
           <td>${statutDe(gp) === "valide" ? `<span class="pastille ok">validé</span>` : statutDe(gp) === "ecarte" ? `<span class="pastille">écarté</span>` : `<span class="pastille manque">à traiter</span>`}</td></tr>`).join("")}
       </tbody></table></div>` : `<p class="vide">Rien ${filtre === "a_traiter" ? "à traiter" : "à afficher"}.</p>`}`}
+      ${ficheHtml(etat.fe)}
       ${motsClesHtml(etat.mc)}`;
-    lier(); lierMotsCles();
+    lier(); lierFiche(); lierMotsCles();
   }
   const dire = (t, err) => { const s = $("si-statut"); if (s) { s.textContent = t; s.className = `statut${err ? " err" : " ok"}`; } };
   function lier() {

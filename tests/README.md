@@ -8,7 +8,7 @@ Scénarios Playwright qui ouvrent les widgets (`v2/…`) dans Chromium avec un *
 cd tests
 npm install
 npx playwright install chromium     # ou : CHROMIUM=/chemin/vers/chromium
-sh lancer.sh                        # suite actuelle (run63 à run85)
+sh lancer.sh                        # suite actuelle (run63 à run86)
 sh lancer.sh run74 run76            # quelques scénarios
 ```
 
@@ -38,6 +38,7 @@ Les scénarios de l'atlas (run63 à run69, run73) exportent un zip ; pour vérif
 | `run78` | Formulaire par site (ESR) : reprise du dernier état connu de chaque site, qualification déduite en bas, contrôle de cohérence |
 | `run79` | Admin : rapprochement des sites saisis (Référentiel), modèle de formulaire « Enseignement supérieur par site » |
 | `run80` | Admin : changer le modèle d'un formulaire existant (standard ↔ enseignement supérieur par site) |
+| `run86` | Référentiel : fiche de l'établissement (effectif, tutelle, rattachement), ajout d'une information |
 | `run85` | Référentiel : un site saisi hors référentiel devient un site du référentiel (nouveau site, correspondance, saisies complétées) |
 | `run84` | Formulaire par site, cas du terrain : colonne du site en double, sans colonne hors référentiel, champ de recherche des sites ; contrôle du paramétrage dans l'administration |
 | `run83` | Widget « Référentiel des sites » : établissement, carte, candidats IGN / OpenStreetMap / adresse (réponses simulées), ajout, placement, mots-clés, désactivation |
