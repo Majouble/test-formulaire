@@ -9,6 +9,7 @@
 <script src="../commun/theme.js"></script>
 <script src="../commun/socle.js"></script>
 <script src="../commun/fiche-etab.js"></script>
+<script src="../commun/qualite-moteur.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
@@ -73,6 +74,23 @@
   .leaflet-container { background: var(--soft); font: inherit; }
   .popup-ajout input { width: 220px; margin: 4px 0; }
   .version { color: var(--muted); font-size: 11px; }
+  .vues { display: flex; gap: 4px; margin: 4px 0 8px; border-bottom: 1px solid var(--line); }
+  .vues button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; padding: 6px 8px; background: none; color: var(--fg); }
+  .vues button[aria-selected=true] { border-bottom-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .badge-qa:not(:empty) { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--warn); color: #fff; font-size: 11px; text-align: center; }
+  .qa-item { border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; margin: 6px 0; list-style: none; }
+  .qa-item.traite { opacity: .65; }
+  .qa-liste { margin: 0; padding: 0; }
+  .qa-g { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 9px; margin-right: 4px; }
+  .qa-g.haute { background: var(--err-bg); color: var(--err); } .qa-g.moyenne { background: var(--warn-bg); color: var(--warn); } .qa-g.basse { background: var(--soft); color: var(--muted); }
+  .qa-dossiers { margin: 4px 0; padding-left: 16px; font-size: 12px; }
+  .qa-extrait { color: var(--muted); }
+  .qa-bandeau { border: 1px solid var(--warn); background: var(--warn-bg); border-radius: 6px; padding: 7px 9px; margin: 6px 0; font-size: 12px; }
+  .qa-dossier { border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; margin: 8px 0; }
+  .qa-dossier table { width: 100%; border-collapse: collapse; font-size: 11.5px; margin: 4px 0; }
+  .qa-dossier td, .qa-dossier th { border-bottom: 1px solid var(--soft); padding: 3px 4px; text-align: left; vertical-align: top; }
+  .qa-dossier textarea { width: 100%; background: var(--bg); color: inherit; border: 1px solid var(--line); border-radius: 4px; padding: 5px; font: inherit; }
+  .qa-dossier label { display: grid; gap: 2px; font-size: 11.5px; color: var(--muted); margin: 4px 0; }
   /* fiche de l'établissement (commun/fiche-etab.js) */
   .fe-bloc { margin-top: 8px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; }
   .fe-bloc > summary { cursor: pointer; font-weight: 600; font-size: 12.5px; }
@@ -89,6 +107,12 @@
 <div class="page">
   <section class="gauche">
     <h1>Référentiel des sites <span class="version" id="version"></span></h1>
+    <div class="vues" role="tablist">
+      <button type="button" role="tab" data-vue="etab" aria-selected="true">Établissements et sites</button>
+      <button type="button" role="tab" data-vue="qa" aria-selected="false">À vérifier <span class="badge-qa" id="badge-qa"></span></button>
+    </div>
+    <div id="vue-etab">
+    <div id="qa-retour"></div>
     <p class="aide">Choisissez un établissement : ses sites s'affichent sur la carte. Corrigez un nom, des mots-clés ou une position (glissez le repère),
       ajoutez un site trouvé dans les lieux IGN, OpenStreetMap ou une adresse, ou d'un clic sur la carte. Les modifications sont enregistrées aussitôt dans Grist.</p>
     <div id="contexte" class="statut"></div>
@@ -99,6 +123,8 @@
     <div id="fiche"></div>
     <p class="statut" id="statut" role="status"></p>
     <div id="liste"></div>
+    </div>
+    <div id="vue-qa" hidden></div>
   </section>
   <section class="droite">
     <div id="carte" aria-label="Carte des sites"></div>
@@ -151,7 +177,8 @@ let ctx = null;          // { tEtab, tSites, cols, ce, ... }
 let etabs = [];          // [{ id, nom, sigle, lib, commune, lat, lon, ratt, niveau, texte }]
 let sites = [];          // [{ id, nom, etab, comp, commune, lat, lon, statut, source, mots, actif, ... }]
 let choisi = null, siteChoisi = null, source = "ign", candidats = [];
-let carte = null, coucheSites = null, coucheCands = null, coucheEtab = null;
+let carte = null, coucheSites = null, coucheCands = null, coucheEtab = null, placement = null;
+const attendrePlacement = f => { placement = f; carte.closePopup(); carte.getContainer().style.cursor = "crosshair"; };
 
 function statut(t, type) { const e = $("statut"); e.textContent = t || ""; e.className = `statut ${type || ""}`; }
 async function lireJson(url, opts) {
@@ -370,6 +397,7 @@ function initCarte() {
   L.control.layers({ "Plan IGN": plan, "Photographies aériennes": photo }, {}, { position: "topright" }).addTo(carte);
   coucheEtab = L.layerGroup().addTo(carte); coucheSites = L.layerGroup().addTo(carte); coucheCands = L.layerGroup().addTo(carte);
   carte.on("click", ev => {
+    if (placement) { const f = placement; placement = null; carte.getContainer().style.cursor = ""; f(ev.latlng); return; }   // « placer » en attente
     if (!choisi) return;
     const { lat, lng } = ev.latlng;
     const div = document.createElement("div"); div.className = "popup-ajout";
@@ -435,10 +463,28 @@ function rechercherEtab() {
     : `<li class="meta" aria-disabled="true">Aucun établissement trouvé.</li>`;
   ul.hidden = false; $("etab-q").setAttribute("aria-expanded", "true");
 }
+const colFormule = (t, c) => { const m = ctx.meta[t] && ctx.meta[t].colonnes[c]; return !!(m && m.isFormula); };
+// boutons de l'en-tête de l'établissement (rattachement, placement sur la carte)
+function lierEntete(f) {
+  const b2 = f.querySelector("[data-etab-parent]"); if (b2) b2.addEventListener("click", () => choisirEtab(+b2.dataset.etabParent));
+  const pl = f.querySelector("[data-placer-etab]");
+  if (pl) pl.addEventListener("click", () => {
+    const e = choisi; statut(`Cliquez sur la carte pour placer « ${e.nom} ».`);
+    attendrePlacement(async q => {
+      try {
+        await grist.docApi.applyUserActions([["UpdateRecord", ctx.tEtab, e.id, { [ctx.ce.lat]: +q.lat.toFixed(6), [ctx.ce.lon]: +q.lng.toFixed(6) }]]);
+        await lireDonnees(); const n = etabDe(e.id); if (n) { choisi = n; const fi = document.querySelector(".fiche"); if (fi) { fi.innerHTML = enteteEtab(n); lierEntete(fi); } }
+        ficheEtab = null; if ($("fe-bloc") && $("fe-bloc").open) dessinerFicheEtab();
+        dessinerCarte(false); statut(`Position de « ${e.nom} » enregistrée.`, "ok");
+      } catch (err) { statut(`Position non enregistrée : ${err.message || err}`, "err"); }
+    });
+  });
+}
 function enteteEtab(e) {
   const p = parentDe(e);
   return `<strong>${esc(e.nom)}</strong>${e.sigle && !e.nom.includes(e.sigle) ? ` (${esc(e.sigle)})` : ""}
     <div class="aide">${esc([e.niveau, e.type, e.commune].filter(Boolean).join(" · "))}${e.lat == null ? " · sans coordonnées" : ""}</div>
+    ${ctx.ce.lat && ctx.ce.lon && !colFormule(ctx.tEtab, ctx.ce.lat) ? `<div><button type="button" class="lien" data-placer-etab>${e.lat == null ? "Placer" : "Déplacer"} l'établissement d'un clic sur la carte</button></div>` : ""}
     ${p && p.id !== e.id ? `<div class="aide">Composante de <button type="button" class="lien" data-etab-parent="${p.id}">${esc(p.nom)}</button> : les sites ajoutés sont rattachés à l'établissement, avec cette composante.</div>` : ""}`;
 }
 function choisirEtab(id) {
@@ -447,7 +493,7 @@ function choisirEtab(id) {
   try { localStorage.setItem("socle-v2-sites-etab", String(id)); } catch (_) { /* stockage indisponible */ }
   const p = choisi && parentDe(choisi);
   $("fiche").innerHTML = choisi ? `<div class="fiche">${enteteEtab(choisi)}</div>` : "";
-  const bp = document.querySelector("[data-etab-parent]"); if (bp) bp.addEventListener("click", () => choisirEtab(+bp.dataset.etabParent));
+  if (choisi) lierEntete(document.querySelector(".fiche"));
   if (choisi && window.FicheEtab) {
     let ouvert = false; try { ouvert = localStorage.getItem("socle-v2-sites-fiche") === "1"; } catch (_) { /* stockage indisponible */ }
     $("fiche").insertAdjacentHTML("beforeend", `<details class="fe-bloc" id="fe-bloc"${ouvert ? " open" : ""}><summary>Informations de l'établissement (effectif, tutelle…)</summary>
@@ -472,7 +518,7 @@ async function dessinerFicheEtab() {
   const dire = (t, err) => { const st = $("fe-statut"); if (st) { st.textContent = t; st.className = `statut ${err ? "err" : "ok"}`; } };
   window.FicheEtab.lier(z, ficheEtab, e.id, { prefixe: "fe-", dire,
     // nom, sigle, commune, coordonnées : la liste des établissements et la carte suivent
-    apresModif: async col => { if (Object.values(ctx.ce).includes(col)) { await lireDonnees(); const n = etabDe(e.id); if (n) { choisi = n; $("etab-q").value = n.nom; const f = document.querySelector(".fiche"); if (f) { f.innerHTML = enteteEtab(n); const b2 = f.querySelector("[data-etab-parent]"); if (b2) b2.addEventListener("click", () => choisirEtab(+b2.dataset.etabParent)); } dessinerCarte(false); } } },
+    apresModif: async col => { if (Object.values(ctx.ce).includes(col)) { await lireDonnees(); const n = etabDe(e.id); if (n) { choisi = n; $("etab-q").value = n.nom; const f = document.querySelector(".fiche"); if (f) { f.innerHTML = enteteEtab(n); lierEntete(f); } dessinerCarte(false); } } },
     apresAjout: async (cid, lib) => { ficheEtab = null; await dessinerFicheEtab(); dire(`Information « ${lib} » ajoutée (colonne ${cid}).`); } });
 }
 function dessinerSites(cadrer) {
@@ -501,9 +547,8 @@ function dessinerSites(cadrer) {
       if (b.dataset.action === "actif") { s.actif = !s.actif; modifierSite(s.id, { actif: s.actif }, s.actif ? "Site réactivé." : "Site désactivé : il n'est plus proposé dans les formulaires (les signalements qui y renvoient restent)."); }
       if (b.dataset.action === "placer") {
         statut(`Cliquez sur la carte pour placer « ${s.nom} ».`);
-        carte.once("click", ev => { L.DomEvent.stop(ev); carte.closePopup(); s.lat = +ev.latlng.lat.toFixed(6); s.lon = +ev.latlng.lng.toFixed(6);
+        attendrePlacement(p => { s.lat = +p.lat.toFixed(6); s.lon = +p.lng.toFixed(6);
           modifierSite(s.id, { lat: s.lat, lon: s.lon, precision: "Placé sur la carte" }, `Position de « ${s.nom} » enregistrée.`); dessinerSites(false); });
-        setTimeout(() => carte.closePopup(), 0);
       }
       dessinerSites(false);
     }));
@@ -566,7 +611,160 @@ function dessinerCandidats(cadrer) {
     if (pts.length) carte.fitBounds(pts, { padding: [40, 40], maxZoom: 16 }); }
 }
 
+/* ---------- À vérifier : contrôle qualité des signalements (commun/qualite-moteur.js), corrigé sur place ----------
+   Anomalies d'établissement (section ou composante, sans coordonnées, hors périmètre) : l'établissement s'ouvre dans la
+   vue « Établissements et sites » (fiche, placement sur la carte), avec un bandeau pour revenir ou marquer corrigé.
+   Anomalies de signalement (doublons, qualification manquante, saisie d'essai, dossier sur plusieurs établissements,
+   établissement absent) : versions du dossier, qualification et description de la dernière version modifiables,
+   dossier rattachable à un autre établissement. Statuts (vérifié, corrigé) communs avec l'administration. */
+const Q = window.QualiteMoteur;
+const QA_ETAB = new Set(["section", "sans_coord", "hors_perimetre"]);
+let vue = "etab", qa = null, qaEnCours = false, qaFiltre = { type: "", statut: "a_traiter" }, qaEdition = null, qaChoixEtab = {};
+try { qaFiltre = { ...qaFiltre, ...JSON.parse(localStorage.getItem("socle-v2-sites-qa") || "{}") }; } catch (_) { /* stockage indisponible */ }
+const qaStatut = a => (Q.statuts(qa.config)[a.cle] || null);
+const qaToutes = () => qa && qa.espaces ? qa.espaces.flatMap(x => x.anomalies) : [];
+function changerVue(v) {
+  vue = v;
+  document.querySelectorAll(".vues [data-vue]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.vue === v)));
+  $("vue-etab").hidden = v !== "etab"; $("vue-qa").hidden = v !== "qa";
+  if (v === "qa") { if (!qa) analyserQa(); else dessinerQa(); }
+}
+async function analyserQa(garder) {
+  if (qaEnCours) return; qaEnCours = true;
+  if (vue === "qa" && !garder) $("vue-qa").innerHTML = `<p class="aide">Analyse des signalements…</p>`;
+  try { qa = await Q.analyser(); } catch (err) { qa = { erreur: `Analyse impossible : ${err.message || err}` }; }
+  qaEnCours = false;
+  const n = qa.erreur ? 0 : qaToutes().filter(a => !qaStatut(a)).length; $("badge-qa").textContent = n ? String(n) : "";
+  if (qaEdition && !qa.erreur) qaEdition = qaToutes().find(a => a.cle === qaEdition.cle) || { resolue: qaEdition };
+  if (vue === "qa") dessinerQa();
+}
+const dateHeure = s => typeof s === "number" ? new Date(s * 1000).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+function dessinerQa() {
+  const z = $("vue-qa");
+  if (!qa) { z.innerHTML = `<p class="aide">Analyse des signalements…</p>`; return; }
+  if (qa.erreur) { z.innerHTML = `<p class="statut err">${esc(qa.erreur)}</p>`; return; }
+  if (qaEdition) { dessinerEdition(z); return; }
+  const toutes = qaToutes(), vis = toutes.filter(a => (!qaFiltre.type || a.type === qaFiltre.type) && (qaFiltre.statut === "tous" || (qaFiltre.statut === "traites" ? !!qaStatut(a) : !qaStatut(a))))
+    .sort((a, b) => b.gravite - a.gravite);
+  const nb = k => toutes.filter(a => a.type === k && !qaStatut(a)).length;
+  z.innerHTML = `<p class="aide">Contrôle des signalements enregistrés. « Corriger » ouvre l'établissement ou le dossier en cause pour le modifier ici ; « Vérifié » range l'anomalie (statuts communs avec l'administration).</p>
+    <div class="outils"><select id="qa-type" aria-label="Contrôle"><option value="">Tous les contrôles</option>${Object.entries(Q.TYPES).map(([k, t]) => `<option value="${k}"${qaFiltre.type === k ? " selected" : ""}>${esc(t.titre)} (${nb(k)})</option>`).join("")}</select>
+      <select id="qa-statut" aria-label="Statut">${[["a_traiter", "à traiter"], ["traites", "vérifiés ou corrigés"], ["tous", "tous"]].map(([v, l]) => `<option value="${v}"${qaFiltre.statut === v ? " selected" : ""}>${l}</option>`).join("")}</select>
+      <button type="button" id="qa-relancer">Relancer l'analyse</button></div>
+    <p class="statut" id="qa-msg" role="status"></p>
+    ${vis.length ? `<ul class="qa-liste">${vis.slice(0, 200).map(a => { const g = Q.GRAVITES[a.gravite], st = qaStatut(a);
+      return `<li class="qa-item${st ? " traite" : ""}" data-cle="${esc(a.cle)}"><div><span class="qa-g ${g[0]}">${g[1]}</span><strong>${esc(a.titre)}</strong></div>
+        ${a.detail ? `<div class="aide">${esc(a.detail)}</div>` : ""}
+        <ul class="qa-dossiers">${a.fiches.map(f => `<li>Dossier n° ${f.id} · ${esc(Q.dateFr(f.jour))}${f.derniere.qualif ? ` · ${esc(f.derniere.qualif)}` : ""}${f.derniere.desc ? `<br><span class="qa-extrait">${esc(f.derniere.desc.slice(0, 120))}${f.derniere.desc.length > 120 ? "…" : ""}</span>` : ""}</li>`).join("")}</ul>
+        <div class="outils">${st ? `<span class="pastille ok">${st.s === "corrige" ? "corrigé" : "vérifié"} le ${new Date(st.le * 1000).toLocaleDateString("fr-FR")}</span> <button type="button" class="lien" data-qa="rouvrir">Rouvrir</button>`
+          : `<button type="button" class="primaire" data-qa="corriger">Corriger</button>${a.action ? `<button type="button" data-qa="action">${esc(a.action.libelle)}</button>` : ""}
+             <button type="button" data-qa="ok">${a.type === "doublon" || a.type === "voisin" ? "Faits distincts : vérifié" : "Vérifié, c'est correct"}</button>`}</div></li>`; }).join("")}</ul>${vis.length > 200 ? `<p class="aide">200 premières anomalies affichées : filtrez par contrôle.</p>` : ""}`
+      : `<p class="vide">${qaFiltre.statut === "a_traiter" ? "Rien à vérifier." : "Aucune anomalie."}</p>`}`;
+  const memo = () => { try { localStorage.setItem("socle-v2-sites-qa", JSON.stringify(qaFiltre)); } catch (_) { /* stockage indisponible */ } };
+  $("qa-type").addEventListener("change", e => { qaFiltre.type = e.target.value; memo(); dessinerQa(); });
+  $("qa-statut").addEventListener("change", e => { qaFiltre.statut = e.target.value; memo(); dessinerQa(); });
+  $("qa-relancer").addEventListener("click", () => analyserQa());
+  z.querySelectorAll(".qa-item").forEach(li => {
+    const a = toutes.find(x => x.cle === li.dataset.cle);
+    li.querySelectorAll("[data-qa]").forEach(b => b.addEventListener("click", () => actionQa(a, b.dataset.qa)));
+  });
+}
+let qaMsg = "";
+const qaDire = (t, err) => { qaMsg = err ? "" : t; const e = $("qa-msg"); if (e) { e.textContent = t; e.className = `statut ${err ? "err" : "ok"}`; } };
+async function actionQa(a, quoi) {
+  try {
+    if (quoi === "ok") { qa.config = await Q.marquer([a], "ok"); }
+    else if (quoi === "rouvrir") { qa.config = await Q.marquer([a], null); }
+    else if (quoi === "action") { const n = await Q.rattacher(qa, [a]); qa.config = await Q.marquer([a], "corrige", "rattaché à l'établissement"); await analyserQa(true); qaDire(`${n} ligne(s) rattachée(s).`); return; }
+    else if (quoi === "corriger") {
+      if (QA_ETAB.has(a.type)) { ouvrirEtabQa(a, a.fiches[0].etab); return; }
+      qaEdition = a; qaChoixEtab = {}; dessinerQa(); return;
+    } else if (quoi === "corrige") { qa.config = await Q.marquer([a], "corrige", "corrigé dans le widget des sites"); }
+    const n = qaToutes().filter(x => !qaStatut(x)).length; $("badge-qa").textContent = n ? String(n) : "";
+    dessinerQa();
+  } catch (err) { qaDire(`Écriture refusée par Grist (${err.message || err}).`, true); }
+}
+// anomalie d'établissement : vue « Établissements et sites » sur l'établissement, bandeau de retour
+function ouvrirEtabQa(a, etabId) {
+  changerVue("etab");
+  if (!etabDe(etabId)) { statut(`Établissement ${etabId} absent du référentiel « ${ctx.tEtab} » (autre référentiel ?).`, "err"); }
+  else choisirEtab(etabId);
+  const conseil = a.type === "sans_coord" ? "Cliquez sur « Placer l'établissement d'un clic sur la carte », ou renseignez latitude et longitude dans les informations de l'établissement."
+    : a.type === "hors_perimetre" ? "Vérifiez l'académie dans les informations de l'établissement ; un homonyme a peut-être été choisi : dans ce cas, rattachez le signalement au bon établissement (À vérifier › Corriger le dossier)."
+    : "Vérifiez le niveau et l'établissement de rattachement dans les informations de l'établissement, ou rattachez les signalements à l'établissement.";
+  $("qa-retour").innerHTML = `<div class="qa-bandeau"><strong>${esc(a.titre)}</strong>${a.detail ? ` — ${esc(a.detail)}` : ""}<br>${esc(conseil)}
+    <div class="outils"><button type="button" class="lien" data-qr="retour">← Retour à « À vérifier »</button><button type="button" data-qr="corrige">Marquer corrigé</button>
+      ${a.type !== "sans_coord" ? `<button type="button" data-qr="dossier">Voir le${a.fiches.length > 1 ? "s" : ""} dossier${a.fiches.length > 1 ? "s" : ""}</button>` : ""}</div></div>`;
+  const fb = $("fe-bloc"); if (fb && !fb.open) fb.open = true;
+  $("qa-retour").querySelectorAll("[data-qr]").forEach(b => b.addEventListener("click", async () => {
+    if (b.dataset.qr === "corrige") { await actionQa(a, "corrige"); }
+    if (b.dataset.qr === "dossier") { qaEdition = a; qaChoixEtab = {}; }
+    $("qa-retour").innerHTML = ""; changerVue("qa");
+  }));
+}
+// anomalie de signalement : versions des dossiers, corrections de la dernière version, rattachement
+function dessinerEdition(z) {
+  const a = qaEdition;
+  if (a.resolue) { z.innerHTML = `<p class="statut ok" id="qa-msg">${qaMsg ? `${esc(qaMsg)} ` : ""}Anomalie résolue : « ${esc(a.resolue.titre)} » n'apparaît plus.</p><button type="button" class="lien" id="qa-liste">← Retour à la liste</button>`; $("qa-liste").addEventListener("click", () => { qaEdition = null; dessinerQa(); }); return; }
+  const esp = qa.espaces.find(x => x.espace.reponses === a.espace.reponses), C = esp.colonnes, rr = C.rr, col = r => rr[r] && rr[r].col;
+  const cQ = col("Qualification"), cD = col("Description"), mQ = cQ && C.tMeta.colonnes[cQ];
+  let choix = []; try { choix = JSON.parse((mQ && mQ.widgetOptions) || "{}").choices || []; } catch (_) { choix = []; }
+  const multiple = mQ && /^ChoiceList/.test(mQ.type), memeRef = C.refTable === ctx.tEtab;
+  const libEtab = id => { const x = esp.info(id); return x ? `${x.nom}${x.commune ? ` (${x.commune})` : ""}` : id ? `n° ${id}` : "—"; };
+  z.innerHTML = `<button type="button" class="lien" id="qa-liste">← Retour à la liste</button>
+    <div class="qa-bandeau"><strong>${esc(a.titre)}</strong>${a.detail ? `<br>${esc(a.detail)}` : ""}</div>
+    <p class="statut" id="qa-msg" role="status"></p>
+    ${a.fiches.map(f => { const d = f.derniere;
+      return `<div class="qa-dossier" data-dossier="${f.id}"><strong>Dossier n° ${f.id}</strong> · ${esc(libEtab(f.etab))}
+        <table><thead><tr><th>Saisie</th><th>Qualification</th><th>Description</th><th>Établissement</th></tr></thead><tbody>
+        ${f.lignes.map(l => `<tr><td>${esc(dateHeure(l.cree))}${l.auteur ? `<br><span class="aide">${esc(l.auteur)}</span>` : ""}</td><td>${esc(l.qualif || "—")}</td><td>${esc((l.desc || "").slice(0, 140))}${(l.desc || "").length > 140 ? "…" : ""}</td><td>${esc(libEtab(l.etab))}</td></tr>`).join("")}
+        </tbody></table>
+        <div class="aide">Dernière version (saisie le ${esc(dateHeure(d.cree))}) :</div>
+        ${cQ && !mQ.isFormula ? `<label>Qualification<select data-champ="q">${multiple ? "" : `<option value="">—</option>`}${choix.concat(d.qualif && !multiple && !choix.includes(d.qualif) ? [d.qualif] : []).map(x => `<option${(multiple ? d.qualif.split(", ").includes(x) : x === d.qualif) ? " selected" : ""}>${esc(x)}</option>`).join("")}</select></label>` : ""}
+        ${cD && !C.tMeta.colonnes[cD].isFormula ? `<label>Description<textarea data-champ="d" rows="4">${esc(d.desc)}</textarea></label>` : ""}
+        <div class="outils"><button type="button" class="primaire" data-ed="enregistrer">Enregistrer la dernière version</button></div>
+        ${memeRef ? `<label>Rattacher tout le dossier à un autre établissement
+          <span class="recherche"><input type="search" data-champ="e" placeholder="Établissement : nom, sigle, ville…" autocomplete="off"><ul class="resultats" hidden></ul></span></label>
+          <div class="outils"><button type="button" data-ed="rattacher" disabled>Rattacher le dossier</button><span class="aide" data-choisi></span></div>` : ""}
+        <div class="outils"><button type="button" class="lien" data-ed="etab">Voir l'établissement sur la carte</button></div></div>`; }).join("")}
+    <div class="outils"><button type="button" data-ed="corrige">Marquer corrigé</button><button type="button" data-ed="ok">${a.type === "doublon" || a.type === "voisin" ? "Faits distincts : vérifié" : "Vérifié, c'est correct"}</button></div>`;
+  $("qa-liste").addEventListener("click", () => { qaEdition = null; dessinerQa(); });
+  z.querySelectorAll("[data-ed=corrige], [data-ed=ok]").forEach(b => { if (!b.closest(".qa-dossier")) b.addEventListener("click", async () => { await actionQa(a, b.dataset.ed); qaEdition = null; dessinerQa(); }); });
+  z.querySelectorAll(".qa-dossier").forEach(div => {
+    const f = a.fiches.find(x => x.id === +div.dataset.dossier), d = f.derniere;
+    const btn = q => div.querySelector(`[data-ed=${q}]`);
+    btn("enregistrer").addEventListener("click", async () => {
+      const champs = {}, sq = div.querySelector("[data-champ=q]"), td = div.querySelector("[data-champ=d]");
+      if (sq) { const v = multiple ? [...sq.selectedOptions].map(o => o.value) : sq.value; champs[cQ] = multiple ? (v.length ? ["L", ...v] : null) : (v || null); }
+      if (td) champs[cD] = td.value;
+      try { await grist.docApi.applyUserActions([["UpdateRecord", esp.espace.reponses, d.id, champs]]); qaMsg = `Dossier n° ${f.id} : dernière version enregistrée.`; await analyserQa(true); if (!(qaEdition && qaEdition.resolue)) qaDire(qaMsg); }
+      catch (err) { qaDire(`Écriture refusée par Grist (${err.message || err}).`, true); }
+    });
+    if (multiple) { const sq = div.querySelector("[data-champ=q]"); if (sq) sq.multiple = true; }
+    btn("etab").addEventListener("click", () => ouvrirEtabQa(a, f.etab));
+    const inp = div.querySelector("[data-champ=e]");
+    if (inp) {
+      const ul = inp.parentNode.querySelector(".resultats"), r = btn("rattacher"), info = div.querySelector("[data-choisi]");
+      inp.addEventListener("input", () => {
+        const mots = norm(inp.value).split(" ").filter(Boolean); if (mots.length < 1 || norm(inp.value).length < 2) { ul.hidden = true; return; }
+        const res = etabs.filter(e => mots.every(m => e.texte.includes(m))).slice(0, 15);
+        ul.innerHTML = res.map(e => `<li data-etab="${e.id}">${esc(e.nom)}<div class="meta">${esc([e.type, e.commune].filter(Boolean).join(" · "))}</div></li>`).join("") || `<li class="meta">Aucun établissement.</li>`; ul.hidden = false;
+      });
+      inp.addEventListener("blur", () => setTimeout(() => { ul.hidden = true; }, 150));
+      ul.addEventListener("mousedown", ev => { const li = ev.target.closest("li[data-etab]"); if (!li) return; ev.preventDefault();
+        qaChoixEtab[f.id] = +li.dataset.etab; inp.value = etabDe(+li.dataset.etab).nom; ul.hidden = true; r.disabled = false; info.textContent = ""; });
+      r.addEventListener("click", async () => {
+        const vers = qaChoixEtab[f.id]; if (!vers) return;
+        if (!confirm(`Rattacher toutes les versions du dossier n° ${f.id} à « ${etabDe(vers).nom} » ?`)) return;
+        try { const n = await Q.rattacher(qa, [{ ...a, fiches: [f] }], vers); qaMsg = `Dossier n° ${f.id} rattaché à « ${etabDe(vers).nom} » (${n} version(s)).`; await analyserQa(true); if (!(qaEdition && qaEdition.resolue)) qaDire(qaMsg); }
+        catch (err) { qaDire(`Rattachement refusé par Grist (${err.message || err}).`, true); }
+      });
+    }
+  });
+}
+
 /* ---------- Démarrage ---------- */
+document.querySelectorAll(".vues [data-vue]").forEach(b => b.addEventListener("click", () => changerVue(b.dataset.vue)));
 $("etab-q").addEventListener("input", rechercherEtab);
 $("etab-q").addEventListener("focus", rechercherEtab);
 $("etab-q").addEventListener("blur", () => setTimeout(() => { $("etab-res").hidden = true; }, 150));
@@ -595,6 +793,7 @@ if (S) $("version").textContent = `· socle ${S.VERSION}`;
     let dernier = null; try { dernier = +localStorage.getItem("socle-v2-sites-etab"); } catch (_) { /* stockage indisponible */ }
     if (dernier && etabDe(dernier)) choisirEtab(dernier);
     else $("etab-q").focus();
+    if (Q) setTimeout(() => analyserQa(), 1500);   // nombre d'anomalies sur l'onglet « À vérifier », en arrière-plan
   } catch (err) { $("contexte").textContent = err.message || String(err); $("contexte").className = "statut err"; }
 })();
 </script>
