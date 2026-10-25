@@ -90,7 +90,7 @@
   function lier() {
     const sel = (id, k) => { if ($(id)) $(id).addEventListener("change", e => { filtre[k] = e.target.value; memoriser(); dessiner(); }); };
     sel("qa-espace", "espace"); sel("qa-type", "type"); sel("qa-statut", "statut");
-    $("qa-relancer").addEventListener("click", () => relancer());
+    $("qa-relancer").addEventListener("click", () => { if (S.viderCacheLecture) S.viderCacheLecture(); relancer(); });
     if ($("qa-tout-rattacher")) $("qa-tout-rattacher").addEventListener("click", async () => {
       const l = visibles().filter(a => a.type === "section" && a.action && !statutDe(a));
       if (!confirm(`Rattacher ${l.length} signalement(s) à l'établissement proposé ?`)) return;
@@ -130,6 +130,7 @@
   }
   async function afficher() {
     racine = $("qualite"); etat = null; dessiner();
+    if (S.viderCacheLecture) S.viderCacheLecture();   // corrections faites ailleurs (widget des sites, formulaires) : relues
     while (enCours) await new Promise(r => setTimeout(r, 200));   // analyse d'arrière-plan en cours : on l'attend
     await relancer();
   }

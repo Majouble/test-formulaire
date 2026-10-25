@@ -48,6 +48,15 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
     await page.click('.qa-dossier .resultats li[data-etab]'); await page.click('.qa-dossier [data-ed=rattacher]'); await page.waitForTimeout(1200);
     console.log('RATTACHEMENT :', await page.textContent('#qa-msg'), '|', await page.evaluate(d => { const R = window.__DOC__.__data.Reponses; return R.id.filter((x, i) => (R.Dossier[i] || x) === +d).map(x => R.Etablissement[R.id.indexOf(x)]).join(','); }, dossierAvant));
   } else console.log('RATTACHEMENT : pas de dossier éditable', dossierAvant);
+  // correction faite hors de la vue « À vérifier » : l'analyse se met à jour au retour
+  await page.click('#qa-liste').catch(() => {}); await page.selectOption('#qa-type', ''); await page.selectOption('#qa-statut', 'a_traiter'); await page.waitForTimeout(200);
+  const avant = await page.$$eval('.qa-item', l => l.length), badgeAvant = await page.textContent('#badge-qa');
+  await page.click('[data-vue=etab]'); await page.fill('#etab-q', 'romain'); await page.waitForTimeout(200); await page.click('#etab-res li >> nth=0'); await page.waitForTimeout(300);
+  await page.evaluate(() => grist.docApi.applyUserActions([['UpdateRecord', 'Reponses', 2, { Qualification: null }]]));   // nouvelle anomalie, écrite ailleurs
+  await page.waitForTimeout(2500);
+  console.log('BADGE MIS À JOUR :', badgeAvant, '→', await page.textContent('#badge-qa'));
+  await page.click('[data-vue=qa]'); await page.waitForTimeout(800);
+  console.log('LISTE MISE À JOUR :', avant, '→', await page.$$eval('.qa-item', l => l.length));
   console.log('STATUTS (Config) :', await page.evaluate(() => { const C = window.__DOC__.__data.Config, i = C.Cle.indexOf('qualite'); return i < 0 ? '∅' : Object.values(JSON.parse(C.Valeur[i]).statuts).map(x => x.s + (x.note ? ' (' + x.note + ')' : '')).join(', '); }));
   await page.screenshot({ path: __C.sorties + '/run88.png' });
   await browser.close();

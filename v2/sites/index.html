@@ -711,7 +711,7 @@ function dessinerCandidats(cadrer) {
    dossier rattachable à un autre établissement. Statuts (vérifié, corrigé) communs avec l'administration. */
 const Q = window.QualiteMoteur;
 const QA_ETAB = new Set(["section", "sans_coord", "hors_perimetre"]);
-let vue = "etab", qa = null, qaEnCours = false, qaFiltre = { type: "", statut: "a_traiter" }, qaEdition = null, qaChoixEtab = {};
+let vue = "etab", qa = null, qaEnCours = false, qaPerime = false, qaLe = 0, qaMinuterie = null, qaFiltre = { type: "", statut: "a_traiter" }, qaEdition = null, qaChoixEtab = {};
 try { qaFiltre = { ...qaFiltre, ...JSON.parse(localStorage.getItem("socle-v2-sites-qa") || "{}") }; } catch (_) { /* stockage indisponible */ }
 const qaStatut = a => (Q.statuts(qa.config)[a.cle] || null);
 const qaToutes = () => qa && qa.espaces ? qa.espaces.flatMap(x => x.anomalies) : [];
@@ -719,17 +719,20 @@ function changerVue(v) {
   vue = v;
   document.querySelectorAll(".vues [data-vue]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.vue === v)));
   $("vue-etab").hidden = v !== "etab"; $("vue-qa").hidden = v !== "qa"; $("vue-saisies").hidden = v !== "saisies";
-  if (v === "qa") { if (!qa) analyserQa(); else dessinerQa(); }
+  // analyse refaite si une correction a été écrite depuis (ici ou ailleurs : au plus tard après une minute)
+  if (v === "qa") { if (!qa || qaPerime || Date.now() - qaLe > 60000) analyserQa(!!qa); else dessinerQa(); }
   if (v === "saisies") afficherSaisies();
 }
-async function analyserQa(garder) {
-  if (qaEnCours) return; qaEnCours = true;
+async function analyserQa(garder, sansRendu) {
+  if (qaEnCours) { qaPerime = true; return; } qaEnCours = true; qaPerime = false;
   if (vue === "qa" && !garder) $("vue-qa").innerHTML = `<p class="aide">Analyse des signalements…</p>`;
+  else if (vue === "qa" && !sansRendu && $("qa-msg") && !$("qa-msg").textContent) { $("qa-msg").textContent = "Mise à jour de l'analyse…"; $("qa-msg").className = "statut"; }
   try { qa = await Q.analyser(); } catch (err) { qa = { erreur: `Analyse impossible : ${err.message || err}` }; }
-  qaEnCours = false;
+  qaEnCours = false; qaLe = Date.now();
+  if (qaPerime) { setTimeout(() => analyserQa(true), 0); }   // écriture pendant l'analyse : on recommence
   const n = qa.erreur ? 0 : qaToutes().filter(a => !qaStatut(a)).length; $("badge-qa").textContent = n ? String(n) : "";
   if (qaEdition && !qa.erreur) qaEdition = qaToutes().find(a => a.cle === qaEdition.cle) || { resolue: qaEdition };
-  if (vue === "qa") dessinerQa();
+  if (vue === "qa" && !sansRendu) dessinerQa();
 }
 const dateHeure = s => typeof s === "number" ? new Date(s * 1000).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
 function dessinerQa() {
@@ -1038,10 +1041,25 @@ $("trouver-go").addEventListener("click", chercher);
 $("trouver-q").addEventListener("keydown", ev => { if (ev.key === "Enter") chercher(); });
 if (S) $("version").textContent = `· socle ${S.VERSION}`;
 
+// toute écriture dans le document rend l'analyse « À vérifier » périmée : recalcul (et compteur) peu après
+function suivreEcritures() {
+  const api = grist.docApi, ecrire = api.applyUserActions.bind(api);
+  api.applyUserActions = async (actions, opts) => {
+    try { return await ecrire(actions, opts); }
+    finally {
+      if (!(actions || []).every(a => Array.isArray(a) && a[1] === "Config")) {   // les statuts seuls ne changent pas l'analyse
+        qaPerime = true; clearTimeout(qaMinuterie);
+        // en cours de correction d'un dossier : données et compteur mis à jour sans redessiner la saisie en cours
+        qaMinuterie = setTimeout(() => { if (qa && !qaEnCours) analyserQa(true, vue === "qa" && !!qaEdition); }, 1500);
+      }
+    }
+  };
+}
 (async function demarrer() {
   initCarte();
   if (!window.grist) return;
   grist.ready({ requiredAccess: "full" });
+  try { suivreEcritures(); } catch (_) { /* écritures non suivies : bouton « Relancer l'analyse » */ }
   try {
     await lireDonnees();
     let dernier = null; try { dernier = +localStorage.getItem("socle-v2-sites-etab"); } catch (_) { /* stockage indisponible */ }
