@@ -124,7 +124,10 @@
   .suggestions .etat { padding: 10px 12px; color: var(--gris); cursor: default; }
   /* tableau des sites : site du référentiel (nom, mots-clés) ou nom libre */
   .site-combo { position: relative; }
-  .site-combo .site-txt { width: 100%; }
+  .site-combo .site-txt { width: 100%; max-width: none; }
+  /* champ du site : prend la largeur disponible en tête de ligne (les noms de site sont longs) */
+  .sous-champ.zone-site { flex: 1 1 24rem; min-width: min(24rem, 100%); }
+  .champs-ordonnes .sous-champ.zone-site { flex: 1 1 24rem; }
   .site-combo .suggestions { max-height: 280px; overflow: auto; }
   .site-combo .via, .site-combo .site-etat { font-size: .8rem; color: var(--gris); }
   .site-combo .site-etat:empty { display: none; }
@@ -4597,7 +4600,7 @@ class Tableau {
       ctl = ctl.replace(/^<(select|input|textarea)/, '<$1 disabled title="Site du dossier : il ne se remplace pas ; passez-le en RAS s\'il est revenu à la normale"');
     const regen = d.auto && typeBase(d.type) === "Text" ? `<button type="button" class="lien-texte regen" data-action="regenerer" data-sous="${esc(d.colId)}"${(l._touche || {})[d.colId] ? "" : " hidden"}>↻ Revenir au texte automatique</button>` : "";
     const aide = (d.aide ? `<span class="aide-sous">${esc(d.aide)}</span>` : "") + regen;
-    return `<div class="sous-champ zone-${zoneSousChamp(d)}${d.condition ? " cond-ligne" : ""}" data-sous="${esc(d.colId)}">${titre}${ctl}${aide}<span class="msg-ligne" hidden></span></div>`;
+    return `<div class="sous-champ zone-${zoneSousChamp(d)}${d._siteEtab ? " zone-site" : ""}${d.condition ? " cond-ligne" : ""}" data-sous="${esc(d.colId)}">${titre}${ctl}${aide}<span class="msg-ligne" hidden></span></div>`;
   }
   // tableau des sites : un site du dossier (ou repris du dernier état connu) ne se retire pas, il passe en RAS
   actionsLigne(l, k) {
