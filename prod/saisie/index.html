@@ -130,6 +130,7 @@
   .champs-ordonnes .sous-champ.zone-site { flex: 1 1 24rem; }
   .site-combo .suggestions { max-height: 280px; overflow: auto; }
   .site-combo .via, .site-combo .site-etat { font-size: .8rem; color: var(--gris); }
+  .site-combo .autres-noms { font-style: italic; } .site-combo .autres-noms strong { font-style: normal; color: var(--texte, inherit); }
   .site-combo .site-etat:empty { display: none; }
   .source { display: inline-block; font-size: .7rem; padding: 1px 6px; border-radius: 8px; background: var(--x-eeeeee); margin-left: 6px; }
   .source.connu { background: var(--x-d8f0e0); color: var(--ok); }
@@ -4753,8 +4754,11 @@ class Tableau {
       const tout = `${nomN} ${cles.map(normaliser).join(" ")} ${normaliser(commune)}`;
       if (!mots.every(m => tout.includes(m))) continue;
       const parNom = mots.every(m => nomN.includes(m));
-      res.push({ o, parNom, commune, comp: d._siteComp && d._siteComp.get(o.id) ? nomEtabId(d._siteComp.get(o.id)) : "",
-        via: parNom || !mots.length ? "" : (cles.find(x => mots.some(m => normaliser(x).includes(m))) || "") });
+      // mots-clés et autres appellations du site (sans doublon ni le nom lui-même), ceux qui répondent à la saisie d'abord
+      const vus = new Set([nomN]), autres = [];
+      cles.map(x => x.trim()).forEach(x => { const n = normaliser(x); if (n && !vus.has(n)) { vus.add(n); autres.push({ x, trouve: !parNom && mots.length > 0 && mots.some(m => n.includes(m)) }); } });
+      autres.sort((a, b) => b.trouve - a.trouve);
+      res.push({ o, parNom, commune, comp: d._siteComp && d._siteComp.get(o.id) ? nomEtabId(d._siteComp.get(o.id)) : "", autres });
     }
     return res.sort((a, b) => (b.parNom - a.parNom)).slice(0, 30);
   }
@@ -4763,7 +4767,9 @@ class Tableau {
     const q = inp.value.trim(), res = this.suggestionsSite(d, q);
     const avecLibre = !!this.colLibre(d), libre = avecLibre && q && !res.some(r => normaliser(r.o.libelle) === normaliser(q)) && !this.siteExact(d, q);
     // même présentation que la recherche d'établissement : nom, puis commune, composante, mot-clé retrouvé
-    ul.innerHTML = res.map(r => `<li role="option" data-id="${r.o.id}"><div class="nom">${esc(r.o.libelle)}</div>${r.commune || r.comp || r.via ? `<div class="meta">${esc([r.commune, r.comp, r.via ? `mot-clé : ${r.via}` : ""].filter(Boolean).join(" · "))}</div>` : ""}</li>`).join("")
+    const MAX_AUTRES = 8;
+    ul.innerHTML = res.map(r => `<li role="option" data-id="${r.o.id}"><div class="nom">${esc(r.o.libelle)}</div>${r.commune || r.comp ? `<div class="meta">${esc([r.commune, r.comp].filter(Boolean).join(" · "))}</div>` : ""}${r.autres.length
+      ? `<div class="meta autres-noms" title="${esc(r.autres.map(a => a.x).join(", "))}">Aussi : ${r.autres.slice(0, MAX_AUTRES).map(a => a.trouve ? `<strong>${esc(a.x)}</strong>` : esc(a.x)).join(", ")}${r.autres.length > MAX_AUTRES ? `, … (+${r.autres.length - MAX_AUTRES})` : ""}</div>` : ""}</li>`).join("")
       + (libre ? `<li role="option" data-libre="1"><div class="nom">« ${esc(q)} »</div><div class="meta">site hors référentiel</div></li>` : "")
       + (!res.length && !libre ? `<li class="etat" aria-disabled="true">${!etablissementDuFormulaire() ? "Choisissez d'abord l'établissement." : q ? "Aucun site de cet établissement ne correspond." : "Aucun site de cet établissement au référentiel."}${avecLibre ? "" : " Complétez le référentiel des sites."}</li>` : "");
     ul.hidden = !ul.children.length; inp.setAttribute("aria-expanded", String(!ul.hidden));
