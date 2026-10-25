@@ -56,6 +56,13 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
   await page.click('.site:has(input.nom[value="Site Lorient"]) [data-action=actif]'); await page.waitForTimeout(300);
   console.log('TABLE :', await page.evaluate(() => { const T = window.__DOC__.__data.Referentiel_sites; return T.id.map((id, i) => `${id}:${T.Site_id[i]}|${T.Nom[i]}|e${T.Etablissement[i]}|${T.Latitude ? T.Latitude[i] : ''},${T.Longitude ? T.Longitude[i] : ''}|${T.Commune ? T.Commune[i] : ''}|${T.Source ? T.Source[i] : ''}|${T.Statut ? T.Statut[i] : ''}|${T.Mots_cles ? T.Mots_cles[i] || '' : ''}|actif=${T.Actif ? T.Actif[i] : ''}`).join('\n   '); }));
   console.log('APPELS :', appels.join(' ; '));
+  // fiche de l'établissement dans le widget
+  await page.click('#fe-bloc summary'); await page.waitForTimeout(600);
+  console.log('FICHE :', await page.$$eval('#fe-zone .fe-grille >> nth=0', g => [...g[0].querySelectorAll('.fe-champ label')].map(x => x.textContent.trim()).join(' | ')));
+  await page.fill('#fe-Commune', 'La Rochelle (17)'); await page.press('#fe-Commune', 'Tab'); await page.waitForTimeout(500);
+  console.log('FICHE MODIFIÉE :', await page.textContent('#fe-statut'), '|', await page.evaluate(() => window.__DOC__.__data.Etablissements.Commune[0]), '| fiche du haut :', (await page.textContent('.fiche .aide')).trim());
+  await page.click('#fe-bloc .fe-autres summary:has-text("Ajouter")'); await page.fill('#fe-nouv', 'Tutelle'); await page.selectOption('#fe-type', 'Choice'); await page.click('#fe-ajout'); await page.waitForTimeout(800);
+  console.log('AJOUT :', await page.textContent('#fe-statut'), '| champ :', !!(await page.$('#fe-Tutelle')));
   await page.screenshot({ path: __C.sorties + '/run83.png' });
   await browser.close();
 })();

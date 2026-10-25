@@ -8,6 +8,7 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="../commun/theme.js"></script>
 <script src="../commun/socle.js"></script>
+<script src="../commun/fiche-etab.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
@@ -72,6 +73,15 @@
   .leaflet-container { background: var(--soft); font: inherit; }
   .popup-ajout input { width: 220px; margin: 4px 0; }
   .version { color: var(--muted); font-size: 11px; }
+  /* fiche de l'établissement (commun/fiche-etab.js) */
+  .fe-bloc { margin-top: 8px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; }
+  .fe-bloc > summary { cursor: pointer; font-weight: 600; font-size: 12.5px; }
+  .fe-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 6px 10px; margin: 8px 0; }
+  .fe-champ { display: grid; gap: 2px; align-content: start; }
+  .fe-champ label { font-size: 11.5px; color: var(--muted); }
+  .fe-champ input:not([type=checkbox]), .fe-champ select, .fe-champ textarea { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; }
+  .fe-autres { margin: 6px 0; } .fe-autres summary { cursor: pointer; color: var(--accent); font-size: 12px; }
+  .fe-ajout-ligne { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-end; } .fe-ajout-ligne label { display: grid; gap: 2px; font-size: 11.5px; color: var(--muted); }
   @media (max-width: 760px) { .page { grid-template-columns: 1fr; height: auto; } .droite { grid-template-rows: 60vh auto; } }
 </style>
 </head>
@@ -425,18 +435,45 @@ function rechercherEtab() {
     : `<li class="meta" aria-disabled="true">Aucun établissement trouvé.</li>`;
   ul.hidden = false; $("etab-q").setAttribute("aria-expanded", "true");
 }
+function enteteEtab(e) {
+  const p = parentDe(e);
+  return `<strong>${esc(e.nom)}</strong>${e.sigle && !e.nom.includes(e.sigle) ? ` (${esc(e.sigle)})` : ""}
+    <div class="aide">${esc([e.niveau, e.type, e.commune].filter(Boolean).join(" · "))}${e.lat == null ? " · sans coordonnées" : ""}</div>
+    ${p && p.id !== e.id ? `<div class="aide">Composante de <button type="button" class="lien" data-etab-parent="${p.id}">${esc(p.nom)}</button> : les sites ajoutés sont rattachés à l'établissement, avec cette composante.</div>` : ""}`;
+}
 function choisirEtab(id) {
   choisi = etabDe(id); siteChoisi = null; candidats = [];
   $("etab-res").hidden = true; $("etab-q").value = choisi ? choisi.nom : "";
   try { localStorage.setItem("socle-v2-sites-etab", String(id)); } catch (_) { /* stockage indisponible */ }
   const p = choisi && parentDe(choisi);
-  $("fiche").innerHTML = choisi ? `<div class="fiche"><strong>${esc(choisi.nom)}</strong>${choisi.sigle && !choisi.nom.includes(choisi.sigle) ? ` (${esc(choisi.sigle)})` : ""}
-      <div class="aide">${esc([choisi.niveau, choisi.type, choisi.commune].filter(Boolean).join(" · "))}${choisi.lat == null ? " · sans coordonnées" : ""}</div>
-      ${p && p.id !== choisi.id ? `<div class="aide">Composante de <button type="button" class="lien" data-etab-parent="${p.id}">${esc(p.nom)}</button> : les sites ajoutés sont rattachés à l'établissement, avec cette composante.</div>` : ""}</div>` : "";
+  $("fiche").innerHTML = choisi ? `<div class="fiche">${enteteEtab(choisi)}</div>` : "";
   const bp = document.querySelector("[data-etab-parent]"); if (bp) bp.addEventListener("click", () => choisirEtab(+bp.dataset.etabParent));
+  if (choisi && window.FicheEtab) {
+    let ouvert = false; try { ouvert = localStorage.getItem("socle-v2-sites-fiche") === "1"; } catch (_) { /* stockage indisponible */ }
+    $("fiche").insertAdjacentHTML("beforeend", `<details class="fe-bloc" id="fe-bloc"${ouvert ? " open" : ""}><summary>Informations de l'établissement (effectif, tutelle…)</summary>
+      <p class="statut" id="fe-statut" role="status"></p><div id="fe-zone"><p class="aide">Chargement…</p></div></details>`);
+    const bloc = $("fe-bloc");
+    bloc.addEventListener("toggle", () => { try { localStorage.setItem("socle-v2-sites-fiche", bloc.open ? "1" : "0"); } catch (_) { /* stockage indisponible */ } if (bloc.open) dessinerFicheEtab(); });
+    if (ouvert) dessinerFicheEtab();
+  }
   $("trouver").hidden = !choisi;
   $("trouver-q").value = choisi ? (source === "adresse" ? "" : (choisi.sigle && choisi.sigle.length > 2 ? choisi.sigle : choisi.nom)) : "";
   dessinerSites(true); dessinerCandidats(); majAideSource();
+}
+/* Fiche de l'établissement : toutes les informations du référentiel, modifiables (commun/fiche-etab.js) ; chargée à l'ouverture */
+let ficheEtab = null;
+async function dessinerFicheEtab() {
+  const z = $("fe-zone"); if (!z || !choisi) return;
+  const e = choisi;
+  try { if (!ficheEtab) ficheEtab = await window.FicheEtab.charger(await S.lireMeta(), ctx.tEtab); }
+  catch (err) { z.innerHTML = `<p class="statut err">Fiche illisible : ${esc(err.message || err)}</p>`; return; }
+  if (choisi !== e || !$("fe-zone")) return;
+  z.innerHTML = window.FicheEtab.html(ficheEtab, e.id, "fe-") || `<p class="aide">Établissement introuvable dans « ${esc(ctx.tEtab)} ».</p>`;
+  const dire = (t, err) => { const st = $("fe-statut"); if (st) { st.textContent = t; st.className = `statut ${err ? "err" : "ok"}`; } };
+  window.FicheEtab.lier(z, ficheEtab, e.id, { prefixe: "fe-", dire,
+    // nom, sigle, commune, coordonnées : la liste des établissements et la carte suivent
+    apresModif: async col => { if (Object.values(ctx.ce).includes(col)) { await lireDonnees(); const n = etabDe(e.id); if (n) { choisi = n; $("etab-q").value = n.nom; const f = document.querySelector(".fiche"); if (f) { f.innerHTML = enteteEtab(n); const b2 = f.querySelector("[data-etab-parent]"); if (b2) b2.addEventListener("click", () => choisirEtab(+b2.dataset.etabParent)); } dessinerCarte(false); } } },
+    apresAjout: async (cid, lib) => { ficheEtab = null; await dessinerFicheEtab(); dire(`Information « ${lib} » ajoutée (colonne ${cid}).`); } });
 }
 function dessinerSites(cadrer) {
   const z = $("liste");
