@@ -64,5 +64,14 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
   await page.click('#fe-bloc .fe-autres summary:has-text("Ajouter")'); await page.fill('#fe-nouv', 'Tutelle'); await page.selectOption('#fe-type', 'Choice'); await page.click('#fe-ajout'); await page.waitForTimeout(800);
   console.log('AJOUT :', await page.textContent('#fe-statut'), '| champ :', !!(await page.$('#fe-Tutelle')));
   await page.screenshot({ path: __C.sorties + '/run83.png' });
+  // géolocalisation de l'établissement : résultat IGN, puis position d'un site
+  const coords = () => page.evaluate(() => { const E = window.__DOC__.__data.Etablissements; return `${E.Latitude[0]}, ${E.Longitude[0]} | ${E.Commune[0]}`; });
+  await page.click('[data-source=ign]'); await page.fill('#trouver-q', 'La Rochelle Université'); await page.click('#trouver-go'); await page.waitForTimeout(600);
+  console.log('BOUTONS CANDIDAT :', await page.$$eval('.cand >> nth=0', l => [...l[0].querySelectorAll('button')].map(b => b.textContent).join(' / ')));
+  await page.click('.cand [data-action=etab] >> nth=0'); await page.waitForTimeout(800);
+  console.log('ÉTABLISSEMENT (IGN) :', await page.textContent('#statut'), '|', await coords());
+  await page.click('.site:has(input.nom[value="Résidence Antinéa"]) [data-action=etab-ici]'); await page.waitForTimeout(800);
+  console.log('ÉTABLISSEMENT (site) :', await page.textContent('#statut'), '|', await coords());
+  console.log('REPÈRE É déplaçable :', await page.evaluate(() => { let d = false; coucheEtab.eachLayer(m => { d = !!(m.dragging && m.dragging.enabled()); }); return d; }));
   await browser.close();
 })();

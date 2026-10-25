@@ -434,8 +434,9 @@ function dessinerCarte(cadrer) {
   if (!choisi) return;
   const pts = [];
   if (choisi.lat != null && choisi.lon != null) {
-    L.marker([choisi.lat, choisi.lon], { icon: icone(couleur("--muted"), "É"), title: `${choisi.nom} (position de l'établissement)` }).addTo(coucheEtab)
-      .bindTooltip(`${esc(choisi.nom)} — position de l'établissement`);
+    const me = L.marker([choisi.lat, choisi.lon], { draggable: etabGeolocalisable(), icon: icone(couleur("--muted"), "É"), title: `${choisi.nom} (position de l'établissement)` }).addTo(coucheEtab)
+      .bindTooltip(`${esc(choisi.nom)} — position de l'établissement${etabGeolocalisable() ? "<br><span style=\"font-size:11px\">Glissez pour corriger la position</span>" : ""}`);
+    me.on("dragend", () => { const q = me.getLatLng(); placerEtab(q.lat, q.lng, "repère déplacé"); });
     pts.push([choisi.lat, choisi.lon]);
   }
   sitesDe(choisi).forEach((s, k) => {
@@ -483,21 +484,29 @@ function lierEntete(f) {
   const pl = f.querySelector("[data-placer-etab]");
   if (pl) pl.addEventListener("click", () => {
     const e = choisi; statut(`Cliquez sur la carte pour placer « ${e.nom} ».`);
-    attendrePlacement(async q => {
-      try {
-        await grist.docApi.applyUserActions([["UpdateRecord", ctx.tEtab, e.id, { [ctx.ce.lat]: +q.lat.toFixed(6), [ctx.ce.lon]: +q.lng.toFixed(6) }]]);
-        await lireDonnees(); const n = etabDe(e.id); if (n) { choisi = n; const fi = document.querySelector(".fiche"); if (fi) { fi.innerHTML = enteteEtab(n); lierEntete(fi); } }
-        ficheEtab = null; if ($("fe-bloc") && $("fe-bloc").open) dessinerFicheEtab();
-        dessinerCarte(false); statut(`Position de « ${e.nom} » enregistrée.`, "ok");
-      } catch (err) { statut(`Position non enregistrée : ${err.message || err}`, "err"); }
-    });
+    attendrePlacement(q => placerEtab(q.lat, q.lng, "placé sur la carte"));
   });
+}
+/* Géolocalisation de l'établissement (comme un site) : clic sur la carte, repère « É » glissé, résultat des lieux IGN,
+   d'OpenStreetMap ou d'une adresse, ou position d'un de ses sites. Commune remplie si elle est vide. */
+const etabGeolocalisable = () => !!(ctx && ctx.ce.lat && ctx.ce.lon && !colFormule(ctx.tEtab, ctx.ce.lat) && !colFormule(ctx.tEtab, ctx.ce.lon));
+async function placerEtab(lat, lon, origine, commune) {
+  const e = choisi; if (!e || !etabGeolocalisable()) return;
+  try {
+    const f = { [ctx.ce.lat]: +(+lat).toFixed(6), [ctx.ce.lon]: +(+lon).toFixed(6) };
+    if (commune && ctx.ce.commune && !e.commune && !colFormule(ctx.tEtab, ctx.ce.commune)) f[ctx.ce.commune] = commune;
+    await grist.docApi.applyUserActions([["UpdateRecord", ctx.tEtab, e.id, f]]);
+    await lireDonnees(); const n = etabDe(e.id); if (n) { choisi = n; const fi = document.querySelector(".fiche"); if (fi) { fi.innerHTML = enteteEtab(n); lierEntete(fi); } }
+    ficheEtab = null; if ($("fe-bloc") && $("fe-bloc").open) dessinerFicheEtab();
+    dessinerCarte(false); dessinerCandidats();
+    statut(`Position de « ${e.nom} » enregistrée (${origine}).`, "ok");
+  } catch (err) { statut(`Position non enregistrée : ${err.message || err}`, "err"); }
 }
 function enteteEtab(e) {
   const p = parentDe(e);
   return `<strong>${esc(e.nom)}</strong>${e.sigle && !e.nom.includes(e.sigle) ? ` (${esc(e.sigle)})` : ""}
     <div class="aide">${esc([e.niveau, e.type, e.commune].filter(Boolean).join(" · "))}${e.lat == null ? " · sans coordonnées" : ""}</div>
-    ${ctx.ce.lat && ctx.ce.lon && !colFormule(ctx.tEtab, ctx.ce.lat) ? `<div><button type="button" class="lien" data-placer-etab>${e.lat == null ? "Placer" : "Déplacer"} l'établissement d'un clic sur la carte</button></div>` : ""}
+    ${etabGeolocalisable() ? `<div><button type="button" class="lien" data-placer-etab>${e.lat == null ? "Placer" : "Déplacer"} l'établissement d'un clic sur la carte</button>${e.lat == null ? `<div class="aide">ou cherchez-le ci-contre (lieux IGN, OpenStreetMap, adresse) : « Géolocaliser l'établissement ici », ou « Position de l'établissement » sur l'un de ses sites.</div>` : ` <span class="aide">(ou glissez le repère « É »)</span>`}</div>` : ""}
     ${p && p.id !== e.id ? `<div class="aide">Composante de <button type="button" class="lien" data-etab-parent="${p.id}">${esc(p.nom)}</button> : les sites ajoutés sont rattachés à l'établissement, avec cette composante.</div>` : ""}`;
 }
 function choisirEtab(id) {
@@ -624,7 +633,8 @@ function dessinerSites(cadrer) {
       <input type="text" class="mots" value="${esc(s.mots)}" placeholder="Mots-clés (bâtiment, ancien nom, rue…), séparés par des virgules" aria-label="Mots-clés du site ${k + 1}">
       <div class="outils"><button type="button" class="lien" data-action="centrer">Voir sur la carte</button>
         <button type="button" class="lien" data-action="placer">${s.lat == null ? "Placer" : "Replacer"} d'un clic sur la carte</button>
-        <button type="button" class="lien" data-action="actif">${s.actif ? "Désactiver" : "Réactiver"}</button></div></li>`).join("")}</ul>`
+        <button type="button" class="lien" data-action="actif">${s.actif ? "Désactiver" : "Réactiver"}</button>
+        ${s.lat != null && etabGeolocalisable() && !(choisi.lat === s.lat && choisi.lon === s.lon) ? `<button type="button" class="lien" data-action="etab-ici" title="L'établissement prend les coordonnées de ce site">Position de l'établissement</button>` : ""}</div></li>`).join("")}</ul>`
       : `<p class="vide">Aucun site : cherchez-en dans les lieux IGN ou OpenStreetMap ci-contre, ou cliquez sur la carte pour en ajouter un.</p>`}`;
   lierLot(z, l);
   z.querySelectorAll(".site").forEach(li => {
@@ -636,6 +646,7 @@ function dessinerSites(cadrer) {
     li.querySelectorAll("[data-action]").forEach(b => b.addEventListener("click", () => {
       siteChoisi = s.id;
       if (b.dataset.action === "centrer" && s.lat != null) carte.setView([s.lat, s.lon], Math.max(carte.getZoom(), 16));
+      if (b.dataset.action === "etab-ici") { placerEtab(s.lat, s.lon, `site « ${s.nom} »`, s.commune); return; }
       if (b.dataset.action === "actif") { s.actif = !s.actif; modifierSite(s.id, { actif: s.actif }, s.actif ? "Site réactivé." : "Site désactivé : il n'est plus proposé dans les formulaires (les signalements qui y renvoient restent)."); }
       if (b.dataset.action === "placer") {
         statut(`Cliquez sur la carte pour placer « ${s.nom} ».`);
@@ -685,11 +696,13 @@ function dessinerCandidats(cadrer) {
     <div class="actions">${source === "adresse" || !c.nom ? `<input type="text" class="nom-cand" placeholder="Nom du site" style="flex:1;min-width:120px" aria-label="Nom du site à cette adresse">` : ""}
       <button type="button" data-action="voir">Voir</button>
       <button type="button" class="primaire" data-action="ajouter">${c.deja ? "Ajouter quand même" : "Ajouter"}</button>
-      ${c.deja ? `<button type="button" data-action="mots" title="Ajoute « ${esc(c.nom || c.libelleAdresse)} » aux mots-clés de « ${esc(c.deja.nom)} »">Mot-clé du site existant</button>` : ""}</div></li>`).join("");
+      ${c.deja ? `<button type="button" data-action="mots" title="Ajoute « ${esc(c.nom || c.libelleAdresse)} » aux mots-clés de « ${esc(c.deja.nom)} »">Mot-clé du site existant</button>` : ""}
+      ${etabGeolocalisable() ? `<button type="button" data-action="etab" title="Enregistre ces coordonnées comme position de l'établissement">${choisi.lat == null ? "Géolocaliser l'établissement ici" : "Déplacer l'établissement ici"}</button>` : ""}</div></li>`).join("");
   ul.querySelectorAll(".cand").forEach(li => {
     const c = candidats[+li.dataset.cand];
     li.querySelectorAll("[data-action]").forEach(b => b.addEventListener("click", () => {
       if (b.dataset.action === "voir") { carte.setView([c.lat, c.lon], 17); return; }
+      if (b.dataset.action === "etab") { placerEtab(c.lat, c.lon, `${c.source}${c.nom ? ` : ${c.nom}` : c.libelleAdresse ? ` : ${c.libelleAdresse}` : ""}`, c.commune); return; }
       if (b.dataset.action === "mots") {
         const s = c.deja, v = [s.mots, c.nom].filter(Boolean).join(", "); s.mots = v;
         modifierSite(s.id, { mots: v }, `« ${c.nom} » ajouté aux mots-clés de « ${s.nom} ».`); dessinerSites(false); return; }
