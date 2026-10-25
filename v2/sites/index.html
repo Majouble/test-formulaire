@@ -114,6 +114,7 @@
     <h1>Référentiel des sites <span class="version" id="version"></span></h1>
     <div class="vues" role="tablist">
       <button type="button" role="tab" data-vue="etab" aria-selected="true">Établissements et sites</button>
+      <button type="button" role="tab" data-vue="saisies" aria-selected="false">Corriger les saisies</button>
       <button type="button" role="tab" data-vue="qa" aria-selected="false">À vérifier <span class="badge-qa" id="badge-qa"></span></button>
     </div>
     <div id="vue-etab">
@@ -129,6 +130,7 @@
     <p class="statut" id="statut" role="status"></p>
     <div id="liste"></div>
     </div>
+    <div id="vue-saisies" hidden></div>
     <div id="vue-qa" hidden></div>
   </section>
   <section class="droite">
@@ -493,7 +495,7 @@ function enteteEtab(e) {
     ${p && p.id !== e.id ? `<div class="aide">Composante de <button type="button" class="lien" data-etab-parent="${p.id}">${esc(p.nom)}</button> : les sites ajoutés sont rattachés à l'établissement, avec cette composante.</div>` : ""}`;
 }
 function choisirEtab(id) {
-  choisi = etabDe(id); siteChoisi = null; candidats = []; selection.clear(); fusionGarde = null;
+  choisi = etabDe(id); siteChoisi = null; candidats = []; selection.clear(); fusionGarde = null; sxCoches.clear();
   $("etab-res").hidden = true; $("etab-q").value = choisi ? choisi.nom : "";
   try { localStorage.setItem("socle-v2-sites-etab", String(id)); } catch (_) { /* stockage indisponible */ }
   const p = choisi && parentDe(choisi);
@@ -710,8 +712,9 @@ const qaToutes = () => qa && qa.espaces ? qa.espaces.flatMap(x => x.anomalies) :
 function changerVue(v) {
   vue = v;
   document.querySelectorAll(".vues [data-vue]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.vue === v)));
-  $("vue-etab").hidden = v !== "etab"; $("vue-qa").hidden = v !== "qa";
+  $("vue-etab").hidden = v !== "etab"; $("vue-qa").hidden = v !== "qa"; $("vue-saisies").hidden = v !== "saisies";
   if (v === "qa") { if (!qa) analyserQa(); else dessinerQa(); }
+  if (v === "saisies") afficherSaisies();
 }
 async function analyserQa(garder) {
   if (qaEnCours) return; qaEnCours = true;
@@ -845,6 +848,149 @@ function dessinerEdition(z) {
       });
     }
   });
+}
+
+/* ---------- Corriger les saisies : sites tapés dans les tables de réponses, rattachés au référentiel par lot ----------
+   Pour l'établissement choisi : libellés de site saisis dans une colonne texte (sous-table d'une question tableau, ou
+   colonne de la table des réponses), regroupés (sans accents, casse ni ponctuation), avec leur nombre de lignes et le site
+   proposé. Cochés puis « Appliquer » : la colonne du site (référence au référentiel, créée si elle manque) est renseignée
+   sur toutes leurs lignes, le texte saisi est remplacé par le nom du site (au choix), et la correspondance libellé → site
+   est validée (Sites_correspondances) pour les prochaines saisies. Un site absent du référentiel peut y être créé. */
+let sx = null, sxSource = "", sxRemplacer = true, sxCoches = new Set();
+try { const m = JSON.parse(localStorage.getItem("socle-v2-sites-saisies") || "{}"); sxSource = m.source || ""; if (m.remplacer === false) sxRemplacer = false; } catch (_) { /* stockage indisponible */ }
+const memoSaisies = () => { try { localStorage.setItem("socle-v2-sites-saisies", JSON.stringify({ source: sxSource, remplacer: sxRemplacer })); } catch (_) { /* stockage indisponible */ } };
+const MOTS_SITE_VIDES = new Set(["campus", "site", "sites", "bat", "batiment", "batiments", "de", "du", "des", "la", "le", "les", "l", "d", "et", "a", "au", "aux", "sur", "en", "universite", "univ", "pole", "rue", "avenue", "av", "bd"]);
+const motsSite = x => new Set(norm(x).split(" ").filter(w => w.length > 1 && !MOTS_SITE_VIDES.has(w)));
+async function sourcesSaisies() {
+  const meta = await S.lireMeta(), config = await S.lireConfig(meta), g = S.general(config), reps = S.espaces(g).map(e => e.reponses).filter(t => meta[t]);
+  const out = [];
+  for (const rep of reps) {
+    const ce = Object.values(meta[rep].colonnes).find(c => c.colId === "Etablissement" && c.type === `Ref:${ctx.tEtab}`) || Object.values(meta[rep].colonnes).find(c => c.type === `Ref:${ctx.tEtab}`);
+    if (!ce) continue;
+    Object.values(meta[rep].colonnes).filter(c => /^Text/.test(c.type) && !c.isFormula && /site|batiment|campus/i.test(`${c.colId} ${c.label}`) && !/detail|json|tableau/i.test(c.colId))
+      .forEach(c => out.push({ cle: `${rep}.${c.colId}`, libelle: `${rep} › ${c.label}`, table: rep, col: c.colId, rep, etabCol: ce.colId, viaDossier: null }));
+    for (const [t, tm] of Object.entries(meta)) {
+      if (t === rep || t.startsWith("_grist")) continue;
+      const d = Object.values(tm.colonnes).find(c => c.type === `Ref:${rep}` && c.colId === "Dossier") || Object.values(tm.colonnes).find(c => c.type === `Ref:${rep}` && c.colId !== "Version"); if (!d) continue;
+      Object.values(tm.colonnes).filter(c => /^Text/.test(c.type) && !c.isFormula && /site|nom|libre|batiment/i.test(`${c.colId} ${c.label}`) && !/^Dossier_|Ligne_id/.test(c.colId))
+        .forEach(c => out.push({ cle: `${t}.${c.colId}`, libelle: `${t} › ${c.label}`, table: t, col: c.colId, rep, etabCol: ce.colId, viaDossier: d.colId }));
+    }
+  }
+  return { meta, sources: out };
+}
+async function analyserSaisies() {
+  const { meta, sources } = await sourcesSaisies();
+  const src = sources.find(x => x.cle === sxSource) || sources.find(x => /libre|nom_du_site/i.test(x.col)) || sources[0] || null;
+  if (!src) return { meta, sources, src: null, groupes: [] };
+  const [t, trep] = await Promise.all([grist.docApi.fetchTable(src.table), src.viaDossier ? grist.docApi.fetchTable(src.rep) : null]);
+  const idxRep = trep ? new Map(trep.id.map((id, i) => [id, i])) : null;
+  const etabDeLigne = i => src.viaDossier ? (k => k === undefined ? null : refId(trep[src.etabCol][k]))(idxRep.get(refId(t[src.viaDossier][i]))) : refId(t[src.etabCol][i]);
+  // colonne de la table qui désigne un site du référentiel (déjà présente ?)
+  const refCol = (Object.values(meta[src.table].colonnes).find(c => !c.isFormula && c.type === `Ref:${ctx.tSites}`) || {}).colId || null;
+  const ids = new Set([choisi.id, ...etabs.filter(e => e.ratt === choisi.id).map(e => e.id)]);   // l'établissement et ses composantes
+  const groupes = new Map();
+  t.id.forEach((rid, i) => {
+    const lib = String(t[src.col][i] ?? "").trim(); if (!lib || !ids.has(etabDeLigne(i))) return;
+    const k = norm(lib); if (!k) return;
+    if (!groupes.has(k)) groupes.set(k, { cle: k, libelles: new Map(), lignes: [], relies: new Map() });
+    const g = groupes.get(k); g.lignes.push(rid); g.libelles.set(lib, (g.libelles.get(lib) || 0) + 1);
+    const r = refCol ? refId(t[refCol][i]) : null; if (r) g.relies.set(r, (g.relies.get(r) || 0) + 1);
+  });
+  const lesSites = sitesDe(choisi).filter(x => x.actif);
+  const liste = [...groupes.values()].map(g => {
+    g.libelle = [...g.libelles].sort((a, b) => b[1] - a[1])[0][0];
+    const m = motsSite(g.libelle);
+    const notes = lesSites.map(x => { const n = motsSite(x.nom + " " + x.mots), c = [...m].filter(w => n.has(w)).length; return { x, n: c ? c / Math.max(1, Math.min(m.size, motsSite(x.nom).size || 1)) : 0 }; }).sort((a, b) => b.n - a.n);
+    g.propose = notes[0] && notes[0].n >= 0.5 ? notes[0].x.id : null;
+    g.relie = g.relies.size === 1 && [...g.relies.values()][0] === g.lignes.length ? [...g.relies.keys()][0] : null;
+    return g;
+  }).sort((a, b) => (!!a.relie - !!b.relie) || b.lignes.length - a.lignes.length);
+  return { meta, sources, src, refCol, groupes: liste };
+}
+async function afficherSaisies() {
+  const z = $("vue-saisies");
+  if (!choisi) { z.innerHTML = `<p class="aide">Choisissez d'abord un établissement (onglet « Établissements et sites »).</p>`; return; }
+  z.innerHTML = `<p class="aide">Lecture des saisies…</p>`;
+  try { sx = await analyserSaisies(); } catch (err) { z.innerHTML = `<p class="statut err">Lecture impossible : ${esc(err.message || err)}</p>`; return; }
+  dessinerSaisies();
+}
+function dessinerSaisies() {
+  const z = $("vue-saisies"), e = choisi, lesSites = sitesDe(e).filter(x => x.actif);
+  const nomSite = id => (sites.find(x => x.id === id) || {}).nom || `site ${id}`;
+  if (!sx.src) { z.innerHTML = `<div class="fiche"><strong>${esc(e.nom)}</strong></div><p class="vide">Aucune colonne de sites saisis en texte (sous-table d'une question tableau, ou colonne « site » de la table des réponses).</p>`; return; }
+  for (const k of [...sxCoches]) if (!sx.groupes.some(g => g.cle === k)) sxCoches.delete(k);
+  const n = sxCoches.size, nl = sx.groupes.filter(g => sxCoches.has(g.cle)).reduce((a, g) => a + g.lignes.length, 0);
+  const propose = sx.groupes.filter(g => sxCoches.has(g.cle)).map(g => g.propose).find(Boolean);
+  z.innerHTML = `<div class="fiche"><strong>${esc(e.nom)}</strong><div class="aide">Sites saisis dans les signalements de l'établissement${etabs.some(x => x.ratt === e.id) ? " et de ses composantes" : ""}, à rattacher au référentiel (${lesSites.length} site${lesSites.length > 1 ? "s" : ""} actif${lesSites.length > 1 ? "s" : ""}).</div></div>
+    <div class="outils"><label class="aide">Saisies lues dans <select id="sx-source">${sx.sources.map(x => `<option value="${esc(x.cle)}"${x.cle === sx.src.cle ? " selected" : ""}>${esc(x.libelle)}</option>`).join("")}</select></label></div>
+    <p class="aide">${sx.refCol ? `Colonne du site dans ${esc(sx.src.table)} : <code>${esc(sx.refCol)}</code>.` : `${esc(sx.src.table)} n'a pas encore de colonne vers le référentiel des sites : elle sera créée (« Site du référentiel ») au premier rattachement.`}</p>
+    <div class="lot">
+      <div class="outils"><label><input type="checkbox" id="sx-tout"${n && n === sx.groupes.filter(g => !g.relie).length ? " checked" : ""}> Tous les non rattachés</label><span class="aide">${n ? `${n} libellé${n > 1 ? "s" : ""} coché${n > 1 ? "s" : ""}, ${nl} ligne${nl > 1 ? "s" : ""}` : "Cochez les libellés qui désignent le même site."}</span></div>
+      ${n ? `<div class="outils"><select id="sx-site" aria-label="Site du référentiel">${lesSites.map(x => `<option value="${x.id}"${x.id === propose ? " selected" : ""}>${esc(x.nom)}</option>`).join("")}<option value="nouveau">+ Nouveau site du référentiel…</option></select>
+          <input type="text" id="sx-nouveau" placeholder="Nom du nouveau site" hidden style="flex:1;min-width:140px"></div>
+        <label class="aide"><input type="checkbox" id="sx-remplacer"${sxRemplacer ? " checked" : ""}> Remplacer aussi le texte saisi par le nom du site</label>
+        <div class="outils"><button type="button" class="primaire" id="sx-appliquer">Rattacher les ${nl} ligne${nl > 1 ? "s" : ""} au site</button></div>` : ""}
+    </div>
+    <p class="statut" id="sx-msg" role="status"></p>
+    ${sx.groupes.length ? `<ul class="sites">${sx.groupes.map(g => `<li class="site${sxCoches.has(g.cle) ? " coche" : ""}${g.relie ? " inactif" : ""}" data-sx="${esc(g.cle)}">
+        <div class="ligne"><input type="checkbox" class="sx-coche"${sxCoches.has(g.cle) ? " checked" : ""} aria-label="Sélectionner « ${esc(g.libelle)} »"><strong>${esc(g.libelle)}</strong> <span class="pastille">${g.lignes.length} ligne${g.lignes.length > 1 ? "s" : ""}</span></div>
+        ${g.libelles.size > 1 ? `<div class="meta">Variantes : ${[...g.libelles.keys()].map(esc).join(" ; ")}</div>` : ""}
+        <div class="meta">${g.relie ? `Rattaché à « ${esc(nomSite(g.relie))} »` : g.relies.size ? `Rattaché en partie : ${[...g.relies].map(([id, c]) => `${esc(nomSite(id))} (${c})`).join(", ")}` : g.propose ? `Proposé : « ${esc(nomSite(g.propose))} »` : "Aucun site proposé"}</div></li>`).join("")}</ul>`
+      : `<p class="vide">Aucun site saisi pour cet établissement dans cette colonne.</p>`}`;
+  $("sx-source").addEventListener("change", ev => { sxSource = ev.target.value; memoSaisies(); sxCoches.clear(); afficherSaisies(); });
+  $("sx-tout").addEventListener("change", ev => { sxCoches.clear(); if (ev.target.checked) sx.groupes.filter(g => !g.relie).forEach(g => sxCoches.add(g.cle)); dessinerSaisies(); });
+  z.querySelectorAll(".sx-coche").forEach(c => c.addEventListener("change", () => { const k = c.closest("[data-sx]").dataset.sx; if (c.checked) sxCoches.add(k); else sxCoches.delete(k); dessinerSaisies(); }));
+  const ss = $("sx-site"); if (ss) { const maj = () => { $("sx-nouveau").hidden = ss.value !== "nouveau"; if (!$("sx-nouveau").hidden && !$("sx-nouveau").value) $("sx-nouveau").value = sx.groupes.find(g => sxCoches.has(g.cle)).libelle; }; ss.addEventListener("change", maj); if (!lesSites.length) { ss.value = "nouveau"; maj(); } }
+  const rp = $("sx-remplacer"); if (rp) rp.addEventListener("change", () => { sxRemplacer = rp.checked; memoSaisies(); });
+  const ap = $("sx-appliquer"); if (ap) ap.addEventListener("click", appliquerSaisies);
+}
+async function appliquerSaisies() {
+  const dire = (t, err) => { const m = $("sx-msg"); if (m) { m.textContent = t; m.className = `statut ${err ? "err" : "ok"}`; } };
+  const choisis = sx.groupes.filter(g => sxCoches.has(g.cle)); if (!choisis.length) return;
+  const src = sx.src;
+  try {
+    await preparerTable();
+    // site visé : existant, ou créé dans le référentiel
+    let siteId = $("sx-site").value, nom;
+    if (siteId === "nouveau") {
+      nom = $("sx-nouveau").value.trim(); if (!nom) { $("sx-nouveau").focus(); return; }
+      const p = parentDe(choisi), comp = p && p.id !== choisi.id;
+      await etendreChoix("source", "Saisie"); await etendreChoix("statut", "Validé");
+      const rec = { ...champs({ id: nouveauCode(), nom, statut: "Validé", source: "Saisie", actif: true }), [ctx.cols.etab]: (comp ? p : choisi).id, ...(comp && ctx.cols.comp ? { [ctx.cols.comp]: choisi.id } : {}) };
+      const r = await grist.docApi.applyUserActions([["AddRecord", ctx.tSites, null, rec]]);
+      siteId = r && r.retValues ? r.retValues[0] : null;
+      await lireDonnees();
+      if (!siteId) { const x = sites.find(y => y.nom === nom && (y.etab === choisi.id || y.comp === choisi.id)); siteId = x && x.id; }
+    } else { siteId = +siteId; nom = (sites.find(x => x.id === siteId) || {}).nom; }
+    if (!siteId) { dire("Site introuvable.", true); return; }
+    // colonne du site dans la table des saisies
+    let refCol = sx.refCol;
+    if (!refCol) {
+      if (!confirm(`La table « ${src.table} » n'a pas de colonne vers le référentiel des sites : créer la colonne « Site du référentiel » ?`)) return;
+      refCol = "Site_referentiel"; let k = 2; while (sx.meta[src.table].colonnes[refCol]) refCol = `Site_referentiel_${k++}`;
+      await grist.docApi.applyUserActions([["AddColumn", src.table, refCol, { type: `Ref:${ctx.tSites}`, isFormula: false, label: "Site du référentiel", untieColIdFromLabel: true }]]);
+    }
+    const lignes = choisis.flatMap(g => g.lignes);
+    const acts = lignes.map(rid => ["UpdateRecord", src.table, rid, { [refCol]: siteId, ...(sxRemplacer ? { [src.col]: nom } : {}) }]);
+    // correspondances libellé saisi → site, pour les saisies à venir
+    const meta = await S.lireMeta(), tA = "Sites_correspondances";
+    if (!meta[tA]) {
+      await grist.docApi.applyUserActions([["AddTable", tA, [["Etablissement", `Ref:${ctx.tEtab}`], ["Libelle", "Text"], ["Site", `Ref:${ctx.tSites}`], ["Occurrences", "Int"], ["Statut", "Choice"]].map(([id, type]) => ({ id, type, isFormula: false }))]]);
+      await grist.docApi.applyUserActions([["ModifyColumn", tA, "Statut", { widgetOptions: JSON.stringify({ choices: ["À valider", "Validé", "Écarté"], choiceOptions: { "Validé": { fillColor: "#B8FEC9" }, "Écarté": { fillColor: "#EEEEEE" } } }) }]]);
+    }
+    // même normalisation que le formulaire (accents, casse, apostrophes, espaces ; ponctuation gardée) : une ligne par variante
+    const normA = x => String(x ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[’']/g, " ").replace(/\s+/g, " ").trim();
+    const ta = await grist.docApi.fetchTable(tA), cleA = new Map(ta.id.map((id, i) => [`${refId(ta.Etablissement[i])}|${normA(ta.Libelle[i])}`, id]));
+    for (const g of choisis) for (const [lib, nb] of g.libelles) {
+      const f = { Etablissement: choisi.id, Libelle: lib, Site: siteId, Occurrences: nb, Statut: "Validé" }, k = `${choisi.id}|${normA(lib)}`;
+      if (cleA.get(k) === -1) continue;   // variante déjà écrite dans ce lot
+      acts.push(cleA.has(k) ? ["UpdateRecord", tA, cleA.get(k), f] : ["AddRecord", tA, null, f]); cleA.set(k, -1);
+    }
+    for (let k = 0; k < acts.length; k += 400) await grist.docApi.applyUserActions(acts.slice(k, k + 400));
+    sxCoches.clear();
+    await afficherSaisies();
+    dire(`${lignes.length} ligne(s) rattachée(s) à « ${nom} »${sxRemplacer ? ", texte remplacé" : ""} ; correspondance(s) validée(s) pour les prochaines saisies.`);
+  } catch (err) { dire(`Modification refusée par Grist : ${err.message || err}`, true); }
 }
 
 /* ---------- Démarrage ---------- */
