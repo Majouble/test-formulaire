@@ -54,6 +54,11 @@
   .site { border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; margin: 6px 0; }
   .site.choisi { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
   .site.inactif { opacity: .6; }
+  .site.coche { background: var(--accent-soft); }
+  .lot { border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; margin: 6px 0; background: var(--soft); }
+  .lot-actions .outils input[type=text] { flex: 1; min-width: 140px; }
+  .fusion { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 6px; display: grid; gap: 3px; }
+  .fusion label { display: flex; gap: 6px; align-items: baseline; }
   .site .ligne { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
   .site input.nom { flex: 1; min-width: 160px; font-weight: 600; }
   .site input.mots { width: 100%; margin-top: 4px; }
@@ -488,7 +493,7 @@ function enteteEtab(e) {
     ${p && p.id !== e.id ? `<div class="aide">Composante de <button type="button" class="lien" data-etab-parent="${p.id}">${esc(p.nom)}</button> : les sites ajoutés sont rattachés à l'établissement, avec cette composante.</div>` : ""}`;
 }
 function choisirEtab(id) {
-  choisi = etabDe(id); siteChoisi = null; candidats = [];
+  choisi = etabDe(id); siteChoisi = null; candidats = []; selection.clear(); fusionGarde = null;
   $("etab-res").hidden = true; $("etab-q").value = choisi ? choisi.nom : "";
   try { localStorage.setItem("socle-v2-sites-etab", String(id)); } catch (_) { /* stockage indisponible */ }
   const p = choisi && parentDe(choisi);
@@ -521,13 +526,90 @@ async function dessinerFicheEtab() {
     apresModif: async col => { if (Object.values(ctx.ce).includes(col)) { await lireDonnees(); const n = etabDe(e.id); if (n) { choisi = n; $("etab-q").value = n.nom; const f = document.querySelector(".fiche"); if (f) { f.innerHTML = enteteEtab(n); lierEntete(f); } dessinerCarte(false); } } },
     apresAjout: async (cid, lib) => { ficheEtab = null; await dessinerFicheEtab(); dire(`Information « ${lib} » ajoutée (colonne ${cid}).`); } });
 }
+/* ---------- Modification par lot des sites de l'établissement ----------
+   Sélection (cases, « tout », homonymes : sites au même nom), puis : renommer, statut, mots-clés ajoutés, désactiver /
+   réactiver, fusionner. Fusion : un site est gardé ; les références aux autres (signalements, tableaux de sites,
+   correspondances, dans toutes les tables) sont reportées sur lui, leurs noms et mots-clés deviennent ses mots-clés,
+   il reprend des coordonnées s'il n'en a pas ; les autres sont désactivés, statut « Fusionné ». */
+const selection = new Set();
+let fusionGarde = null;
+const homonymes = l => { const g = new Map(); l.forEach(s => { const k = norm(s.nom); if (!k) return; if (!g.has(k)) g.set(k, []); g.get(k).push(s); }); return [...g.values()].filter(x => x.length > 1); };
+function barreLotHtml(l) {
+  const sel = l.filter(s => selection.has(s.id)), h = homonymes(l), n = sel.length;
+  if (fusionGarde && !sel.some(s => s.id === fusionGarde)) fusionGarde = null;
+  const garde = fusionGarde || (sel.slice().sort((a, b) => (b.actif - a.actif) || ((b.lat != null) - (a.lat != null)) || ((/valid/i.test(b.statut)) - (/valid/i.test(a.statut))) || a.id - b.id)[0] || {}).id;
+  return `<div class="lot">
+    <div class="outils"><label><input type="checkbox" id="lot-tout"${n === l.length ? " checked" : ""}> Tout</label>
+      ${h.map(g => `<button type="button" class="lien" data-homonymes="${esc(norm(g[0].nom))}" title="Sélectionner les sites nommés « ${esc(g[0].nom)} »">${g.length} × « ${esc(g[0].nom)} »</button>`).join(" ")}
+      <span class="aide">${n ? `${n} sélectionné${n > 1 ? "s" : ""}` : "Cochez des sites pour les modifier ensemble."}</span></div>
+    ${n ? `<div class="lot-actions">
+      <div class="outils"><input type="text" id="lot-nom" placeholder="Nouveau nom" aria-label="Nouveau nom des sites sélectionnés"><button type="button" data-lot="nom">Renommer</button></div>
+      <div class="outils"><select id="lot-statut" aria-label="Statut"><option>Validé</option><option>Proposé</option></select><button type="button" data-lot="statut">Changer le statut</button></div>
+      <div class="outils"><input type="text" id="lot-mots" placeholder="Mots-clés à ajouter, séparés par des virgules" aria-label="Mots-clés à ajouter"><button type="button" data-lot="mots">Ajouter</button></div>
+      <div class="outils"><button type="button" data-lot="desactiver">Désactiver</button><button type="button" data-lot="reactiver">Réactiver</button></div>
+      ${n > 1 ? `<div class="fusion"><strong>Fusionner les ${n} sites</strong> <span class="aide">site gardé :</span>
+        ${sel.map(s => `<label><input type="radio" name="lot-garde" value="${s.id}"${s.id === garde ? " checked" : ""}> ${esc(s.nom)} <span class="aide">${esc([s.code, s.commune, s.lat == null ? "sans coordonnées" : "", s.actif ? "" : "désactivé"].filter(Boolean).join(" · "))}</span></label>`).join("")}
+        <div class="outils"><button type="button" class="primaire" data-lot="fusion">Fusionner dans le site gardé</button></div></div>` : ""}
+    </div>` : ""}</div>`;
+}
+function lierLot(z, l) {
+  const t = z.querySelector("#lot-tout"); if (t) t.addEventListener("change", () => { if (t.checked) l.forEach(s => selection.add(s.id)); else selection.clear(); dessinerSites(false); });
+  z.querySelectorAll("[data-homonymes]").forEach(b => b.addEventListener("click", () => { selection.clear(); l.filter(s => norm(s.nom) === b.dataset.homonymes).forEach(s => selection.add(s.id)); dessinerSites(false); }));
+  z.querySelectorAll("[name=lot-garde]").forEach(r => r.addEventListener("change", () => { fusionGarde = +r.value; }));
+  z.querySelectorAll("[data-lot]").forEach(b => b.addEventListener("click", () => actionLot(b.dataset.lot, l.filter(s => selection.has(s.id)))));
+}
+async function actionLot(quoi, sel) {
+  if (!sel.length) return;
+  const fusion = quoi === "fusion";
+  try {
+    await preparerTable();
+    if (fusion) { await fusionner(sel); return; }
+    const maj = new Map();   // id → champs
+    if (quoi === "nom") { const v = $("lot-nom").value.trim(); if (!v) { $("lot-nom").focus(); return; } sel.forEach(s => maj.set(s.id, { nom: v })); }
+    if (quoi === "statut") { const v = $("lot-statut").value; await etendreChoix("statut", v); sel.forEach(s => maj.set(s.id, { statut: v })); }
+    if (quoi === "mots") { const ajout = $("lot-mots").value.split(/\s*[,;|]\s*/).map(x => x.trim()).filter(Boolean); if (!ajout.length) { $("lot-mots").focus(); return; }
+      sel.forEach(s => { const l = s.mots.split(/\s*,\s*/).filter(Boolean); ajout.forEach(m => { if (!l.some(x => norm(x) === norm(m))) l.push(m); }); maj.set(s.id, { mots: l.join(", ") }); }); }
+    if (quoi === "desactiver" || quoi === "reactiver") sel.forEach(s => maj.set(s.id, { actif: quoi === "reactiver" }));
+    await grist.docApi.applyUserActions([...maj].map(([id, f]) => ["UpdateRecord", ctx.tSites, id, champs(f)]));
+    maj.forEach((f, id) => { const s = sites.find(x => x.id === id); if (s) Object.assign(s, f); });
+    statut(`${maj.size} site(s) modifié(s).`, "ok"); dessinerSites(false);
+  } catch (err) { statut(`Modification refusée par Grist : ${err.message || err}`, "err"); }
+}
+async function fusionner(sel) {
+  const gid = fusionGarde || +((document.querySelector("[name=lot-garde]:checked") || {}).value || 0); const garde = sel.find(s => s.id === gid); if (!garde) return;
+  const autres = sel.filter(s => s.id !== garde.id), ids = new Set(autres.map(s => s.id));
+  // références vers les sites fusionnés, dans toutes les tables
+  const meta = await S.lireMeta(), refs = [];
+  for (const [t, m] of Object.entries(meta)) {
+    if (t.startsWith("_grist")) continue;
+    const cols = Object.values(m.colonnes).filter(c => !c.isFormula && (c.type === `Ref:${ctx.tSites}` || c.type === `RefList:${ctx.tSites}`)); if (!cols.length) continue;
+    const d = await grist.docApi.fetchTable(t);
+    for (const c of cols) (d[c.colId] || []).forEach((v, i) => {
+      if (c.type.startsWith("RefList")) { const l = Array.isArray(v) ? v.slice(v[0] === "L" ? 1 : 0) : []; if (l.some(x => ids.has(x))) refs.push(["UpdateRecord", t, d.id[i], { [c.colId]: ["L", ...new Set(l.map(x => ids.has(x) ? garde.id : x))] }]); }
+      else if (ids.has(refId(v))) refs.push(["UpdateRecord", t, d.id[i], { [c.colId]: garde.id }]);
+    });
+  }
+  if (!confirm(`Fusionner ${autres.length} site(s) dans « ${garde.nom} »${garde.code ? ` (${garde.code})` : ""} ?\n\n${refs.length} référence(s) (signalements, tableaux de sites, correspondances) seront reportées sur lui ; les noms des autres deviendront ses mots-clés ; les autres seront désactivés (statut « Fusionné »).`)) return;
+  const mots = garde.mots.split(/\s*,\s*/).filter(Boolean);
+  autres.flatMap(s => [s.nom, ...s.mots.split(/\s*,\s*/)]).map(x => String(x || "").trim()).filter(Boolean).forEach(m => { if (norm(m) !== norm(garde.nom) && !mots.some(x => norm(x) === norm(m))) mots.push(m); });
+  const fg = { mots: mots.join(", ") };
+  if (garde.lat == null) { const c = autres.find(s => s.lat != null); if (c) Object.assign(fg, { lat: c.lat, lon: c.lon, precision: c.precision || "repris d'un site fusionné" }); }
+  await etendreChoix("statut", "Fusionné");
+  const acts = [["UpdateRecord", ctx.tSites, garde.id, champs(fg)], ...autres.map(s => ["UpdateRecord", ctx.tSites, s.id, champs({ actif: false, statut: "Fusionné" })]), ...refs];
+  for (let k = 0; k < acts.length; k += 400) await grist.docApi.applyUserActions(acts.slice(k, k + 400));
+  selection.clear(); fusionGarde = null;
+  await lireDonnees(); choisi = etabDe(choisi.id) || choisi; dessinerSites(false);
+  statut(`${autres.length} site(s) fusionné(s) dans « ${garde.nom} » ; ${refs.length} référence(s) reportée(s).`, "ok");
+}
 function dessinerSites(cadrer) {
   const z = $("liste");
   if (!choisi) { z.innerHTML = ""; dessinerCarte(false); return; }
   const l = sitesDe(choisi);
+  for (const id of [...selection]) if (!l.some(x => x.id === id)) selection.delete(id);
   z.innerHTML = `<h2>${l.length} site${l.length > 1 ? "s" : ""} au référentiel</h2>
-    ${l.length ? `<ul class="sites">${l.map((s, k) => `<li class="site${s.id === siteChoisi ? " choisi" : ""}${s.actif ? "" : " inactif"}" data-site="${s.id}">
-      <div class="ligne"><span class="pastille">${k + 1}</span><input type="text" class="nom" value="${esc(s.nom)}" aria-label="Nom du site ${k + 1}">
+    ${l.length > 1 ? barreLotHtml(l) : ""}
+    ${l.length ? `<ul class="sites">${l.map((s, k) => `<li class="site${s.id === siteChoisi ? " choisi" : ""}${s.actif ? "" : " inactif"}${selection.has(s.id) ? " coche" : ""}" data-site="${s.id}">
+      <div class="ligne">${l.length > 1 ? `<input type="checkbox" class="sel" aria-label="Sélectionner le site ${k + 1}"${selection.has(s.id) ? " checked" : ""}>` : ""}<span class="pastille">${k + 1}</span><input type="text" class="nom" value="${esc(s.nom)}" aria-label="Nom du site ${k + 1}">
         <select class="st" aria-label="Statut du site ${k + 1}">${["Validé", "Proposé"].concat(s.statut && !["Validé", "Proposé"].includes(s.statut) ? [s.statut] : []).map(x => `<option${x === s.statut ? " selected" : ""}>${esc(x)}</option>`).join("")}</select></div>
       <div class="meta">${esc([s.commune, s.code, s.source].filter(Boolean).join(" · "))}${s.lat == null ? ` · <span class="pastille warn">sans coordonnées : cliquez « Placer », puis sur la carte</span>` : ` · ${esc(s.precision || "coordonnées")}`}</div>
       ${s.autres ? `<div class="meta" title="${esc(s.autres)}">Autres noms : ${esc(s.autres.length > 120 ? s.autres.slice(0, 120) + "…" : s.autres)}</div>` : ""}
@@ -536,8 +618,10 @@ function dessinerSites(cadrer) {
         <button type="button" class="lien" data-action="placer">${s.lat == null ? "Placer" : "Replacer"} d'un clic sur la carte</button>
         <button type="button" class="lien" data-action="actif">${s.actif ? "Désactiver" : "Réactiver"}</button></div></li>`).join("")}</ul>`
       : `<p class="vide">Aucun site : cherchez-en dans les lieux IGN ou OpenStreetMap ci-contre, ou cliquez sur la carte pour en ajouter un.</p>`}`;
+  lierLot(z, l);
   z.querySelectorAll(".site").forEach(li => {
     const s = sites.find(x => x.id === +li.dataset.site);
+    const sel = li.querySelector(".sel"); if (sel) sel.addEventListener("change", () => { if (sel.checked) selection.add(s.id); else selection.delete(s.id); dessinerSites(false); });
     li.querySelector(".nom").addEventListener("change", ev => { const v = ev.target.value.trim(); if (!v) { ev.target.value = s.nom; return; } s.nom = v; modifierSite(s.id, { nom: v }, "Nom enregistré."); dessinerCarte(false); });
     li.querySelector(".st").addEventListener("change", ev => { s.statut = ev.target.value; modifierSite(s.id, { statut: s.statut }, "Statut enregistré."); dessinerCarte(false); });
     li.querySelector(".mots").addEventListener("change", ev => { const v = ev.target.value.split(/\s*[,;|]\s*/).map(x => x.trim()).filter(Boolean).join(", "); ev.target.value = v; s.mots = v; modifierSite(s.id, { mots: v }, "Mots-clés enregistrés."); });
