@@ -17,7 +17,8 @@ function docEsr() {
   for (const k of Object.keys(R)) R[k].push(k === 'id' ? id : k === 'Etablissement' ? 3 : k === 'Dossier' ? id : k === 'Derniere_version' ? true : k === 'Qualification' ? 'RAS' : k === 'Nature' ? 'Nouveau signalement' : k === 'Description' ? 'IEP calme' : k === 'Date_faits' ? Date.UTC(2026, 9, 22) / 1000 : k === 'Cree_le' ? Date.UTC(2026, 9, 22, 9) / 1000 : (typeof R[k][0] === 'string' ? '' : null));
   return doc;
 }
-(async () => {
+module.exports = { docEsr, CLASSEUR };
+if (require.main === module) (async () => {
   let doc = docEsr();
   const browser = await chromium.launch({ executablePath: __C.chromium }); const page = await browser.newPage({ viewport: { width: 1300, height: 1600 } });
   page.on('pageerror', e => console.log('PAGEERROR', e.message)); page.on('dialog', d => d.accept());

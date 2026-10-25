@@ -16,6 +16,16 @@ etabs = [
    'public', 'Actif', 'Rennes', None, 'Rennes', 'Bretagne', None, None, None, 'IUT', None, None, None, None, 'Ajoutée (IUT) – à valider', None, 'IUT de Rennes'],
   ['ETAB-0005', 'Campus de Saint-Malo – Université Rennes 2', 'Saint-Malo', 'Campus de Saint-Malo', None, 'Site ou campus', 'Campus ou site', 'ETAB-0002 – Université Rennes 2',
    'public', 'Actif', 'Rennes', None, 'Saint-Malo', 'Bretagne', None, None, None, 'Paysage', None, None, 'SITE-0006', None, 'Ajoutée (Paysage) – à valider', None, 'Campus de Saint-Malo'],
+  ['ETAB-0006', "École supérieure d'ingénieurs de Rennes (ESIR)", 'ESIR', "École supérieure d'ingénieurs de Rennes", 'ESIR', 'Composante interne', "École d'ingénieurs interne", 'ETAB-0001 – Université de Rennes',
+   'public', 'Actif', 'Rennes', None, 'Rennes', 'Bretagne', '0352480F', None, None, 'CTI', None, None, None, None, 'Existante', None, "École supérieure d'ingénieurs de Rennes"],
+  ['ETAB-0007', 'Institut Mines-Télécom (IMT)', 'IMT', 'Institut Mines-Télécom, au périmètre des écoles IMT Atlantique, Lille Douai, Albi, Alès, Mines Saint-Étienne et Institut Mines-Télécom Business school', 'IMT', 'Établissement', 'Grand établissement', None,
+   'public', 'Actif', 'Paris', None, 'Palaiseau', 'Île-de-France', '0912424R', None, None, 'PLF', None, None, None, None, 'Existante', None, 'Institut Mines-Télécom'],
+  ['ETAB-0008', 'IMT Atlantique', 'IMT Atlantique', 'IMT Atlantique', None, 'Composante interne', "École d'ingénieurs interne", 'ETAB-0007 – Institut Mines-Télécom, au périmètre des écoles IMT Atlantique, Lille Douai, Albi, Alès, Mines Saint-Étienne et Institut Mines-Télécom Business school',
+   'public', 'Actif', 'Nantes', None, 'Brest', 'Bretagne', '0442852L', None, None, 'CTI', None, None, None, None, 'Existante', None, 'IMT Atlantique'],
+  ['ETAB-0009', 'Institut Mines-Télécom Business School', 'IMT-BS', 'Institut Mines-Télécom Business School', 'IMT-BS', 'Composante interne', 'Autre composante interne', 'ETAB-0007 – Institut Mines-Télécom, au périmètre des écoles IMT Atlantique, Lille Douai, Albi, Alès, Mines Saint-Étienne et Institut Mines-Télécom Business school',
+   'public', 'Actif', 'Versailles', None, 'Évry-Courcouronnes', 'Île-de-France', '0912255G', None, None, 'Paysage', None, None, None, None, 'Existante', None, 'IMT Business School'],
+  ['ETAB-0010', 'IMT Atlantique - Campus de Rennes', 'IMT Atlantique Rennes', 'IMT Atlantique - Campus de Rennes', None, 'Site ou campus', 'Campus ou site', 'ETAB-0007 – Institut Mines-Télécom, au périmètre des écoles IMT Atlantique, Lille Douai, Albi, Alès, Mines Saint-Étienne et Institut Mines-Télécom Business school',
+   'public', 'Actif', 'Rennes', None, 'Cesson-Sévigné', 'Bretagne', None, None, None, 'Paysage', None, None, None, None, 'Ajoutée (Paysage) – à valider', None, 'IMT Atlantique - Campus de Rennes'],
 ]
 S = ['Site ID', 'Établissement ID', 'Établissement', 'Composante concernée', 'Nom du site', 'Nom OAD', 'Autres noms', 'Statut', 'Source', 'Commune', 'Code postal', 'Académie',
      'Adresse', 'Latitude', 'Longitude', 'Précision des coordonnées', 'Implantation multi-occupants', 'Autres occupants', 'Surface (m²)', 'Remarque', 'Cité dans la base mouvements (oct. 2026)']
@@ -26,6 +36,8 @@ sites = [
   ['SITE-0004', 'ETAB-0002', 'Université Rennes 2', None, 'Campus Villejean Rennes 2', None, None, 'Validé', 'OAD', 'Rennes', '35043', 'Rennes', 'place Recteur Henri Le Moal', 48.1190, -1.7020, 'Source du site', 'MULTI-001', 'Université de Rennes (SITE-0002)', 80000, None, None],
   ['SITE-0006', 'ETAB-0002', 'Université Rennes 2', None, 'Saint-Malo', None, None, 'Proposé', 'Saisie', 'Saint-Malo', '35400', 'Rennes', None, 48.6493, -2.0257, 'Centre de la commune', None, None, None, 'aucun site OAD proche', None],
   ['SITE-0007', 'ETAB-0003', 'Sciences Po Rennes', None, 'Sciences Po Rennes – centre', None, None, 'Validé', 'OAD', 'Rennes', '35700', 'Rennes', '104 bd de la Duchesse Anne', 48.1159, -1.6608, 'Source du site', None, None, 9000, None, None],
+  ['SITE-0008', 'ETAB-0001', 'Université de Rennes', "ETAB-0006 – École supérieure d'ingénieurs de Rennes", 'ESIR Beaulieu', None, None, 'Validé', 'OAD', 'Rennes', '35042', 'Rennes', '263 av. Leclerc', 48.1172, -1.6380, 'Source du site', None, None, None, None, None],
+  ['SITE-0009', 'ETAB-0007', 'Institut Mines-Télécom', 'ETAB-0008 – IMT Atlantique', 'Campus de Brest', None, None, 'Validé', 'OAD', 'Plouzané', '29280', 'Rennes', 'Technopôle Brest-Iroise', 48.3590, -4.5700, 'Source du site', None, None, None, None, None],
 ]
 A = ['Établissement (saisie)', 'Site saisi', 'Académie', 'Établissement ID', 'Établissement (référentiel)', 'Site ID', 'Site(s) du référentiel', 'Rapprochement', 'Remarque']
 alias = [

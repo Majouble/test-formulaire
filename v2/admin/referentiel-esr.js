@@ -42,6 +42,7 @@
     { entete: "Niveau", id: "Niveau", type: "Choice" },
     { entete: "Type", id: "Type", role: "Type" },
     { entete: "Établissement de rattachement", id: "Rattachement", ratt: true },
+    { entete: "Groupe", id: "Groupe" },   // règle « une école d'ingénieurs = un établissement » : groupe ou université d'origine
     { entete: "Secteur", id: "Secteur", role: "Statut_public_prive" },
     { entete: "État", id: "Etat" },
     { entete: "Académie", id: "Academie", role: "Academie" },
@@ -74,6 +75,82 @@
   const SITES_IGNORES = ["Établissement", "Établissement (base des sites)"];   // noms en clair : l'identifiant suffit
 
   let racine = null, classeur = null, nomFichier = "", choixTable = "", analyse = null, enCours = false;
+
+  /* ---------- Règle : une école d'ingénieurs compte pour un établissement ----------
+     Écoles d'ingénieurs internes (d'une université, d'un INP, de Junia…) et toutes les écoles de l'Institut Mines-Télécom :
+     niveau « Établissement », type « École d'ingénieurs » (au lieu de « … interne »), plus de rattachement (le formulaire
+     n'y renvoie plus vers le groupe), groupe d'origine gardé dans la colonne Groupe ; leurs sites (« Composante concernée »)
+     passent sur l'école ; un campus d'une école (nom qui commence par celui de l'école) se rattache à l'école.
+     Réglage dans la clé « regles_esr » de Config ; appliquée à l'import du classeur et, sur demande, au référentiel en place. */
+  const RE_ING = /ing[ée]nieurs?\s+interne/i, RE_GROUPE = /institut\s+mines.?t[ée]l[ée]com/i;
+  const sansId = v => String(v ?? "").replace(/^ETAB-\d+\s*[–-]\s*/, "").trim();
+  const groupeCourt = v => sansId(v).replace(/,\s*au p[ée]rim[eè]tre.*$/i, "").trim();
+  const nomCourt = v => nomNorm(String(v ?? "").replace(/\s*\(.*$/, ""));
+  const ecoleSeparee = (type, nomParent, niveau) => !/site|campus/i.test(niveau || "") && (RE_ING.test(type || "") || RE_GROUPE.test(nomParent || ""));
+  const typeSepare = t => RE_ING.test(t || "") ? "École d'ingénieurs" : /interne/i.test(t || "") ? "École" : t;
+  let regleEcoles = true;
+  // classeur : lignes transformées (copies : le classeur lu reste intact si la règle est décochée)
+  function appliquerRegleClasseur(fE, fS) {
+    const E = { entetes: [...fE.entetes], lignes: fE.lignes.map(l => ({ ...l })) }, Sx = fS ? { entetes: [...fS.entetes], lignes: fS.lignes.map(l => ({ ...l })) } : null;
+    if (!regleEcoles) return { fE: E, fS: Sx, n: 0 };
+    const RT = "Établissement de rattachement", parId = new Map(E.lignes.map(l => [idDe(l["Établissement ID"], "ETAB"), l])), separees = new Map();
+    for (const l of E.lignes) {
+      const pid = idDe(l[RT], "ETAB"); if (!pid) continue;
+      if (ecoleSeparee(l.Type, l[RT], l.Niveau)) separees.set(idDe(l["Établissement ID"], "ETAB"), pid);
+    }
+    for (const l of E.lignes) {   // campus d'une école séparée
+      const pid = idDe(l[RT], "ETAB"); if (!pid || !/site|campus/i.test(l.Niveau || "")) continue;
+      const ecole = [...separees].filter(([, p]) => p === pid).map(([id]) => parId.get(id)).find(x => x && nomCourt(x.Nom) && nomNorm(l.Nom).startsWith(nomCourt(x.Nom)));
+      if (ecole) l[RT] = `${ecole["Établissement ID"]} – ${ecole.Nom}`;
+    }
+    for (const l of E.lignes) {
+      const id = idDe(l["Établissement ID"], "ETAB"); if (!separees.has(id)) continue;
+      l.Groupe = groupeCourt(l[RT]); l.Niveau = "Établissement"; l.Type = typeSepare(l.Type); l[RT] = null; l.__rattEfface = true;
+    }
+    if (separees.size && !E.entetes.includes("Groupe")) E.entetes.push("Groupe");
+    if (Sx) for (const l of Sx.lignes) {
+      const c = idDe(l["Composante concernée"], "ETAB");
+      if (c && separees.has(c)) { l["Établissement ID"] = c; l["Composante concernée"] = null; l.__compEfface = true; }
+    }
+    return { fE: E, fS: Sx, n: separees.size };
+  }
+  // référentiel en place (Grist) : mêmes transformations, après confirmation
+  async function appliquerRegleGrist() {
+    const st = $("esr-regle-statut"), dire = (t, err) => { if (st) { st.textContent = t; st.className = `statut ${err ? "err" : "ok"}`; } };
+    try {
+      const ctx = await contexte(), table = ctx.cibles.includes(choixTable) ? choixTable : ctx.parDefaut, tm = ctx.meta[table];
+      const roles = S.resoudreRoles("referentiel", tm, { referentiel: table }, {}, {});
+      const cNom = roles.Nom && roles.Nom.col, cType = roles.Type && roles.Type.col, cNiv = tm.colonnes.Niveau ? "Niveau" : null;
+      const cRatt = (Object.values(tm.colonnes).find(c => c.type === `Ref:${table}` && /rattach|parent/i.test(c.colId)) || {}).colId;
+      if (!cRatt) { dire(`Aucune colonne de rattachement (référence vers ${table}) : rien à séparer.`, true); return; }
+      const t = await grist.docApi.fetchTable(table), pos = new Map(t.id.map((id, i) => [id, i])), v = (c, i) => c && t[c] ? t[c][i] : null, nom = id => String(v(cNom, pos.get(id)) ?? "");
+      const separees = new Map();
+      t.id.forEach((id, i) => { const p = refId(v(cRatt, i)); if (p && p !== id && ecoleSeparee(v(cType, i), nom(p), v(cNiv, i))) separees.set(id, p); });
+      const campus = [];
+      t.id.forEach((id, i) => { const p = refId(v(cRatt, i)); if (!p || !/site|campus/i.test(v(cNiv, i) || "")) return;
+        const e = [...separees].find(([sid, sp]) => sp === p && nomCourt(nom(sid)) && nomNorm(nom(id)).startsWith(nomCourt(nom(sid)))); if (e) campus.push([id, e[0]]); });
+      const tS = tableSitesDe(ctx, table), tmS = tS && ctx.meta[tS], vers = tmS ? Object.values(tmS.colonnes).filter(c => c.type === `Ref:${table}`) : [];
+      const cE = (vers.find(c => c.colId === "Etablissement") || vers.find(c => !/compos/i.test(c.colId)) || {}).colId, cC = (vers.find(c => /compos/i.test(c.colId)) || {}).colId;
+      const ts = tS && cE && cC ? await grist.docApi.fetchTable(tS) : null;
+      const sitesA = ts ? ts.id.filter((_, i) => separees.has(refId(ts[cC][i]))) : [];
+      if (!separees.size) { dire("Aucune école d'ingénieurs rattachée à un groupe ou à une université : rien à faire.", false); return; }
+      const liste = [...separees.keys()].map(nom).sort((a, b) => a.localeCompare(b, "fr"));
+      if (!confirm(`${separees.size} école(s) deviendront des établissements à part entière (groupe d'origine gardé dans la colonne Groupe), ${campus.length} campus rattaché(s) à leur école, ${sitesA.length} site(s) repris par leur école :\n\n${liste.slice(0, 25).join("\n")}${liste.length > 25 ? `\n… et ${liste.length - 25} autre(s)` : ""}\n\nLes signalements déjà enregistrés ne changent pas. Continuer ?`)) return;
+      dire("Application…");
+      if (!tm.colonnes.Groupe) await grist.docApi.applyUserActions([["AddColumn", table, "Groupe", { type: "Text", isFormula: false, label: "Groupe", untieColIdFromLabel: true }]]);
+      const acts = [...separees].map(([id, p]) => { const i = pos.get(id), f = { [cRatt]: 0, Groupe: groupeCourt(nom(p)) };
+        if (cNiv) f[cNiv] = "Établissement"; if (cType && /interne/i.test(v(cType, i) || "")) f[cType] = typeSepare(v(cType, i));
+        return ["UpdateRecord", table, id, f]; });
+      campus.forEach(([id, e]) => acts.push(["UpdateRecord", table, id, { [cRatt]: e }]));
+      if (ts) sitesA.forEach(sid => { const i = ts.id.indexOf(sid); acts.push(["UpdateRecord", tS, sid, { [cE]: refId(ts[cC][i]), [cC]: 0 }]); });
+      for (let k = 0; k < acts.length; k += LOT) await grist.docApi.applyUserActions(acts.slice(k, k + LOT));
+      if (cNiv) { const m = (await S.lireMeta())[table].colonnes[cNiv]; if (/^Choice/.test(m.type)) { let o = {}; try { o = JSON.parse(m.widgetOptions || "{}") || {}; } catch (_) { o = {}; }
+        if (!(o.choices || []).includes("Établissement")) await grist.docApi.applyUserActions([["ModifyColumn", table, cNiv, { widgetOptions: JSON.stringify({ ...o, choices: [...(o.choices || []), "Établissement"] }) }]]); } }
+      if (S.viderCacheLecture) S.viderCacheLecture();
+      dire(`${separees.size} école(s) devenue(s) établissement(s), ${campus.length} campus et ${sitesA.length} site(s) rattachés à leur école.`);
+      if (window.OngletSitesESR) window.OngletSitesESR.afficher();
+    } catch (e) { dire(`Échec : ${e.message || e}`, true); }
+  }
   const optionsCochees = { etab: null, sites: null };   // en-têtes facultatifs cochés (null : colonnes déjà présentes)
   let reporter = true;
 
@@ -239,8 +316,9 @@
     const ctx = await contexte();
     const table = ctx.cibles.includes(choixTable) ? choixTable : ctx.parDefaut;
     if (!table) throw new Error("Aucun référentiel des établissements dans le document : terminez d'abord l'installation.");
-    const [fE, fS, fA, fF] = await Promise.all([classeur.lire(FEUILLES.etab), classeur.lire(FEUILLES.sites), classeur.lire(FEUILLES.alias), classeur.lire(FEUILLES.fusions)]);
-    if (!fE || !fE.entetes.includes("Établissement ID")) throw new Error(`Onglet « ${FEUILLES.etab} » (avec la colonne « Établissement ID ») introuvable dans ce classeur. Onglets lus : ${classeur.noms.join(", ")}.`);
+    const [fE0, fS0, fA, fF] = await Promise.all([classeur.lire(FEUILLES.etab), classeur.lire(FEUILLES.sites), classeur.lire(FEUILLES.alias), classeur.lire(FEUILLES.fusions)]);
+    if (!fE0 || !fE0.entetes.includes("Établissement ID")) throw new Error(`Onglet « ${FEUILLES.etab} » (avec la colonne « Établissement ID ») introuvable dans ce classeur. Onglets lus : ${classeur.noms.join(", ")}.`);
+    const regle = appliquerRegleClasseur(fE0, fS0), fE = regle.fE, fS = regle.fS;
     const tm = ctx.meta[table], esp = ctx.esp.find(e => e.referentiel === table) || {};
     const roles = S.resoudreRoles("referentiel", tm, { reponses: esp.reponses, referentiel: table }, table === ctx.g.referentiel ? ((ctx.config.valeurs.roles || {}).referentiel) || {} : {}, {});
     const existant = await grist.docApi.fetchTable(table);
@@ -314,6 +392,7 @@
       }
       o.ratt = lRatt && lRatt.col ? idDe(o.l[lRatt.entete], "ETAB") : null;
       o.rattTexte = lRatt && lRatt.col ? o.l[lRatt.entete] : null;
+      o.rattEfface = !!o.l.__rattEfface;
       if (o.ex == null) { if (cOrig) f[cOrig.col] = await conv(cOrig.meta, ORIGINE); ajouts.push({ o, f }); continue; }
       parMode[o.mode]++;
       const i = pos.get(o.ex), diff = {};
@@ -362,7 +441,7 @@
         const f = {}, refs = {};
         for (const c of pS.lignes) {
           if (!c.col) continue;
-          if (c.etab) { const r = idDe(l[c.entete], "ETAB"); if (r) refs[c.col] = r; continue; }
+          if (c.etab) { const r = idDe(l[c.entete], "ETAB"); if (r) refs[c.col] = r; else if (l.__compEfface && c.entete === "Composante concernée") refs[c.col] = null; continue; }
           const v = c.cleRef ? sid : await convS(c.meta, l[c.entete]);
           if (v !== undefined) f[c.col] = v;
         }
@@ -395,7 +474,7 @@
 
     return { ctx, table, tm, plan: pE, cLat, cLon, lCle, lRatt, existant, lignes, parId, ajouts, majs, inchanges, parMode, coordsCompletees, absorbees, references,
       absentes: absentes.map(nomEx), nouveauxChoix, sites, alias,
-      stats: { etab: lignes.length, niveaux: lignes.reduce((a, o) => { const n = String(o.l.Niveau || "?"); a[n] = (a[n] || 0) + 1; return a; }, {}) } };
+      separees: regle.n, stats: { etab: lignes.length, niveaux: lignes.reduce((a, o) => { const n = String(o.l.Niveau || "?"); a[n] = (a[n] || 0) + 1; return a; }, {}) } };
   }
 
   /* ---------- Rendu ---------- */
@@ -411,6 +490,11 @@
       <p class="aide">Import du classeur consolidé des établissements, composantes et sites (onglets « ${FEUILLES.etab} », « ${FEUILLES.sites} », « ${FEUILLES.alias} », « ${FEUILLES.fusions} »).
         Les lignes sont rapprochées par identifiant (ETAB-…, SITE-…), puis UAI, puis nom : les existantes sont mises à jour, les nouvelles ajoutées. Rien n'est supprimé, une cellule vide n'efface rien.
         Un bilan s'affiche avant toute écriture ; un classeur corrigé peut être réimporté.</p>
+      <div class="esr-regle">
+        <label><input type="checkbox" id="esr-regle-ecoles"${regleEcoles ? " checked" : ""}> Une école d'ingénieurs compte pour un établissement, même membre d'un groupe ou d'une université (écoles de l'IMT, d'un INP, Polytech, écoles internes…)</label>
+        <div class="boutons" style="margin-top:4px"><button type="button" class="secondaire" id="esr-regle-appliquer">Appliquer au référentiel actuel</button><span class="statut" id="esr-regle-statut" role="status"></span></div>
+        <p class="aide">L'école devient un établissement à part entière (le formulaire ne renvoie plus vers le groupe, « À vérifier » ne la signale plus), son groupe d'origine est gardé dans la colonne Groupe, ses sites et ses campus passent sur l'école. Réglage repris à chaque import du classeur. Les autres composantes (IUT, INSPÉ, IAE…) restent rattachées à leur établissement.</p>
+      </div>
       <div class="esr-outils">
         <label>Classeur <input type="file" id="esr-fichier" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"></label>
         ${a && a.ctx.cibles.length > 1 ? `<label>Référentiel des établissements <select id="esr-table">${a.ctx.cibles.map(t => `<option${t === a.table ? " selected" : ""}>${esc(t)}</option>`).join("")}</select></label>` : ""}
@@ -423,6 +507,7 @@
         ${ligneT("À ajouter", `<strong>${nf(a.ajouts.length)}</strong>`)}
         ${ligneT("À mettre à jour", `<strong>${nf(a.majs.length)}</strong> <span class="aide">rapprochées : ${nf(a.parMode.identifiant)} par identifiant, ${nf(a.parMode.UAI)} par UAI, ${nf(a.parMode.nom)} par nom</span>`)}
         ${ligneT("Inchangées", nf(a.inchanges))}
+        ${a.separees ? ligneT("Écoles d'ingénieurs", `${nf(a.separees)} école(s) comptée(s) comme établissement (rattachement effacé, groupe dans la colonne Groupe)`) : ""}
         ${ligneT("Coordonnées reprises d'un site", `${nf(a.coordsCompletees)} <span class="aide">(établissements sans coordonnées : site de la même commune)</span>`)}
         ${a.absorbees.length ? ligneT("Lignes fusionnées", `${nf(a.absorbees.length)} ligne(s) existante(s) absorbée(s) par un autre établissement : marquées dans la colonne État, conservées.
           ${a.references.length ? `<br><label><input type="checkbox" id="esr-reporter"${reporter ? " checked" : ""}> reporter les ${nf(a.references.length)} référence(s) (signalements, sites…) sur l'établissement conservé</label>` : ""}`) : ""}
@@ -444,6 +529,13 @@
     lier();
   }
   function lier() {
+    const rg = $("esr-regle-ecoles");
+    if (rg) rg.addEventListener("change", async () => {
+      regleEcoles = rg.checked;
+      try { await S.ecrireConfig("regles_esr", { ecoles_ingenieurs: regleEcoles }); } catch (_) { /* réglage non enregistré : valable pour cette session */ }
+      if (classeur) relancer();
+    });
+    const ra = $("esr-regle-appliquer"); if (ra) ra.addEventListener("click", appliquerRegleGrist);
     const f = $("esr-fichier");
     if (f) f.addEventListener("change", async () => {
       const fichier = f.files && f.files[0]; if (!fichier) return;
@@ -516,9 +608,11 @@
         const m = (await S.lireMeta())[table].colonnes[a.lRatt.col], estRef = m && m.type === `Ref:${table}`;
         for (const o of a.lignes) {
           const rid = rowDe.get(o.id); if (rid == null) continue;
+          const avant = t2[a.lRatt.col] ? t2[a.lRatt.col][pos2.get(rid)] : null;
+          // école séparée de son groupe : rattachement effacé
+          if (o.rattEfface) { if (estRef ? refId(avant) : !vide(avant)) champsDe(rid)[a.lRatt.col] = estRef ? 0 : null; continue; }
           const v = estRef ? (o.ratt ? rowDe.get(o.ratt) || null : null) : (vide(o.rattTexte) ? null : String(o.rattTexte));
           if (v == null) continue;
-          const avant = t2[a.lRatt.col] ? t2[a.lRatt.col][pos2.get(rid)] : null;
           if (!memeValeur(estRef ? refId(avant) : avant, v)) champsDe(rid)[a.lRatt.col] = v;
         }
       }
@@ -551,12 +645,12 @@
           tablesCreees = true;
         } else if (s.plan.creer.length) await actions(s.plan.creer.map(c => ["AddColumn", s.table, c.colId, { type: c.type, label: c.label, isFormula: false, untieColIdFromLabel: true }]));
         await etendreChoix(s.table, s.nouveauxChoix);
-        const avecRefs = (f, refs) => { const r = { ...f }; for (const [c, eid] of Object.entries(refs)) { const rid = rowDe.get(eid); if (rid != null) r[c] = rid; } return r; };
+        const avecRefs = (f, refs) => { const r = { ...f }; for (const [c, eid] of Object.entries(refs)) { const rid = eid === null ? null : rowDe.get(eid); if (rid != null) r[c] = rid; } return r; };
         await ajouterLignes(s.table, s.ajouts.map(x => avecRefs(x.f, x.refs)), "Sites ajoutés"); nSitesA = s.ajouts.length;
         const acts = [];
         for (const m of s.majs) {
           const f = { ...m.f };
-          for (const [c, eid] of Object.entries(m.refs)) { const rid = rowDe.get(eid); if (rid != null && rid !== m.avant[c]) f[c] = rid; }
+          for (const [c, eid] of Object.entries(m.refs)) { const rid = eid === null ? 0 : rowDe.get(eid); if (rid != null && rid !== (m.avant[c] || 0)) f[c] = rid; }
           if (Object.keys(f).length) acts.push(["UpdateRecord", s.table, m.id, f]);
         }
         await parLots(acts, "Sites mis à jour"); nSitesM = acts.length;
@@ -607,6 +701,7 @@
     if (classeur) { await relancer(); return; }
     let ctx = null;
     try { ctx = await contexte(); } catch (e) { racine.innerHTML = `<h2>Référentiel de l'enseignement supérieur (classeur)</h2><p class="statut err">${esc(e.message || e)}</p>`; return; }
+    const rg = ctx.config.valeurs.regles_esr; regleEcoles = !(rg && rg.ecoles_ingenieurs === false);
     let info = "";
     const r = ctx.config.valeurs.referentiel_esr;
     if (r && r.derniere_mise_a_jour) info = `Dernier import : ${new Date(r.derniere_mise_a_jour * 1000).toLocaleString("fr-FR")}, ${r.fichier ? `« ${r.fichier} », ` : ""}${nf(r.etablissements)} ligne(s) dans ${r.table}.`;
