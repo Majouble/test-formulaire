@@ -216,8 +216,14 @@ async function contexte() {
   const meta = await S.lireMeta(), config = await S.lireConfig(meta);
   const g = config ? S.general(config) : null, esp = g ? S.espaces(g) : [];
   const reps = esp.map(e => e.reponses);
-  const candidatsSites = etab => Object.keys(meta).find(t => !t.startsWith("_grist") && /site/i.test(t) && !/signal|correspond/i.test(t)
-    && Object.values(meta[t].colonnes).some(c => c.type === `Ref:${etab}`) && !Object.values(meta[t].colonnes).some(c => reps.includes(S.cibleRef(c.type)) || /^Ref:Reponses/.test(c.type))) || null;
+  // référentiel des sites : table « …site… » reliée aux établissements ; s'il y en a plusieurs, la plus désignée par des
+  // colonnes référence ailleurs dans le document (sous-tables de réponses, correspondances…)
+  const candidatsSites = etab => {
+    const l = Object.keys(meta).filter(t => !t.startsWith("_grist") && /site/i.test(t) && !/signal|correspond/i.test(t)
+      && Object.values(meta[t].colonnes).some(c => c.type === `Ref:${etab}`) && !Object.values(meta[t].colonnes).some(c => reps.includes(S.cibleRef(c.type)) || /^Ref:Reponses/.test(c.type)));
+    const nb = t => Object.values(meta).reduce((a, m) => a + Object.values(m.colonnes).filter(c => c.type === `Ref:${t}` || c.type === `RefList:${t}`).length, 0);
+    return l.sort((a, b) => nb(b) - nb(a))[0] || null;
+  };
   let tEtab = (esp.find(e => e.champ === "ESR" && meta[e.referentiel]) || {}).referentiel || null, tSites = tEtab ? candidatsSites(tEtab) : null;
   if (!tSites) for (const t of Object.keys(meta)) {   // référentiel des sites existant : il désigne le référentiel des établissements
     if (t.startsWith("_grist") || !/site/i.test(t) || /signal|correspond/i.test(t)) continue;
@@ -861,21 +867,26 @@ try { const m = JSON.parse(localStorage.getItem("socle-v2-sites-saisies") || "{}
 const memoSaisies = () => { try { localStorage.setItem("socle-v2-sites-saisies", JSON.stringify({ source: sxSource, remplacer: sxRemplacer })); } catch (_) { /* stockage indisponible */ } };
 const MOTS_SITE_VIDES = new Set(["campus", "site", "sites", "bat", "batiment", "batiments", "de", "du", "des", "la", "le", "les", "l", "d", "et", "a", "au", "aux", "sur", "en", "universite", "univ", "pole", "rue", "avenue", "av", "bd"]);
 const motsSite = x => new Set(norm(x).split(" ").filter(w => w.length > 1 && !MOTS_SITE_VIDES.has(w)));
+// colonne référence vers un référentiel des sites (le référentiel du widget, ou une autre table de sites reliée aux établissements)
+function estRefSites(meta, c) {
+  const t = S.cibleRef(c.type); if (!t || !/^Ref:/.test(c.type) || !meta[t]) return false;
+  return t === ctx.tSites || Object.values(meta[t].colonnes).some(x => x.type === `Ref:${ctx.tEtab}`) && !Object.values(meta[t].colonnes).some(x => /^Ref:/.test(x.type) && x.colId === "Dossier");
+}
 async function sourcesSaisies() {
   const meta = await S.lireMeta(), config = await S.lireConfig(meta), g = S.general(config), reps = S.espaces(g).map(e => e.reponses).filter(t => meta[t]);
   const out = [];
   for (const rep of reps) {
     const ce = Object.values(meta[rep].colonnes).find(c => c.colId === "Etablissement" && c.type === `Ref:${ctx.tEtab}`) || Object.values(meta[rep].colonnes).find(c => c.type === `Ref:${ctx.tEtab}`);
     if (!ce) continue;
-    const estRefSite = c => ctx.tSites && c.type === `Ref:${ctx.tSites}`;
+    const estRefSite = c => estRefSites(meta, c);
     Object.values(meta[rep].colonnes).filter(c => (/^Text/.test(c.type) || estRefSite(c)) && !c.isFormula && /site|batiment|campus/i.test(`${c.colId} ${c.label}`) && !/detail|json|tableau/i.test(c.colId))
-      .forEach(c => out.push({ cle: `${rep}.${c.colId}`, libelle: `${rep} › ${c.label}${estRefSite(c) ? " (référence aux sites)" : ""}`, table: rep, col: c.colId, rep, etabCol: ce.colId, viaDossier: null, estRef: estRefSite(c) }));
+      .forEach(c => out.push({ cle: `${rep}.${c.colId}`, libelle: `${rep} › ${c.label}${estRefSite(c) ? " (référence aux sites)" : ""}`, table: rep, col: c.colId, rep, etabCol: ce.colId, viaDossier: null, estRef: estRefSite(c), cible: S.cibleRef(c.type), type: c.type }));
     for (const [t, tm] of Object.entries(meta)) {
       if (t === rep || t.startsWith("_grist")) continue;
       const d = Object.values(tm.colonnes).find(c => c.type === `Ref:${rep}` && c.colId === "Dossier") || Object.values(tm.colonnes).find(c => c.type === `Ref:${rep}` && c.colId !== "Version"); if (!d) continue;
-      const estRefSiteT = c => ctx.tSites && c.type === `Ref:${ctx.tSites}`;
+      const estRefSiteT = c => estRefSites(meta, c);
       Object.values(tm.colonnes).filter(c => (/^Text/.test(c.type) || estRefSiteT(c)) && !c.isFormula && /site|nom|libre|batiment/i.test(`${c.colId} ${c.label}`) && !/^Dossier_|Ligne_id/.test(c.colId))
-        .forEach(c => out.push({ cle: `${t}.${c.colId}`, libelle: `${t} › ${c.label}${estRefSiteT(c) ? " (référence aux sites)" : ""}`, table: t, col: c.colId, rep, etabCol: ce.colId, viaDossier: d.colId, estRef: estRefSiteT(c) }));
+        .forEach(c => out.push({ cle: `${t}.${c.colId}`, libelle: `${t} › ${c.label}${estRefSiteT(c) ? " (référence aux sites)" : ""}`, table: t, col: c.colId, rep, etabCol: ce.colId, viaDossier: d.colId, estRef: estRefSiteT(c), cible: S.cibleRef(c.type), type: c.type }));
     }
   }
   // colonne référence aux sites d'abord : elle garde les anciens noms tant qu'ils ne sont pas rattachés
@@ -933,7 +944,8 @@ function dessinerSaisies() {
   const propose = sx.groupes.filter(g => sxCoches.has(g.cle)).map(g => g.propose).find(Boolean);
   z.innerHTML = `<div class="fiche"><strong>${esc(e.nom)}</strong><div class="aide">Sites saisis dans les signalements de l'établissement${etabs.some(x => x.ratt === e.id) ? " et de ses composantes" : ""}, à rattacher au référentiel (${lesSites.length} site${lesSites.length > 1 ? "s" : ""} actif${lesSites.length > 1 ? "s" : ""}).</div></div>
     <div class="outils"><label class="aide">Saisies lues dans <select id="sx-source">${sx.sources.map(x => `<option value="${esc(x.cle)}"${x.cle === sx.src.cle ? " selected" : ""}>${esc(x.libelle)}</option>`).join("")}</select></label></div>
-    <p class="aide">${sx.src.estRef ? `Colonne référence aux sites : les anciens noms (références non résolues) sont listés ci-dessous ; un rattachement les remplace par le site du référentiel, dans la même colonne.${sx.nbRelies ? ` ${sx.nbRelies} ligne(s) déjà rattachée(s).` : ""}`
+    ${sx.src.estRef && sx.src.cible !== ctx.tSites ? `<p class="statut err">La colonne « ${esc(sx.src.col)} » renvoie vers la table « ${esc(sx.src.cible)} », alors que ce widget utilise « ${esc(ctx.tSites)} » comme référentiel des sites : rattachement impossible ici. Dans Grist, faites pointer la colonne vers « ${esc(ctx.tSites)} » (type Référence), ou dites-nous quelle table est le bon référentiel.</p>` : ""}
+    <p class="aide">Colonne lue : <code>${esc(sx.src.table)}.${esc(sx.src.col)}</code> (${esc(sx.src.type || "")}). ${sx.src.estRef ? `Colonne référence aux sites : les anciens noms (références non résolues) sont listés ci-dessous ; un rattachement les remplace par le site du référentiel, dans la même colonne.${sx.nbRelies ? ` ${sx.nbRelies} ligne(s) déjà rattachée(s).` : ""}`
       : sx.refCol ? `Colonne du site dans ${esc(sx.src.table)} : <code>${esc(sx.refCol)}</code>.` : `${esc(sx.src.table)} n'a pas encore de colonne vers le référentiel des sites : elle sera créée (« Site du référentiel ») au premier rattachement.`}</p>
     <div class="lot">
       <div class="outils"><label><input type="checkbox" id="sx-tout"${n && n === sx.groupes.filter(g => !g.relie).length ? " checked" : ""}> Tous les non rattachés</label><span class="aide">${n ? `${n} libellé${n > 1 ? "s" : ""} coché${n > 1 ? "s" : ""}, ${nl} ligne${nl > 1 ? "s" : ""}` : "Cochez les libellés qui désignent le même site."}</span></div>
@@ -975,9 +987,10 @@ async function appliquerSaisies() {
     } else { siteId = +siteId; nom = (sites.find(x => x.id === siteId) || {}).nom; }
     if (!siteId) { dire("Site introuvable.", true); return; }
     // colonne du site dans la table des saisies
+    if (src.estRef && src.cible !== ctx.tSites) { dire(`La colonne « ${src.col} » renvoie vers « ${src.cible} », pas vers « ${ctx.tSites} » : rien n'a été modifié.`, true); return; }
     let refCol = sx.refCol;
     if (!refCol) {
-      if (!confirm(`La table « ${src.table} » n'a pas de colonne vers le référentiel des sites : créer la colonne « Site du référentiel » ?`)) return;
+      if (!confirm(`La colonne « ${src.col} » de la table « ${src.table} » est de type ${src.type || "?"} ; la table n'a pas de colonne vers le référentiel des sites « ${ctx.tSites} ».\n\nCréer la colonne « Site du référentiel » ? (Annuler : rien n'est modifié)`)) return;
       refCol = "Site_referentiel"; let k = 2; while (sx.meta[src.table].colonnes[refCol]) refCol = `Site_referentiel_${k++}`;
       await grist.docApi.applyUserActions([["AddColumn", src.table, refCol, { type: `Ref:${ctx.tSites}`, isFormula: false, label: "Site du référentiel", untieColIdFromLabel: true }]]);
     }
