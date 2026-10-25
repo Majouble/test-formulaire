@@ -1182,8 +1182,36 @@ function groupeSitesHtml(b) {
       <label class="l" for="pa-site-alias">Table des correspondances (libellé saisi → site)</label><input type="text" id="pa-site-alias" value="${esc(st.alias || "Sites_correspondances")}">
       <label class="interrupteur">Nouveau dossier : une ligne par site connu, y compris ceux revenus à la normale <input type="checkbox" id="pa-site-ras"${st.avecRas !== false ? " checked" : ""}></label>
       <label class="interrupteur">Qualification de l'établissement en bas, déduite du site le plus grave <input type="checkbox" id="pa-qualif-bas"${confSaisie().qualificationEnBas !== false ? " checked" : ""}></label>
+      ${controleSitesHtml(b)}
       <p class="note" style="margin:6px 0 0">Nouveau dossier : dès l'établissement choisi, le tableau se remplit d'une ligne par site déjà signalé, à son dernier état (toutes les versions précédentes de l'établissement et la question d'historique choisie) ; l'agent confirme ou modifie chaque site encore perturbé et ajoute les nouveaux. La qualification de l'établissement suit le site le plus grave (ordre des choix de Qualification, du plus grave au moins grave) ; une incohérence est signalée avant l'enregistrement.</p>` : ""}
   </div>`;
+}
+/* Contrôle du paramétrage du tableau des sites : chaque point attendu, vérifié sur la structure du document.
+   Le widget de saisie filtre les sites par établissement quand la colonne du site renvoie vers une table des sites
+   dont une colonne renvoie vers le référentiel des établissements visé par la colonne Établissement du formulaire. */
+function controleSitesHtml(b) {
+  const r = b.reglages, st = r.tableau.sites, t = r.tableau.table, cols = colonnesDe(t), etab = tableEtab() || referentielDe(courant.table);
+  const verifs = [], ok = (etat, txt) => verifs.push({ etat, txt });
+  const versEtab = tid => Object.values(colonnesDe(tid) || {}).filter(c => /^Ref:/.test(c.type) && c.type !== `Ref:${courant.table}`).map(c => window.Socle.cibleRef(c.type));
+  ok(etab ? "ok" : "err", etab ? `Établissement du formulaire : référentiel « ${etab} » (colonne Établissement de ${courant.table}).` : `La colonne Établissement de ${courant.table} n'est pas une référence vers un référentiel des établissements.`);
+  ok(Object.keys(cols).length ? "ok" : "err", Object.keys(cols).length ? `Sous-table « ${t} »${cols.Dossier ? "" : " — colonne Dossier absente"}.` : `Sous-table « ${t} » introuvable.`);
+  const cs = st.site && cols[st.site], cible = cs && window.Socle.cibleRef(cs.type);
+  if (!cs) ok("err", "Aucune colonne du site choisie (« Site (référentiel des sites) »).");
+  else if (!cible) ok("err", `Colonne du site « ${cs.libelle} » : colonne de texte, sans liste de sites. Utilisez « Relier au référentiel des sites ».`);
+  else if (!colonnesDe(cible) || !Object.keys(colonnesDe(cible)).length) ok("err", `Colonne du site « ${cs.libelle} » : elle renvoie vers « ${cible} », table introuvable.`);
+  else if (etab && !versEtab(cible).includes(etab)) ok("err", `Colonne du site « ${cs.libelle} » : elle renvoie vers « ${cible} », dont aucune colonne ne renvoie vers « ${etab} »${versEtab(cible).length ? ` (elle renvoie vers « ${versEtab(cible).join(" », « ")} »)` : ""} : les sites ne peuvent pas être filtrés par établissement, le formulaire les propose tous. Réimportez le classeur ESR vers « ${etab} », ou changez la référence de la colonne Etablissement de « ${cible} » dans Grist.`);
+  else ok("ok", `Colonne du site « ${cs.libelle} » → table « ${cible} », reliée à « ${etab} » : seuls les sites de l'établissement sont proposés, avec recherche par nom, mot-clé et commune.`);
+  const cl = st.libre && cols[st.libre];
+  ok(cl && /^Text/.test(cl.type) ? "ok" : "warn", cl && /^Text/.test(cl.type) ? `Site hors référentiel : « ${cl.libelle} » (un nom absent de la liste est accepté, dans le même champ).` : "Pas de colonne hors référentiel : seuls les sites de la liste sont acceptés (bouton « Accepter les noms hors référentiel »).");
+  const cq = st.qualif && cols[st.qualif];
+  ok(cq && /^Choice/.test(cq.type) ? "ok" : "err", cq && /^Choice/.test(cq.type) ? `Qualification du site : « ${cq.libelle} » (${((cq.opts || {}).choices || []).join(", ") || "choix à définir"}).` : "Aucune colonne de qualification du site (type Choix).");
+  const doubles = Object.values(cols).filter(c => c.colId !== st.site && /^Ref:/.test(c.type) && window.Socle.cibleRef(c.type) !== courant.table && etab && versEtab(window.Socle.cibleRef(c.type)).includes(etab));
+  if (doubles.length) ok("warn", `Colonne${doubles.length > 1 ? "s" : ""} ${doubles.map(c => c.libelle !== c.colId ? `« ${c.libelle} » (${c.colId})` : `« ${c.colId} »`).join(", ")} : elle désigne aussi un site, en double ; le formulaire l'écarte. Supprimez-la dans Grist si elle ne sert pas.`);
+  const d = differences();
+  ok(!courant.publie ? "err" : d ? "warn" : "ok", !courant.publie ? "Formulaire jamais publié : cliquez sur « Publier »." : d ? `${d} modification${d > 1 ? "s" : ""} non publiée${d > 1 ? "s" : ""} : cliquez sur « Publier » pour que le formulaire en tienne compte.` : "Formulaire publié, à jour.");
+  const ic = { ok: "✓", warn: "!", err: "✗" }, coul = { ok: "var(--ok, #18753c)", warn: "var(--warn, #b34000)", err: "var(--err, #b42318)" };
+  return `<div class="controle-sites" style="margin:8px 0;padding:6px 8px;border:1px solid var(--trait, #ddd);border-radius:4px"><div style="font-weight:600;margin-bottom:4px">Contrôle du paramétrage</div>
+    <ul style="list-style:none;margin:0;padding:0;font-size:12px">${verifs.map(v => `<li style="margin:3px 0;display:flex;gap:6px"><span style="color:${coul[v.etat]};font-weight:700;min-width:12px" aria-label="${v.etat === "ok" ? "correct" : v.etat === "warn" ? "à vérifier" : "à corriger"}">${ic[v.etat]}</span><span>${esc(v.txt)}</span></li>`).join("")}</ul></div>`;
 }
 // Référentiel des sites du formulaire : table « …site… » qui renvoie vers le référentiel des établissements (import ESR, modèle par site)
 function referentielSitesDuFormulaire() {

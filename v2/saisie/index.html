@@ -3516,6 +3516,32 @@ function jourCalendaire(sec) {
   return formateur(`jour|${tz || ""}`, { year: "numeric", month: "2-digit", day: "2-digit", timeZone: tz })
     .format(new Date(sec * 1000));
 }
+/* Colonne Référence vers un référentiel des sites (table qui renvoie elle-même vers le référentiel des établissements) :
+   rattachement de chaque site à son établissement et à sa composante, commune, mots-clés, sites désactivés, et
+   établissement de rattachement des composantes. Renvoie true si la colonne désigne bien un site. */
+async function preparerRefSite(ds) {
+  try {
+    const cible = ds.type.split(":")[1]; if (!cible || cible === ETAB.table || cible === tableId) return false;
+    // référentiel des établissements : celui de la recherche, ou celui que vise la colonne Établissement du formulaire
+    const mr = col("Etablissement") && metaSig[col("Etablissement")], visee = mr && ((mr.type || "").match(/^Ref:(.+)$/) || [])[1];
+    const m = Object.values(await metaColonnes(cible) || {}), versEtab = m.filter(c => c.type === `Ref:${ETAB.table}` || (visee && c.type === `Ref:${visee}`));
+    const ce = versEtab.find(c => c.colId === "Etablissement") || versEtab.find(c => !/compos/i.test(c.colId)), cc = versEtab.find(c => c !== ce && /compos/i.test(c.colId));
+    if (!ce) return false;
+    const t = await lireTableReference(cible);
+    ds._siteEtab = new Map(t.id.map((id, i) => [id, refId(t[ce.colId][i])]));
+    if (cc) ds._siteComp = new Map(t.id.map((id, i) => [id, refId(t[cc.colId][i])]));
+    // mots-clés des sites (Mots_cles, Autres_noms…) : retrouvent le site quand l'agent tape un autre nom
+    const cm = m.filter(c => /^Text/.test(c.type || "") && /^(mots?_?cles?|autres?_noms?|alias)/i.test(c.colId)).map(c => c.colId);
+    ds._motsSite = new Map(t.id.map((id, i) => [id, cm.map(c => t[c] && t[c][i]).filter(x => typeof x === "string" && x.trim()).join(" | ")]));
+    const cv = m.find(c => /^commune$/i.test(c.colId)); if (cv) ds._communeSite = new Map(t.id.map((id, i) => [id, String(t[cv.colId][i] ?? "")]));
+    // sites désactivés (colonne Actif décochée) : plus proposés, sauf sur une ligne qui y renvoie déjà
+    const ca = m.find(c => /^actif$/i.test(c.colId) && c.type === "Bool"); if (ca) ds._inactifs = new Set(t.id.filter((id, i) => t[ca.colId][i] === false));
+    // composante (IUT, école interne…) : ses propres sites, sinon ceux de son établissement de rattachement
+    const me = Object.values(await metaColonnes(ETAB.table) || {}).find(c => c.type === `Ref:${ETAB.table}` && /rattach|parent/i.test(c.colId));
+    if (me) { const te = await lireTableReference(ETAB.table); ds._parent = new Map(te.id.map((id, i) => [id, refId(te[me.colId][i])])); }
+    return true;
+  } catch (_) { return false; }   // illisible : menu de tous les sites
+}
 /* Sites proposés pour un établissement : les siens (ou, pour une composante, ceux qui la concernent) ; une composante ou un
    site sans site propre au référentiel reprend ceux de son établissement de rattachement. Le site déjà choisi reste. */
 function sitesDeLEtablissement(d, e, opts, choisi) {
@@ -4375,27 +4401,20 @@ class Tableau {
     /* colonne renommée par Grist d'après son libellé (Site_libre → Site_hors_referentiel, Qualification →
        Qualification_du_site : tables créées par les versions 2.14.0 à 2.14.2) : retrouvée par son type et son nom */
     const parNom = (re, ty) => (cols.find(c => !RESERVES_TABLEAU.includes(c.colId) && ty.test(c.type || "") && re.test(normColonne(`${c.colId} ${c.libelle || ""}`))) || {}).colId || null;
-    const sSite = st && (a(st.site) || parNom(/(^|_)site/, /^Ref:/)), sLibre = st && (a(st.libre) || parNom(/libre|hors_referentiel/, /^Text/));
+    const sSite = st && (a(st.site) || parNom(/(^|_)site/, /^Ref:/)), sLibre = st && st.libre ? (a(st.libre) || parNom(/libre|hors_referentiel/, /^Text/)) : null;   // « — » dans l'administration : pas de nom libre
     const sQualif = st && (a(st.qualif) || parNom(/qualif/, /^Choice/));
     this.sites = st && (sSite || sLibre) ? { site: sSite, libre: sLibre, qualif: sQualif, avecRas: st.avecRas !== false,
       historique: Array.isArray(st.historique) ? st.historique.filter(h => h && h.colonne) : [], alias: st.alias || "Sites_correspondances" } : null;
     this.alias = new Map(); this.aliasParSite = new Map();
+    // colonnes qui désignent un site du référentiel (table des sites reliée aux établissements) : sites de l'établissement
+    // du formulaire seulement, champ de recherche (nom, mots-clés, commune) au lieu d'un menu de tous les sites
+    for (const d of this.sousDefs) if (typeBase(d.type) === "Ref") await preparerRefSite(d);
+    if (this.sites && this.sites.site) {
+      // tableau des sites : une autre colonne de site (créée en double) est écartée du formulaire
+      const enDouble = this.sousDefs.filter(d => d._siteEtab && d.colId !== this.sites.site);
+      if (enDouble.length) { this.sousDefs = this.sousDefs.filter(d => !enDouble.includes(d)); this.doublons = enDouble.map(d => d.libelle && d.libelle !== d.colId ? `${d.libelle} (${d.colId})` : d.colId); }
+    }
     if (this.sites) {
-      const ds = this.sites.site && this.sousDefs.find(x => x.colId === this.sites.site);
-      if (ds && typeBase(ds.type) === "Ref") {   // sites de l'établissement seulement (colonne du référentiel des sites vers les établissements)
-        // composante (IUT, école interne…) : ses propres sites, sinon ceux de son établissement de rattachement
-        try { const cible = ds.type.split(":")[1], m = Object.values(await metaColonnes(cible) || {}), versEtab = m.filter(c => c.type === `Ref:${ETAB.table}`);
-          const ce = versEtab.find(c => c.colId === "Etablissement") || versEtab.find(c => !/compos/i.test(c.colId)), cc = versEtab.find(c => c !== ce && /compos/i.test(c.colId));
-          if (ce) { const t = await lireTableReference(cible); ds._siteEtab = new Map(t.id.map((id, i) => [id, refId(t[ce.colId][i])]));
-            // mots-clés des sites (Mots_cles, Autres_noms…) : retrouvent le site quand l'agent tape un autre nom
-            const cm = m.filter(c => /^Text/.test(c.type || "") && /^(mots?_?cles?|autres?_noms?|alias)/i.test(c.colId)).map(c => c.colId);
-            // sites désactivés (colonne Actif décochée) : plus proposés, sauf sur une ligne qui y renvoie déjà
-            const ca = m.find(c => /^actif$/i.test(c.colId) && c.type === "Bool"); if (ca) ds._inactifs = new Set(t.id.filter((id, i) => t[ca.colId][i] === false));
-            ds._motsSite = new Map(t.id.map((id, i) => [id, cm.map(c => t[c] && t[c][i]).filter(x => typeof x === "string" && x.trim()).join(" | ")]));
-            if (cc) ds._siteComp = new Map(t.id.map((id, i) => [id, refId(t[cc.colId][i])]));
-            const me = Object.values(await metaColonnes(ETAB.table) || {}).find(c => c.type === `Ref:${ETAB.table}` && /rattach|parent/i.test(c.colId));
-            if (me) { const te = await lireTableReference(ETAB.table); ds._parent = new Map(te.id.map((id, i) => [id, refId(te[me.colId][i])])); } } } catch (_) { /* tous les sites */ }
-      }
       // correspondances validées : libellé saisi (par établissement) → site du référentiel
       try { const m = await metaColonnes(this.sites.alias);
         if (m && m.Libelle && m.Site) { const t = await grist.docApi.fetchTable(this.sites.alias);
@@ -4405,9 +4424,10 @@ class Tableau {
     }
     const manque = [!this.colDossier && "Dossier (référence vers la table des signalements)", !this.colLigne && "Ligne_id (texte)"].filter(Boolean);
     this.avertissement = manque.length ? `Table « ${tid} » : ajoutez la colonne ${manque.join(" et la colonne ")} pour qu'elle soit tenue à jour.` : "";
+    if (this.doublons) this.avertissement = [this.avertissement, `Colonne${this.doublons.length > 1 ? "s" : ""} « ${this.doublons.join(" », « ")} » de la table « ${tid} » écartée${this.doublons.length > 1 ? "s" : ""} du formulaire : elle désigne aussi un site, en double avec « ${(this.sousDefs.find(d => d.colId === this.sites.site) || {}).libelle || this.sites.site} » (voir l'administration des formulaires).`].filter(Boolean).join(" ");
     this.autos = this.sousDefs.filter(d => d.auto && typeBase(d.type) === "Text");
-    // site du référentiel et nom libre réunis en un seul champ (liste des sites, recherche par mots-clés, nom libre accepté)
-    this.combo = !!(this.sites && this.sites.site && this.sites.libre && this.sousDefs.some(d => d.colId === this.sites.site && typeBase(d.type) === "Ref"));
+    // site du référentiel et nom libre réunis en un seul champ (le nom libre seulement si le tableau des sites a sa colonne)
+    this.combo = !!(this.sites && this.sites.site && this.sites.libre && this.sousDefs.some(d => d.colId === this.sites.site && d._siteEtab));
     this.def._sousDefs = this.sousDefs;
     this.pret = true;
     this.dessiner();
@@ -4557,10 +4577,10 @@ class Tableau {
       const s = secondes(v);
       const txt = s == null ? "" : (t === "Date" ? new Date(s * 1000).toISOString().slice(0, 10) : valeurLocale(new Date(s * 1000), true));
       ctl = `<input type="${t === "Date" ? "date" : "datetime-local"}" value="${txt}" aria-labelledby="${nom}-etiq">`;
-    } else if (t === "Ref" && this.combo && d.colId === this.sites.site) {
-      const id = refId(v), lib = id ? this.libelleSite(d, id) : String(l.valeurs[this.sites.libre] ?? "");
+    } else if (t === "Ref" && d._siteEtab) {
+      const libre = this.colLibre(d), id = refId(v), lib = id ? this.libelleSite(d, id) : String((libre && l.valeurs[libre]) ?? "");
       const fige = l._fixe && (id || lib) ? ` disabled title="Site du dossier : il ne se remplace pas ; passez-le en RAS s'il est revenu à la normale"` : "";
-      ctl = `<div class="site-combo"><input type="text" class="site-txt" value="${esc(lib)}"${id ? ` data-id="${id}"` : ""} autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-labelledby="${nom}-etiq" placeholder="Nom du site ou mot-clé (un nom absent de la liste est accepté)"${fige}>
+      ctl = `<div class="site-combo"><input type="text" class="site-txt" value="${esc(lib)}"${id ? ` data-id="${id}"` : ""} autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-labelledby="${nom}-etiq" placeholder="${libre ? "Nom du site ou mot-clé (un nom absent de la liste est accepté)" : "Nom du site, mot-clé ou commune"}"${fige}>
         <span class="site-etat">${!id && lib ? "hors référentiel" : ""}</span><ul class="suggestions site-sugg" role="listbox" hidden></ul></div>`;
     } else if (t === "Ref") {
       let opts = d._options || [];
@@ -4708,6 +4728,7 @@ class Tableau {
     if (this.prefix === "q") { appliquerConditions("q", defsQuestions); majDescriptionAuto(); majApercuAuto(); if (this.sites) majQualifDeduite(); }
   }
   // ----- champ du site : site du référentiel (nom, mots-clés, correspondances validées) ou nom libre
+  colLibre(d) { return this.combo && this.sites && d.colId === this.sites.site ? this.sites.libre : null; }
   libelleSite(d, id) { const o = (d._options || []).find(x => x.id === id); return o ? o.libelle : ""; }
   sitesProposables(d) {
     const e = etablissementDuFormulaire();
@@ -4725,20 +4746,23 @@ class Tableau {
     const mots = normaliser(q).split(" ").filter(Boolean), res = [];
     for (const o of this.sitesProposables(d)) {
       const nomN = normaliser(o.libelle), cles = [...String((d._motsSite && d._motsSite.get(o.id)) || "").split(/\s*[|,;]\s*/), ...(this.aliasParSite.get(o.id) || [])].filter(x => x && x.trim());
-      const tout = `${nomN} ${cles.map(normaliser).join(" ")}`;
+      const commune = (d._communeSite && d._communeSite.get(o.id)) || "";
+      const tout = `${nomN} ${cles.map(normaliser).join(" ")} ${normaliser(commune)}`;
       if (!mots.every(m => tout.includes(m))) continue;
       const parNom = mots.every(m => nomN.includes(m));
-      res.push({ o, parNom, via: parNom || !mots.length ? "" : (cles.find(x => mots.some(m => normaliser(x).includes(m))) || "") });
+      res.push({ o, parNom, commune, comp: d._siteComp && d._siteComp.get(o.id) ? nomEtabId(d._siteComp.get(o.id)) : "",
+        via: parNom || !mots.length ? "" : (cles.find(x => mots.some(m => normaliser(x).includes(m))) || "") });
     }
-    return res.sort((a, b) => (b.parNom - a.parNom)).slice(0, 20);
+    return res.sort((a, b) => (b.parNom - a.parNom)).slice(0, 30);
   }
   montrerSites(inp) {
     const sc = inp.closest(".sous-champ"), d = this.sousDefs.find(x => x.colId === sc.dataset.sous), ul = sc.querySelector(".site-sugg");
     const q = inp.value.trim(), res = this.suggestionsSite(d, q);
-    const libre = q && !res.some(r => normaliser(r.o.libelle) === normaliser(q)) && !this.siteExact(d, q);
-    ul.innerHTML = res.map(r => `<li role="option" data-id="${r.o.id}"><span class="nom">${esc(r.o.libelle)}</span>${r.via ? ` <span class="via">mot-clé : ${esc(r.via)}</span>` : ""}</li>`).join("")
-      + (libre ? `<li role="option" data-libre="1"><span class="nom">« ${esc(q)} »</span> <span class="via">site hors référentiel</span></li>` : "")
-      + (!res.length && !q ? `<li class="etat" aria-disabled="true">Aucun site de cet établissement au référentiel : tapez le nom du site.</li>` : "");
+    const avecLibre = !!this.colLibre(d), libre = avecLibre && q && !res.some(r => normaliser(r.o.libelle) === normaliser(q)) && !this.siteExact(d, q);
+    // même présentation que la recherche d'établissement : nom, puis commune, composante, mot-clé retrouvé
+    ul.innerHTML = res.map(r => `<li role="option" data-id="${r.o.id}"><div class="nom">${esc(r.o.libelle)}</div>${r.commune || r.comp || r.via ? `<div class="meta">${esc([r.commune, r.comp, r.via ? `mot-clé : ${r.via}` : ""].filter(Boolean).join(" · "))}</div>` : ""}</li>`).join("")
+      + (libre ? `<li role="option" data-libre="1"><div class="nom">« ${esc(q)} »</div><div class="meta">site hors référentiel</div></li>` : "")
+      + (!res.length && !libre ? `<li class="etat" aria-disabled="true">${!etablissementDuFormulaire() ? "Choisissez d'abord l'établissement." : q ? "Aucun site de cet établissement ne correspond." : "Aucun site de cet établissement au référentiel."}${avecLibre ? "" : " Complétez le référentiel des sites."}</li>` : "");
     ul.hidden = !ul.children.length; inp.setAttribute("aria-expanded", String(!ul.hidden));
   }
   choisirSite(li) {
@@ -4750,9 +4774,10 @@ class Tableau {
   lireSite(sc, l, d) {
     const inp = sc.querySelector(".site-txt"), txt = inp.value.trim();
     let id = inp.dataset.id && this.libelleSite(d, +inp.dataset.id) === txt ? +inp.dataset.id : this.siteExact(d, txt);
-    l.valeurs[this.sites.site] = id || null;
-    l.valeurs[this.sites.libre] = id ? null : (txt || null);
-    const et = sc.querySelector(".site-etat"); if (et) et.textContent = txt && !id ? "hors référentiel" : "";
+    const libre = this.colLibre(d);
+    l.valeurs[d.colId] = id || null;
+    if (libre) l.valeurs[libre] = id ? null : (txt || null);
+    const et = sc.querySelector(".site-etat"); if (et) et.textContent = txt && !id ? (libre ? "hors référentiel" : "absent du référentiel : choisissez un site dans la liste") : "";
   }
   // clé d'un site : son identifiant au référentiel, sinon le libellé saisi (rattaché par les correspondances validées)
   cleSite(etab, v) {
