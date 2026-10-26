@@ -94,5 +94,9 @@ if (require.main === module) (async () => {
   await page.click('#cartes-signalements li >> nth=0'); await page.waitForTimeout(900);
   await page.click('[data-action=ajouter]'); await page.waitForTimeout(200);
   console.log('MISE À JOUR, actions par ligne :', await page.$$eval('.ligne-rep', l => l.map(x => [...x.querySelectorAll('.actions-ligne button')].map(b => b.dataset.action).join('+')).join(' | ')));
+  const verrous = () => page.$$eval('.ligne-rep .site-txt', l => l.map(x => `${x.value || '∅'}${x.disabled ? ' (verrouillé)' : ''}`).join(' | '));
+  console.log('SITES (mise à jour) :', await verrous());
+  await page.click('.ligne-rep >> nth=0 >> [data-action=corriger-site]'); await page.waitForTimeout(200);
+  console.log('APRÈS « Corriger le site » :', await verrous());
   await browser.close();
 })();

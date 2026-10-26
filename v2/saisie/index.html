@@ -4541,7 +4541,9 @@ class Tableau {
   }
   erreurChamp(l, d) {
     const v = l.valeurs[d.colId];
-    if (d.obligatoire && videSous(v) && !(d.confidentiel && !this.confLisible)) return "À préciser";
+    // site obligatoire : un nom hors référentiel (colonne du nom libre) le renseigne aussi
+    const libre = d._siteEtab && this.colLibre(d), parLibre = libre && !videSous(l.valeurs[libre]);
+    if (d.obligatoire && videSous(v) && !parLibre && !(d.confidentiel && !this.confLisible)) return "À préciser";
     if (typeof v === "number" && horsBornes(d, v)) return `Valeur ${horsBornes(d, v)} attendue`;
     return "";
   }
@@ -4582,10 +4584,13 @@ class Tableau {
       const txt = s == null ? "" : (t === "Date" ? new Date(s * 1000).toISOString().slice(0, 10) : valeurLocale(new Date(s * 1000), true));
       ctl = `<input type="${t === "Date" ? "date" : "datetime-local"}" value="${txt}" aria-labelledby="${nom}-etiq">`;
     } else if (t === "Ref" && d._siteEtab) {
-      const libre = this.colLibre(d), id = refId(v), lib = id ? this.libelleSite(d, id) : String((libre && l.valeurs[libre]) ?? "");
-      const fige = l._fixe && (id || lib) ? ` disabled title="Site du dossier : il ne se remplace pas ; passez-le en RAS s'il est revenu à la normale"` : "";
+      // ancien nom resté en texte dans une colonne référence (référence non résolue) : affiché, à rattacher
+      const libre = this.colLibre(d), id = refId(v), ancien = !id && typeof v === "string" && v.trim() ? v.trim() : "";
+      const lib = id ? this.libelleSite(d, id) : ancien || String((libre && l.valeurs[libre]) ?? "");
+      // site du dossier relié au référentiel : il ne se remplace pas (sauf « Corriger le site ») ; un nom libre ou ancien se corrige
+      const fige = l._fixe && id && !l._deverrouille ? ` disabled title="Site du dossier : il ne se remplace pas ; passez-le en RAS s'il est revenu à la normale, ou « Corriger le site » en cas d'erreur"` : "";
       ctl = `<div class="site-combo"><input type="text" class="site-txt" value="${esc(lib)}"${id ? ` data-id="${id}"` : ""} autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-labelledby="${nom}-etiq" placeholder="${libre ? "Nom du site ou mot-clé (un nom absent de la liste est accepté)" : "Nom du site, mot-clé ou commune"}"${fige}>
-        <span class="site-etat">${!id && lib ? "hors référentiel" : ""}</span><ul class="suggestions site-sugg" role="listbox" hidden></ul></div>`;
+        <span class="site-etat">${!id && lib ? (ancien ? "ancien nom, absent du référentiel : choisissez le site dans la liste" : "hors référentiel") : ""}</span><ul class="suggestions site-sugg" role="listbox" hidden></ul></div>`;
     } else if (t === "Ref") {
       let opts = d._options || [];
       if (d._siteEtab) { const e = etablissementDuFormulaire(); if (e) opts = sitesDeLEtablissement(d, e, opts, +v); }
@@ -4597,7 +4602,7 @@ class Tableau {
       ctl = `<textarea rows="2" aria-labelledby="${nom}-etiq"${masque}>${esc(v ?? "")}</textarea>`;
     }
     // tableau des sites : le site d'une ligne du dossier (ou reprise) ne change pas ; seul son état change
-    if (this.sites && l._fixe && [this.sites.site, this.sites.libre].includes(d.colId) && !videSous(v))
+    if (this.sites && l._fixe && !l._deverrouille && [this.sites.site, this.sites.libre].includes(d.colId) && !videSous(v) && !(d._siteEtab && t === "Ref"))
       ctl = ctl.replace(/^<(select|input|textarea)/, '<$1 disabled title="Site du dossier : il ne se remplace pas ; passez-le en RAS s\'il est revenu à la normale"');
     const regen = d.auto && typeBase(d.type) === "Text" ? `<button type="button" class="lien-texte regen" data-action="regenerer" data-sous="${esc(d.colId)}"${(l._touche || {})[d.colId] ? "" : " hidden"}>↻ Revenir au texte automatique</button>` : "";
     const aide = (d.aide ? `<span class="aide-sous">${esc(d.aide)}</span>` : "") + regen;
@@ -4606,7 +4611,9 @@ class Tableau {
   // tableau des sites : un site du dossier (ou repris du dernier état connu) ne se retire pas, il passe en RAS
   actionsLigne(l, k) {
     const fixe = this.sites && l._fixe;
-    return `<span class="actions-ligne"><button type="button" class="icone" data-action="dupliquer" title="Dupliquer cette ligne" aria-label="Dupliquer la ligne ${k + 1}">⧉</button>${fixe
+    const corriger = fixe && !l._deverrouille && this.sites.site && refId(l.valeurs[this.sites.site])
+      ? `<button type="button" class="icone" data-action="corriger-site" title="Corriger le site de cette ligne (erreur de saisie)" aria-label="Corriger le site de la ligne ${k + 1}">✎</button>` : "";
+    return `<span class="actions-ligne"><button type="button" class="icone" data-action="dupliquer" title="Dupliquer cette ligne" aria-label="Dupliquer la ligne ${k + 1}">⧉</button>${corriger}${fixe
       ? `<button type="button" class="icone icone-texte" data-action="ras-site" title="Site revenu à la normale : il reste dans le dossier, en ${esc(this.valeurRas() || "RAS")}" aria-label="Passer le site de la ligne ${k + 1} en ${esc(this.valeurRas() || "RAS")}">${esc(this.valeurRas() || "RAS")}</button>`
       : `<button type="button" class="icone" data-action="supprimer" title="Supprimer cette ligne" aria-label="Supprimer la ligne ${k + 1}">✕</button>`}</span>`;
   }
@@ -4792,7 +4799,8 @@ class Tableau {
   cleSite(etab, v) {
     const s = this.sites, id = s.site ? refId(v[s.site]) || (typeof v[s.site] === "number" ? v[s.site] : 0) : 0;
     if (id) return `s${id}`;
-    const lib = s.libre ? String(v[s.libre] ?? "").trim() : (s.site && typeof v[s.site] === "string" ? v[s.site].trim() : "");
+    // nom libre, sinon ancien nom resté en texte dans la colonne référence du site
+    const lib = (s.libre ? String(v[s.libre] ?? "").trim() : "") || (s.site && typeof v[s.site] === "string" ? v[s.site].trim() : "");
     if (!lib) return null;
     const a = this.alias.get(`${etab || 0}|${normaliser(lib)}`) || this.alias.get(`0|${normaliser(lib)}`);
     return a ? `s${a}` : `t${normaliser(lib)}`;
@@ -4818,6 +4826,10 @@ class Tableau {
         return;
       }
       const k = +b.closest(".ligne-rep").dataset.k, l = this.lignes[k];
+      if (action === "corriger-site") {
+        if (!confirm("Corriger le site de cette ligne ?\n\nÀ réserver à une erreur de saisie : un site revenu à la normale reste dans le dossier, passez-le en RAS.")) return;
+        l._deverrouille = true; this.dessiner(); const c = this.el.querySelectorAll(".ligne-rep")[k]; const inp = c && c.querySelector(".site-txt"); if (inp) inp.focus(); return;
+      }
       if (action === "confirmer-site") { if (l._repris) l._repris.etat = "confirme"; this.majLignes(); this.signaler(); return; }
       if (action === "regenerer") {
         this.majAutos(l, b.closest(".ligne-rep"), b.dataset.sous);
