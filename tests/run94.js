@@ -13,7 +13,8 @@ function docRef() {
   D.Reponses.Description = D.Reponses.Description.map((d, i) => `${d} n°${D.Reponses.id[i]} : blocage de l'entrée principale, une cinquantaine d'étudiants devant le bâtiment`);
   return doc;
 }
-(async () => {
+module.exports = { docRef };
+if (require.main === module) (async () => {
   const browser = await chromium.launch({ executablePath: __C.chromium });
   const etatSites = p => p.evaluate(() => { const S = window.__DOC__.__data.Sites; return S.id.map((id, i) => `${id}:${JSON.stringify(S.Nom_du_site[i])}`).join('  '); });
   const corr = p => p.evaluate(() => { const t = window.__DOC__.__data.Sites_correspondances; return t ? t.id.map((id, i) => `${t.Etablissement[i]}|${t.Libelle[i]}→${t.Site[i]}(${t.Statut[i]})`).join('  ') : '(aucune table)'; });

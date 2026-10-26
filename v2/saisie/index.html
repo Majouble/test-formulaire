@@ -5899,7 +5899,9 @@ function dernierEtatSites(c, etabId, avecRas) {
   const dernier = new Map(); etats.forEach(e => dernier.set(e.cle, e));   // le plus récent l'emporte
   const retour = retourNormale();
   const normal = e => !!e.qualif && listeQualif(e.qualif).every(q => retour.has(String(q).trim().toUpperCase()));
-  return [...dernier.values()].filter(e => avecRas ? true : !e.retire && !normal(e)).map(e => ({ ...e, normal: e.retire || normal(e) }));
+  // site désactivé depuis au référentiel (fermé, fusionné) : plus repris s'il est revenu à la normale
+  const dSite = s.site && c.sousDefs.find(d => d.colId === s.site), inactif = e => !!(dSite && dSite._inactifs && e.cle.startsWith("s") && dSite._inactifs.has(+e.cle.slice(1)));
+  return [...dernier.values()].filter(e => (avecRas ? true : !e.retire && !normal(e)) && !(inactif(e) && (e.retire || normal(e)))).map(e => ({ ...e, normal: e.retire || normal(e) }));
 }
 // préremplit le tableau des sites ; renvoie le nombre de sites repris
 function reprendreEtatSites(c, etabId, avecRas = c.sites.avecRas !== false) {

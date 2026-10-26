@@ -67,7 +67,8 @@
       .map(([t, tm]) => ({ table: t, etabCol: Object.values(tm.colonnes).find(c => etabTables.has(S.cibleRef(c.type))).colId,
         nomCol: (Object.values(tm.colonnes).find(c => /^(nom|libelle|denomination|intitule)/i.test(c.colId) && /^Text/.test(c.type)) || Object.values(tm.colonnes).find(c => /^Text/.test(c.type)) || {}).colId,
         autresCol: (Object.values(tm.colonnes).find(c => /^autres?_noms?|alias|noms_saisis/i.test(c.colId) && /^Text/.test(c.type)) || {}).colId || null,
-        motsCol: (Object.values(tm.colonnes).find(c => /^mots?_?cles?$/i.test(c.colId) && /^Text/.test(c.type)) || {}).colId || null }))
+        motsCol: (Object.values(tm.colonnes).find(c => /^mots?_?cles?$/i.test(c.colId) && /^Text/.test(c.type)) || {}).colId || null,
+        actifCol: (Object.values(tm.colonnes).find(c => /^actif$/i.test(c.colId) && c.type === "Bool") || {}).colId || null }))
       .filter(r => r.nomCol).sort((a, b) => (/site/i.test(b.table) ? 1 : 0) - (/site/i.test(a.table) ? 1 : 0));
     // colonnes de sites saisis : texte, ou référence vers un référentiel des sites (anciens noms restés en texte)
     const tRefs = new Set(refs.map(r => r.table)), versSites = c => /^Ref:/.test(c.type) && tRefs.has(S.cibleRef(c.type));
@@ -122,7 +123,8 @@
     // sites du référentiel, par établissement
     const sitesDe = new Map();
     // les autres noms du site (référentiel ESR : noms OAD, noms saisis par les opérateurs) comptent pour la proposition
-    tref.id.forEach((id, i) => { const e = refId(tref[ref.etabCol][i]); if (!e) return; if (!sitesDe.has(e)) sitesDe.set(e, []);
+    // sites désactivés (fermés, fusionnés) : ni proposés ni dans la liste
+    tref.id.forEach((id, i) => { const e = refId(tref[ref.etabCol][i]); if (!e || (ref.actifCol && tref[ref.actifCol] && tref[ref.actifCol][i] === false)) return; if (!sitesDe.has(e)) sitesDe.set(e, []);
       sitesDe.get(e).push({ id, nom: String(tref[ref.nomCol][i] ?? ""), autres: [ref.autresCol, ref.motsCol].filter(c => c && tref[c]).map(c => String(tref[c][i] ?? "")).filter(Boolean).join(", ") }); });
     // correspondances existantes
     const alias = new Map();
@@ -148,9 +150,9 @@
       const notes = sites.map(s => ({ s, score: Math.max(noter(s.nom), norm(gp.libelle).length >= 5 && norm(s.autres).includes(norm(gp.libelle)) ? 0.9 : 0,
         ...String(s.autres || "").split(/\s*[,;|]\s*/).filter(x => x.length > 2).map(x => norm(x) === norm(gp.libelle) ? 1 : 0)) }))
         .sort((a, b) => b.score - a.score);
-      const a = alias.get(gp.cle);
-      return { ...gp, nomEtab: nomsEtab.get(gp.etab) || `Établissement ${gp.etab}`, sites, alias: a || null,
-        propose: a && a.site ? a.site : (notes[0] && notes[0].score >= 0.5 ? notes[0].s.id : null), score: notes[0] ? notes[0].score : 0 };
+      const a = alias.get(gp.cle), aliasActif = a && a.site && sites.some(x => x.id === a.site);   // correspondance vers un site désactivé : nouvelle proposition
+      return { ...gp, nomEtab: nomsEtab.get(gp.etab) || `Établissement ${gp.etab}`, sites, alias: a || null, versInactif: !!(a && a.site && !aliasActif),
+        propose: aliasActif ? a.site : (notes[0] && notes[0].score >= 0.5 ? notes[0].s.id : null), score: notes[0] ? notes[0].score : 0 };
     }).sort((x, y) => x.nomEtab.localeCompare(y.nomEtab, "fr") || y.n - x.n);
     return { ctx, source, ref, groupes: liste, mc, fe };
   }
@@ -165,7 +167,8 @@
     if (te) { const cn = Object.keys(te).find(k => /^(nom|etablissement|libelle|denomination)$/i.test(k)) || Object.keys(te).find(k => k !== "id" && (te[k] || []).some(x => typeof x === "string"));
       noms = new Map(te.id.map((id, i) => [id, String(cn ? te[cn][i] ?? "" : id)])); }
     const sites = t.id.map((id, i) => ({ id, nom: String(t[ref.nomCol][i] ?? ""), etab: refId(t[ref.etabCol][i]),
-      autres: ref.autresCol && t[ref.autresCol] ? String(t[ref.autresCol][i] ?? "") : "", mots: colMots && t[colMots] ? String(t[colMots][i] ?? "") : "" })).filter(x => x.etab);
+      autres: ref.autresCol && t[ref.autresCol] ? String(t[ref.autresCol][i] ?? "") : "", mots: colMots && t[colMots] ? String(t[colMots][i] ?? "") : "",
+      actif: !(ref.actifCol && t[ref.actifCol] && t[ref.actifCol][i] === false) })).filter(x => x.etab && x.actif);   // sites désactivés écartés
     const etabs = [...new Set(sites.map(x => x.etab))].map(id => ({ id, nom: noms.get(id) || `Établissement ${id}`, n: sites.filter(x => x.etab === id).length }))
       .sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
     return { table: ref.table, colMots, sites, etabs };
@@ -237,7 +240,7 @@
     if (!racine) return;
     if (!etat) { racine.innerHTML = `${opts.compact ? "" : "<h2>Sites de l'enseignement supérieur</h2>"}<p class="aide">Analyse des sites saisis…</p>`; return; }
     const { ctx, source, ref } = etat;
-    const statutDe = gp => gp.alias ? (/cart/i.test(gp.alias.statut) ? "ecarte" : /valid/i.test(gp.alias.statut) ? "valide" : "a_traiter") : "a_traiter";
+    const statutDe = gp => gp.alias && !gp.versInactif ? (/cart/i.test(gp.alias.statut) ? "ecarte" : /valid/i.test(gp.alias.statut) ? "valide" : "a_traiter") : "a_traiter";
     const visibles = etat.groupes.filter(gp => filtre === "tous" || statutDe(gp) === filtre);
     const n = k => etat.groupes.filter(gp => statutDe(gp) === k).length;
     racine.innerHTML = `${opts.compact ? "" : "<h2>Sites de l'enseignement supérieur : rapprochement des libellés saisis</h2>"}
@@ -263,7 +266,7 @@
           ${opts.compact ? "" : `<td>${esc(gp.nomEtab)}</td>`}<td>${opts.compact ? `<div class="aide">${esc(gp.nomEtab)}</div>` : ""}<strong>${esc(gp.libelle)}</strong> <span class="aide">× ${gp.n}</span>${source.estRef ? ` <span class="pastille manque" title="Référence non résolue : ancien nom gardé en texte dans la cellule">ancien nom</span>` : ""}${contexteHtml(gp.occs)}</td>
           <td><select class="si-site"><option value="">— aucun (hors référentiel)</option>${gp.sites.map(s => `<option value="${s.id}"${s.id === gp.propose ? " selected" : ""}>${esc(s.nom)}</option>`).join("")}<option value="nouveau">+ Nouveau site du référentiel</option></select>
             <input type="text" class="si-nouveau" value="${esc(gp.libelle)}" aria-label="Nom du nouveau site" title="Nom du site créé dans le référentiel" hidden style="width:220px">
-            ${!gp.alias && gp.propose ? ` <span class="pastille reco">proposé</span>` : ""}${!gp.sites.length ? ` <span class="aide">aucun site de cet établissement au référentiel</span>` : ""}
+            ${(!gp.alias || gp.versInactif) && gp.propose ? ` <span class="pastille reco">proposé</span>` : ""}${gp.versInactif ? ` <span class="aide">(la correspondance validée renvoyait vers un site désactivé)</span>` : ""}${!gp.sites.length ? ` <span class="aide">aucun site de cet établissement au référentiel</span>` : ""}
           ${opts.compact ? "" : "</td><td>"}${statutDe(gp) === "valide" ? ` <span class="pastille ok">validé</span>` : statutDe(gp) === "ecarte" ? ` <span class="pastille">écarté</span>` : opts.compact ? "" : `<span class="pastille manque">à traiter</span>`}</td></tr>`).join("")}
       </tbody></table></div>` : `<p class="vide">Rien ${filtre === "a_traiter" ? "à traiter" : "à afficher"}.</p>`}`}
       ${opts.compact ? "" : ficheHtml(etat.fe) + motsClesHtml(etat.mc)}`;
@@ -363,7 +366,11 @@
       if (!reglages.length && !sourcesRef.length) { if (!silencieux) dire("Aucun tableau de sites dans les formulaires publiés, ni colonne référence aux sites.", true); return 0; }
       if (!meta[TABLE_ALIAS]) { if (!silencieux) dire("Aucune correspondance validée pour l'instant.", true); return 0; }
       const talias = await grist.docApi.fetchTable(TABLE_ALIAS), alias = new Map();
-      talias.id.forEach((_, i) => { if (/valid/i.test(String(talias.Statut[i] || "")) && refId(talias.Site[i])) alias.set(`${refId(talias.Etablissement[i]) || 0}|${norm(talias.Libelle[i])}`, refId(talias.Site[i])); });
+      // correspondances vers un site désactivé du référentiel : ignorées
+      const inactifs = new Set();
+      if (tSitesAlias && meta[tSitesAlias]) { const ca = Object.values(meta[tSitesAlias].colonnes).find(c => /^actif$/i.test(c.colId) && c.type === "Bool");
+        if (ca) { const tsit = await grist.docApi.fetchTable(tSitesAlias); tsit.id.forEach((id, i) => { if (tsit[ca.colId][i] === false) inactifs.add(id); }); } }
+      talias.id.forEach((_, i) => { if (/valid/i.test(String(talias.Statut[i] || "")) && refId(talias.Site[i]) && !inactifs.has(refId(talias.Site[i]))) alias.set(`${refId(talias.Etablissement[i]) || 0}|${norm(talias.Libelle[i])}`, refId(talias.Site[i])); });
       let n = 0;
       for (const r of reglages) {
         const ts = await grist.docApi.fetchTable(r.table), trep = await grist.docApi.fetchTable(r.rep), idx = new Map(trep.id.map((id, i) => [id, i]));
