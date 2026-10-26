@@ -25,6 +25,31 @@
   const VIDES = new Set(["campus", "site", "sites", "bat", "bati", "batiment", "batiments", "de", "du", "des", "la", "le", "les", "l", "d", "et", "a", "au", "aux", "sur", "en", "universite", "univ", "pole", "rue", "avenue", "av", "bd", "boulevard"]);
   const mots = s => new Set(norm(s).replace(/[^a-z0-9]+/g, " ").split(" ").filter(w => w.length > 1 && !VIDES.has(w)));
   const TABLE_ALIAS = "Sites_correspondances";
+  /* ---------- contexte des saisies : date des faits, qualification, description du signalement de chaque occurrence ----------
+     Aide à décider du site : affiché sous chaque libellé (le plus récent, les autres repliés). Aussi utilisé par le widget. */
+  const colDe = (tm, ...res) => { const cs = Object.values((tm && tm.colonnes) || {}); for (const re of res) { const c = cs.find(x => re.test(x.colId)); if (c) return c.colId; } return null; };
+  function colsContexte(tmRep, tmSource) {
+    return { date: colDe(tmRep, /^date_faits$/i, /^date.*fait/i, /^date$/i), cree: colDe(tmRep, /^cree_le$/i, /^date_saisie$/i),
+      desc: colDe(tmRep, /^description$/i, /descri/i, /^commentaire/i), qualif: colDe(tmRep, /^qualification$/i, /^qualif/i), nature: colDe(tmRep, /^nature$/i),
+      qualifSite: tmSource && tmSource !== tmRep ? colDe(tmSource, /^qualification/i, /qualif/i) : null };
+  }
+  const valTexte = v => Array.isArray(v) ? v.slice(1).join(", ") : v == null ? "" : String(v);
+  // une occurrence : ligne k de la table des réponses (trep), ligne i de la table des saisies (ts)
+  function occurrence(cols, trep, k, ts, i) {
+    const g = (t, c, j) => c && t && t[c] && j !== undefined && j !== null ? t[c][j] : null;
+    const d = g(trep, cols.date, k), c = g(trep, cols.cree, k);
+    return { quand: typeof d === "number" ? d : typeof c === "number" ? c : 0, date: typeof d === "number" ? d : null,
+      qualif: valTexte(g(ts, cols.qualifSite, i)) || valTexte(g(trep, cols.qualif, k)), desc: valTexte(g(trep, cols.desc, k)).trim(), nature: valTexte(g(trep, cols.nature, k)) };
+  }
+  const jour = s => new Date(s * 1000).toLocaleDateString("fr-FR", { timeZone: "UTC", day: "2-digit", month: "2-digit", year: "numeric" });
+  function contexteHtml(occs) {
+    if (!occs || !occs.length) return "";
+    const tri = occs.slice().sort((a, b) => b.quand - a.quand);
+    const une = o => { const d = o.desc.length > 220 ? o.desc.slice(0, 220) + "…" : o.desc;
+      return `<span class="si-ctx-date">${o.date ? jour(o.date) : "date inconnue"}</span>${o.qualif ? ` · ${esc(o.qualif)}` : ""}${o.nature && !/^nouveau/i.test(o.nature) ? ` · ${esc(o.nature)}` : ""}${d ? ` — <span title="${esc(o.desc)}">${esc(d)}</span>` : ""}`; };
+    return `<div class="si-ctx aide">${une(tri[0])}${tri.length > 1 ? `<details><summary>${tri.length - 1} autre${tri.length > 2 ? "s" : ""} signalement${tri.length > 2 ? "s" : ""}</summary><ul>${tri.slice(1, 30).map(o => `<li>${une(o)}</li>`).join("")}${tri.length > 31 ? `<li>… (${tri.length - 31} de plus)</li>` : ""}</ul></details>` : ""}</div>`;
+  }
+
   // ancien nom d'une référence non résolue : texte gardé par Grist dans la cellule
   const texteDe = v => typeof v === "string" ? v : Array.isArray(v) && typeof v[v.length - 1] === "string" ? v[v.length - 1] : "";
 
@@ -102,16 +127,19 @@
     // correspondances existantes
     const alias = new Map();
     if (talias) talias.id.forEach((id, i) => alias.set(`${refId(talias.Etablissement[i]) || 0}|${norm(talias.Libelle[i])}`, { id, site: refId(talias.Site[i]), statut: String(talias.Statut[i] || "") }));
-    // libellés saisis, regroupés par établissement
+    // libellés saisis, regroupés par établissement, avec le contexte de chaque occurrence
+    const cols = colsContexte(meta[source.rep], meta[source.table]);
     const groupes = new Map();
     ts.id.forEach((id, i) => {
       const v = ts[source.col][i];
       if (source.estRef && typeof v === "number") return;   // déjà rattaché à un site du référentiel
       const lib = String(source.estRef ? texteDe(v) : (v ?? "")).trim(); if (!lib) return;
+      const kRep = source.viaDossier ? idxRep.get(refId(ts[source.viaDossier][i])) : i;
       const e = source.viaDossier ? etabRep(refId(ts[source.viaDossier][i])) : refId(ts[source.etab.col][i]); if (!e) return;
       const k = `${e}|${norm(lib)}`;
-      if (!groupes.has(k)) groupes.set(k, { cle: k, etab: e, libelle: lib, n: 0 });
-      groupes.get(k).n++;
+      if (!groupes.has(k)) groupes.set(k, { cle: k, etab: e, libelle: lib, n: 0, occs: [] });
+      const gp = groupes.get(k); gp.n++;
+      gp.occs.push(occurrence(cols, source.viaDossier ? trep : ts, kRep, ts, i));
     });
     const liste = [...groupes.values()].map(gp => {
       const sites = sitesDe.get(gp.etab) || [], m = mots(gp.libelle);
@@ -232,7 +260,7 @@
         <span class="statut" id="si-statut" role="status"></span></div>
       ${visibles.length ? `<div class="sites-defile"><table class="sites-table"><thead><tr><th><input type="checkbox" id="si-tout" aria-label="Tout sélectionner"></th>${opts.compact ? "" : "<th>Établissement</th>"}<th>Libellé saisi</th><th>Site du référentiel</th>${opts.compact ? "" : "<th>Statut</th>"}</tr></thead><tbody>
         ${visibles.map(gp => `<tr data-cle="${esc(gp.cle)}"><td><input type="checkbox" class="si-coche"${statutDe(gp) === "a_traiter" && gp.propose ? " checked" : ""}></td>
-          ${opts.compact ? "" : `<td>${esc(gp.nomEtab)}</td>`}<td>${opts.compact ? `<div class="aide">${esc(gp.nomEtab)}</div>` : ""}<strong>${esc(gp.libelle)}</strong> <span class="aide">× ${gp.n}</span>${source.estRef ? ` <span class="pastille manque" title="Référence non résolue : ancien nom gardé en texte dans la cellule">ancien nom</span>` : ""}</td>
+          ${opts.compact ? "" : `<td>${esc(gp.nomEtab)}</td>`}<td>${opts.compact ? `<div class="aide">${esc(gp.nomEtab)}</div>` : ""}<strong>${esc(gp.libelle)}</strong> <span class="aide">× ${gp.n}</span>${source.estRef ? ` <span class="pastille manque" title="Référence non résolue : ancien nom gardé en texte dans la cellule">ancien nom</span>` : ""}${contexteHtml(gp.occs)}</td>
           <td><select class="si-site"><option value="">— aucun (hors référentiel)</option>${gp.sites.map(s => `<option value="${s.id}"${s.id === gp.propose ? " selected" : ""}>${esc(s.nom)}</option>`).join("")}<option value="nouveau">+ Nouveau site du référentiel</option></select>
             <input type="text" class="si-nouveau" value="${esc(gp.libelle)}" aria-label="Nom du nouveau site" title="Nom du site créé dans le référentiel" hidden style="width:220px">
             ${!gp.alias && gp.propose ? ` <span class="pastille reco">proposé</span>` : ""}${!gp.sites.length ? ` <span class="aide">aucun site de cet établissement au référentiel</span>` : ""}
@@ -375,5 +403,5 @@
     opts = o || {}; racine = opts.racine || $("ref-sites"); if (!racine) return;
     etat = null; dessiner(); await relancer();
   }
-  window.OngletSitesESR = { afficher };
+  window.OngletSitesESR = { afficher, colsContexte, occurrence, contexteHtml };
 })();

@@ -10,6 +10,7 @@ function docRef() {
   for (const [c, ty, lab] of [['Dossier', 'Ref:Reponses', 'Dossier'], ['Nom_du_site', 'Ref:Referentiel_sites', 'Nom du site'], ['Qualification', 'Choice', 'Qualification']]) { const n = Math.max(...C.id) + 1; for (const k of Object.keys(C)) C[k].push(k === 'id' ? n : k === 'parentId' ? tid : k === 'colId' ? c : k === 'label' ? lab : k === 'type' ? ty : k === 'isFormula' ? false : (typeof C[k][0] === 'number' ? 0 : typeof C[k][0] === 'boolean' ? false : '')); }
   // anciens noms gardés en texte par Grist (référence non résolue) ; ligne 1 déjà rattachée
   D.Sites = { id: [1, 2, 3, 4, 5, 6], Dossier: [3, 3, 4, 4, 2, 5], Nom_du_site: [2, 'Annexe Rue Dupont', 'campus beaulieu, bât. 12', 'Villejean', 'Bâtiment Ivry', 'Annexe rue Dupont'], Qualification: ['Blocage total', 'Rassemblement', 'Blocage total', 'Rassemblement', 'RAS', 'RAS'] };
+  D.Reponses.Description = D.Reponses.Description.map((d, i) => `${d} n°${D.Reponses.id[i]} : blocage de l'entrée principale, une cinquantaine d'étudiants devant le bâtiment`);
   return doc;
 }
 (async () => {
@@ -26,6 +27,7 @@ function docRef() {
   console.log('ADMIN SOURCES :', await pa.$$eval('#si-source option', l => l.map(o => (o.selected ? '*' : '') + o.textContent).join(' | ')));
   const lignesAdmin = () => pa.$$eval('#ref-sites tbody tr', l => l.map(tr => `${tr.querySelector('.si-coche').checked ? '☑' : '☐'} ${tr.cells[1].textContent} « ${tr.cells[2].innerText.replace(/\s+/g, ' ').trim()} » → ${tr.querySelector('.si-site').selectedOptions[0].textContent}`).join('\n   '));
   console.log('ADMIN LIBELLÉS :\n  ', await lignesAdmin());
+  console.log('ADMIN CONTEXTE :\n  ', (await pa.$$eval('#ref-sites tbody tr .si-ctx', l => l.map(x => x.innerText.replace(/\s+/g, ' ').trim()))).join('\n   '));
   await pa.click('#si-valider'); await pa.waitForTimeout(1500);
   console.log('ADMIN STATUT :', await pa.textContent('#si-statut'));
   console.log('ADMIN TABLE Sites :', await etatSites(pa));
@@ -56,5 +58,8 @@ function docRef() {
   // retour au mode établissement
   await pw.click('[data-sx-mode=etab]'); await pw.waitForTimeout(400);
   console.log('MODE ÉTABLISSEMENT :', await pw.$eval('#sx-corps', z => z.innerText.replace(/\s+/g, ' ').slice(0, 80)));
+  await pw.click('[data-vue=etab]'); await pw.fill('#etab-q', 'moulin'); await pw.waitForTimeout(200); await pw.click('#etab-res li >> nth=0'); await pw.waitForTimeout(300);
+  await pw.click('[data-vue=saisies]'); await pw.waitForTimeout(800);
+  console.log('ÉTABLISSEMENT CHOISI, CONTEXTE :\n  ', (await pw.$$eval('#sx-corps [data-sx]', l => l.map(x => x.innerText.replace(/\s+/g, ' ').trim()))).join('\n   '));
   await browser.close();
 })();

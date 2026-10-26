@@ -38,7 +38,7 @@ Les scénarios de l'atlas (run63 à run69, run73) exportent un zip ; pour vérif
 | `run78` | Formulaire par site (ESR) : reprise du dernier état connu de chaque site, qualification déduite en bas, contrôle de cohérence |
 | `run79` | Admin : rapprochement des sites saisis (Référentiel), modèle de formulaire « Enseignement supérieur par site » |
 | `run80` | Admin : changer le modèle d'un formulaire existant (standard ↔ enseignement supérieur par site) |
-| `run94` | Rapprochement des sites saisis dans une colonne référence aux sites (anciens noms) : administration et widget « Référentiel des sites » (tous les établissements) |
+| `run94` | Rapprochement des sites saisis dans une colonne référence aux sites (anciens noms) : administration et widget « Référentiel des sites » (tous les établissements, établissement choisi), avec le contexte des signalements (date des faits, qualification, description) |
 | `run93` | Formulaire par site : reprise automatique du dernier état des sites désactivable, reprise à la demande par un bouton |
 | `run92` | Formulaire par site : site obligatoire et nom hors référentiel, ancien nom resté en texte dans la colonne référence |
 | `run91` | « Corriger les saisies » sur une colonne référence aux sites qui garde les anciens noms (run90 avec l'option `ref`) |
