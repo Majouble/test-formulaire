@@ -191,6 +191,8 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": 
 const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[’']/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
 const refId = v => typeof v === "number" ? v : (v && typeof v === "object" && "rowId" in v) ? v.rowId : (Array.isArray(v) && v[0] === "R") ? v[2] : null;
 const num = v => { const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(",", ".")); return Number.isFinite(n) && n !== 0 ? n : null; };
+// latitude / longitude hors limites (coordonnées Lambert, colonnes inversées…) : ignorées (ni carte, ni distance, ni géocodage)
+const latN = v => { const n = num(v); return n != null && Math.abs(n) <= 90 ? n : null; }, lonN = v => { const n = num(v); return n != null && Math.abs(n) <= 180 ? n : null; };
 const distanceM = (a, b) => { const k = Math.PI / 180, x = (b.lon - a.lon) * Math.cos((a.lat + b.lat) / 2 * k), y = b.lat - a.lat; return Math.hypot(x, y) * 111195; };
 const km = m => m == null ? "" : m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(m < 10000 ? 1 : 0)} km`;
 const GEOCODAGE = "https://data.geopf.fr/geocodage";
@@ -211,8 +213,31 @@ function statut(t, type) { const e = $("statut"); e.textContent = t || ""; e.cla
 async function lireJson(url, opts) {
   let r;
   try { r = await fetch(url, opts); } catch (_) { throw new Error(`${new URL(url).host} injoignable depuis votre navigateur (réseau, pare-feu ou proxy)`); }
-  if (!r.ok) throw new Error(`${new URL(url).host} a répondu ${r.status}`);
+  if (!r.ok) {
+    // message du service (Géoplateforme : { code, message, detail }) : affiché tel quel
+    let det = ""; try { const b = await r.json(); det = [].concat(b.detail || b.message || b.error || []).map(x => typeof x === "string" ? x : JSON.stringify(x)).join(" ; "); } catch (_) { /* corps illisible */ }
+    const e = new Error(`${new URL(url).host} a répondu ${r.status}${det ? ` (${det.slice(0, 200)})` : ""}`); e.status = r.status; throw e;
+  }
   return r.json();
+}
+/* Géocodage de la Géoplateforme (BAN pour les adresses, BD TOPO pour les lieux) : la requête doit faire de 3 à 200 caractères
+   et commencer par une lettre ou un chiffre, sinon erreur 400 ; le point de référence (lat, lon) doit être valide.
+   Texte nettoyé (ponctuation et symboles en tête, espaces, guillemets, retours à la ligne collés), point de référence omis
+   s'il est hors limites ; sur une erreur 400, nouvel essai sans point de référence. */
+function texteGeo(q) {
+  let t = String(q ?? "").normalize("NFC").replace(/[\u0000-\u001f\u00a0\u2000-\u200b]+/g, " ").replace(/[«»"“”„<>{}\[\]|\\^`~*#@$%=+_]+/g, " ")
+    .replace(/[;:!?]+/g, " ").replace(/\s+/g, " ").trim().replace(/^[^\p{L}\p{N}]+/u, "").replace(/[\s,.'’-]+$/u, "");
+  if (t.length > 200) t = t.slice(0, 200).replace(/\s+\S*$/, "");
+  return t;
+}
+const pointGeo = c => c && Number.isFinite(+c.lat) && Number.isFinite(+c.lon) && Math.abs(+c.lat) <= 90 && Math.abs(+c.lon) <= 180
+  ? `&lat=${(+c.lat).toFixed(6)}&lon=${(+c.lon).toFixed(6)}` : "";
+async function chercherGeo(q, index, limite) {
+  const t = texteGeo(q);
+  if (t.length < 3) throw new Error("tapez au moins 3 lettres ou chiffres (le service de géocodage refuse les recherches plus courtes)");
+  const base = `${GEOCODAGE}/search?q=${encodeURIComponent(t)}&index=${index}&limit=${limite}`, pt = pointGeo(centre());
+  try { return await lireJson(base + pt); }
+  catch (e) { if (e.status === 400 && pt) return lireJson(base); throw e; }
 }
 
 /* ---------- Tables et colonnes ---------- */
@@ -279,7 +304,7 @@ async function lireDonnees() {
   const v = (c, i) => c && te[c] ? te[c][i] : null;
   etabs = te.id.map((id, i) => {
     const e = { id, nom: String(v(ce.nom, i) ?? ""), sigle: String(v(ce.sigle, i) ?? ""), lib: String(v(ce.lib, i) ?? ""), commune: String(v(ce.commune, i) ?? ""),
-      lat: num(v(ce.lat, i)), lon: num(v(ce.lon, i)), ratt: refId(v(ce.ratt, i)), niveau: String(v(ce.niveau, i) ?? ""), mots: String(v(ce.mots, i) ?? ""),
+      lat: latN(v(ce.lat, i)) != null && lonN(v(ce.lon, i)) != null ? latN(v(ce.lat, i)) : null, lon: latN(v(ce.lat, i)) != null && lonN(v(ce.lon, i)) != null ? lonN(v(ce.lon, i)) : null, ratt: refId(v(ce.ratt, i)), niveau: String(v(ce.niveau, i) ?? ""), mots: String(v(ce.mots, i) ?? ""),
       etat: String(v(ce.etat, i) ?? ""), type: String(v(ce.type, i) ?? "") };
     e.texte = norm([e.nom, e.sigle, e.lib, e.commune, e.mots].join(" "));
     return e;
@@ -289,7 +314,7 @@ async function lireDonnees() {
   if (ctx.tSites) {
     const ts = await grist.docApi.fetchTable(ctx.tSites), c = ctx.cols, w = (k, i) => c[k] && ts[c[k]] ? ts[c[k]][i] : null;
     sites = ts.id.map((id, i) => ({ id, code: String(w("id", i) ?? ""), nom: String(w("nom", i) ?? ""), etab: refId(w("etab", i)), comp: refId(w("comp", i)),
-      commune: String(w("commune", i) ?? ""), cp: String(w("cp", i) ?? ""), adresse: String(w("adresse", i) ?? ""), lat: num(w("lat", i)), lon: num(w("lon", i)),
+      commune: String(w("commune", i) ?? ""), cp: String(w("cp", i) ?? ""), adresse: String(w("adresse", i) ?? ""), lat: latN(w("lat", i)) != null && lonN(w("lon", i)) != null ? latN(w("lat", i)) : null, lon: latN(w("lat", i)) != null && lonN(w("lon", i)) != null ? lonN(w("lon", i)) : null,
       statut: String(w("statut", i) ?? ""), source: String(w("source", i) ?? ""), mots: String(w("mots", i) ?? ""), autres: String(w("autres", i) ?? ""),
       precision: String(w("precision", i) ?? ""), actif: c.actif ? w("actif", i) !== false : true }));
   }
@@ -366,7 +391,8 @@ async function modifierSite(id, f, quoi) {
 
 /* ---------- Géocodage (Géoplateforme) et OpenStreetMap ---------- */
 async function inverse(lat, lon) {
-  const d = await lireJson(`${GEOCODAGE}/reverse?lon=${lon}&lat=${lat}&index=address&limit=1`);
+  const pt = pointGeo({ lat, lon }); if (!pt) return null;
+  const d = await lireJson(`${GEOCODAGE}/reverse?index=address&limit=1${pt}`);
   const p = d.features && d.features[0] && d.features[0].properties; if (!p) return null;
   return { commune: p.city || "", cp: p.postcode || "", adresse: p.name || p.label || "" };
 }
@@ -388,8 +414,7 @@ function dejaConnu(c) {
   return sitesDe(choisi).find(s => norm(s.nom) === norm(c.nom)) || null;
 }
 async function chercherIgn(q) {
-  const c = centre();
-  const d = await lireJson(`${GEOCODAGE}/search?q=${encodeURIComponent(q)}&index=poi&limit=40${c ? `&lat=${c.lat}&lon=${c.lon}` : ""}`);
+  const d = await chercherGeo(q, "poi", 40);
   return (d.features || []).map(f => {
     const p = f.properties || {}, [lon, lat] = (f.geometry && f.geometry.coordinates) || [];
     const cat = [].concat(p.category || []).join(", "), ville = [].concat(p.city || [])[0] || "", cp = [].concat(p.postcode || [])[0] || "";
@@ -415,9 +440,8 @@ async function chercherOsm(q, rayonKm) {
     .filter((x, i, a) => a.findIndex(y => norm(y.nom) === norm(x.nom) && distanceM(x, y) < 100) === i);
 }
 async function chercherAdresse(q) {
-  const c = centre();
-  const d = await lireJson(`${GEOCODAGE}/search?q=${encodeURIComponent(q)}&index=address&limit=10${c ? `&lat=${c.lat}&lon=${c.lon}` : ""}`);
-  return (d.features || []).map(f => { const p = f.properties || {}, [lon, lat] = f.geometry.coordinates;
+  const d = await chercherGeo(q, "address", 10);
+  return (d.features || []).filter(f => f.geometry && Array.isArray(f.geometry.coordinates)).map(f => { const p = f.properties || {}, [lon, lat] = f.geometry.coordinates;
     return { nom: "", libelleAdresse: p.label, lat, lon, detail: `${p.type === "housenumber" ? "adresse" : p.type || ""} · score ${Math.round((p.score || 0) * 100)} %`,
       commune: p.city || "", cp: p.postcode || "", adresse: p.name || "", source: "Adresse", precision: p.type === "housenumber" ? "Adresse (numéro)" : "Adresse (rue ou commune)", probable: false }; });
 }
