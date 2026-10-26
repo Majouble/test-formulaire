@@ -7,6 +7,12 @@
      1. d'une copie du document (« instantané ») : fichier .grist téléchargé
         depuis Grist, ou .json ;
      2. des saisies faites pendant la panne, tenues dans un journal par poste.
+   La copie peut être en deux couches, déposées dans le dossier partagé (par n8n,
+   ou à la main) : une base (instantane-base.grist ou .json : référentiel et
+   configuration, renouvelée une fois par jour) et un complément
+   (instantane-dossiers.json : tables des réponses et autres tables qui bougent,
+   renouvelé toutes les 10 minutes). Les tables du complément remplacent celles
+   de la base. Le kit prend d'office les plus récentes.
    Chaque poste écrit son journal dans un dossier partagé (un fichier par
    poste, donc pas de conflit d'écriture) et lit ceux des autres : tous les
    postes voient les mêmes signalements. Sans dossier partagé, le poste
@@ -23,6 +29,7 @@ const KIT_VERSION = "0.1.0 (26/10/2026)";
 const BASE_HORS_LIGNE = 1e12, PAR_POSTE = 1e6;
 const PREFIXE_JOURNAL = "secours-journal-";
 const DELAI_LECTURE = 20000;            // relecture du dossier partagé (ms)
+const NOM_BASE = /^instantane-base\.(grist|json)(\.gz)?$/i, NOM_COMPLEMENT = /^instantane-dossiers\.json(\.gz)?$/i;
 
 /* ---------- utilitaires ---------- */
 const norm = s => String(s == null ? "" : s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -69,7 +76,9 @@ const BD = {
 /* ---------- état ---------- */
 const K = {
   agent: "", posteNum: 0, seq: 0,
-  base: null,        // { info: { nom, cle, source, fichier, genere_le, charge_le, modifie }, tables }
+  base: null,        // { info: { nom, cle, source, fichier, genere_le, charge_le, modifie, auto }, tables }
+  complement: null,  // { info: { fichier, genere_le, modifie, auto }, tables } : remplace des tables de la base
+  reintegrees: new Set(),   // saisies déjà réintégrées dans Grist (Config, clé « secours », vue dans la copie)
   doc: null,         // document vivant : copie de la base + journaux appliqués
   page: null,        // { cle, titre, tableId, widgetOptions, mapping }
   journal: [],       // mes entrées
@@ -201,15 +210,33 @@ function normaliser(a, entree) {
 function appliquerEntree(e) {
   if (K.appliquees.has(e.id)) return;
   K.appliquees.add(e.id);
+  if (K.reintegrees.has(e.id)) return;   // déjà réintégrée dans Grist, donc déjà dans la copie
   for (const a of e.actions || []) { try { appliquerAction(a, e); } catch (err) { trace(`Saisie de ${e.agent || "?"} (${heure(e.t)}) non rejouée : ${err.message}`); } }
   if (e.t > K.dernierT) K.dernierT = e.t;
 }
 const toutesEntrees = () => { const l = [...K.journal]; for (const f of K.autres.values()) l.push(...f.entrees); return l; };
 const ordre = (a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+function complementValable() {
+  const c = K.complement, b = K.base && K.base.info;
+  if (!c || !b) return false;
+  // un complément plus ancien que la base n'apporte rien : la base contient déjà ces tables, plus à jour
+  return !(b.modifie && c.info.modifie && c.info.modifie < b.modifie - 60000);
+}
+function lireReintegrees() {
+  K.reintegrees = new Set();
+  const C = K.doc.Config; if (!C || !C.Cle) return;
+  const i = C.Cle.indexOf("secours"); if (i < 0) return;
+  try { Object.keys((JSON.parse(C.Valeur[i] || "{}") || {}).entrees || {}).forEach(id => K.reintegrees.add(id)); } catch (_) {}
+}
 function reconstruireDoc() {
-  K.doc = copie(K.base.tables); indexerMeta(); K.appliquees = new Set(); K.dernierT = "";
+  K.doc = copie(K.base.tables);
+  if (complementValable()) for (const [n, t] of Object.entries(K.complement.tables)) if (!n.startsWith("_grist")) K.doc[n] = copie(t);
+  indexerMeta(); lireReintegrees(); K.appliquees = new Set(); K.dernierT = "";
   const vues = new Set();
-  for (const e of toutesEntrees().sort(ordre)) { if (vues.has(e.id)) continue; vues.add(e.id); appliquerEntree(e); }
+  for (const e of toutesEntrees().sort(ordre)) {
+    if (vues.has(e.id)) continue; vues.add(e.id);
+    appliquerEntree(e);
+  }
   recalculerFormules();
 }
 // nouvelles entrées d'autres postes : ajoutées à la suite, ou document rejoué dans l'ordre si l'une est antérieure
@@ -375,6 +402,13 @@ async function lireFichierGrist(octets) {
     return tables;
   } finally { db.close(); }
 }
+// { records: [{ id, fields: {…} }] } (API REST de Grist) → colonnes, comme fetchTable
+function colonnesDeRecords(records) {
+  const t = { id: records.map(r => r.id) }, cols = new Set();
+  records.forEach(r => Object.keys(r.fields || {}).forEach(c => cols.add(c)));
+  for (const c of cols) t[c] = records.map(r => (r.fields && c in r.fields ? r.fields[c] : null));
+  return t;
+}
 async function lireCopie(fichier) {
   const nom = fichier.name || "document";
   let octets = new Uint8Array(await fichier.arrayBuffer());
@@ -384,7 +418,11 @@ async function lireCopie(fichier) {
   if (sqlite) tables = await lireFichierGrist(octets);
   else {
     const j = JSON.parse(new TextDecoder().decode(octets));
-    if (j.format === "kit-secours-instantane" && j.tables) tables = j.tables;
+    if (j.format === "kit-secours-instantane" && j.tables) {
+      tables = {};
+      for (const [n, t] of Object.entries(j.tables)) tables[n] = Array.isArray(t.records) ? colonnesDeRecords(t.records) : t;
+      if (j.complement) return { info: { complement: true, fichier: nom, genere_le: j.genere_le || null, modifie: fichier.lastModified || null, charge_le: new Date().toISOString() }, tables };
+    }
     else if (j._grist_Tables) { tables = {}; for (const [k, v] of Object.entries(j)) if (k.startsWith("_grist_")) tables[k] = v; Object.assign(tables, j.__data || {}); }
     else throw new Error("format de fichier non reconnu (attendu : document .grist ou copie .json)");
   }
@@ -468,9 +506,11 @@ async function lireDossier() {
     for (const nom of [...K.autres.keys()]) if (!vus.has(nom) && !nom.startsWith("import:")) K.autres.delete(nom);
     K.derniereLecture = Date.now(); K.dirErreur = "";
     K.fichiersDossier = candidats.sort((a, b) => b.mod - a.mod);
-    const b = K.base && K.base.info, plusRecent = b && candidats.find(c => c.nom === b.fichier && b.modifie && c.mod > b.modifie + 1000);
+    const b = K.base && K.base.info, plusRecent = b && candidats.find(c => (c.nom === b.fichier || (b.auto && NOM_BASE.test(c.nom))) && b.modifie && c.mod > b.modifie + 1000);
     K.nouvelleBase = plusRecent || null;
-    if (integrerEntrees(nouvelles)) { trace(`${nouvelles.length} saisie(s) d'autres postes intégrée(s)`); emettreBientot(); }
+    const rebati = await majComplement(candidats);
+    if (rebati) { emettreBientot(); if (nouvelles.length) integrerEntrees(nouvelles); }
+    else if (integrerEntrees(nouvelles)) { trace(`${nouvelles.length} saisie(s) d'autres postes intégrée(s)`); emettreBientot(); }
     await BD.ecrire("kv", [...K.autres], "autres");
     if (K.enAttente) await ecrireJournalPartage();
   } catch (e) { K.dirEtat = "erreur"; K.dirErreur = e.message; trace(`Lecture du dossier partagé impossible : ${e.message}`); }
@@ -480,6 +520,31 @@ async function tic() {
   if (!K.pret) return;
   if (K.dir && K.dirEtat === "erreur") { try { if (await verifierAcces(false)) { K.dirEtat = "ok"; trace("Dossier partagé de nouveau accessible"); } } catch (_) {} }
   await lireDossier();
+}
+// complément plus récent déposé dans le dossier : chargé et appliqué sans recharger la page
+async function majComplement(candidats) {
+  const f = candidats.find(c => NOM_COMPLEMENT.test(c.nom));
+  if (!f || !K.base) return false;
+  if (K.complement && K.complement.info.modifie && f.mod <= K.complement.info.modifie) return false;
+  try {
+    const c = await chargerDepuisDossier(f.nom);
+    if (!c.info.complement) return false;
+    c.info.auto = true; K.complement = c; await BD.ecrire("base", c, "complement");
+    if (!K.pret) return false;
+    reconstruireDoc();
+    trace(`Dossiers mis à jour depuis ${f.nom} (${dateHeure(c.info.genere_le || f.mod)}) : ${Object.entries(c.tables).map(([n, t]) => `${n} (${t.id.length})`).join(", ")}`);
+    return true;
+  } catch (e) { trace(`Complément illisible (${f.nom}) : ${e.message}`); return false; }
+}
+// au démarrage : base et complément les plus récents du dossier, si le poste suit les copies du dossier
+async function copiesDuDossierAuDemarrage() {
+  const c = K.fichiersDossier || [];
+  const fb = c.find(x => NOM_BASE.test(x.nom));
+  if (fb && (!K.base || (K.base.info.auto && (!K.base.info.modifie || fb.mod > K.base.info.modifie + 1000)))) {
+    try { const b = await chargerDepuisDossier(fb.nom); b.info.auto = true; K.base = b; await BD.ecrire("base", b, "courante"); trace(`Base chargée d'office : ${fb.nom}`); }
+    catch (e) { trace(`Base illisible (${fb.nom}) : ${e.message}`); }
+  }
+  await majComplement(c);
 }
 async function chargerDepuisDossier(nom) {
   const h = await K.dir.getFileHandle(nom); return lireCopie(await h.getFile());
@@ -563,7 +628,7 @@ const UI = {
       reconnecter: ["attention", `Dossier partagé « ${esc(K.dir && K.dir.name)} » à reconnecter`], erreur: ["ko", `Dossier partagé injoignable — ${K.enAttente} saisie(s) gardée(s) sur ce poste`],
       aucun: ["neutre", FS_OK ? "Pas de dossier partagé : saisies sur ce poste seulement" : "Navigateur sans accès aux dossiers : saisies sur ce poste seulement"] }[K.dirEtat];
     b.innerHTML = `<span class="marque">Mode secours</span>
-      <span class="info">${K.agent ? `<b>${esc(K.agent)}</b>` : "<i>agent ?</i>"} · ${K.page ? esc(K.page.titre) : "<i>page ?</i>"}${info ? ` · <span title="${esc(info.fichier)}">copie du ${esc(dateHeure(info.modifie || info.charge_le))}</span>` : ""}</span>
+      <span class="info">${K.agent ? `<b>${esc(K.agent)}</b>` : "<i>agent ?</i>"} · ${K.page ? esc(K.page.titre) : "<i>page ?</i>"}${info ? ` · <span title="${esc(info.fichier)}">copie du ${esc(dateHeure(info.modifie || info.charge_le))}</span>` : ""}${complementValable() ? ` · <span title="${esc(K.complement.info.fichier)}">dossiers de ${esc(heure(K.complement.info.genere_le || K.complement.info.modifie))}</span>` : ""}${K.reintegrees.size ? ` · ${K.reintegrees.size} saisie(s) déjà réintégrée(s)` : ""}</span>
       <span class="etat ${etat[0]}"><i></i>${etat[1]}</span>
       ${K.dirEtat === "reconnecter" ? `<button data-a="reconnecter" class="petit">Reconnecter</button>` : ""}
       ${K.nouvelleBase ? `<button data-a="maj-base" class="petit attention" title="Une copie plus récente du document a été déposée dans le dossier partagé">Copie plus récente disponible</button>` : ""}
@@ -596,7 +661,10 @@ const UI = {
         <p class="note">Noté comme auteur de chaque saisie. Poste n° ${K.posteNum} <button data-a="nouveau-poste" class="lien">changer</button></p></section>
       <section><h3>2. Dossier partagé</h3>${dossier}</section>
       <section><h3>3. Copie du document</h3>
-        ${info ? `<p>Copie utilisée : <b>${esc(info.fichier)}</b> (${info.source === "grist" ? "document Grist" : "fichier JSON"}, ${esc(dateHeure(info.modifie || info.charge_le))})</p>` : `<p class="note">Aucune copie chargée. Dans Grist, menu du document › Télécharger › document (.grist), sans l'historique, puis déposez le fichier dans le dossier partagé.</p>`}
+        ${info ? `<p>Base : <b>${esc(info.fichier)}</b> (${info.source === "grist" ? "document Grist" : "fichier JSON"}, ${esc(dateHeure(info.modifie || info.charge_le))})${info.auto ? " — suit le dossier partagé" : ""}</p>
+          <p>Dossiers : ${K.complement ? `<b>${esc(K.complement.info.fichier)}</b> (${esc(dateHeure(K.complement.info.genere_le || K.complement.info.modifie))})${complementValable() ? "" : " — plus ancien que la base, non utilisé"}` : "ceux de la base"}</p>`
+          : `<p class="note">Aucune copie chargée. Dans Grist, menu du document › Télécharger › document (.grist), sans l'historique, puis déposez le fichier dans le dossier partagé.</p>`}
+        <p class="note">Copies automatiques : « instantane-base.grist » (référentiel et configuration) et « instantane-dossiers.json » (signalements, toutes les 10 minutes) dans le dossier partagé ; les plus récentes sont prises d'office.</p>
         ${K.dir && K.dirEtat === "ok" ? (fichiers.length ? `<div class="liste">${fichiers.map(f => `<div><span>${esc(f.nom)} <small>${esc(dateHeure(f.mod))} · ${(f.taille / 1048576).toFixed(1)} Mo</small></span><button data-a="charger-dossier" data-nom="${esc(f.nom)}" class="petit secondaire">Charger</button></div>`).join("")}</div>` : `<p class="note">Aucun fichier .grist ou .json dans le dossier partagé.</p>`) : ""}
         <p><label class="bouton secondaire">Ouvrir un fichier (.grist ou .json)…<input type="file" id="fichier-base" accept=".grist,.json,.gz" hidden></label>
         ${window.__KIT_DEMO__ ? `<button data-a="demo" class="secondaire">Document de démonstration</button>` : ""}</p>
@@ -638,7 +706,7 @@ const UI = {
       else if (a === "reglages") this.ouvrirReglages();
       else if (a === "exports") this.ouvrirExports();
       else if (a === "reconnecter") await connecterDossier(true);
-      else if (a === "choisir-dossier") { await choisirDossier(); if (K.dirEtat === "ok" && !K.pret) await lireDossierAvantDemarrage(); this.ouvrirReglages(); }
+      else if (a === "choisir-dossier") { await choisirDossier(); await apresChoixDossier(); }
       else if (a === "oublier-dossier") { await oublierDossier(); this.ouvrirReglages(); }
       else if (a === "nouveau-poste") { if (K.journal.length && !confirm("Ce poste a déjà des saisies. Changer de numéro ne les modifie pas ; les prochaines lignes prendront le nouveau numéro. Continuer ?")) return; K.posteNum = tirerPoste(); K.seq = 0; await BD.ecrire("kv", K.posteNum, "poste"); await BD.ecrire("kv", 0, "seq"); this.ouvrirReglages(); }
       else if (a === "charger-dossier") await this.chargerBase(() => chargerDepuisDossier(b.dataset.nom));
@@ -667,8 +735,16 @@ const UI = {
     try {
       const t0 = performance.now(), base = await lire();
       const nb = Object.entries(base.tables).filter(([n]) => !n.startsWith("_grist")).map(([n, t]) => `${n} (${t.id.length})`);
+      if (base.info.complement) {
+        if (!K.base) throw new Error("ce fichier ne contient que les dossiers (complément) : chargez d'abord la base (référentiel et configuration).");
+        K.complement = base; await BD.ecrire("base", base, "complement");
+        trace(`Complément chargé : ${base.info.fichier} — ${nb.join(", ")}`);
+        if (K.pret) { await BD.ecrire("kv", K.page, "page"); location.reload(); return; }
+        this.ouvrirReglages(); return;
+      }
       await BD.ecrire("base", base, "courante");
       K.base = base;
+      if (base.info.fichier && NOM_BASE.test(base.info.fichier) && K.dir) base.info.auto = true;
       trace(`Copie chargée : ${base.info.fichier} en ${Math.round(performance.now() - t0)} ms — ${nb.join(", ")}`);
       if (K.page && !pagesDeSaisie(base.tables).some(p => p.cle === K.page.cle)) K.page = null;
       if (relancer || K.pret) { await BD.ecrire("kv", K.page, "page"); location.reload(); return; }
@@ -688,6 +764,11 @@ const UI = {
   },
 };
 function tirerPoste() { const a = new Uint32Array(1); crypto.getRandomValues(a); return 1 + (a[0] % 999999); }
+// dossier choisi pendant la mise en route : copies du dossier prises d'office
+async function apresChoixDossier() {
+  if (K.dirEtat === "ok" && !K.pret) { await lireDossierAvantDemarrage(); await copiesDuDossierAuDemarrage(); }
+  UI.ouvrirReglages();
+}
 async function lireDossierAvantDemarrage() {
   try {
     const c = [];
@@ -743,7 +824,8 @@ async function demarrer() {
   K.seq = Math.max(K.seq, ...K.journal.flatMap(e => (e.actions || []).flatMap(a => (a[0] === "AddRecord" ? [a[2]] : a[0] === "BulkAddRecord" ? a[2] : [])))
     .filter(id => id >= BASE_HORS_LIGNE + K.posteNum * PAR_POSTE && id < BASE_HORS_LIGNE + (K.posteNum + 1) * PAR_POSTE).map(id => id - BASE_HORS_LIGNE - K.posteNum * PAR_POSTE));
   for (const [f, d] of (await BD.lire("kv", "autres")) || []) K.autres.set(f, d);
-  if (FS_OK) { const h = await BD.lire("kv", "dossier"); if (h) { K.dir = h; await connecterDossier(false); if (K.dirEtat === "ok") await lireDossierAvantDemarrage(); } }
+  K.complement = (await BD.lire("base", "complement")) || null;
+  if (FS_OK) { const h = await BD.lire("kv", "dossier"); if (h) { K.dir = h; await connecterDossier(false); if (K.dirEtat === "ok") { await lireDossierAvantDemarrage(); await copiesDuDossierAuDemarrage(); } } }
   else K.dirEtat = "aucun";
   if (!K.agent || !K.base || !K.page) { trace("Réglages à compléter avant la saisie"); UI.ouvrirReglages(); return; }
   const t0 = performance.now();
@@ -757,7 +839,7 @@ async function demarrer() {
   document.addEventListener("visibilitychange", () => { if (!document.hidden) tic(); });
 }
 // pour les essais automatisés
-window.__KIT__ = { K, pret, connecter: async h => { K.dir = h; await BD.ecrire("kv", h, "dossier").catch(() => {}); return connecterDossier(false); }, lireDossier, lireCopie, importerJournaux, exporterCSV, BASE_HORS_LIGNE };
+window.__KIT__ = { K, pret, tic, connecter: async h => { K.dir = h; await BD.ecrire("kv", h, "dossier").catch(() => {}); const r = await connecterDossier(false); if (!K.pret) await apresChoixDossier(); return r; }, lireDossier, lireCopie, importerJournaux, exporterCSV, BASE_HORS_LIGNE };
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", demarrer); else demarrer();
 })();

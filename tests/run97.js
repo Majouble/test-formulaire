@@ -1,6 +1,8 @@
 // Mode secours : kit hors ligne (v2/secours/kit-secours.html) sur deux postes reliés par un dossier partagé
 // (simulé sur disque), saisie et mise à jour croisées, rechargement, exports ; puis réintégration dans Grist
 // (v2/reintegration/) : numéros et références remappés, heure de saisie gardée, second passage sans doublon.
+// Copies en couches : complément (réponses de Grist et Config « secours ») déposé dans le dossier, saisies déjà
+// réintégrées écartées ; nouveau poste qui prend d'office la base et le complément du dossier.
 // Prérequis : node ../outils/construire-secours.js
 const __C = require('./chemins');
 const { chromium } = require('playwright'); const fs = require('fs'), path = require('path');
@@ -8,7 +10,7 @@ const { docSites } = require('./run78');
 const KIT = 'file://' + __C.racine + '/v2/secours/kit-secours.html';
 const PARTAGE = path.join(__C.sorties, 'secours-partage'); fs.rmSync(PARTAGE, { recursive: true, force: true }); fs.mkdirSync(PARTAGE, { recursive: true });
 
-async function poste(browser, nom, pageIdx) {
+async function poste(browser, nom, pageIdx, source = 'demo') {
   const ctx = await browser.newContext({ viewport: { width: 1200, height: 1300 }, acceptDownloads: true });
   const page = await ctx.newPage();
   page.on('pageerror', e => console.log(`[${nom}] PAGEERROR`, e.message)); page.on('dialog', d => d.accept());
@@ -27,7 +29,9 @@ async function poste(browser, nom, pageIdx) {
   await page.goto(KIT); await page.waitForTimeout(700);
   console.log(`[${nom}] fenêtre :`, await page.textContent('#kit-secours h2'));
   await page.fill('#kit-secours #agent', nom); await page.locator('#kit-secours #agent').dispatchEvent('change');
-  await page.click('#kit-secours [data-a=demo]'); await page.waitForTimeout(300);
+  if (source === 'demo') { await page.click('#kit-secours [data-a=demo]'); await page.waitForTimeout(300); }
+  else { await page.evaluate(() => window.__KIT__.connecter(window.__dossierSimule('partage'))); await page.waitForTimeout(800);
+    console.log(`[${nom}] copies prises d'office :`, (await page.innerText('#kit-secours section:nth-of-type(3)')).replace(/\s+/g, ' ').slice(0, 260)); }
   console.log(`[${nom}] pages :`, (await page.$$eval('#kit-secours #page option', l => l.map(o => o.textContent))).join(' | '));
   await page.selectOption('#kit-secours #page', { index: pageIdx });
   await Promise.all([page.waitForNavigation(), page.click('#kit-secours [data-a=commencer]')]); await page.waitForTimeout(1300);
@@ -82,5 +86,19 @@ const cartes = page => page.$$eval('#cartes-signalements li', l => l.map(x => x.
   await R.setInputFiles('#fichiers', consolide); await R.waitForTimeout(400);
   console.log('[Grist] second passage :', (await R.innerText('#resume')).replace(/\s+/g, ' '));
   await R.screenshot({ path: path.join(__C.sorties, 'reintegration.png'), fullPage: true });
+  // copies en couches : base (document d'avant la panne, ancienne) et complément (Grist après la réintégration)
+  fs.writeFileSync(path.join(PARTAGE, 'instantane-base.json'), JSON.stringify({ format: 'kit-secours-instantane', version: 1,
+    tables: Object.fromEntries([...Object.entries(doc).filter(([k]) => k.startsWith('_grist_')), ...Object.entries(docSites().__data)]) }));
+  const ilYa = (Date.now() - 3600e3) / 1000; fs.utimesSync(path.join(PARTAGE, 'instantane-base.json'), ilYa, ilYa);
+  const D = await R.evaluate(() => window.__DOC__.__data);
+  fs.writeFileSync(path.join(PARTAGE, 'instantane-dossiers.json'), JSON.stringify({ format: 'kit-secours-instantane', version: 1, complement: true, genere_le: new Date().toISOString(),
+    tables: { Reponses: D.Reponses, Sites_signales: { records: D.Sites_signales.id.map((id, i) => ({ id, fields: Object.fromEntries(Object.keys(D.Sites_signales).filter(c => c !== 'id').map(c => [c, D.Sites_signales[c][i]])) })) }, Config: D.Config } }));
+  await A.evaluate(() => window.__KIT__.tic()); await A.waitForTimeout(800);
+  const etat = p => p.evaluate(() => { const K = window.__KIT__.K, t = K.doc.Reponses; return JSON.stringify({ lignesSecours: t.id.filter(i => i >= 1e12).length, reintegrees: K.reintegrees.size, saisieAlice: t.Description.filter(d => d === 'Saisie en mode secours par Alice').length, sitesDossier8: K.doc.Sites_signales.Dossier.filter(d => d === 8).length }); });
+  console.log('[A] après le complément :', await etat(A));
+  console.log('[A] bandeau :', (await A.textContent('#kit-secours .barre')).replace(/\s+/g, ' ').trim());
+  // poste C : rien de chargé à la main, base et complément pris dans le dossier
+  const Cl = await poste(browser, 'Claire Petit', 2, 'dossier');
+  console.log('[C] état :', await etat(Cl), '| signalements :', (await cartes(Cl)).length);
   await browser.close();
 })();
