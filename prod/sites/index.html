@@ -10,6 +10,7 @@
 <script src="../commun/socle.js"></script>
 <script src="../commun/fiche-etab.js"></script>
 <script src="../commun/qualite-moteur.js"></script>
+<script src="../admin/sites.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
@@ -76,6 +77,23 @@
   .cand.deja { opacity: .65; }
   .cand .actions { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
   .vide { color: var(--muted); font-style: italic; }
+  /* « Corriger les saisies » : modes et rapprochement de tous les établissements (admin/sites.js) */
+  .sx-modes { display: flex; gap: 0; margin: 4px 0 10px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; width: fit-content; max-width: 100%; }
+  .sx-modes button { border: 0; border-radius: 0; background: transparent; padding: 5px 12px; }
+  .sx-modes button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  :root[data-theme="dark"] .sx-modes button[aria-pressed="true"] { color: #11112a; }
+  .sites-outils { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin: 8px 0; }
+  .sites-outils label { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; }
+  .sites-outils select { max-width: 260px; }
+  .boutons { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+  .sites-defile { max-height: 60vh; overflow: auto; border-top: 1px solid var(--line); }
+  .sites-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .sites-table th, .sites-table td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .sites-table th { position: sticky; top: 0; background: var(--bg, #fff); }
+  .sites-table select { max-width: 100%; width: 100%; }
+  details.aide { margin: 4px 0; } details.aide summary { cursor: pointer; }
+  .pastille.reco { background: var(--soft); color: var(--accent); }
+  .pastille.manque { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
   .leaflet-container { background: var(--soft); font: inherit; }
   .popup-ajout input { width: 220px; margin: 4px 0; }
   .version { color: var(--muted); font-size: 11px; }
@@ -944,15 +962,30 @@ async function analyserSaisies() {
   }).sort((a, b) => (!!a.relie - !!b.relie) || b.lignes.length - a.lignes.length);
   return { meta, sources, src, refCol, groupes: liste, nbRelies };
 }
+/* deux modes : l'établissement choisi (rattachement par lot ci-dessous), ou tous les établissements (rapprochement des
+   libellés saisis avec site proposé, comme dans l'administration > Référentiel : admin/sites.js en mode compact) */
+let sxMode = "etab";
+try { if (localStorage.getItem("socle-v2-sites-mode") === "tous") sxMode = "tous"; } catch (_) { /* stockage indisponible */ }
 async function afficherSaisies() {
-  const z = $("vue-saisies");
+  const v = $("vue-saisies");
+  if (!$("sx-corps")) {
+    v.innerHTML = `<div class="sx-modes" role="group" aria-label="Saisies à corriger"><button type="button" data-sx-mode="etab">Établissement choisi</button><button type="button" data-sx-mode="tous">Tous les établissements</button></div><div id="sx-corps"></div>`;
+    v.querySelectorAll("[data-sx-mode]").forEach(b => b.addEventListener("click", () => { sxMode = b.dataset.sxMode; try { localStorage.setItem("socle-v2-sites-mode", sxMode); } catch (_) { /* stockage indisponible */ } afficherSaisies(); }));
+  }
+  v.querySelectorAll("[data-sx-mode]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.sxMode === sxMode)));
+  const z = $("sx-corps");
+  if (sxMode === "tous") {
+    if (!window.OngletSitesESR) { z.innerHTML = `<p class="statut err">Module de rapprochement absent (admin/sites.js).</p>`; return; }
+    await window.OngletSitesESR.afficher({ racine: z, compact: true, apresEcriture: async () => { await lireDonnees(); if (choisi) choisi = etabDe(choisi.id) || choisi; } });
+    return;
+  }
   if (!choisi) { z.innerHTML = `<p class="aide">Choisissez d'abord un établissement (onglet « Établissements et sites »).</p>`; return; }
   z.innerHTML = `<p class="aide">Lecture des saisies…</p>`;
   try { sx = await analyserSaisies(); } catch (err) { z.innerHTML = `<p class="statut err">Lecture impossible : ${esc(err.message || err)}</p>`; return; }
   dessinerSaisies();
 }
 function dessinerSaisies() {
-  const z = $("vue-saisies"), e = choisi, lesSites = sitesDe(e).filter(x => x.actif);
+  const z = $("sx-corps"), e = choisi, lesSites = sitesDe(e).filter(x => x.actif);
   const nomSite = id => (sites.find(x => x.id === id) || {}).nom || `site ${id}`;
   if (!sx.src) { z.innerHTML = `<div class="fiche"><strong>${esc(e.nom)}</strong></div><p class="vide">Aucune colonne de sites saisis en texte (sous-table d'une question tableau, ou colonne « site » de la table des réponses).</p>`; return; }
   for (const k of [...sxCoches]) if (!sx.groupes.some(g => g.cle === k)) sxCoches.delete(k);

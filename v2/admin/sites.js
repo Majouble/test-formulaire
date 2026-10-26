@@ -4,13 +4,16 @@
    Rapprochement des sites saisis en texte libre (anciens formulaires, « site hors référentiel ») avec le référentiel
    des sites stabilisé (export OAD, sites ajoutés à la main) :
    - source : une colonne texte de sites (sous-table d'une question tableau, rattachée au signalement par Dossier, ou
-     colonne de la table des réponses) ; établissement lu sur le signalement ;
+     colonne de la table des réponses), ou une colonne référence vers le référentiel des sites dont des cellules gardent
+     un ancien nom (référence non résolue, en rouge dans Grist) ; établissement lu sur le signalement ;
    - libellés regroupés par établissement (sans accents, casse ni ponctuation), avec leur nombre d'occurrences ;
    - site proposé parmi les sites de l'établissement (mots communs, « campus », « site », « bât. » ignorés) ;
    - validation : table Sites_correspondances (Etablissement, Libelle, Site, Occurrences, Statut = Validé / Écarté),
      lue par le widget de saisie (reprise du dernier état connu de chaque site) ;
    - « Compléter les saisies » : renseigne le site du référentiel sur les lignes des tableaux de sites qui n'ont qu'un
-     libellé validé.
+     libellé validé ; dans une colonne référence aux sites, l'ancien nom est remplacé par le site (même colonne).
+   Aussi affiché dans le widget « Référentiel des sites » (onglet « Corriger les saisies », tous les établissements) :
+   OngletSitesESR.afficher({ racine, compact: true, apresEcriture }) — sans fiche d'établissement ni mots-clés.
    ===================================================================== */
 (function () {
   "use strict";
@@ -22,8 +25,10 @@
   const VIDES = new Set(["campus", "site", "sites", "bat", "bati", "batiment", "batiments", "de", "du", "des", "la", "le", "les", "l", "d", "et", "a", "au", "aux", "sur", "en", "universite", "univ", "pole", "rue", "avenue", "av", "bd", "boulevard"]);
   const mots = s => new Set(norm(s).replace(/[^a-z0-9]+/g, " ").split(" ").filter(w => w.length > 1 && !VIDES.has(w)));
   const TABLE_ALIAS = "Sites_correspondances";
+  // ancien nom d'une référence non résolue : texte gardé par Grist dans la cellule
+  const texteDe = v => typeof v === "string" ? v : Array.isArray(v) && typeof v[v.length - 1] === "string" ? v[v.length - 1] : "";
 
-  let racine = null, meta = null, etat = null, filtre = "a_traiter", choixSource = "", choixRef = "", choixEtabMc = "";
+  let racine = null, opts = {}, meta = null, etat = null, filtre = "a_traiter", choixSource = "", choixRef = "", choixEtabMc = "";
   try { const p = JSON.parse(localStorage.getItem("socle-v2-sites") || "{}"); choixSource = p.source || ""; choixRef = p.ref || ""; } catch (_) { /* stockage indisponible */ }
   const memoriser = () => { try { localStorage.setItem("socle-v2-sites", JSON.stringify({ source: choixSource, ref: choixRef })); } catch (_) { /* stockage indisponible */ } };
 
@@ -31,21 +36,7 @@
   function contexte(config) {
     const g = S.general(config), reps = S.espaces(g).map(e => e.reponses).filter(t => meta[t]);
     const etabDe = rep => { const c = Object.values(meta[rep].colonnes).find(x => x.colId === "Etablissement") || null; return c ? { col: c.colId, table: S.cibleRef(c.type) } : null; };
-    const sources = [];
-    for (const rep of reps) {
-      const e = etabDe(rep); if (!e) continue;
-      // colonnes texte de sites dans la table des réponses
-      Object.values(meta[rep].colonnes).filter(c => /^Text/.test(c.type) && !c.isFormula && /site|batiment|campus/i.test(c.colId) && !/detail|json/i.test(c.colId))
-        .forEach(c => sources.push({ cle: `${rep}.${c.colId}`, libelle: `${rep} › ${c.label || c.colId}`, table: rep, col: c.colId, rep, viaDossier: null, etab: e }));
-      // sous-tables rattachées aux réponses (question tableau) : colonnes texte de nom de site
-      for (const [t, tm] of Object.entries(meta)) {
-        if (t === rep || t.startsWith("_grist")) continue;
-        const d = Object.values(tm.colonnes).find(c => c.type === `Ref:${rep}` && c.colId !== "Version"); if (!d) continue;
-        Object.values(tm.colonnes).filter(c => /^Text/.test(c.type) && !c.isFormula && /site|nom|libre|batiment/i.test(c.colId) && !/^Dossier_|Ligne_id/.test(c.colId))
-          .forEach(c => sources.push({ cle: `${t}.${c.colId}`, libelle: `${t} › ${c.label || c.colId}`, table: t, col: c.colId, rep, viaDossier: d.colId, etab: e }));
-      }
-    }
-    const etabTables = new Set(sources.map(s => s.etab.table));
+    const etabTables = new Set(reps.map(etabDe).filter(Boolean).map(e => e.table));
     const refs = Object.entries(meta).filter(([t, tm]) => !t.startsWith("_grist") && !reps.includes(t) && t !== TABLE_ALIAS
       && Object.values(tm.colonnes).some(c => etabTables.has(S.cibleRef(c.type))) && !Object.values(tm.colonnes).some(c => reps.includes(S.cibleRef(c.type))))
       .map(([t, tm]) => ({ table: t, etabCol: Object.values(tm.colonnes).find(c => etabTables.has(S.cibleRef(c.type))).colId,
@@ -53,19 +44,48 @@
         autresCol: (Object.values(tm.colonnes).find(c => /^autres?_noms?|alias|noms_saisis/i.test(c.colId) && /^Text/.test(c.type)) || {}).colId || null,
         motsCol: (Object.values(tm.colonnes).find(c => /^mots?_?cles?$/i.test(c.colId) && /^Text/.test(c.type)) || {}).colId || null }))
       .filter(r => r.nomCol).sort((a, b) => (/site/i.test(b.table) ? 1 : 0) - (/site/i.test(a.table) ? 1 : 0));
+    // colonnes de sites saisis : texte, ou référence vers un référentiel des sites (anciens noms restés en texte)
+    const tRefs = new Set(refs.map(r => r.table)), versSites = c => /^Ref:/.test(c.type) && tRefs.has(S.cibleRef(c.type));
+    const sources = [];
+    const ajouter = (t, c, rep, viaDossier, e) => sources.push({ cle: `${t}.${c.colId}`, libelle: `${t} › ${c.label || c.colId}${versSites(c) ? " (référence aux sites)" : ""}`,
+      table: t, col: c.colId, rep, viaDossier, etab: e, estRef: versSites(c), cible: versSites(c) ? S.cibleRef(c.type) : null });
+    for (const rep of reps) {
+      const e = etabDe(rep); if (!e) continue;
+      // colonnes de sites dans la table des réponses
+      Object.values(meta[rep].colonnes).filter(c => (/^Text/.test(c.type) || versSites(c)) && !c.isFormula && /site|batiment|campus/i.test(`${c.colId} ${c.label || ""}`) && !/detail|json/i.test(c.colId))
+        .forEach(c => ajouter(rep, c, rep, null, e));
+      // sous-tables rattachées aux réponses (question tableau) : colonnes de nom de site
+      for (const [t, tm] of Object.entries(meta)) {
+        if (t === rep || t.startsWith("_grist")) continue;
+        const d = Object.values(tm.colonnes).find(c => c.type === `Ref:${rep}` && c.colId === "Dossier") || Object.values(tm.colonnes).find(c => c.type === `Ref:${rep}` && c.colId !== "Version"); if (!d) continue;
+        Object.values(tm.colonnes).filter(c => (/^Text/.test(c.type) || versSites(c)) && !c.isFormula && /site|nom|libre|batiment/i.test(`${c.colId} ${c.label || ""}`) && !/^Dossier_|Ligne_id/.test(c.colId))
+          .forEach(c => ajouter(t, c, rep, d.colId, e));
+      }
+    }
+    // colonne référence aux sites d'abord : elle garde les anciens noms tant qu'ils ne sont pas rattachés
+    sources.sort((a, b) => (b.estRef ? 1 : 0) - (a.estRef ? 1 : 0));
     return { sources, refs };
   }
 
   async function analyser(config) {
     meta = await S.lireMeta();
     const ctx = contexte(config);
-    const source = ctx.sources.find(s => s.cle === choixSource) || ctx.sources.find(s => /libre|nom_du_site/i.test(s.col)) || ctx.sources[0] || null;
-    const ref = ctx.refs.find(r => r.table === choixRef) || ctx.refs[0] || null;
+    // nombre de lignes à rattacher par colonne (texte saisi ; ancien nom dans une colonne référence) : affiché dans la liste,
+    // et première colonne qui en a, par défaut
+    const tables = new Map();
+    for (const x of ctx.sources) {
+      try { if (!tables.has(x.table)) tables.set(x.table, await grist.docApi.fetchTable(x.table));
+        x.nb = (tables.get(x.table)[x.col] || []).filter(v => (x.estRef ? typeof v !== "number" && texteDe(v).trim() : String(v ?? "").trim())).length; } catch (_) { x.nb = 0; }
+      x.libelle = x.libelle.replace(/ — \d+ à rattacher$/, "") + (x.nb ? ` — ${x.nb} à rattacher` : "");
+    }
+    const source = ctx.sources.find(s => s.cle === choixSource) || ctx.sources.find(s => s.nb && s.estRef) || ctx.sources.find(s => s.nb && /libre|nom_du_site/i.test(s.col)) || ctx.sources.find(s => s.nb) || ctx.sources[0] || null;
+    // colonne référence : son référentiel des sites, d'office
+    const ref = (source && source.estRef && ctx.refs.find(r => r.table === source.cible)) || ctx.refs.find(r => r.table === choixRef) || ctx.refs[0] || null;
     const mc = ref ? await chargerMotsCles(ref) : null;
     // référentiel des établissements : celui du référentiel des sites, sinon celui du champ ESR, sinon le premier
     const g = S.general(config), esp = S.espaces(g);
     const tEtab = (ref && S.cibleRef(meta[ref.table].colonnes[ref.etabCol].type)) || (esp.find(e => e.champ === "ESR" && meta[e.referentiel]) || esp.find(e => meta[e.referentiel]) || {}).referentiel || null;
-    const fe = tEtab ? await chargerFiche(tEtab) : null;
+    const fe = tEtab && !opts.compact ? await chargerFiche(tEtab) : null;
     if (!source || !ref) return { ctx, source, ref, groupes: [], mc, fe };
     const [ts, trep, tref, talias] = await Promise.all([grist.docApi.fetchTable(source.table), grist.docApi.fetchTable(source.rep), grist.docApi.fetchTable(ref.table),
       meta[TABLE_ALIAS] ? grist.docApi.fetchTable(TABLE_ALIAS) : null]);
@@ -85,7 +105,9 @@
     // libellés saisis, regroupés par établissement
     const groupes = new Map();
     ts.id.forEach((id, i) => {
-      const lib = String(ts[source.col][i] ?? "").trim(); if (!lib) return;
+      const v = ts[source.col][i];
+      if (source.estRef && typeof v === "number") return;   // déjà rattaché à un site du référentiel
+      const lib = String(source.estRef ? texteDe(v) : (v ?? "")).trim(); if (!lib) return;
       const e = source.viaDossier ? etabRep(refId(ts[source.viaDossier][i])) : refId(ts[source.etab.col][i]); if (!e) return;
       const k = `${e}|${norm(lib)}`;
       if (!groupes.has(k)) groupes.set(k, { cle: k, etab: e, libelle: lib, n: 0 });
@@ -185,17 +207,17 @@
   /* ---------- rendu ---------- */
   function dessiner() {
     if (!racine) return;
-    if (!etat) { racine.innerHTML = `<h2>Sites de l'enseignement supérieur</h2><p class="aide">Analyse des sites saisis…</p>`; return; }
+    if (!etat) { racine.innerHTML = `${opts.compact ? "" : "<h2>Sites de l'enseignement supérieur</h2>"}<p class="aide">Analyse des sites saisis…</p>`; return; }
     const { ctx, source, ref } = etat;
     const statutDe = gp => gp.alias ? (/cart/i.test(gp.alias.statut) ? "ecarte" : /valid/i.test(gp.alias.statut) ? "valide" : "a_traiter") : "a_traiter";
     const visibles = etat.groupes.filter(gp => filtre === "tous" || statutDe(gp) === filtre);
     const n = k => etat.groupes.filter(gp => statutDe(gp) === k).length;
-    racine.innerHTML = `<h2>Sites de l'enseignement supérieur : rapprochement des libellés saisis</h2>
-      <p class="aide">Les sites saisis en texte libre (anciens formulaires, « site hors référentiel ») sont rattachés à un site du référentiel stabilisé. Les correspondances validées
-        (table ${TABLE_ALIAS}) servent à la reprise du dernier état connu de chaque site dans le formulaire par site, et à compléter les saisies.
+    racine.innerHTML = `${opts.compact ? "" : "<h2>Sites de l'enseignement supérieur : rapprochement des libellés saisis</h2>"}
+      ${opts.compact ? `<details class="aide"><summary>Comment ça marche</summary>` : ""}<p class="aide">Les sites saisis en texte libre (anciens formulaires, « site hors référentiel ») ou restés en ancien nom dans une colonne référence aux sites (cellule rouge dans Grist) sont rattachés à un site du référentiel stabilisé. Les correspondances validées
+        (table ${TABLE_ALIAS}) servent à la reprise du dernier état connu de chaque site dans le formulaire par site, et à compléter les saisies (dans une colonne référence, l'ancien nom est remplacé par le site).
         Un site saisi qui manque au référentiel y entre par « + Nouveau site du référentiel » (nom modifiable), ou en cochant les lignes puis « Créer les sites cochés dans le référentiel » :
-        le site est créé pour l'établissement, la correspondance validée et les saisies complétées.</p>
-      ${!ctx.sources.length ? `<p class="vide">Aucune colonne de sites saisis en texte libre n'a été trouvée (sous-table d'une question tableau ou colonne « site » de la table des réponses).</p>`
+        le site est créé pour l'établissement, la correspondance validée et les saisies complétées.</p>${opts.compact ? "</details>" : ""}
+      ${!ctx.sources.length ? `<p class="vide">Aucune colonne de sites saisis n'a été trouvée (colonne texte ou référence aux sites, dans une sous-table d'une question tableau ou dans la table des réponses).</p>`
         : !ctx.refs.length ? `<p class="vide">Aucun référentiel des sites : une table dont une colonne renvoie vers le référentiel des établissements (le modèle de formulaire « Enseignement supérieur par site » la crée).</p>` : `
       <div class="sites-outils">
         <label>Libellés saisis <select id="si-source">${ctx.sources.map(s => `<option value="${esc(s.cle)}"${source && s.cle === source.cle ? " selected" : ""}>${esc(s.libelle)}</option>`).join("")}</select></label>
@@ -206,19 +228,18 @@
         <button class="primaire" id="si-valider">Valider la sélection</button>
         <button class="secondaire" id="si-ecarter">Écarter la sélection</button>
         <button class="secondaire" id="si-creer" title="Pour chaque ligne cochée sans site choisi : crée le site dans le référentiel (nom saisi), valide la correspondance et complète les saisies">Créer les sites cochés dans le référentiel</button>
-        <button class="secondaire" id="si-completer" title="Renseigne le site du référentiel sur les lignes des tableaux de sites qui n'ont qu'un libellé validé">Compléter les saisies</button>
+        <button class="secondaire" id="si-completer" title="Renseigne le site du référentiel sur les lignes qui n'ont qu'un libellé validé (tableaux de sites, colonnes référence aux sites restées en ancien nom)">Compléter les saisies</button>
         <span class="statut" id="si-statut" role="status"></span></div>
-      ${visibles.length ? `<div class="sites-defile"><table class="sites-table"><thead><tr><th><input type="checkbox" id="si-tout" aria-label="Tout sélectionner"></th><th>Établissement</th><th>Libellé saisi</th><th>Site du référentiel</th><th>Statut</th></tr></thead><tbody>
+      ${visibles.length ? `<div class="sites-defile"><table class="sites-table"><thead><tr><th><input type="checkbox" id="si-tout" aria-label="Tout sélectionner"></th>${opts.compact ? "" : "<th>Établissement</th>"}<th>Libellé saisi</th><th>Site du référentiel</th>${opts.compact ? "" : "<th>Statut</th>"}</tr></thead><tbody>
         ${visibles.map(gp => `<tr data-cle="${esc(gp.cle)}"><td><input type="checkbox" class="si-coche"${statutDe(gp) === "a_traiter" && gp.propose ? " checked" : ""}></td>
-          <td>${esc(gp.nomEtab)}</td><td><strong>${esc(gp.libelle)}</strong> <span class="aide">× ${gp.n}</span></td>
+          ${opts.compact ? "" : `<td>${esc(gp.nomEtab)}</td>`}<td>${opts.compact ? `<div class="aide">${esc(gp.nomEtab)}</div>` : ""}<strong>${esc(gp.libelle)}</strong> <span class="aide">× ${gp.n}</span>${source.estRef ? ` <span class="pastille manque" title="Référence non résolue : ancien nom gardé en texte dans la cellule">ancien nom</span>` : ""}</td>
           <td><select class="si-site"><option value="">— aucun (hors référentiel)</option>${gp.sites.map(s => `<option value="${s.id}"${s.id === gp.propose ? " selected" : ""}>${esc(s.nom)}</option>`).join("")}<option value="nouveau">+ Nouveau site du référentiel</option></select>
             <input type="text" class="si-nouveau" value="${esc(gp.libelle)}" aria-label="Nom du nouveau site" title="Nom du site créé dans le référentiel" hidden style="width:220px">
-            ${!gp.alias && gp.propose ? ` <span class="pastille reco">proposé</span>` : ""}${!gp.sites.length ? ` <span class="aide">aucun site de cet établissement au référentiel</span>` : ""}</td>
-          <td>${statutDe(gp) === "valide" ? `<span class="pastille ok">validé</span>` : statutDe(gp) === "ecarte" ? `<span class="pastille">écarté</span>` : `<span class="pastille manque">à traiter</span>`}</td></tr>`).join("")}
+            ${!gp.alias && gp.propose ? ` <span class="pastille reco">proposé</span>` : ""}${!gp.sites.length ? ` <span class="aide">aucun site de cet établissement au référentiel</span>` : ""}
+          ${opts.compact ? "" : "</td><td>"}${statutDe(gp) === "valide" ? ` <span class="pastille ok">validé</span>` : statutDe(gp) === "ecarte" ? ` <span class="pastille">écarté</span>` : opts.compact ? "" : `<span class="pastille manque">à traiter</span>`}</td></tr>`).join("")}
       </tbody></table></div>` : `<p class="vide">Rien ${filtre === "a_traiter" ? "à traiter" : "à afficher"}.</p>`}`}
-      ${ficheHtml(etat.fe)}
-      ${motsClesHtml(etat.mc)}`;
-    lier(); lierFiche(); lierMotsCles();
+      ${opts.compact ? "" : ficheHtml(etat.fe) + motsClesHtml(etat.mc)}`;
+    lier(); if (!opts.compact) { lierFiche(); lierMotsCles(); }
   }
   const dire = (t, err) => { const s = $("si-statut"); if (s) { s.textContent = t; s.className = `statut${err ? " err" : " ok"}`; } };
   function lier() {
@@ -230,7 +251,8 @@
     racine.querySelectorAll(".si-site").forEach(s => s.addEventListener("change", () => { const tr = s.closest("tr"); tr.querySelector(".si-coche").checked = true;
       const n = tr.querySelector(".si-nouveau"); n.hidden = s.value !== "nouveau"; if (!n.hidden) n.focus(); }));
     const b = (id, f) => { const e = $(id); if (e) e.addEventListener("click", f); };
-    b("si-valider", () => ecrire("Validé")); b("si-ecarter", () => ecrire("Écarté")); b("si-completer", () => completer());
+    b("si-valider", () => ecrire("Validé")); b("si-ecarter", () => ecrire("Écarté"));
+    b("si-completer", async () => { const n = await completer(); if (n) { await relancer(); dire(`${n} ligne(s) de saisie complétée(s) avec le site du référentiel.`); if (opts.apresEcriture) await opts.apresEcriture(); } });
     b("si-creer", () => {   // lignes cochées sans site : nouveau site, nom = libellé saisi (modifiable avant)
       const l = [...racine.querySelectorAll("tbody tr")].filter(tr => tr.querySelector(".si-coche").checked);
       if (!l.length) { dire("Cochez les lignes dont le site doit entrer dans le référentiel.", true); return; }
@@ -292,10 +314,12 @@
         acts.push(gp.alias ? ["UpdateRecord", TABLE_ALIAS, gp.alias.id, f] : ["AddRecord", TABLE_ALIAS, null, f]);
       }
       for (let k = 0; k < acts.length; k += 400) await grist.docApi.applyUserActions(acts.slice(k, k + 400));
-      // sites créés : les lignes des tableaux de sites qui portent ces libellés renvoient aussitôt vers eux
-      const nCompletees = crees.size ? await completer(true) : 0;
+      // correspondances validées : les lignes qui portent ces libellés renvoient aussitôt vers leur site
+      // (tableaux de sites ; colonne référence aux sites : l'ancien nom est remplacé par le site)
+      const nCompletees = statut === "Validé" ? await completer(true) : 0;
       await relancer();
-      dire(`${acts.length} correspondance(s) ${statut === "Validé" ? "validée(s)" : "écartée(s)"}${crees.size ? `, ${crees.size} site(s) créé(s) dans le référentiel, ${nCompletees} ligne(s) de saisie complétée(s)` : ""}.${sansSite ? ` ${sansSite} ligne(s) sans site choisi, laissée(s) de côté.` : ""}`);
+      if (opts.apresEcriture) await opts.apresEcriture();
+      dire(`${acts.length} correspondance(s) ${statut === "Validé" ? "validée(s)" : "écartée(s)"}${crees.size ? `, ${crees.size} site(s) créé(s) dans le référentiel` : ""}${statut === "Validé" ? `, ${nCompletees} ligne(s) de saisie complétée(s)` : ""}.${sansSite ? ` ${sansSite} ligne(s) sans site choisi, laissée(s) de côté.` : ""}`);
     } catch (e) { dire(`Écriture refusée par Grist (${e.message || e}).`, true); }
   }
   // lignes des tableaux de sites (formulaires publiés) : site vide, libellé validé → site du référentiel
@@ -305,7 +329,11 @@
       const reglages = [];
       tf.id.forEach((_, i) => { let c = null; try { c = JSON.parse(tf.Publie[i] || "null"); } catch (_) { c = null; }
         ((c && c.blocs) || []).forEach(b => { const t = b.reglages && b.reglages.tableau; if (t && t.table && t.sites && t.sites.site && t.sites.libre) reglages.push({ rep: tf.Table[i], ...t }); }); });
-      if (!reglages.length) { if (!silencieux) dire("Aucun tableau de sites dans les formulaires publiés.", true); return 0; }
+      // colonnes référence aux sites (même référentiel que la table des correspondances) : anciens noms à remplacer
+      const tSitesAlias = meta[TABLE_ALIAS] && meta[TABLE_ALIAS].colonnes.Site ? S.cibleRef(meta[TABLE_ALIAS].colonnes.Site.type) : null;
+      const sourcesRef = contexte(cfg).sources.filter(x => x.estRef && x.cible === tSitesAlias);
+      if (!reglages.length && !sourcesRef.length) { if (!silencieux) dire("Aucun tableau de sites dans les formulaires publiés, ni colonne référence aux sites.", true); return 0; }
+      if (!meta[TABLE_ALIAS]) { if (!silencieux) dire("Aucune correspondance validée pour l'instant.", true); return 0; }
       const talias = await grist.docApi.fetchTable(TABLE_ALIAS), alias = new Map();
       talias.id.forEach((_, i) => { if (/valid/i.test(String(talias.Statut[i] || "")) && refId(talias.Site[i])) alias.set(`${refId(talias.Etablissement[i]) || 0}|${norm(talias.Libelle[i])}`, refId(talias.Site[i])); });
       let n = 0;
@@ -322,17 +350,29 @@
         for (let k = 0; k < acts.length; k += 400) await grist.docApi.applyUserActions(acts.slice(k, k + 400));
         n += acts.length;
       }
-      if (!silencieux) dire(`${n} ligne(s) de tableaux de sites complétée(s) avec le site du référentiel.`);
+      for (const src of sourcesRef) {
+        const ts = await grist.docApi.fetchTable(src.table), trep = src.viaDossier ? await grist.docApi.fetchTable(src.rep) : ts, idx = new Map(trep.id.map((id, i) => [id, i]));
+        const acts = [];
+        ts.id.forEach((id, i) => {
+          const v = ts[src.col][i]; if (typeof v === "number") return;
+          const lib = texteDe(v).trim(); if (!lib) return;
+          const k = src.viaDossier ? idx.get(refId(ts[src.viaDossier][i])) : i, e = k === undefined ? null : refId(trep[src.etab.col][k]);
+          const s = alias.get(`${e || 0}|${norm(lib)}`); if (s) acts.push(["UpdateRecord", src.table, id, { [src.col]: s }]);
+        });
+        for (let k = 0; k < acts.length; k += 400) await grist.docApi.applyUserActions(acts.slice(k, k + 400));
+        n += acts.length;
+      }
+      if (!silencieux) dire(`${n} ligne(s) de saisie complétée(s) avec le site du référentiel.`);
       return n;
     } catch (e) { if (!silencieux) dire(`Échec : ${e.message || e}`, true); return 0; }
   }
 
   async function relancer() {
-    try { const cfg = await S.lireConfig(); etat = cfg ? await analyser(cfg) : null; } catch (e) { etat = null; racine.innerHTML = `<h2>Sites de l'enseignement supérieur</h2><p class="statut err">Analyse impossible : ${esc(e.message || e)}</p>`; return; }
+    try { const cfg = await S.lireConfig(); etat = cfg ? await analyser(cfg) : null; } catch (e) { etat = null; racine.innerHTML = `${opts.compact ? "" : "<h2>Sites de l'enseignement supérieur</h2>"}<p class="statut err">Analyse impossible : ${esc(e.message || e)}</p>`; return; }
     dessiner();
   }
-  async function afficher() {
-    racine = $("ref-sites"); if (!racine) return;
+  async function afficher(o) {
+    opts = o || {}; racine = opts.racine || $("ref-sites"); if (!racine) return;
     etat = null; dessiner(); await relancer();
   }
   window.OngletSitesESR = { afficher };
