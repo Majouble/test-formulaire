@@ -39,25 +39,36 @@ async function poste(browser, nom, pageIdx, source = 'demo') {
   console.log(`[${nom}] bandeau :`, (await page.textContent('#kit-secours .barre')).replace(/\s+/g, ' ').trim());
   return page;
 }
-const cartes = page => page.$$eval('#cartes-signalements li', l => l.map(x => x.innerText.replace(/\s+/g, ' ').trim().slice(0, 90)));
+// chaque widget tourne dans son cadre (saisie, tableau de bord, tableau des signalements)
+const W = (page, vue = 'saisie') => page.frameLocator(`iframe[data-vue=${vue}]`);
+const cartes = async page => (await W(page).locator('#cartes-signalements li').allInnerTexts()).map(x => x.replace(/\s+/g, ' ').trim().slice(0, 90));
 
 (async () => {
   const browser = await chromium.launch({ executablePath: __C.chromium });
   // poste A : nouveau signalement (sites repris du dernier état connu)
   const A = await poste(browser, 'Alice Martin', 0);
-  await A.click('#porte-nouveau'); await A.waitForTimeout(300);
-  await A.fill('#nom', 'Jean Moulin'); await A.waitForTimeout(700); await A.click('#liste [role=option] >> nth=0'); await A.waitForTimeout(700);
-  await A.fill('#description', 'Saisie en mode secours par Alice'); await A.click('#btn-signalement'); await A.waitForTimeout(1200);
-  console.log('[A] confirmation :', (await A.textContent('#confirmation')).replace(/\s+/g, ' ').trim().slice(0, 90));
+  await W(A).locator('#porte-nouveau').click(); await A.waitForTimeout(300);
+  await W(A).locator('#nom').fill('Jean Moulin'); await A.waitForTimeout(700); await W(A).locator('#liste [role=option]').first().click(); await A.waitForTimeout(700);
+  await W(A).locator('#description').fill('Saisie en mode secours par Alice'); await W(A).locator('#btn-signalement').click(); await A.waitForTimeout(1200);
+  console.log('[A] confirmation :', (await W(A).locator('#confirmation').innerText()).replace(/\s+/g, ' ').trim().slice(0, 90));
   const fA = fs.readdirSync(PARTAGE); console.log('[A] dossier partagé :', fA.join(', '));
   const jA = JSON.parse(fs.readFileSync(path.join(PARTAGE, fA[0])));
   console.log('[A] journal :', jA.entrees.map(e => e.actions.map(a => `${a[0]} ${a[1]}`).join('+')).join(' ; '), '| Cree_le écrit :', 'Cree_le' in jA.entrees[0].actions[0][3]);
   // poste B (formulaire sans périmètre) : voit la saisie de A et la met à jour
   const B = await poste(browser, 'Bob Durand', 2);
   console.log('[B] signalements :', (await cartes(B)).length, '|', (await cartes(B))[0]);
-  await B.click('#cartes-signalements li:has-text("Jean Moulin") >> nth=0'); await B.waitForTimeout(1000);
-  await B.fill('#description', 'Mise à jour par Bob'); await B.click('#btn-signalement'); await B.waitForTimeout(1200);
-  console.log('[B] statut :', (await B.textContent('#statut-signalement')).trim());
+  await W(B).locator('#cartes-signalements li:has-text("Jean Moulin")').first().click(); await B.waitForTimeout(1000);
+  await W(B).locator('#description').fill('Mise à jour par Bob'); await W(B).locator('#btn-signalement').click(); await B.waitForTimeout(1200);
+  console.log('[B] statut :', (await W(B).locator('#statut-signalement').innerText()).trim());
+  // tableau de bord et tableau des signalements (A → Z) du poste B
+  await B.click('#kit-secours .onglet[data-v=tableau]'); await B.waitForTimeout(2000);
+  console.log('[B] tableau de bord :', (await W(B, 'tableau').locator('body').innerText()).replace(/\s+/g, ' ').slice(0, 120));
+  await B.click('#kit-secours .onglet[data-v=liste]'); await B.waitForTimeout(1500);
+  await W(B, 'liste').locator('#periode').selectOption('tout'); await B.waitForTimeout(1000);
+  console.log('[B] tableau des signalements :', (await W(B, 'liste').locator('#etat').innerText()).split('\n')[0], '|', (await W(B, 'liste').locator('tbody tr td:nth-child(2)').allInnerTexts()).map(x => x.split('\n')[0]).join(' ; '));
+  const [dw] = await Promise.all([B.waitForEvent('download'), W(B, 'liste').locator('#docx').click()]);
+  console.log('[B] Word :', dw.suggestedFilename());
+  await B.click('#kit-secours .onglet[data-v=saisie]');
   await A.evaluate(() => window.__KIT__.lireDossier()); await A.waitForTimeout(600);
   const idA = jA.entrees[0].actions[0][2];
   console.log('[A] versions du dossier :', JSON.stringify(await A.evaluate(id => { const t = window.__KIT__.K.doc.Reponses; return t.id.map((x, i) => [t.Nature[i], t.Description[i]]).filter((_, i) => t.Dossier[i] === id); }, idA)));

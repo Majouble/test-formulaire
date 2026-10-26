@@ -80,7 +80,8 @@ const K = {
   complement: null,  // { info: { fichier, genere_le, modifie, auto }, tables } : remplace des tables de la base
   reintegrees: new Set(),   // saisies déjà réintégrées dans Grist (Config, clé « secours », vue dans la copie)
   doc: null,         // document vivant : copie de la base + journaux appliqués
-  page: null,        // { cle, titre, tableId, widgetOptions, mapping }
+  page: null,        // page de saisie : { cle, titre, tableId, widgetOptions, mapping }
+  pageTableau: null, // tableau de bord : même forme (widgetOptions.tableau = identifiant du tableau publié)
   journal: [],       // mes entrées
   autres: new Map(), // nom de fichier → { agent, poste, maj, mod, entrees }
   appliquees: new Set(), dernierT: "",
@@ -261,75 +262,91 @@ async function executer(actions) {
   K.journal.push(e); K.enAttente++;
   await BD.ecrire("journal", e);
   ecrireJournalPartage();
-  if (touchees.includes(K.page.tableId)) emettreBientot();
+  emettreBientot();
   UI.maj();
   return retours;
 }
 
-/* ---------- lignes envoyées au widget ---------- */
+/* ---------- lignes envoyées aux widgets ---------- */
 const colonnesVisibles = t => Object.keys(t).filter(c => c !== "id" && c !== "manualSort" && !c.startsWith("gristHelper_"));
 function ligne(tid, i) { const t = K.doc[tid], r = { id: t.id[i] }; for (const c of colonnesVisibles(t)) r[c] = t[c][i] === undefined ? null : t[c][i]; return r; }
 function lignes(tid) { const t = K.doc[tid]; return t ? t.id.map((_, i) => ligne(tid, i)) : []; }
-const rappels = { records: null, record: null, nouveau: null };
-let emissionPrevue = null;
-function emettreBientot() { clearTimeout(emissionPrevue); emissionPrevue = setTimeout(emettre, 20); }
-function emettre() { if (rappels.records && K.pret) rappels.records(copie(lignes(K.page.tableId)), K.page.mapping || null); }
 
-/* ---------- l'API Grist simulée ---------- */
-function tableOps(tidDemande) {
-  const tid = () => tidDemande || K.page.tableId;
-  const liste = x => (Array.isArray(x) ? x : [x]);
-  return {
-    getTableId: async () => { await pret; return tid(); },
-    async create(recs) {
-      await pret; const l = liste(recs);
-      const r = await executer(l.map(({ fields }) => ["AddRecord", tid(), null, fields || {}]));
-      const ids = r.map(id => ({ id })); return Array.isArray(recs) ? ids : ids[0];
-    },
-    async update(recs) { await pret; await executer(liste(recs).map(({ id, fields }) => ["UpdateRecord", tid(), id, fields || {}])); },
-    async destroy(ids) { await pret; await executer(liste(ids).map(id => ["RemoveRecord", tid(), id])); },
-    async upsert(recs) {
-      await pret; const t = K.doc[tid()], acts = [];
-      for (const { require: req = {}, fields = {} } of liste(recs)) {
-        const i = t.id.findIndex((_, k) => Object.entries(req).every(([c, v]) => t[c] && t[c][k] === v));
-        acts.push(i >= 0 ? ["UpdateRecord", tid(), t.id[i], fields] : ["AddRecord", tid(), null, { ...req, ...fields }]);
-      }
-      await executer(acts);
-    },
-  };
-}
-window.grist = {
-  ready() {},
-  onRecords(f) { rappels.records = f; pret.then(() => setTimeout(emettre, 30)); },
-  onRecord(f) { rappels.record = f; },
-  onNewRecord(f) { rappels.nouveau = f; },
-  onOptions(f) { pret.then(() => f(K.page.widgetOptions || null, {})); },
-  async getOption(k) { await pret; const v = (K.page.widgetOptions || {})[k]; return v === undefined ? null : v; },
-  async getOptions() { await pret; return K.page.widgetOptions || null; },
-  async setOption(k, v) { await pret; K.page.widgetOptions = { ...(K.page.widgetOptions || {}), [k]: v }; await BD.ecrire("kv", K.page, "page"); },
-  async setOptions(o) { await pret; K.page.widgetOptions = { ...(o || {}) }; await BD.ecrire("kv", K.page, "page"); },
-  async clearOptions() { await pret; K.page.widgetOptions = {}; await BD.ecrire("kv", K.page, "page"); },
-  async setCursorPos(p) {
-    await pret; const id = p && p.rowId;
-    setTimeout(() => {
-      if (id === "new") { if (rappels.nouveau) rappels.nouveau(); return; }
-      const i = indexLignes(K.page.tableId).get(id);
-      if (i !== undefined && rappels.record) rappels.record(ligne(K.page.tableId, i));
-    }, 0);
-  },
-  getTable: tid => tableOps(tid),
-  get selectedTable() { return tableOps(); },
-  docApi: {
-    async fetchTable(n) { await pret; if (!K.doc[n]) throw new Error(`KeyError: '${n}'`); return copie(K.doc[n]); },
-    async fetchSelectedTable() { await pret; return copie(K.doc[K.page.tableId]); },
-    async applyUserActions(acts) { const r = await executer(acts); return { retValues: r }; },
-    async listTables() { await pret; return [...M.tables.values()]; },
-    async getDocName() { await pret; return `${K.base.info.nom} (secours ${K.base.info.cle})`; },
-    // pas de getAccessToken : le widget lit alors tout par fetchTable (pas d'API SQL ni REST hors ligne)
-  },
-  sectionApi: { async configure() {} },
-  widgetApi: { async getOption(k) { return window.grist.getOption(k); }, async setOption(k, v) { return window.grist.setOption(k, v); } },
+/* ---------- vues du kit : chaque widget tourne dans son cadre, avec sa page (table liée, options) ---------- */
+const VUES = {
+  saisie: { titre: "Saisie", page: () => K.page, cle: "page" },
+  tableau: { titre: "Tableau de bord", page: () => K.pageTableau, cle: "pageTableau" },
+  liste: { titre: "Tableau des signalements", page: () => (K.page ? { tableId: K.page.tableId, widgetOptions: { table: K.page.tableId } } : null), cle: null },
 };
+Object.values(VUES).forEach(v => { v.rappels = { records: null, record: null, nouveau: null }; v.minuteur = null; });
+function emettre(vid) { const v = VUES[vid], p = v.page(); if (v.rappels.records && K.pret && p && K.doc[p.tableId]) v.rappels.records(copie(lignes(p.tableId)), p.mapping || null); }
+function emettreBientot() { for (const vid of Object.keys(VUES)) { clearTimeout(VUES[vid].minuteur); VUES[vid].minuteur = setTimeout(() => emettre(vid), 20); } }
+
+/* ---------- l'API Grist simulée, une par vue ---------- */
+function creerGrist(vid) {
+  const v = VUES[vid], page = () => v.page() || {}, opts = () => page().widgetOptions || {};
+  const enregistrerOptions = async o => { const p = v.page(); if (!p) return; p.widgetOptions = o; if (v.cle) await BD.ecrire("kv", p, v.cle); };
+  function tableOps(tidDemande) {
+    const tid = () => tidDemande || page().tableId;
+    const liste = x => (Array.isArray(x) ? x : [x]);
+    return {
+      getTableId: async () => { await pret; return tid(); },
+      async create(recs) {
+        await pret; const l = liste(recs);
+        const r = await executer(l.map(({ fields }) => ["AddRecord", tid(), null, fields || {}]));
+        const ids = r.map(id => ({ id })); return Array.isArray(recs) ? ids : ids[0];
+      },
+      async update(recs) { await pret; await executer(liste(recs).map(({ id, fields }) => ["UpdateRecord", tid(), id, fields || {}])); },
+      async destroy(ids) { await pret; await executer(liste(ids).map(id => ["RemoveRecord", tid(), id])); },
+      async upsert(recs) {
+        await pret; const t = K.doc[tid()], acts = [];
+        for (const { require: req = {}, fields = {} } of liste(recs)) {
+          const i = t.id.findIndex((_, k) => Object.entries(req).every(([c, x]) => t[c] && t[c][k] === x));
+          acts.push(i >= 0 ? ["UpdateRecord", tid(), t.id[i], fields] : ["AddRecord", tid(), null, { ...req, ...fields }]);
+        }
+        await executer(acts);
+      },
+    };
+  }
+  const g = {
+    ready() {},
+    onRecords(f) { v.rappels.records = f; pret.then(() => setTimeout(() => emettre(vid), 30)); },
+    onRecord(f) { v.rappels.record = f; },
+    onNewRecord(f) { v.rappels.nouveau = f; },
+    onOptions(f) { pret.then(() => f(page().widgetOptions || null, {})); },
+    async getOption(k) { await pret; const x = opts()[k]; return x === undefined ? null : x; },
+    async getOptions() { await pret; return page().widgetOptions || null; },
+    async setOption(k, x) { await pret; await enregistrerOptions({ ...opts(), [k]: x }); },
+    async setOptions(o) { await pret; await enregistrerOptions({ ...(o || {}) }); },
+    async clearOptions() { await pret; await enregistrerOptions({}); },
+    async setCursorPos(p) {
+      await pret; const id = p && p.rowId;
+      setTimeout(() => {
+        if (id === "new") { if (v.rappels.nouveau) v.rappels.nouveau(); return; }
+        const i = indexLignes(page().tableId).get(id);
+        if (i !== undefined && v.rappels.record) v.rappels.record(ligne(page().tableId, i));
+      }, 0);
+    },
+    async setSelectedRows() {},
+    async fetchSelectedTable(o) { await pret; return o && o.format === "rows" ? copie(lignes(page().tableId)) : copie(K.doc[page().tableId]); },
+    async fetchSelectedRecord(id) { await pret; const i = indexLignes(page().tableId).get(id); return i === undefined ? null : ligne(page().tableId, i); },
+    getTable: tid => tableOps(tid),
+    get selectedTable() { return tableOps(); },
+    docApi: {
+      async fetchTable(n) { await pret; if (!K.doc[n]) throw new Error(`KeyError: '${n}'`); return copie(K.doc[n]); },
+      async fetchSelectedTable() { await pret; return copie(K.doc[page().tableId]); },
+      async applyUserActions(acts) { const r = await executer(acts); return { retValues: r }; },
+      async listTables() { await pret; return [...M.tables.values()]; },
+      async getDocName() { await pret; return `${K.base.info.nom} (secours ${K.base.info.cle})`; },
+      // pas de getAccessToken : les widgets lisent alors tout par fetchTable (pas d'API SQL ni REST hors ligne)
+    },
+    sectionApi: { async configure() {} },
+  };
+  g.widgetApi = { getOption: k => g.getOption(k), setOption: (k, x) => g.setOption(k, x) };
+  return g;
+}
+window.__kitGrist = vid => creerGrist(VUES[vid] ? vid : "saisie");
+window.__kitTelecharger = (blob, nom) => telecharger(nom, blob);
 
 /* ---------- lecture d'une copie du document ---------- */
 // valeurs enregistrées par Grist au format « marshal » de Python (colonnes Any, erreurs, listes)
@@ -446,6 +463,27 @@ function pagesDeSaisie(tables) {
   if (F && F.Nom) F.id.forEach((_, i) => {
     if (!F.Publie || !F.Publie[i]) return;
     res.push({ cle: `formulaire:${F.Nom[i]}`, titre: `Formulaire « ${F.Nom[i]} » (sans page d'agent)`, tableId: (F.Table && F.Table[i]) || "Reponses", widgetOptions: { formulaire: F.Nom[i] }, mapping: null });
+  });
+  return res.filter(p => tables[p.tableId]);
+}
+
+function pagesTableau(tables) {
+  const res = [], T = tables._grist_Tables, S = tables._grist_Views_section, V = tables._grist_Views;
+  const tableDe = new Map((T ? T.id : []).map((id, i) => [id, T.tableId[i]]));
+  const nomVue = new Map((V ? V.id : []).map((id, i) => [id, V.name[i]]));
+  if (S && S.options) S.id.forEach((sid, i) => {
+    const cv = vueCustom(S.options[i]); if (!cv.url || !/\/tableau-de-bord(\/|\/index\.html)?($|[?#])/.test(cv.url)) return;
+    const tid = tableDe.get(S.tableRef[i]); if (!tid) return;
+    const titre = [...new Set([nomVue.get(S.parentId[i]), S.title && S.title[i]].filter(Boolean))].join(" — ") || `Page ${sid}`;
+    res.push({ cle: `section:${sid}`, titre, tableId: tid, widgetOptions: cv.widgetOptions || {}, mapping: cv.columnsMapping || null });
+  });
+  // tableaux publiés dans Config (clé tableau_de_bord), y compris ceux qui n'ont pas de page
+  const C = tables.Config, cfg = cle => { if (!C || !C.Cle) return null; const i = C.Cle.indexOf(cle); try { return i >= 0 ? JSON.parse(C.Valeur[i] || "null") : null; } catch (_) { return null; } };
+  const v = cfg("tableau_de_bord"), g = cfg("general") || {};
+  const liste = v && Array.isArray(v.tableaux) ? v.tableaux : v && v.publie ? [{ id: v.id || "", nom: v.nom || "Tableau de bord", table: v.table, publie: v.publie }] : [];
+  liste.forEach((t, k) => {
+    if (!t || !t.publie || res.some(p => (p.widgetOptions.tableau || "") === (t.id || "") || (k === 0 && !p.widgetOptions.tableau))) return;
+    res.push({ cle: `tableau:${t.id || k}`, titre: t.nom || "Tableau de bord", tableId: t.table || g.reponses || "Reponses", widgetOptions: t.id ? { tableau: t.id } : {}, mapping: null });
   });
   return res.filter(p => tables[p.tableId]);
 }
@@ -615,6 +653,7 @@ const UI = {
   monter() {
     this.hote = document.createElement("div"); this.hote.id = "kit-secours";
     document.body.insertBefore(this.hote, document.body.firstChild);
+    this.zone = document.createElement("div"); this.zone.id = "kit-vues"; document.body.appendChild(this.zone);
     this.r = this.hote.attachShadow({ mode: "open" });
     this.r.innerHTML = `<style>${CSS}</style><div class="barre" part="barre"></div><div class="voile" hidden><div class="fenetre" role="dialog" aria-modal="true"></div></div>`;
     this.r.addEventListener("click", ev => this.clic(ev));
@@ -632,9 +671,22 @@ const UI = {
       <span class="etat ${etat[0]}"><i></i>${etat[1]}</span>
       ${K.dirEtat === "reconnecter" ? `<button data-a="reconnecter" class="petit">Reconnecter</button>` : ""}
       ${K.nouvelleBase ? `<button data-a="maj-base" class="petit attention" title="Une copie plus récente du document a été déposée dans le dossier partagé">Copie plus récente disponible</button>` : ""}
+      ${K.pret ? `<nav class="onglets">${Object.entries(VUES).filter(([vid, v]) => v.page()).map(([vid, v]) => `<button data-a="vue" data-v="${vid}" class="onglet ${this.vue === vid ? "actif" : ""}">${esc(v.titre)}</button>`).join("")}</nav>` : ""}
       <span class="boutons">${K.pret ? `<button data-a="exports" class="petit">Exporter</button>` : ""}<button data-a="reglages" class="petit">Réglages</button></span>`;
     if (this.panneau === "reglages") this.ouvrirReglages(true);
     if (this.panneau === "exports") this.ouvrirExports(true);
+  },
+  ouvrirVue(vid) {
+    if (!VUES[vid] || !VUES[vid].page()) vid = "saisie";
+    this.vue = vid; try { localStorage.setItem("kit-secours-vue", vid); } catch (_) {}
+    let f = this.zone.querySelector(`iframe[data-vue="${vid}"]`);
+    if (!f) {
+      f = document.createElement("iframe"); f.dataset.vue = vid; f.title = VUES[vid].titre;
+      f.srcdoc = (window.__KIT_VUES__ || {})[vid] || "<p>Vue absente de ce kit.</p>";
+      this.zone.appendChild(f);
+    }
+    this.zone.querySelectorAll("iframe").forEach(x => { x.hidden = x !== f; });
+    this.maj();
   },
   majTraces() { const p = this.r && this.r.querySelector("#traces"); if (p) p.textContent = traces.slice().reverse().join("\n"); },
   fenetre(html, fermable = true) {
@@ -673,6 +725,7 @@ const UI = {
         ${pages.length ? `<select id="page">${pages.map(p => `<option value="${esc(p.cle)}" ${K.page && K.page.cle === p.cle ? "selected" : ""}>${esc(p.titre)}</option>`).join("")}</select>
           <p class="note">Les pages des agents reprennent leur périmètre et leurs réglages. Les formulaires seuls s'affichent sans périmètre.</p>`
         : `<p class="note">${K.base ? "Aucune page de saisie ni formulaire publié dans cette copie." : "Chargez d'abord une copie du document."}</p>`}</section>
+      ${K.base && pagesTableau(K.base.tables).length ? `<section><h3>5. Tableau de bord</h3><select id="page-tableau">${pagesTableau(K.base.tables).map(p => `<option value="${esc(p.cle)}" ${K.pageTableau && K.pageTableau.cle === p.cle ? "selected" : ""}>${esc(p.titre)}</option>`).join("")}</select></section>` : ""}
       <p class="actions"><button data-a="commencer" class="principal" ${K.agent && K.base && pages.length ? "" : "disabled"}>${premier ? "Commencer la saisie" : "Appliquer et recharger le formulaire"}</button></p>
       ${premier ? "" : `<section><h3>Données de ce poste</h3><p>${K.journal.length} saisie(s) de ce poste, ${toutesEntrees().length - K.journal.length} d'autres postes.</p>
         <p><button data-a="effacer" class="danger">Effacer les données du mode secours sur ce poste…</button></p></section>`}
@@ -704,6 +757,7 @@ const UI = {
     try {
       if (a === "fermer") this.fermer();
       else if (a === "reglages") this.ouvrirReglages();
+      else if (a === "vue") this.ouvrirVue(b.dataset.v);
       else if (a === "exports") this.ouvrirExports();
       else if (a === "reconnecter") await connecterDossier(true);
       else if (a === "choisir-dossier") { await choisirDossier(); await apresChoixDossier(); }
@@ -715,7 +769,7 @@ const UI = {
       else if (a === "commencer") await this.commencer();
       else if (a === "effacer") {
         if (!confirm("Effacer la copie du document et le journal des saisies de ce poste ?\n\nExportez d'abord « Mes saisies » si elles ne sont pas déjà dans le dossier partagé.")) return;
-        await BD.vider("journal"); await BD.vider("base"); for (const k of ["page", "autres", "seq"]) await BD.suppr("kv", k); location.reload();
+        await BD.vider("journal"); await BD.vider("base"); for (const k of ["page", "pageTableau", "autres", "seq"]) await BD.suppr("kv", k); location.reload();
       }
       else if (a === "exp-consolide") exporterConsolide();
       else if (a === "exp-journal") exporterMonJournal();
@@ -760,6 +814,9 @@ const UI = {
     const garder = K.page && K.page.cle === p.cle ? K.page.widgetOptions : p.widgetOptions;
     K.page = { ...p, widgetOptions: garder };
     await BD.ecrire("kv", K.page, "page");
+    const st = this.r.querySelector("#page-tableau"), pt = st && pagesTableau(K.base.tables).find(x => x.cle === st.value);
+    K.pageTableau = pt ? (K.pageTableau && K.pageTableau.cle === pt.cle ? { ...pt, widgetOptions: K.pageTableau.widgetOptions } : pt) : null;
+    await BD.ecrire("kv", K.pageTableau, "pageTableau");
     location.reload();
   },
 };
@@ -787,6 +844,9 @@ const CSS = `
 .etat i { width: 8px; height: 8px; border-radius: 50%; background: #8a93a3; }
 .etat.ok i { background: #18794e; } .etat.attention i { background: #b45f06; } .etat.ko { background: #fde8e6; border-color: #f0b3ad; } .etat.ko i { background: #c0362c; }
 .boutons { margin-left: auto; white-space: nowrap; }
+.onglets { display: inline-flex; gap: 2px; margin-left: 8px; }
+.onglet { background: #fff; color: #000091; border: 1px solid #c9ced6; padding: 3px 10px; margin: 0; }
+.onglet.actif { background: #000091; color: #fff; border-color: #000091; }
 button, .bouton { font: inherit; border-radius: 4px; padding: 6px 12px; cursor: pointer; border: 1px solid #000091; background: #000091; color: #fff; display: inline-block; margin: 2px 6px 2px 0; }
 button.petit { padding: 3px 10px; }
 button.secondaire, .bouton.secondaire { background: #fff; color: #000091; }
@@ -819,6 +879,7 @@ async function demarrer() {
   K.posteNum = await BD.lire("kv", "poste"); if (!K.posteNum) { K.posteNum = tirerPoste(); await BD.ecrire("kv", K.posteNum, "poste"); }
   K.seq = (await BD.lire("kv", "seq")) || 0;
   K.page = (await BD.lire("kv", "page")) || null;
+  K.pageTableau = (await BD.lire("kv", "pageTableau")) || null;
   K.base = (await BD.lire("base", "courante")) || null;
   K.journal = ((await BD.tout("journal")) || []).sort(ordre);
   K.seq = Math.max(K.seq, ...K.journal.flatMap(e => (e.actions || []).flatMap(a => (a[0] === "AddRecord" ? [a[2]] : a[0] === "BulkAddRecord" ? a[2] : [])))
@@ -830,16 +891,19 @@ async function demarrer() {
   if (!K.agent || !K.base || !K.page) { trace("Réglages à compléter avant la saisie"); UI.ouvrirReglages(); return; }
   const t0 = performance.now();
   reconstruireDoc();
+  // tableau de bord : celui choisi, sinon le premier publié dans la copie
+  { const pt = pagesTableau(K.base.tables); if (!K.pageTableau || !pt.some(p => p.cle === K.pageTableau.cle)) K.pageTableau = pt[0] || null; }
   K.pret = true;
   trace(`Formulaire prêt : ${K.journal.length} saisie(s) de ce poste et ${toutesEntrees().length - K.journal.length} d'autres postes rejouées en ${Math.round(performance.now() - t0)} ms`);
   resoudrePret();
-  UI.maj();
+  let vue = "saisie"; try { vue = localStorage.getItem("kit-secours-vue") || vue; } catch (_) {}
+  UI.ouvrirVue(vue);
   if (K.dirEtat === "ok") { await lireDossier(); if (K.enAttente || K.journal.length) ecrireJournalPartage(); }
   setInterval(tic, DELAI_LECTURE);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) tic(); });
 }
 // pour les essais automatisés
-window.__KIT__ = { K, pret, tic, connecter: async h => { K.dir = h; await BD.ecrire("kv", h, "dossier").catch(() => {}); const r = await connecterDossier(false); if (!K.pret) await apresChoixDossier(); return r; }, lireDossier, lireCopie, importerJournaux, exporterCSV, BASE_HORS_LIGNE };
+window.__KIT__ = { K, pret, tic, UI, VUES, connecter: async h => { K.dir = h; await BD.ecrire("kv", h, "dossier").catch(() => {}); const r = await connecterDossier(false); if (!K.pret) await apresChoixDossier(); return r; }, lireDossier, lireCopie, importerJournaux, exporterCSV, BASE_HORS_LIGNE };
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", demarrer); else demarrer();
 })();
