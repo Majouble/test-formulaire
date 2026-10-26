@@ -4407,7 +4407,7 @@ class Tableau {
     const parNom = (re, ty) => (cols.find(c => !RESERVES_TABLEAU.includes(c.colId) && ty.test(c.type || "") && re.test(normColonne(`${c.colId} ${c.libelle || ""}`))) || {}).colId || null;
     const sSite = st && (a(st.site) || parNom(/(^|_)site/, /^Ref:/)), sLibre = st && st.libre ? (a(st.libre) || parNom(/libre|hors_referentiel/, /^Text/)) : null;   // « — » dans l'administration : pas de nom libre
     const sQualif = st && (a(st.qualif) || parNom(/qualif/, /^Choice/));
-    this.sites = st && (sSite || sLibre) ? { site: sSite, libre: sLibre, qualif: sQualif, avecRas: st.avecRas !== false,
+    this.sites = st && (sSite || sLibre) ? { site: sSite, libre: sLibre, qualif: sQualif, avecRas: st.avecRas !== false, reprise: st.reprise !== false,
       historique: Array.isArray(st.historique) ? st.historique.filter(h => h && h.colonne) : [], alias: st.alias || "Sites_correspondances" } : null;
     this.alias = new Map(); this.aliasParSite = new Map();
     // colonnes qui désignent un site du référentiel (table des sites reliée aux établissements) : sites de l'établissement
@@ -4648,6 +4648,8 @@ class Tableau {
     if (!this.sousDefs.length) { this.el.innerHTML = `<p class="bandeau">La table « ${esc(this.table)} » n'a aucune colonne à saisir (colonnes non formules autres que Dossier, Ligne_id et Ordre).</p>`; return; }
     this.el.innerHTML = (this.avertissement && !modeEtab ? `<p class="bandeau">${esc(this.avertissement)}</p>` : "") +
       (this.noteAuto && this.lignes.some(l => l._repris) ? `<p class="note">${esc(this.noteAuto)}</p>` : "") +
+      (this.offreReprise && etabCourant && this.offreReprise.etab === etabCourant.id && !this.lignes.some(l => l._repris)
+        ? `<p class="note offre-reprise">${this.offreReprise.n} site${this.offreReprise.n > 1 ? "s" : ""} déjà signalé${this.offreReprise.n > 1 ? "s" : ""} pour cet établissement. <button type="button" class="secondaire petit" data-action="reprendre-sites">Reprendre leur dernier état</button></p>` : "") +
       `<div class="lignes-rep">${this.lignes.map((l, k) => this.ligneHtml(l, k)).join("") || `<p class="vide-tableau">Aucune ligne pour l'instant.</p>`}</div>
       <div class="pied-tableau"><span class="ajout-lignes"><button type="button" class="secondaire petit" data-action="ajouter">+ Ajouter</button>
         <input type="number" class="qte" min="1" max="50" value="1" aria-label="Nombre de lignes à ajouter"><span class="note-qte">ligne(s)</span></span>
@@ -4817,6 +4819,16 @@ class Tableau {
       const b = ev.target.closest("button[data-action]");
       if (!b) return;
       const action = b.dataset.action;
+      if (action === "reprendre-sites") {
+        // reprise à la demande (reprise automatique désactivée) : les lignes déjà saisies sont gardées après les sites repris
+        const deja = this.lignes.filter(l => !this.ligneVide(l)), e = this.offreReprise.etab;
+        const n = reprendreEtatSites(this, e), cles = new Set(this.lignes.map(l => this.cleSite(e, l.valeurs)).filter(Boolean));
+        this.lignes.push(...deja.filter(l => { const k = this.cleSite(e, l.valeurs); return !k || !cles.has(k); }));
+        this.offreReprise = null;
+        this.noteAuto = n ? `${n} site${n > 1 ? "s" : ""} connu${n > 1 ? "s" : ""} de cet établissement, au dernier état signalé : confirmez ou modifiez ceux qui ne sont pas revenus à la normale, ajoutez les nouveaux.` : "";
+        this.dessiner(); this.signaler(); qualifTouchee = false; majQualifDeduite(); modifie = true;
+        return;
+      }
       if (action === "ajouter") {
         const n = Math.max(1, Math.min(50, parseInt(el.querySelector(".qte").value, 10) || 1));
         for (let i = 0; i < n; i++) this.lignes.push({ _id: nouvelIdLigne(), valeurs: {} });
@@ -5903,7 +5915,8 @@ function reprendreEtatSites(c, etabId, avecRas = c.sites.avecRas !== false) {
   return etats.length;
 }
 /* « Une ligne par site connu » : nouveau dossier d'un établissement déjà signalé, le tableau des sites se remplit seul
-   du dernier état connu de chaque site (sites revenus à la normale compris, sauf réglage contraire). Refait si
+   du dernier état connu de chaque site (sites revenus à la normale compris, sauf réglage contraire). Reprise
+   automatique désactivable (reglages.tableau.sites.reprise = false) : un bouton la propose alors. Refait si
    l'établissement change tant qu'aucune ligne n'a été touchée. */
 let sitesAutoPour = null;
 function reprendreSitesAuto() {
@@ -5912,6 +5925,12 @@ function reprendreSitesAuto() {
   const intactes = c.lignes.every(l => c.ligneVide(l) || (l._repris && !["modifie", "confirme"].includes(l._repris.etat)));
   if (!intactes) return;
   sitesAutoPour = e;
+  if (!c.sites.reprise) {
+    // reprise automatique désactivée (administration) : le tableau reste vide, la reprise est proposée par un bouton
+    const nb = dernierEtatSites(c, e, c.sites.avecRas).length;
+    c.offreReprise = nb ? { etab: e, n: nb } : null;
+    c.dessiner(); return;
+  }
   const n = reprendreEtatSites(c, e);
   c.noteAuto = n ? `${n} site${n > 1 ? "s" : ""} connu${n > 1 ? "s" : ""} de cet établissement, au dernier état signalé : confirmez ou modifiez ceux qui ne sont pas revenus à la normale, ajoutez les nouveaux.` : "";
   c.dessiner();

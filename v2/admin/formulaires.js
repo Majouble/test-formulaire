@@ -1159,8 +1159,8 @@ function dessinerPanneauBase() {
   compterReponses(b);
 }
 /* ---------- Tableau des sites (formulaire par site, enseignement supérieur) ----------
-   reglages.tableau.sites = { site, libre, qualif, historique: [{ colonne, libre, site, qualif }], alias } :
-   une ligne par site ; reprise du dernier état connu de chaque site ; qualification de l'établissement déduite du
+   reglages.tableau.sites = { site, libre, qualif, historique: [{ colonne, libre, site, qualif }], alias, avecRas, reprise } :
+   une ligne par site ; reprise du dernier état connu de chaque site (automatique, ou à la demande si reprise = false) ; qualification de l'établissement déduite du
    site le plus grave (conf.saisie.qualificationEnBas). Voir le widget de saisie. */
 function groupeSitesHtml(b) {
   const r = b.reglages, st = r.tableau.sites, cols = Object.values(colonnesDe(r.tableau.table)).filter(c => !c.formule && !RESERVES_TABLEAU.includes(c.colId) && c.type !== `Ref:${courant.table}`);
@@ -1180,10 +1180,12 @@ function groupeSitesHtml(b) {
       <label class="l" for="pa-site-hist">Reprendre aussi l'historique de la question</label><select id="pa-site-hist"><option value="">— (aucune)</option>${autres.map(c => `<option value="${esc(c.colId)}"${h.colonne === c.colId ? " selected" : ""}>${esc(libelleQuestion(c.colId))}</option>`).join("")}</select>
       ${h.colonne ? `<div class="ligne-sc"><input type="text" id="pa-site-hist-libre" value="${esc(h.libre || "")}" placeholder="champ du nom (ex. Nom_du_site)" style="flex:1"><input type="text" id="pa-site-hist-qualif" value="${esc(h.qualif || "")}" placeholder="champ de qualification" style="flex:1"></div>` : ""}
       <label class="l" for="pa-site-alias">Table des correspondances (libellé saisi → site)</label><input type="text" id="pa-site-alias" value="${esc(st.alias || "Sites_correspondances")}">
-      <label class="interrupteur">Nouveau dossier : une ligne par site connu, y compris ceux revenus à la normale <input type="checkbox" id="pa-site-ras"${st.avecRas !== false ? " checked" : ""}></label>
+      <label class="interrupteur">Nouveau dossier : reprendre automatiquement le dernier état des sites connus <input type="checkbox" id="pa-site-reprise"${st.reprise !== false ? " checked" : ""}></label>
+      <label class="interrupteur">Reprise : une ligne par site connu, y compris ceux revenus à la normale <input type="checkbox" id="pa-site-ras"${st.avecRas !== false ? " checked" : ""}></label>
       <label class="interrupteur">Qualification de l'établissement en bas, déduite du site le plus grave <input type="checkbox" id="pa-qualif-bas"${confSaisie().qualificationEnBas !== false ? " checked" : ""}></label>
       ${controleSitesHtml(b)}
-      <p class="note" style="margin:6px 0 0">Nouveau dossier : dès l'établissement choisi, le tableau se remplit d'une ligne par site déjà signalé, à son dernier état (toutes les versions précédentes de l'établissement et la question d'historique choisie) ; l'agent confirme ou modifie chaque site encore perturbé et ajoute les nouveaux. La qualification de l'établissement suit le site le plus grave (ordre des choix de Qualification, du plus grave au moins grave) ; une incohérence est signalée avant l'enregistrement.</p>` : ""}
+      <p class="note" style="margin:6px 0 0">${st.reprise !== false ? "Nouveau dossier : dès l'établissement choisi, le tableau se remplit d'une ligne par site déjà signalé, à son dernier état (toutes les versions précédentes de l'établissement et la question d'historique choisie) ; l'agent confirme ou modifie chaque site encore perturbé et ajoute les nouveaux."
+        : "Nouveau dossier : le tableau des sites part vide ; si l'établissement a déjà des sites signalés, un bouton « Reprendre leur dernier état » le remplit à la demande (toutes les versions précédentes de l'établissement et la question d'historique choisie)."} La qualification de l'établissement suit le site le plus grave (ordre des choix de Qualification, du plus grave au moins grave) ; une incohérence est signalée avant l'enregistrement.</p>` : ""}
   </div>`;
 }
 /* Contrôle du paramétrage du tableau des sites : chaque point attendu, vérifié sur la structure du document.
@@ -1257,6 +1259,7 @@ function lierSites(b) {
   const hi = $("pa-site-hist"); if (hi) hi.addEventListener("change", () => { st.historique = hi.value ? [{ colonne: hi.value, libre: "Nom_du_site", qualif: "Qualification" }] : []; maj(); dessinerPanneau(); });
   [["pa-site-hist-libre", "libre"], ["pa-site-hist-qualif", "qualif"]].forEach(([id, k]) => { const e = $(id); if (e) e.addEventListener("input", () => { if (st.historique[0]) st.historique[0][k] = e.value.trim(); sauver(); }); });
   const al = $("pa-site-alias"); if (al) al.addEventListener("input", () => { st.alias = al.value.trim() || "Sites_correspondances"; sauver(); });
+  const rp = $("pa-site-reprise"); if (rp) rp.addEventListener("change", () => { st.reprise = rp.checked; maj(); dessinerPanneau(); });
   const ras = $("pa-site-ras"); if (ras) ras.addEventListener("change", () => { st.avecRas = ras.checked; maj(); });
   const qb = $("pa-qualif-bas"); if (qb) qb.addEventListener("change", () => { majSaisie(c => { c.qualificationEnBas = qb.checked; }); dessinerApercu(); });
 }
