@@ -8,7 +8,7 @@ Scénarios Playwright qui ouvrent les widgets (`v2/…`) dans Chromium avec un *
 cd tests
 npm install
 npx playwright install chromium     # ou : CHROMIUM=/chemin/vers/chromium
-sh lancer.sh                        # suite actuelle (run63 à run96)
+sh lancer.sh                        # suite actuelle (run63 à run97)
 sh lancer.sh run74 run76            # quelques scénarios
 ```
 
@@ -39,6 +39,7 @@ Les scénarios de l'atlas (run63 à run69, run73) exportent un zip ; pour vérif
 | `run79` | Admin : rapprochement des sites saisis (Référentiel), modèle de formulaire « Enseignement supérieur par site » |
 | `run80` | Admin : changer le modèle d'un formulaire existant (standard ↔ enseignement supérieur par site) |
 | `run96` | Widget « Référentiel des sites » : recherche par adresse robuste (texte nettoyé, 3 caractères minimum, coordonnées hors limites ignorées, message du service affiché) |
+| `run97` | Mode secours : kit hors ligne sur deux postes et un dossier partagé (saisie et mise à jour croisées, rechargement, exports), puis réintégration dans Grist (renumérotation, références, sans doublon). Lancer d'abord `node ../outils/construire-secours.js` |
 | `run95` | Sites désactivés du référentiel : écartés du rapprochement, de la reprise du dernier état (revenus à la normale) et des suggestions du formulaire |
 | `run94` | Rapprochement des sites saisis dans une colonne référence aux sites (anciens noms) : administration et widget « Référentiel des sites » (tous les établissements, établissement choisi), avec le contexte des signalements (date des faits, qualification, description) |
 | `run93` | Formulaire par site : reprise automatique du dernier état des sites désactivable, reprise à la demande par un bouton |

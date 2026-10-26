@@ -7,6 +7,8 @@ cd "$(dirname "$0")/.."
 [ -f v2/commun/socle.js ] || { echo "v2/ introuvable" >&2; exit 1; }
 version=$(sed -n 's/.*const VERSION = "\([^"]*\)".*/\1/p' v2/commun/socle.js)
 case "$version" in *alpha*|*beta*|*dev*) echo "Version « $version » : une version de test ne part pas en production." >&2; exit 1;; esac
+# kit de secours : reconstruit à partir du widget de saisie de v2/ (un seul fichier, sans réseau)
+if command -v node >/dev/null 2>&1; then node outils/construire-secours.js; else echo "node absent : v2/secours/kit-secours.html n'est pas reconstruit" >&2; fi
 rm -rf prod
 cp -R v2 prod
 grep -rl "test-formulaire/v2/" prod | while read -r f; do
