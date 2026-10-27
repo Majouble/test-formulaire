@@ -4613,8 +4613,11 @@ class Tableau {
     const fixe = this.sites && l._fixe;
     const corriger = fixe && !l._deverrouille && this.sites.site && refId(l.valeurs[this.sites.site])
       ? `<button type="button" class="icone" data-action="corriger-site" title="Corriger le site de cette ligne (erreur de saisie)" aria-label="Corriger le site de la ligne ${k + 1}">✎</button>` : "";
+    // site repris dans un nouveau signalement : peut être laissé de côté (pas d'information nouvelle), son dernier état reste connu
+    const retirer = fixe && l._repris && !dossierId
+      ? `<button type="button" class="icone" data-action="retirer-repris" title="Ne pas faire figurer ce site dans ce signalement (pas d'information nouvelle) : son dernier état reste connu et sera de nouveau proposé" aria-label="Retirer le site de la ligne ${k + 1} de ce signalement">✕</button>` : "";
     return `<span class="actions-ligne"><button type="button" class="icone" data-action="dupliquer" title="Dupliquer cette ligne" aria-label="Dupliquer la ligne ${k + 1}">⧉</button>${corriger}${fixe
-      ? `<button type="button" class="icone icone-texte" data-action="ras-site" title="Site revenu à la normale : il reste dans le dossier, en ${esc(this.valeurRas() || "RAS")}" aria-label="Passer le site de la ligne ${k + 1} en ${esc(this.valeurRas() || "RAS")}">${esc(this.valeurRas() || "RAS")}</button>`
+      ? `<button type="button" class="icone icone-texte" data-action="ras-site" title="Site revenu à la normale : il reste dans le dossier, en ${esc(this.valeurRas() || "RAS")}" aria-label="Passer le site de la ligne ${k + 1} en ${esc(this.valeurRas() || "RAS")}">${esc(this.valeurRas() || "RAS")}</button>${retirer}`
       : `<button type="button" class="icone" data-action="supprimer" title="Supprimer cette ligne" aria-label="Supprimer la ligne ${k + 1}">✕</button>`}</span>`;
   }
   valeurRas() {
@@ -4648,6 +4651,7 @@ class Tableau {
     if (!this.sousDefs.length) { this.el.innerHTML = `<p class="bandeau">La table « ${esc(this.table)} » n'a aucune colonne à saisir (colonnes non formules autres que Dossier, Ligne_id et Ordre).</p>`; return; }
     this.el.innerHTML = (this.avertissement && !modeEtab ? `<p class="bandeau">${esc(this.avertissement)}</p>` : "") +
       (this.noteAuto && this.lignes.some(l => l._repris) ? `<p class="note">${esc(this.noteAuto)}</p>` : "") +
+      (this.retires && this.retires.length ? `<p class="note retires">${this.retires.length} site${this.retires.length > 1 ? "s" : ""} laissé${this.retires.length > 1 ? "s" : ""} de côté pour ce signalement (${this.retires.map(x => esc(this.nomLigne(x.l))).join(", ")}) : ${this.retires.length > 1 ? "leur" : "son"} dernier état reste connu. <button type="button" class="lien-texte" data-action="remettre-retires">Remettre</button></p>` : "") +
       (this.offreReprise && etabCourant && this.offreReprise.etab === etabCourant.id && !this.lignes.some(l => l._repris)
         ? `<p class="note offre-reprise">${this.offreReprise.n} site${this.offreReprise.n > 1 ? "s" : ""} déjà signalé${this.offreReprise.n > 1 ? "s" : ""} pour cet établissement. <button type="button" class="secondaire petit" data-action="reprendre-sites">Reprendre leur dernier état</button></p>` : "") +
       `<div class="lignes-rep">${this.lignes.map((l, k) => this.ligneHtml(l, k)).join("") || `<p class="vide-tableau">Aucune ligne pour l'instant.</p>`}</div>
@@ -4743,6 +4747,11 @@ class Tableau {
   // ----- champ du site : site du référentiel (nom, mots-clés, correspondances validées) ou nom libre
   colLibre(d) { return this.combo && this.sites && d.colId === this.sites.site ? this.sites.libre : null; }
   libelleSite(d, id) { const o = (d._options || []).find(x => x.id === id); return o ? o.libelle : ""; }
+  // nom du site d'une ligne (site du référentiel, ancien nom ou nom libre)
+  nomLigne(l) {
+    const s = this.sites || {}, v = s.site ? l.valeurs[s.site] : null, d = s.site && this.sousDefs.find(x => x.colId === s.site), id = refId(v);
+    return (id && d ? this.libelleSite(d, id) : typeof v === "string" ? v.trim() : "") || String((s.libre && l.valeurs[s.libre]) ?? "").trim() || "site sans nom";
+  }
   sitesProposables(d) {
     const e = etablissementDuFormulaire();
     return d._siteEtab && e ? sitesDeLEtablissement(d, e, d._options || [], 0) : (d._options || []);
@@ -4837,7 +4846,15 @@ class Tableau {
         if (premiere) { const c = premiere.querySelector("input, select, textarea, summary"); if (c) c.focus(); }
         return;
       }
+      if (action === "remettre-retires") {   // sites laissés de côté : remis à leur place d'origine
+        for (const x of (this.retires || []).sort((a, b) => a.k - b.k)) this.lignes.splice(Math.min(x.k, this.lignes.length), 0, x.l);
+        this.retires = []; this.dessiner(); this.signaler(); return;
+      }
       const k = +b.closest(".ligne-rep").dataset.k, l = this.lignes[k];
+      if (action === "retirer-repris") {
+        (this.retires = this.retires || []).push({ k, l }); this.lignes.splice(k, 1);
+        this.dessiner(); this.signaler(); return;
+      }
       if (action === "corriger-site") {
         if (!confirm("Corriger le site de cette ligne ?\n\nÀ réserver à une erreur de saisie : un site revenu à la normale reste dans le dossier, passez-le en RAS.")) return;
         l._deverrouille = true; this.dessiner(); const c = this.el.querySelectorAll(".ligne-rep")[k]; const inp = c && c.querySelector(".site-txt"); if (inp) inp.focus(); return;
@@ -5906,6 +5923,7 @@ function dernierEtatSites(c, etabId, avecRas) {
 // préremplit le tableau des sites ; renvoie le nombre de sites repris
 function reprendreEtatSites(c, etabId, avecRas = c.sites.avecRas !== false) {
   const etats = dernierEtatSites(c, etabId, avecRas), s = c.sites;
+  c.retires = [];
   c.lignes = etats.map(e => {
     const v = {}; for (const d of c.sousDefs) if (!d.confidentiel && !videSous(e.valeurs[d.colId])) v[d.colId] = Array.isArray(e.valeurs[d.colId]) ? [...e.valeurs[d.colId]] : e.valeurs[d.colId];
     if (s.site && e.cle.startsWith("s") && !refId(v[s.site])) { v[s.site] = +e.cle.slice(1); if (s.libre) delete v[s.libre]; }   // libellé rattaché au référentiel

@@ -1,129 +1,115 @@
-// Mode veille du kit de secours : relais (code du workflow n8n exécuté par relais-local.js) et faux Grist (faux-grist-api.js).
-// Poste A en veille : réglage et test du relais, premières copies (base, empreinte, dossiers), mise en route sans rien déposer
-// à la main ; copie précédente gardée ; copie anormalement vide refusée puis écrite à la demande ; intervalle et plage
-// horaire ; base qui change (nouvelle empreinte, rechargement d'office) ; panne de Grist puis du relais, passage en mode
-// secours, saisie, retour du réseau signalé. Poste B sans relais : copies du dossier prises d'office, clé « secours ».
+// Mode secours : kit hors ligne (v2/secours/kit-secours.html) sur deux postes reliés par un dossier partagé
+// (simulé sur disque), saisie et mise à jour croisées, rechargement, exports ; puis réintégration dans Grist
+// (v2/reintegration/) : numéros et références remappés, heure de saisie gardée, second passage sans doublon.
+// Copies en couches : complément (réponses de Grist et Config « secours ») déposé dans le dossier, saisies déjà
+// réintégrées écartées ; nouveau poste qui prend d'office la base et le complément du dossier.
 // Prérequis : node ../outils/construire-secours.js
 const __C = require('./chemins');
 const { chromium } = require('playwright'); const fs = require('fs'), path = require('path');
 const { docSites } = require('./run78');
-const fauxGrist = require('./faux-grist-api'), relaisLocal = require('./relais-local');
-const { installer } = require('./dossier-simule');
 const KIT = 'file://' + __C.racine + '/v2/secours/kit-secours.html';
-const PARTAGE = path.join(__C.sorties, 'veille-partage'); fs.rmSync(PARTAGE, { recursive: true, force: true }); fs.mkdirSync(PARTAGE, { recursive: true });
-const pause = ms => new Promise(r => setTimeout(r, ms));
-const fichiers = () => fs.readdirSync(PARTAGE).sort().join(', ');
-const lignesCopie = () => { const j = JSON.parse(fs.readFileSync(path.join(PARTAGE, 'instantane-dossiers.json'))); return j.tables.Reponses.records.length; };
-const vieillir = (f, h) => { const t = (Date.now() - h * 3600e3) / 1000; fs.utimesSync(path.join(PARTAGE, f), t, t); };
+const PARTAGE = path.join(__C.sorties, 'secours-partage'); fs.rmSync(PARTAGE, { recursive: true, force: true }); fs.mkdirSync(PARTAGE, { recursive: true });
+
+async function poste(browser, nom, pageIdx, source = 'demo') {
+  const ctx = await browser.newContext({ viewport: { width: 1200, height: 1300 }, acceptDownloads: true });
+  const page = await ctx.newPage();
+  page.on('pageerror', e => console.log(`[${nom}] PAGEERROR`, e.message)); page.on('dialog', d => d.accept());
+  // dossier partagé simulé : mêmes méthodes que le dossier choisi dans Edge (showDirectoryPicker), fichiers sur disque
+  await page.exposeFunction('nodeListe', () => fs.readdirSync(PARTAGE));
+  await page.exposeFunction('nodeLire', n => { const p = path.join(PARTAGE, n); return fs.existsSync(p) ? { b64: fs.readFileSync(p).toString('base64'), mod: Math.floor(fs.statSync(p).mtimeMs) } : null; });
+  await page.exposeFunction('nodeEcrire', (n, s) => { fs.writeFileSync(path.join(PARTAGE, n), s); return true; });
+  await page.addInitScript(() => {
+    const fichier = n => ({ kind: 'file', name: n,
+      async getFile() { const r = await window.nodeLire(n); if (!r) throw new DOMException('absent', 'NotFoundError'); return new File([Uint8Array.from(atob(r.b64), c => c.charCodeAt(0))], n, { lastModified: r.mod }); },
+      async createWritable() { let buf = ''; return { async write(s) { buf += s; }, async close() { await window.nodeEcrire(n, buf); } }; } });
+    window.__dossierSimule = nom => ({ kind: 'directory', name: nom, async queryPermission() { return 'granted'; }, async requestPermission() { return 'granted'; },
+      async *entries() { for (const f of await window.nodeListe()) yield [f, fichier(f)]; },
+      async getFileHandle(n, o) { if (!(o && o.create) && !(await window.nodeLire(n))) throw new DOMException('absent', 'NotFoundError'); return fichier(n); } });
+  });
+  await page.goto(KIT); await page.waitForTimeout(700);
+  console.log(`[${nom}] fenêtre :`, await page.textContent('#kit-secours h2'));
+  await page.fill('#kit-secours #agent', nom); await page.locator('#kit-secours #agent').dispatchEvent('change');
+  if (source === 'demo') { await page.click('#kit-secours [data-a=demo]'); await page.waitForTimeout(300); }
+  else { await page.evaluate(() => window.__KIT__.connecter(window.__dossierSimule('partage'))); await page.waitForTimeout(800);
+    console.log(`[${nom}] copies prises d'office :`, (await page.innerText('#kit-secours section:nth-of-type(3)')).replace(/\s+/g, ' ').slice(0, 260)); }
+  console.log(`[${nom}] pages :`, (await page.$$eval('#kit-secours #page option', l => l.map(o => o.textContent))).join(' | '));
+  await page.selectOption('#kit-secours #page', { index: pageIdx });
+  await Promise.all([page.waitForNavigation(), page.click('#kit-secours [data-a=commencer]')]); await page.waitForTimeout(1300);
+  await page.evaluate(() => window.__KIT__.connecter(window.__dossierSimule('partage'))); await page.waitForTimeout(400);
+  console.log(`[${nom}] bandeau :`, (await page.textContent('#kit-secours .barre')).replace(/\s+/g, ' ').trim());
+  return page;
+}
+// chaque widget tourne dans son cadre (saisie, tableau de bord, tableau des signalements)
+const W = (page, vue = 'saisie') => page.frameLocator(`iframe[data-vue=${vue}]`);
+const cartes = async page => (await W(page).locator('#cartes-signalements li').allInnerTexts()).map(x => x.replace(/\s+/g, ' ').trim().slice(0, 90));
 
 (async () => {
-  const doc = docSites();
-  { const C = doc.__data.Config; C.id.push(99); C.Cle.push('secours'); C.Valeur.push(JSON.stringify({ entrees: { 'deja-reintegree': { t: '2026-10-26T10:00:00Z' } } })); if (C.Modifie_le) C.Modifie_le.push(0); }
-  const G = fauxGrist.creer({ doc, port: 8821 }); G.etat.reponsesEnPlus = 25;   // 32 réponses
-  let R = relaisLocal.creer({ port: 8811, reglages: { CLE_KIT: 'clek', API_GRIST: G.url, DOC: G.id, CLE_GRIST: G.cle } });
   const browser = await chromium.launch({ executablePath: __C.chromium });
-
-  // ---- poste A : mise en route en mode veille, sans aucun fichier déposé à la main
-  const ctxA = await browser.newContext({ viewport: { width: 1250, height: 1100 } }), A = await ctxA.newPage();
-  A.on('pageerror', e => console.log('[A] PAGEERROR', e.message)); A.on('dialog', d => d.accept());
-  await installer(A, PARTAGE);
-  await A.goto(KIT); await A.waitForTimeout(700);
-  await A.fill('#kit-secours #agent', 'Veille cellule'); await A.locator('#kit-secours #agent').dispatchEvent('change');
-  await A.fill('#kit-secours #relais-url', R.url); await A.fill('#kit-secours #relais-cle', 'mauvaise');
-  await A.click('#kit-secours [data-a=relais-tester]'); await A.waitForTimeout(500);
-  console.log('[A] test, mauvaise clé :', await A.textContent('#kit-secours #relais-etat'));
-  await A.fill('#kit-secours #relais-cle', 'clek');
-  await A.click('#kit-secours [data-a=relais-tester]'); await A.waitForTimeout(500);
-  console.log('[A] test, bonne clé :', await A.textContent('#kit-secours #relais-etat'));
-  await A.click('#kit-secours [data-a=relais-enregistrer]'); await A.waitForTimeout(200);
+  // poste A : nouveau signalement (sites repris du dernier état connu)
+  const A = await poste(browser, 'Alice Martin', 0);
+  await W(A).locator('#porte-nouveau').click(); await A.waitForTimeout(300);
+  await W(A).locator('#nom').fill('Jean Moulin'); await A.waitForTimeout(700); await W(A).locator('#liste [role=option]').first().click(); await A.waitForTimeout(700);
+  await W(A).locator('#description').fill('Saisie en mode secours par Alice'); await W(A).locator('#btn-signalement').click(); await A.waitForTimeout(1200);
+  console.log('[A] confirmation :', (await W(A).locator('#confirmation').innerText()).replace(/\s+/g, ' ').trim().slice(0, 90));
+  const fA = fs.readdirSync(PARTAGE); console.log('[A] dossier partagé :', fA.join(', '));
+  const jA = JSON.parse(fs.readFileSync(path.join(PARTAGE, fA[0])));
+  console.log('[A] journal :', jA.entrees.map(e => e.actions.map(a => `${a[0]} ${a[1]}`).join('+')).join(' ; '), '| Cree_le écrit :', 'Cree_le' in jA.entrees[0].actions[0][3]);
+  // poste B (formulaire sans périmètre) : voit la saisie de A et la met à jour
+  const B = await poste(browser, 'Bob Durand', 2);
+  console.log('[B] signalements :', (await cartes(B)).length, '|', (await cartes(B))[0]);
+  await W(B).locator('#cartes-signalements li:has-text("Jean Moulin")').first().click(); await B.waitForTimeout(1000);
+  await W(B).locator('#description').fill('Mise à jour par Bob'); await W(B).locator('#btn-signalement').click(); await B.waitForTimeout(1200);
+  console.log('[B] statut :', (await W(B).locator('#statut-signalement').innerText()).trim());
+  // tableau de bord et tableau des signalements (A → Z) du poste B
+  await B.click('#kit-secours .onglet[data-v=tableau]'); await B.waitForTimeout(2000);
+  console.log('[B] tableau de bord :', (await W(B, 'tableau').locator('body').innerText()).replace(/\s+/g, ' ').slice(0, 120));
+  await B.click('#kit-secours .onglet[data-v=liste]'); await B.waitForTimeout(1500);
+  await W(B, 'liste').locator('#periode').selectOption('tout'); await B.waitForTimeout(1000);
+  console.log('[B] tableau des signalements :', (await W(B, 'liste').locator('#etat').innerText()).split('\n')[0], '|', (await W(B, 'liste').locator('tbody tr td:nth-child(2)').allInnerTexts()).map(x => x.split('\n')[0]).join(' ; '));
+  const [dw] = await Promise.all([B.waitForEvent('download'), W(B, 'liste').locator('#docx').click()]);
+  console.log('[B] Word :', dw.suggestedFilename());
+  await B.click('#kit-secours .onglet[data-v=saisie]');
+  await A.evaluate(() => window.__KIT__.lireDossier()); await A.waitForTimeout(600);
+  const idA = jA.entrees[0].actions[0][2];
+  console.log('[A] versions du dossier :', JSON.stringify(await A.evaluate(id => { const t = window.__KIT__.K.doc.Reponses; return t.id.map((x, i) => [t.Nature[i], t.Description[i]]).filter((_, i) => t.Dossier[i] === id); }, idA)));
+  // rechargement : journaux rejoués
+  await A.reload(); await A.waitForTimeout(1500);
+  console.log('[A] après rechargement, lignes du mode secours :', await A.evaluate(() => window.__KIT__.K.doc.Reponses.id.filter(i => i >= 1e12).length));
+  // exports
   await A.evaluate(() => window.__KIT__.connecter(window.__dossierSimule('partage'))); await A.waitForTimeout(400);
-  await A.click('#kit-secours [data-a=veille-maintenant]'); await A.waitForTimeout(2500);
-  console.log('[A] dossier partagé après « Faire les copies maintenant » :', fichiers());
-  console.log('[A] réglages, copie :', (await A.innerText('#kit-secours section:nth-of-type(3)')).replace(/\s+/g, ' ').slice(0, 200));
-  console.log('[A] pages proposées :', (await A.$$eval('#kit-secours #page option', l => l.map(o => o.textContent))).join(' | '));
-  await A.selectOption('#kit-secours #page', { index: 2 });
-  await Promise.all([A.waitForNavigation(), A.click('#kit-secours [data-a=commencer]')]); await A.waitForTimeout(1800);
-  // un vrai dossier reste mémorisé par Edge ; le dossier simulé, non : il est reconnecté après chaque rechargement
-  await A.evaluate(() => window.__KIT__.connecter(window.__dossierSimule('partage'))); await A.waitForTimeout(400);
-  const bandeau = async () => (await A.textContent('#kit-secours .barre')).replace(/\s+/g, ' ').trim();
-  const onglets = () => A.$$eval('#kit-secours .onglet', l => l.map(x => x.textContent + (x.classList.contains('actif') ? '*' : '')).join(' | '));
-  console.log('[A] bandeau :', await bandeau());
-  console.log('[A] onglets :', await onglets());
-  const panneau = () => A.evaluate(() => document.querySelector('.kit-panneau').shadowRoot.querySelector('.page-veille').innerText.replace(/\s+/g, ' '));
-  console.log('[A] onglet Veille :', (await panneau()).slice(0, 420));
-
-  // ---- copie suivante : précédente gardée, base inchangée
-  await A.evaluate(() => window.__KIT__.veilleTic(true)); await A.waitForTimeout(800);
-  console.log('[A] 2e copie :', fichiers(), '| événement :', await A.evaluate(() => window.__KIT__.K.veille.evenements.slice(0, 3).map(e => e.txt).join(' / ')));
-
-  // ---- garde-fou : copie anormalement vide refusée, puis écrite à la demande
-  G.etat.reponsesEnPlus = 0;   // 7 réponses au lieu de 32
-  await A.evaluate(() => window.__KIT__.veilleTic(true)); await A.waitForTimeout(800);
-  console.log('[A] copie de 7 lignes : refus =', await A.evaluate(() => window.__KIT__.K.veille.refus && window.__KIT__.K.veille.refus.message), '| lignes en place :', lignesCopie());
-  console.log('[A] bandeau :', await bandeau());
-  await A.evaluate(() => document.querySelector('.kit-panneau').shadowRoot.querySelector('[data-a=ecrire-refus]').click()); await A.waitForTimeout(800);
-  console.log('[A] après « Écrire quand même » : lignes en place :', lignesCopie(), '| précédente :', JSON.parse(fs.readFileSync(path.join(PARTAGE, 'instantane-dossiers.precedent.json'))).tables.Reponses.records.length);
-  G.etat.reponsesEnPlus = 25;
-
-  // ---- intervalle et plage horaire (copie non forcée)
-  const appelsDossiers = () => R.appels.filter(x => x === 'dossiers').length;
-  await A.evaluate(() => Object.assign(window.__KIT__.K.relais, { debut: 0, fin: 24, intervalle: 60 }));
-  let n0 = appelsDossiers(); await A.evaluate(() => window.__KIT__.veilleTic()); await A.waitForTimeout(500);
-  console.log('[A] copie récente, dans la plage : appel au relais ?', appelsDossiers() > n0);
-  vieillir('instantane-dossiers.json', 2);
-  n0 = appelsDossiers(); await A.evaluate(() => window.__KIT__.veilleTic()); await A.waitForTimeout(800);
-  console.log('[A] copie de 2 h, dans la plage : appel au relais ?', appelsDossiers() > n0, '| lignes :', lignesCopie());
-  const h = new Date().getHours(), hors = h < 22 ? { debut: h + 1, fin: h + 2 } : { debut: 0, fin: 1 };
-  await A.evaluate(p => Object.assign(window.__KIT__.K.relais, p), hors); vieillir('instantane-dossiers.json', 2);
-  n0 = appelsDossiers(); await A.evaluate(() => window.__KIT__.veilleTic()); await A.waitForTimeout(500);
-  console.log(`[A] copie de 2 h, hors plage (${hors.debut} h – ${hors.fin} h) : appel au relais ?`, appelsDossiers() > n0, '| bandeau :', (await bandeau()).match(/Copies[^·]*·?[^·]*·? ?hors plage horaire|hors plage horaire/) ? 'hors plage signalé' : '?');
-  await A.evaluate(() => Object.assign(window.__KIT__.K.relais, { debut: 0, fin: 24 }));
-
-  // ---- la base change : nouvelle empreinte, base téléchargée, formulaire rechargé d'office en veille
-  const avantEtabs = await A.evaluate(() => window.__KIT__.K.base.tables.Etablissements.id.length);
-  G.etat.etabsEnPlus = 2;
-  await A.evaluate(() => window.__KIT__.veilleTic(true)); await A.waitForTimeout(1200);
-  console.log('[A] base :', await A.evaluate(() => window.__KIT__.K.veille.evenements.slice(0, 3).map(e => e.txt).join(' / ')));
-  await A.evaluate(() => window.__KIT__.tic()); await A.waitForTimeout(1500);
-  console.log('[A] établissements :', avantEtabs, '→', await A.evaluate(() => window.__KIT__.K.base.tables.Etablissements.id.length), '| sans rechargement de la page, dossier :', await A.evaluate(() => window.__KIT__.K.dirEtat), '|', await A.evaluate(() => window.__KIT__.K.veille.evenements[0].txt));
-  await A.click('#kit-secours .onglet[data-v=liste]'); await A.waitForTimeout(1500);
-  await A.frameLocator('iframe[data-vue=liste]').locator('#periode').selectOption('tout'); await A.waitForTimeout(800);
-  console.log('[A] tableau des signalements après la nouvelle base :', (await A.frameLocator('iframe[data-vue=liste]').locator('#etat').innerText()).split('\n')[0]);
-  await A.click('#kit-secours .onglet[data-v=veille]'); await A.waitForTimeout(300);
-
-  // ---- panne de Grist (le relais répond 502), puis du relais : passage en mode secours
-  G.etat.panne = true;
-  for (let k = 0; k < 2; k++) { await A.evaluate(() => window.__KIT__.veilleTic(true)); await A.waitForTimeout(600); }
-  console.log('[A] Grist en panne :', await bandeau());
-  await R.fermer();
-  await A.evaluate(() => window.__KIT__.veilleTic(true)); await A.waitForTimeout(600);
-  console.log('[A] relais coupé :', await A.evaluate(() => window.__KIT__.K.veille.erreur));
-  await A.evaluate(() => document.querySelector('.kit-panneau').shadowRoot.querySelector('[data-a=mode-secours]').click()); await A.waitForTimeout(1200);
-  console.log('[A] après « Passer en mode secours » :', (await bandeau()).slice(0, 60), '| onglets :', await onglets());
-  const S = A.frameLocator('iframe[data-vue=saisie]');
-  await S.locator('#porte-nouveau').click(); await A.waitForTimeout(300);
-  await S.locator('#nom').fill('Jean Moulin'); await A.waitForTimeout(700); await S.locator('#liste [role=option]').first().click(); await A.waitForTimeout(700);
-  await S.locator('#description').fill('Saisie pendant la panne'); await S.locator('#btn-signalement').click(); await A.waitForTimeout(1200);
-  console.log('[A] saisie en mode secours :', (await S.locator('#confirmation').innerText()).replace(/\s+/g, ' ').slice(0, 70), '| statut :', (await S.locator('#statut-signalement').innerText()).slice(0, 120), '| journal :', await A.evaluate(() => window.__KIT__.K.journal.length));
-
-  // ---- retour du réseau : signalé dans le bandeau
-  G.etat.panne = false;
-  R = relaisLocal.creer({ port: 8811, reglages: { CLE_KIT: 'clek', API_GRIST: G.url, DOC: G.id, CLE_GRIST: G.cle } });
-  await A.evaluate(() => { window.__KIT__.K.veille.ping = 0; return window.__KIT__.veilleTic(); }); await A.waitForTimeout(600);
-  console.log('[A] retour du réseau :', (await bandeau()).match(/Grist répond de nouveau[^:]*: réintégrez les saisies/) ? 'signalé' : await bandeau());
-
-  // ---- poste B, sans relais : copies du dossier prises d'office
-  const B = await (await browser.newContext({ viewport: { width: 1200, height: 1000 } })).newPage();
-  B.on('pageerror', e => console.log('[B] PAGEERROR', e.message)); B.on('dialog', d => d.accept());
-  await installer(B, PARTAGE);
-  await B.goto(KIT); await B.waitForTimeout(700);
-  await B.fill('#kit-secours #agent', 'Agent B'); await B.locator('#kit-secours #agent').dispatchEvent('change');
-  await B.evaluate(() => window.__KIT__.connecter(window.__dossierSimule('partage'))); await B.waitForTimeout(1200);
-  await B.selectOption('#kit-secours #page', { index: 2 });
-  await Promise.all([B.waitForNavigation(), B.click('#kit-secours [data-a=commencer]')]); await B.waitForTimeout(1800);
-  await B.evaluate(() => window.__KIT__.connecter(window.__dossierSimule('partage'))); await B.waitForTimeout(800);
-  console.log('[B] bandeau :', (await B.textContent('#kit-secours .barre')).replace(/\s+/g, ' ').trim().slice(0, 200));
-  console.log('[B] état :', JSON.stringify(await B.evaluate(() => { const K = window.__KIT__.K; return { reponses: K.doc.Reponses.id.length, saisiesDuPosteA: K.doc.Reponses.Description.filter(d => d === 'Saisie pendant la panne').length, reintegrees: [...K.reintegrees], mode: K.mode, ecritPar: K.complement && K.complement.info.ecrit_par }; })));
-  await A.screenshot({ path: path.join(__C.sorties, 'veille-A.png') });
-  await browser.close(); await R.fermer(); await G.fermer();
+  await A.click('#kit-secours [data-a=exports]'); await A.waitForTimeout(200);
+  const [dl] = await Promise.all([A.waitForEvent('download'), A.click('#kit-secours [data-a=exp-consolide]')]);
+  const consolide = path.join(__C.sorties, 'secours-consolide.json'); await dl.saveAs(consolide);
+  const [dc] = await Promise.all([A.waitForEvent('download'), A.click('#kit-secours [data-a=exp-csv]')]);
+  console.log('[A] CSV :', dc.suggestedFilename(), '|', fs.readFileSync(await dc.path(), 'utf8').split('\r\n')[1].slice(0, 120));
+  // réintégration dans le document Grist (faux Grist)
+  const doc = docSites();
+  const R = await browser.newPage({ viewport: { width: 1100, height: 1300 } });
+  R.on('pageerror', e => console.log('[Grist] PAGEERROR', e.message)); R.on('dialog', d => d.accept());
+  await R.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__DOC__=${JSON.stringify(doc)};` + fs.readFileSync('mock.js') }));
+  await R.goto('file://' + __C.racine + '/v2/reintegration/index.html'); await R.waitForTimeout(700);
+  await R.setInputFiles('#fichiers', consolide); await R.waitForTimeout(400);
+  console.log('[Grist] aperçu :', (await R.innerText('#resume')).replace(/\s+/g, ' ').slice(0, 220));
+  await R.check('#sauvegarde'); await R.click('#btn-appliquer'); await R.waitForTimeout(1500);
+  console.log('[Grist] bilan :', (await R.innerText('#bilan')).replace(/\s+/g, ' '));
+  console.log('[Grist] réponses :', JSON.stringify(await R.evaluate(() => { const t = window.__DOC__.__data.Reponses; return t.id.map((id, i) => [id, t.Dossier[i], t.Description[i], new Date(t.Cree_le[i] * 1000).toISOString().slice(0, 16)]).slice(-2); })));
+  console.log('[Grist] sites (dossier, version) :', JSON.stringify(await R.evaluate(() => { const t = window.__DOC__.__data.Sites_signales; return [...new Set(t.id.map((_, i) => `${t.Dossier[i]}/${t.Version[i]}`))]; })));
+  await R.setInputFiles('#fichiers', consolide); await R.waitForTimeout(400);
+  console.log('[Grist] second passage :', (await R.innerText('#resume')).replace(/\s+/g, ' '));
+  await R.screenshot({ path: path.join(__C.sorties, 'reintegration.png'), fullPage: true });
+  // copies en couches : base (document d'avant la panne, ancienne) et complément (Grist après la réintégration)
+  fs.writeFileSync(path.join(PARTAGE, 'instantane-base.json'), JSON.stringify({ format: 'kit-secours-instantane', version: 1,
+    tables: Object.fromEntries([...Object.entries(doc).filter(([k]) => k.startsWith('_grist_')), ...Object.entries(docSites().__data)]) }));
+  const ilYa = (Date.now() - 3600e3) / 1000; fs.utimesSync(path.join(PARTAGE, 'instantane-base.json'), ilYa, ilYa);
+  const D = await R.evaluate(() => window.__DOC__.__data);
+  fs.writeFileSync(path.join(PARTAGE, 'instantane-dossiers.json'), JSON.stringify({ format: 'kit-secours-instantane', version: 1, complement: true, genere_le: new Date().toISOString(),
+    tables: { Reponses: D.Reponses, Sites_signales: { records: D.Sites_signales.id.map((id, i) => ({ id, fields: Object.fromEntries(Object.keys(D.Sites_signales).filter(c => c !== 'id').map(c => [c, D.Sites_signales[c][i]])) })) }, Config: D.Config } }));
+  await A.evaluate(() => window.__KIT__.tic()); await A.waitForTimeout(800);
+  const etat = p => p.evaluate(() => { const K = window.__KIT__.K, t = K.doc.Reponses; return JSON.stringify({ lignesSecours: t.id.filter(i => i >= 1e12).length, reintegrees: K.reintegrees.size, saisieAlice: t.Description.filter(d => d === 'Saisie en mode secours par Alice').length, sitesDossier8: K.doc.Sites_signales.Dossier.filter(d => d === 8).length }); });
+  console.log('[A] après le complément :', await etat(A));
+  console.log('[A] bandeau :', (await A.textContent('#kit-secours .barre')).replace(/\s+/g, ' ').trim());
+  // poste C : rien de chargé à la main, base et complément pris dans le dossier
+  const Cl = await poste(browser, 'Claire Petit', 2, 'dossier');
+  console.log('[C] état :', await etat(Cl), '| signalements :', (await cartes(Cl)).length);
+  await browser.close();
 })();

@@ -1,115 +1,41 @@
-// Mode secours : kit hors ligne (v2/secours/kit-secours.html) sur deux postes reliés par un dossier partagé
-// (simulé sur disque), saisie et mise à jour croisées, rechargement, exports ; puis réintégration dans Grist
-// (v2/reintegration/) : numéros et références remappés, heure de saisie gardée, second passage sans doublon.
-// Copies en couches : complément (réponses de Grist et Config « secours ») déposé dans le dossier, saisies déjà
-// réintégrées écartées ; nouveau poste qui prend d'office la base et le complément du dossier.
-// Prérequis : node ../outils/construire-secours.js
+// Formulaire par site : sites repris dans un nouveau signalement laissés de côté (pas d'information nouvelle), remis,
+// non enregistrés dans le signalement du jour, de nouveau proposés ensuite à leur dernier état
 const __C = require('./chemins');
-const { chromium } = require('playwright'); const fs = require('fs'), path = require('path');
+const { chromium } = require('playwright'); const fs = require('fs');
 const { docSites } = require('./run78');
-const KIT = 'file://' + __C.racine + '/v2/secours/kit-secours.html';
-const PARTAGE = path.join(__C.sorties, 'secours-partage'); fs.rmSync(PARTAGE, { recursive: true, force: true }); fs.mkdirSync(PARTAGE, { recursive: true });
-
-async function poste(browser, nom, pageIdx, source = 'demo') {
-  const ctx = await browser.newContext({ viewport: { width: 1200, height: 1300 }, acceptDownloads: true });
-  const page = await ctx.newPage();
-  page.on('pageerror', e => console.log(`[${nom}] PAGEERROR`, e.message)); page.on('dialog', d => d.accept());
-  // dossier partagé simulé : mêmes méthodes que le dossier choisi dans Edge (showDirectoryPicker), fichiers sur disque
-  await page.exposeFunction('nodeListe', () => fs.readdirSync(PARTAGE));
-  await page.exposeFunction('nodeLire', n => { const p = path.join(PARTAGE, n); return fs.existsSync(p) ? { b64: fs.readFileSync(p).toString('base64'), mod: Math.floor(fs.statSync(p).mtimeMs) } : null; });
-  await page.exposeFunction('nodeEcrire', (n, s) => { fs.writeFileSync(path.join(PARTAGE, n), s); return true; });
-  await page.addInitScript(() => {
-    const fichier = n => ({ kind: 'file', name: n,
-      async getFile() { const r = await window.nodeLire(n); if (!r) throw new DOMException('absent', 'NotFoundError'); return new File([Uint8Array.from(atob(r.b64), c => c.charCodeAt(0))], n, { lastModified: r.mod }); },
-      async createWritable() { let buf = ''; return { async write(s) { buf += s; }, async close() { await window.nodeEcrire(n, buf); } }; } });
-    window.__dossierSimule = nom => ({ kind: 'directory', name: nom, async queryPermission() { return 'granted'; }, async requestPermission() { return 'granted'; },
-      async *entries() { for (const f of await window.nodeListe()) yield [f, fichier(f)]; },
-      async getFileHandle(n, o) { if (!(o && o.create) && !(await window.nodeLire(n))) throw new DOMException('absent', 'NotFoundError'); return fichier(n); } });
-  });
-  await page.goto(KIT); await page.waitForTimeout(700);
-  console.log(`[${nom}] fenêtre :`, await page.textContent('#kit-secours h2'));
-  await page.fill('#kit-secours #agent', nom); await page.locator('#kit-secours #agent').dispatchEvent('change');
-  if (source === 'demo') { await page.click('#kit-secours [data-a=demo]'); await page.waitForTimeout(300); }
-  else { await page.evaluate(() => window.__KIT__.connecter(window.__dossierSimule('partage'))); await page.waitForTimeout(800);
-    console.log(`[${nom}] copies prises d'office :`, (await page.innerText('#kit-secours section:nth-of-type(3)')).replace(/\s+/g, ' ').slice(0, 260)); }
-  console.log(`[${nom}] pages :`, (await page.$$eval('#kit-secours #page option', l => l.map(o => o.textContent))).join(' | '));
-  await page.selectOption('#kit-secours #page', { index: pageIdx });
-  await Promise.all([page.waitForNavigation(), page.click('#kit-secours [data-a=commencer]')]); await page.waitForTimeout(1300);
-  await page.evaluate(() => window.__KIT__.connecter(window.__dossierSimule('partage'))); await page.waitForTimeout(400);
-  console.log(`[${nom}] bandeau :`, (await page.textContent('#kit-secours .barre')).replace(/\s+/g, ' ').trim());
-  return page;
-}
-// chaque widget tourne dans son cadre (saisie, tableau de bord, tableau des signalements)
-const W = (page, vue = 'saisie') => page.frameLocator(`iframe[data-vue=${vue}]`);
-const cartes = async page => (await W(page).locator('#cartes-signalements li').allInnerTexts()).map(x => x.replace(/\s+/g, ' ').trim().slice(0, 90));
-
 (async () => {
+  let doc = docSites();
   const browser = await chromium.launch({ executablePath: __C.chromium });
-  // poste A : nouveau signalement (sites repris du dernier état connu)
-  const A = await poste(browser, 'Alice Martin', 0);
-  await W(A).locator('#porte-nouveau').click(); await A.waitForTimeout(300);
-  await W(A).locator('#nom').fill('Jean Moulin'); await A.waitForTimeout(700); await W(A).locator('#liste [role=option]').first().click(); await A.waitForTimeout(700);
-  await W(A).locator('#description').fill('Saisie en mode secours par Alice'); await W(A).locator('#btn-signalement').click(); await A.waitForTimeout(1200);
-  console.log('[A] confirmation :', (await W(A).locator('#confirmation').innerText()).replace(/\s+/g, ' ').trim().slice(0, 90));
-  const fA = fs.readdirSync(PARTAGE); console.log('[A] dossier partagé :', fA.join(', '));
-  const jA = JSON.parse(fs.readFileSync(path.join(PARTAGE, fA[0])));
-  console.log('[A] journal :', jA.entrees.map(e => e.actions.map(a => `${a[0]} ${a[1]}`).join('+')).join(' ; '), '| Cree_le écrit :', 'Cree_le' in jA.entrees[0].actions[0][3]);
-  // poste B (formulaire sans périmètre) : voit la saisie de A et la met à jour
-  const B = await poste(browser, 'Bob Durand', 2);
-  console.log('[B] signalements :', (await cartes(B)).length, '|', (await cartes(B))[0]);
-  await W(B).locator('#cartes-signalements li:has-text("Jean Moulin")').first().click(); await B.waitForTimeout(1000);
-  await W(B).locator('#description').fill('Mise à jour par Bob'); await W(B).locator('#btn-signalement').click(); await B.waitForTimeout(1200);
-  console.log('[B] statut :', (await W(B).locator('#statut-signalement').innerText()).trim());
-  // tableau de bord et tableau des signalements (A → Z) du poste B
-  await B.click('#kit-secours .onglet[data-v=tableau]'); await B.waitForTimeout(2000);
-  console.log('[B] tableau de bord :', (await W(B, 'tableau').locator('body').innerText()).replace(/\s+/g, ' ').slice(0, 120));
-  await B.click('#kit-secours .onglet[data-v=liste]'); await B.waitForTimeout(1500);
-  await W(B, 'liste').locator('#periode').selectOption('tout'); await B.waitForTimeout(1000);
-  console.log('[B] tableau des signalements :', (await W(B, 'liste').locator('#etat').innerText()).split('\n')[0], '|', (await W(B, 'liste').locator('tbody tr td:nth-child(2)').allInnerTexts()).map(x => x.split('\n')[0]).join(' ; '));
-  const [dw] = await Promise.all([B.waitForEvent('download'), W(B, 'liste').locator('#docx').click()]);
-  console.log('[B] Word :', dw.suggestedFilename());
-  await B.click('#kit-secours .onglet[data-v=saisie]');
-  await A.evaluate(() => window.__KIT__.lireDossier()); await A.waitForTimeout(600);
-  const idA = jA.entrees[0].actions[0][2];
-  console.log('[A] versions du dossier :', JSON.stringify(await A.evaluate(id => { const t = window.__KIT__.K.doc.Reponses; return t.id.map((x, i) => [t.Nature[i], t.Description[i]]).filter((_, i) => t.Dossier[i] === id); }, idA)));
-  // rechargement : journaux rejoués
-  await A.reload(); await A.waitForTimeout(1500);
-  console.log('[A] après rechargement, lignes du mode secours :', await A.evaluate(() => window.__KIT__.K.doc.Reponses.id.filter(i => i >= 1e12).length));
-  // exports
-  await A.evaluate(() => window.__KIT__.connecter(window.__dossierSimule('partage'))); await A.waitForTimeout(400);
-  await A.click('#kit-secours [data-a=exports]'); await A.waitForTimeout(200);
-  const [dl] = await Promise.all([A.waitForEvent('download'), A.click('#kit-secours [data-a=exp-consolide]')]);
-  const consolide = path.join(__C.sorties, 'secours-consolide.json'); await dl.saveAs(consolide);
-  const [dc] = await Promise.all([A.waitForEvent('download'), A.click('#kit-secours [data-a=exp-csv]')]);
-  console.log('[A] CSV :', dc.suggestedFilename(), '|', fs.readFileSync(await dc.path(), 'utf8').split('\r\n')[1].slice(0, 120));
-  // réintégration dans le document Grist (faux Grist)
-  const doc = docSites();
-  const R = await browser.newPage({ viewport: { width: 1100, height: 1300 } });
-  R.on('pageerror', e => console.log('[Grist] PAGEERROR', e.message)); R.on('dialog', d => d.accept());
-  await R.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__DOC__=${JSON.stringify(doc)};` + fs.readFileSync('mock.js') }));
-  await R.goto('file://' + __C.racine + '/v2/reintegration/index.html'); await R.waitForTimeout(700);
-  await R.setInputFiles('#fichiers', consolide); await R.waitForTimeout(400);
-  console.log('[Grist] aperçu :', (await R.innerText('#resume')).replace(/\s+/g, ' ').slice(0, 220));
-  await R.check('#sauvegarde'); await R.click('#btn-appliquer'); await R.waitForTimeout(1500);
-  console.log('[Grist] bilan :', (await R.innerText('#bilan')).replace(/\s+/g, ' '));
-  console.log('[Grist] réponses :', JSON.stringify(await R.evaluate(() => { const t = window.__DOC__.__data.Reponses; return t.id.map((id, i) => [id, t.Dossier[i], t.Description[i], new Date(t.Cree_le[i] * 1000).toISOString().slice(0, 16)]).slice(-2); })));
-  console.log('[Grist] sites (dossier, version) :', JSON.stringify(await R.evaluate(() => { const t = window.__DOC__.__data.Sites_signales; return [...new Set(t.id.map((_, i) => `${t.Dossier[i]}/${t.Version[i]}`))]; })));
-  await R.setInputFiles('#fichiers', consolide); await R.waitForTimeout(400);
-  console.log('[Grist] second passage :', (await R.innerText('#resume')).replace(/\s+/g, ' '));
-  await R.screenshot({ path: path.join(__C.sorties, 'reintegration.png'), fullPage: true });
-  // copies en couches : base (document d'avant la panne, ancienne) et complément (Grist après la réintégration)
-  fs.writeFileSync(path.join(PARTAGE, 'instantane-base.json'), JSON.stringify({ format: 'kit-secours-instantane', version: 1,
-    tables: Object.fromEntries([...Object.entries(doc).filter(([k]) => k.startsWith('_grist_')), ...Object.entries(docSites().__data)]) }));
-  const ilYa = (Date.now() - 3600e3) / 1000; fs.utimesSync(path.join(PARTAGE, 'instantane-base.json'), ilYa, ilYa);
-  const D = await R.evaluate(() => window.__DOC__.__data);
-  fs.writeFileSync(path.join(PARTAGE, 'instantane-dossiers.json'), JSON.stringify({ format: 'kit-secours-instantane', version: 1, complement: true, genere_le: new Date().toISOString(),
-    tables: { Reponses: D.Reponses, Sites_signales: { records: D.Sites_signales.id.map((id, i) => ({ id, fields: Object.fromEntries(Object.keys(D.Sites_signales).filter(c => c !== 'id').map(c => [c, D.Sites_signales[c][i]])) })) }, Config: D.Config } }));
-  await A.evaluate(() => window.__KIT__.tic()); await A.waitForTimeout(800);
-  const etat = p => p.evaluate(() => { const K = window.__KIT__.K, t = K.doc.Reponses; return JSON.stringify({ lignesSecours: t.id.filter(i => i >= 1e12).length, reintegrees: K.reintegrees.size, saisieAlice: t.Description.filter(d => d === 'Saisie en mode secours par Alice').length, sitesDossier8: K.doc.Sites_signales.Dossier.filter(d => d === 8).length }); });
-  console.log('[A] après le complément :', await etat(A));
-  console.log('[A] bandeau :', (await A.textContent('#kit-secours .barre')).replace(/\s+/g, ' ').trim());
-  // poste C : rien de chargé à la main, base et complément pris dans le dossier
-  const Cl = await poste(browser, 'Claire Petit', 2, 'dossier');
-  console.log('[C] état :', await etat(Cl), '| signalements :', (await cartes(Cl)).length);
+  const ouvrir = async () => {
+    const page = await browser.newPage({ viewport: { width: 1100, height: 1400 } });
+    page.on('pageerror', e => console.log('PAGEERROR', e.message)); page.on('dialog', d => { console.log('DIALOG :', d.message().replace(/\n+/g, ' | ').slice(0, 160)); d.accept(); });
+    await page.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__DOC__=${JSON.stringify(doc)};window.__OPTS__=${JSON.stringify({ formulaire: 'Signalements' })};` + fs.readFileSync('mock.js') + fs.readFileSync('fakeapi.js') + fs.readFileSync('mock-saisie.js') }));
+    await page.goto('file://' + __C.racine + '/v2/saisie/index.html'); await page.waitForTimeout(1500);
+    await page.click('#porte-nouveau'); await page.waitForTimeout(300);
+    await page.fill('#nom', 'Jean Moulin'); await page.waitForTimeout(700); await page.click('#liste [role=option] >> nth=0'); await page.waitForTimeout(700);
+    return page;
+  };
+  const lignes = p => p.$$eval('.ligne-rep', l => l.map(x => `${x.querySelector('.site-txt').value}${x.querySelector('[data-action=retirer-repris]') ? ' ✕' : ''}`).join(' | '));
+  let page = await ouvrir();
+  console.log('REPRIS :', await lignes(page));
+  const retirer = async nom => { await page.click(`.ligne-rep:has(.site-txt[value="${nom}"]) [data-action=retirer-repris]`).catch(async () => {
+    const k = await page.$$eval('.ligne-rep', (l, n) => l.findIndex(x => x.querySelector('.site-txt').value === n), nom); await page.click(`.ligne-rep >> nth=${k} >> [data-action=retirer-repris]`); }); await page.waitForTimeout(200); };
+  await retirer('Site Lorient'); await retirer('Campus centre');
+  console.log('APRÈS RETRAIT :', await lignes(page), '| NOTE :', await page.$eval('.retires', e => e.innerText.replace(/\s+/g, ' ')).catch(() => '(aucune)'));
+  await page.click('[data-action=remettre-retires]'); await page.waitForTimeout(200);
+  console.log('APRÈS « Remettre » :', await lignes(page));
+  await retirer('Site Lorient'); await retirer('Campus centre');
+  // les sites encore perturbés : confirmés ; enregistrement
+  for (const b of await page.$$('[data-action=confirmer-site]')) await b.click().catch(() => {});
+  await page.fill('#description', 'Point du jour'); await page.click('#btn-signalement'); await page.waitForTimeout(1500);
+  console.log('STATUT :', (await page.textContent('#statut-signalement')).trim().slice(0, 100));
+  doc = await page.evaluate(() => window.__DOC__);
+  const R = doc.__data.Reponses, n = R.id[R.id.length - 1];
+  console.log('ENREGISTRÉ (dossier', n + ') :', JSON.parse(R.Detail_des_sites[R.id.length - 1] || '[]').map(o => `${o.Site}/${o.Qualification}`).join(' ; '));
+  const S = doc.__data.Sites_signales; console.log('SOUS-TABLE du dossier :', S.id.map((id, i) => i).filter(i => (S.Dossier[i] && S.Dossier[i][2] || S.Dossier[i]) === n).map(i => `${S.Site[i]}/${S.Qualification[i]}`).join(' ; '));
+  await page.close();
+  // signalement suivant : les sites laissés de côté sont de nouveau proposés, à leur dernier état
+  page = await ouvrir();
+  console.log('SIGNALEMENT SUIVANT, REPRIS :', await page.$$eval('.ligne-rep', l => l.map(x => `${x.querySelector('.site-txt').value} [${((x.querySelector('.repris') || {}).textContent || '').replace(/\s+/g, ' ').trim()}]`).join(' | ')));
   await browser.close();
 })();
