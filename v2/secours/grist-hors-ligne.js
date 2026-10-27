@@ -11,8 +11,11 @@
    ou à la main) : une base (instantane-base.grist ou .json : référentiel et
    configuration, renouvelée une fois par jour) et un complément
    (instantane-dossiers.json : tables des réponses et autres tables qui bougent,
-   renouvelé toutes les 10 minutes). Les tables du complément remplacent celles
+   renouvelé toutes les heures par le mode veille). Les tables du complément remplacent celles
    de la base. Le kit prend d'office les plus récentes.
+   Mode veille (Grist accessible) : un poste garde le kit ouvert ; il demande les copies au relais n8n
+   (relais-n8n.json : le navigateur ne peut pas lire Grist directement) et les écrit dans le dossier
+   partagé, aux heures réglées, avec des garde-fous (contrôle avant d'écraser, copie précédente gardée).
    Chaque poste écrit son journal dans un dossier partagé (un fichier par
    poste, donc pas de conflit d'écriture) et lit ceux des autres : tous les
    postes voient les mêmes signalements. Sans dossier partagé, le poste
@@ -25,11 +28,13 @@
 (function () {
 "use strict";
 
-const KIT_VERSION = "0.1.0 (26/10/2026)";
+const KIT_VERSION = "0.2.0 (27/10/2026)";
 const BASE_HORS_LIGNE = 1e12, PAR_POSTE = 1e6;
 const PREFIXE_JOURNAL = "secours-journal-";
 const DELAI_LECTURE = 20000;            // relecture du dossier partagé (ms)
 const NOM_BASE = /^instantane-base\.(grist|json)(\.gz)?$/i, NOM_COMPLEMENT = /^instantane-dossiers\.json(\.gz)?$/i;
+const F_DOSSIERS = "instantane-dossiers.json", F_PRECEDENT = "instantane-dossiers.precedent.json", F_BASE = "instantane-base.grist", F_EMPREINTE = "instantane-base.empreinte.json";
+const RELAIS_DEFAUT = { url: "", cle: "", debut: 7, fin: 20, intervalle: 60 };
 
 /* ---------- utilitaires ---------- */
 const norm = s => String(s == null ? "" : s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -87,6 +92,9 @@ const K = {
   appliquees: new Set(), dernierT: "",
   dir: null, dirEtat: "aucun", dirErreur: "", derniereLecture: null, enAttente: 0,
   nouvelleBase: null,
+  mode: "secours",   // « veille » : Grist accessible, le kit tient les copies à jour ; « secours » : saisie hors ligne
+  relais: { ...RELAIS_DEFAUT },
+  veille: { enCours: false, contact: null, echecs: 0, erreur: null, copie: null, refus: null, base: null, retour: null, ping: 0, evenements: [] },
   pret: false,
 };
 let resoudrePret; const pret = new Promise(r => { resoudrePret = r; });
@@ -231,7 +239,16 @@ function lireReintegrees() {
 }
 function reconstruireDoc() {
   K.doc = copie(K.base.tables);
-  if (complementValable()) for (const [n, t] of Object.entries(K.complement.tables)) if (!n.startsWith("_grist")) K.doc[n] = copie(t);
+  if (complementValable()) {
+    for (const [n, t] of Object.entries(K.complement.tables)) if (!n.startsWith("_grist")) K.doc[n] = copie(t);
+    // la copie des dossiers porte aussi la clé « secours » de Config (saisies déjà réintégrées)
+    const C = K.doc.Config, v = K.complement.secours;
+    if (C && C.Cle && v != null) {
+      const i = C.Cle.indexOf("secours"), txt = JSON.stringify(v);
+      if (i >= 0) C.Valeur[i] = txt;
+      else { C.id.push(Math.max(0, ...C.id) + 1); for (const c of Object.keys(C)) if (c !== "id") C[c].push(c === "Cle" ? "secours" : c === "Valeur" ? txt : null); }
+    }
+  }
   indexerMeta(); lireReintegrees(); K.appliquees = new Set(); K.dernierT = "";
   const vues = new Set();
   for (const e of toutesEntrees().sort(ordre)) {
@@ -438,7 +455,7 @@ async function lireCopie(fichier) {
     if (j.format === "kit-secours-instantane" && j.tables) {
       tables = {};
       for (const [n, t] of Object.entries(j.tables)) tables[n] = Array.isArray(t.records) ? colonnesDeRecords(t.records) : t;
-      if (j.complement) return { info: { complement: true, fichier: nom, genere_le: j.genere_le || null, modifie: fichier.lastModified || null, charge_le: new Date().toISOString() }, tables };
+      if (j.complement) return { info: { complement: true, fichier: nom, genere_le: j.genere_le || null, modifie: fichier.lastModified || null, charge_le: new Date().toISOString(), ecrit_par: j.ecrit_par || null }, tables, secours: j.secours === undefined ? undefined : j.secours };
     }
     else if (j._grist_Tables) { tables = {}; for (const [k, v] of Object.entries(j)) if (k.startsWith("_grist_")) tables[k] = v; Object.assign(tables, j.__data || {}); }
     else throw new Error("format de fichier non reconnu (attendu : document .grist ou copie .json)");
@@ -513,7 +530,7 @@ async function oublierDossier() { K.dir = null; K.dirEtat = "aucun"; await BD.su
 let chaineEcriture = Promise.resolve();
 function ecrireJournalPartage() {
   chaineEcriture = chaineEcriture.then(async () => {
-    if (!K.dir || K.dirEtat !== "ok" || !K.agent) return;
+    if (!K.dir || K.dirEtat !== "ok" || !K.agent || !K.journal.length) return;   // pas de journal vide dans le dossier
     try {
       const fh = await K.dir.getFileHandle(monFichier(), { create: true }), w = await fh.createWritable();
       await w.write(JSON.stringify({ format: "kit-secours-journal", version: 1, kit: KIT_VERSION, agent: K.agent, poste: K.posteNum, document: K.base && K.base.info, maj: new Date().toISOString(), entrees: K.journal }));
@@ -556,6 +573,16 @@ async function lireDossier() {
 }
 async function tic() {
   if (!K.pret) return;
+  // en veille, une base plus récente est prise sans recharger la page (qui perdrait l'autorisation sur le dossier)
+  if (K.mode === "veille" && K.nouvelleBase && UI.panneau !== "reglages") {
+    const nom = K.nouvelleBase.nom; K.nouvelleBase = null;
+    try {
+      const b = await chargerDepuisDossier(nom); b.info.auto = true;
+      K.base = b; await BD.ecrire("base", b, "courante");
+      reconstruireDoc(); UI.rechargerVues();
+      evenement(`nouvelle base ${nom} prise en compte`);
+    } catch (e) { evenement(`nouvelle base illisible (${nom}) : ${e.message}`, "attention"); }
+  }
   if (K.dir && K.dirEtat === "erreur") { try { if (await verifierAcces(false)) { K.dirEtat = "ok"; trace("Dossier partagé de nouveau accessible"); } } catch (_) {} }
   await lireDossier();
 }
@@ -586,6 +613,129 @@ async function copiesDuDossierAuDemarrage() {
 }
 async function chargerDepuisDossier(nom) {
   const h = await K.dir.getFileHandle(nom); return lireCopie(await h.getFile());
+}
+
+/* =====================================================================
+   Mode veille : copies demandées au relais n8n et écrites dans le dossier partagé
+   ===================================================================== */
+function evenement(txt, gravite) {
+  const e = { t: Date.now(), txt, gravite: gravite || "info" };
+  K.veille.evenements.unshift(e); K.veille.evenements = K.veille.evenements.slice(0, 30);
+  trace(`Veille : ${txt}`);
+  BD.ecrire("kv", K.veille.evenements, "veille-evenements").catch(() => {});
+}
+const relaisRegle = () => !!(K.relais.url && K.relais.cle);
+async function appelRelais(quoi, binaire) {
+  let u; try { u = new URL(K.relais.url); } catch (_) { throw new Error("adresse du relais non valable"); }
+  u.searchParams.set("cle", K.relais.cle); u.searchParams.set("quoi", quoi); u.searchParams.set("_", Date.now());
+  const arret = new AbortController(), minuteur = setTimeout(() => arret.abort(), binaire ? 300000 : 120000);
+  let r;
+  try { r = await fetch(u, { cache: "no-store", signal: arret.signal }); }
+  catch (e) { throw Object.assign(new Error(e.name === "AbortError" ? "le relais ne répond pas (délai dépassé)" : "relais injoignable (réseau coupé, ou réponse bloquée par le navigateur)"), { reseau: true }); }
+  finally { clearTimeout(minuteur); }
+  if (binaire && r.ok && !/json/.test(r.headers.get("content-type") || "")) return new Uint8Array(await r.arrayBuffer());
+  const txt = await r.text(); let j;
+  try { j = JSON.parse(txt); } catch (_) { throw new Error(`réponse illisible du relais (HTTP ${r.status})`); }
+  if (!r.ok || j.erreur) throw Object.assign(new Error(j.erreur || `HTTP ${r.status}`), { statut: r.status });
+  return j;
+}
+async function fichierDuDossier(nom) { try { return await (await K.dir.getFileHandle(nom)).getFile(); } catch (_) { return null; } }
+async function ecrireDansDossier(nom, contenu) { const fh = await K.dir.getFileHandle(nom, { create: true }), w = await fh.createWritable(); await w.write(contenu); await w.close(); }
+const nbLignes = t => (t && Array.isArray(t.records) ? t.records.length : t && Array.isArray(t.id) ? t.id.length : 0);
+const SEUIL_BAISSE = 0.5, MIN_CONTROLE = 20;   // une table d'au moins 20 lignes qui perd plus de la moitié : copie refusée
+
+// copie des dossiers : contrôlée, puis écrite à la place de la précédente, gardée sous un autre nom
+async function copierDossiers() {
+  const j = await appelRelais("dossiers");
+  if (j.format !== "kit-secours-instantane" || !j.complement || !j.tables) throw new Error("copie refusée : format inattendu");
+  const rep = Array.isArray(j.reponses) ? j.reponses : [];
+  if (!rep.length || rep.some(t => !j.tables[t])) throw new Error("copie refusée : table des réponses absente");
+  j.ecrit_par = K.agent || `poste ${K.posteNum}`;
+  const actuel = await fichierDuDossier(F_DOSSIERS);
+  let avant = null;
+  if (actuel) { try { avant = JSON.parse(await actuel.text()); } catch (_) { avant = null; } }   // copie en place illisible : remplacée
+  const baisses = avant && avant.tables ? Object.entries(avant.tables).map(([t, x]) => [t, nbLignes(x), nbLignes(j.tables[t])])
+    .filter(([, n, m]) => n >= MIN_CONTROLE && m < n * SEUIL_BAISSE) : [];
+  if (baisses.length) {
+    K.veille.refus = { t: Date.now(), copie: j, message: baisses.map(([t, n, m]) => `${t} : ${m} ligne(s) au lieu de ${n}`).join(" ; ") };
+    evenement(`copie des dossiers refusée — ${K.veille.refus.message}. La copie en place est gardée.`, "attention");
+    return false;
+  }
+  await ecrireCopieDossiers(j, actuel);
+  return true;
+}
+async function ecrireCopieDossiers(j, actuel) {
+  if (actuel === undefined) actuel = await fichierDuDossier(F_DOSSIERS);
+  if (actuel) await ecrireDansDossier(F_PRECEDENT, actuel);
+  await ecrireDansDossier(F_DOSSIERS, JSON.stringify(j));
+  K.veille.refus = null;
+  K.veille.copie = { t: Date.now(), compte: Object.fromEntries(Object.entries(j.tables).map(([t, x]) => [t, nbLignes(x)])), taille: null };
+  evenement(`copie des dossiers écrite (${Object.entries(K.veille.copie.compte).map(([t, n]) => `${t} ${n}`).join(", ")})`);
+}
+// base : une vérification par jour ; téléchargée seulement si l'empreinte a changé ou si le fichier manque
+const jourLocal = d => { const x = new Date(d); return `${x.getFullYear()}-${x.getMonth() + 1}-${x.getDate()}`; };
+async function baseVerifieeAujourdhui() {
+  const f = await fichierDuDossier(F_EMPREINTE); if (!f) return false;
+  try { const e = JSON.parse(await f.text()); return !!e.verifie_le && jourLocal(e.verifie_le) === jourLocal(Date.now()) && !!(await fichierDuDossier(F_BASE)); } catch (_) { return false; }
+}
+async function verifierBase(forcer) {
+  const e = await appelRelais("empreinte");
+  const fe = await fichierDuDossier(F_EMPREINTE); let avant = null;
+  if (fe) { try { avant = JSON.parse(await fe.text()); } catch (_) {} }
+  const enPlace = await fichierDuDossier(F_BASE);
+  const maintenant = new Date().toISOString();
+  if (!forcer && enPlace && avant && avant.empreinte === e.empreinte) {
+    await ecrireDansDossier(F_EMPREINTE, JSON.stringify({ ...avant, verifie_le: maintenant }));
+    K.veille.base = { t: Date.now(), statut: "inchangée", taille: enPlace.size };
+    evenement("base vérifiée : inchangée");
+    return false;
+  }
+  const octets = await appelRelais("base", true);
+  let tables;
+  try { tables = await lireFichierGrist(octets); } catch (err) { throw new Error(`base refusée : fichier illisible (${err.message})`); }
+  const C = tables.Config, iG = C && C.Cle ? C.Cle.indexOf("general") : -1;
+  let g = {}; try { g = iG >= 0 ? JSON.parse(C.Valeur[iG] || "{}") || {} : {}; } catch (_) {}
+  if (!tables[g.reponses || "Reponses"]) throw new Error("base refusée : la table des réponses n'y figure pas");
+  await ecrireDansDossier(F_BASE, new Blob([octets]));
+  await ecrireDansDossier(F_EMPREINTE, JSON.stringify({ empreinte: e.empreinte, mesure: e.mesure, base_le: maintenant, verifie_le: maintenant, taille: octets.length, ecrit_par: K.agent || null }));
+  K.veille.base = { t: Date.now(), statut: avant ? "mise à jour" : "téléchargée", taille: octets.length };
+  evenement(`base ${avant ? "mise à jour" : "téléchargée"} (${(octets.length / 1048576).toFixed(1)} Mo)`);
+  return true;
+}
+const minutes = d => d.getHours() * 60 + d.getMinutes();
+function dansPlage(d = new Date()) { const m = minutes(d); return m >= K.relais.debut * 60 && m <= K.relais.fin * 60; }
+async function veilleTic(forcer) {
+  if (!relaisRegle() || K.veille.enCours) return;
+  if (K.mode !== "veille" && !forcer) {
+    // mode secours : un signe de vie du relais toutes les 5 minutes, pour dire quand le réseau est revenu
+    if (Date.now() - K.veille.ping < 300000) return;
+    K.veille.ping = Date.now();
+    try { await appelRelais("ping"); if (!K.veille.retour) evenement("le relais et Grist répondent de nouveau", "ok"); K.veille.retour = Date.now(); }
+    catch (_) { K.veille.retour = null; }
+    UI.maj(); return;
+  }
+  if (!K.dir || K.dirEtat !== "ok") { K.veille.erreur = "dossier partagé indisponible"; UI.maj(); return; }
+  if (!forcer && !dansPlage()) { UI.maj(); return; }
+  K.veille.enCours = true; UI.maj();
+  let ecrit = false;
+  try {
+    if (forcer || !(await baseVerifieeAujourdhui())) ecrit = (await verifierBase()) || ecrit;
+    const f = await fichierDuDossier(F_DOSSIERS);
+    const age = f ? Date.now() - f.lastModified : Infinity;
+    if (forcer || age >= (K.relais.intervalle - 1) * 60000) ecrit = (await copierDossiers()) || ecrit;
+    if (K.veille.echecs) evenement("le relais répond de nouveau", "ok");
+    K.veille.contact = Date.now(); K.veille.echecs = 0; K.veille.erreur = null;
+  } catch (e) {
+    K.veille.echecs++; K.veille.erreur = e.message;
+    evenement(e.message, e.reseau || e.statut === 502 ? "ko" : "attention");
+  } finally { K.veille.enCours = false; }
+  if (ecrit) { if (K.pret) await lireDossier(); else { await lireDossierAvantDemarrage(); await copiesDuDossierAuDemarrage(); if (UI.panneau === "reglages") UI.ouvrirReglages(); } }
+  UI.maj();
+}
+async function passerEnMode(mode) {
+  K.mode = mode; await BD.ecrire("kv", mode, "mode");
+  evenement(mode === "secours" ? "passage en mode secours (saisie hors ligne)" : "retour en mode veille", mode === "secours" ? "attention" : "ok");
+  if (mode === "secours") { K.veille.ping = Date.now(); UI.ouvrirVue("saisie"); } else UI.ouvrirVue("veille");
 }
 
 /* ---------- exports ---------- */
@@ -666,18 +816,44 @@ const UI = {
     const etat = { ok: ["ok", `Dossier partagé « ${esc(K.dir && K.dir.name)} » · ${1 + K.autres.size} poste(s)${K.derniereLecture ? ` · lu à ${heure(K.derniereLecture)}` : ""}`],
       reconnecter: ["attention", `Dossier partagé « ${esc(K.dir && K.dir.name)} » à reconnecter`], erreur: ["ko", `Dossier partagé injoignable — ${K.enAttente} saisie(s) gardée(s) sur ce poste`],
       aucun: ["neutre", FS_OK ? "Pas de dossier partagé : saisies sur ce poste seulement" : "Navigateur sans accès aux dossiers : saisies sur ce poste seulement"] }[K.dirEtat];
-    b.innerHTML = `<span class="marque">Mode secours</span>
+    const V = K.veille, veille = K.mode === "veille";
+    const etatVeille = !relaisRegle() ? "" : veille
+      ? (V.enCours ? `<span class="etat ok"><i></i>Copie en cours…</span>`
+        : V.erreur ? `<span class="etat ko"><i></i>Relais : ${esc(V.erreur.slice(0, 60))}${V.echecs >= 2 ? " — passer en mode secours ?" : ""}</span>`
+        : V.refus ? `<span class="etat attention"><i></i>Copie refusée : voir l'onglet Veille</span>`
+        : `<span class="etat ok"><i></i>${V.copie || V.contact ? `Copies à jour${V.copie ? ` · ${heure(V.copie.t)}` : ""}` : "Veille active"}${dansPlage() ? "" : " · hors plage horaire"}</span>`)
+      : (V.retour ? `<span class="etat ok"><i></i>Grist répond de nouveau (${heure(V.retour)}) : réintégrez les saisies</span>` : "");
+    const vues = Object.entries(VUES).filter(([vid, v]) => v.page() && !(veille && vid === "saisie"));
+    if (relaisRegle()) vues.unshift(["veille", { titre: "Veille" }]);
+    b.classList.toggle("en-veille", veille);
+    b.innerHTML = `<span class="marque">${veille ? "Mode veille" : "Mode secours"}</span>
       <span class="info">${K.agent ? `<b>${esc(K.agent)}</b>` : "<i>agent ?</i>"} · ${K.page ? esc(K.page.titre) : "<i>page ?</i>"}${info ? ` · <span title="${esc(info.fichier)}">copie du ${esc(dateHeure(info.modifie || info.charge_le))}</span>` : ""}${complementValable() ? ` · <span title="${esc(K.complement.info.fichier)}">dossiers de ${esc(heure(K.complement.info.genere_le || K.complement.info.modifie))}</span>` : ""}${K.reintegrees.size ? ` · ${K.reintegrees.size} saisie(s) déjà réintégrée(s)` : ""}</span>
       <span class="etat ${etat[0]}"><i></i>${etat[1]}</span>
       ${K.dirEtat === "reconnecter" ? `<button data-a="reconnecter" class="petit">Reconnecter</button>` : ""}
       ${K.nouvelleBase ? `<button data-a="maj-base" class="petit attention" title="Une copie plus récente du document a été déposée dans le dossier partagé">Copie plus récente disponible</button>` : ""}
-      ${K.pret ? `<nav class="onglets">${Object.entries(VUES).filter(([vid, v]) => v.page()).map(([vid, v]) => `<button data-a="vue" data-v="${vid}" class="onglet ${this.vue === vid ? "actif" : ""}">${esc(v.titre)}</button>`).join("")}</nav>` : ""}
+      ${etatVeille}
+      ${K.pret ? `<nav class="onglets">${vues.map(([vid, v]) => `<button data-a="vue" data-v="${vid}" class="onglet ${this.vue === vid ? "actif" : ""}">${esc(v.titre)}</button>`).join("")}</nav>` : ""}
       <span class="boutons">${K.pret ? `<button data-a="exports" class="petit">Exporter</button>` : ""}<button data-a="reglages" class="petit">Réglages</button></span>`;
     if (this.panneau === "reglages") this.ouvrirReglages(true);
     if (this.panneau === "exports") this.ouvrirExports(true);
+    if (this.vue === "veille") this.majVeille();
   },
   ouvrirVue(vid) {
-    if (!VUES[vid] || !VUES[vid].page()) vid = "saisie";
+    if (vid === "veille" && !relaisRegle()) vid = "saisie";
+    if (K.mode === "veille" && vid === "saisie" && relaisRegle()) vid = "veille";
+    if (vid !== "veille" && (!VUES[vid] || !VUES[vid].page())) vid = "saisie";
+    if (vid === "veille") {
+      this.vue = vid; try { localStorage.setItem("kit-secours-vue", vid); } catch (_) {}
+      if (!this.hoteVeille) {
+        this.hoteVeille = document.createElement("div"); this.hoteVeille.className = "kit-panneau"; this.zone.appendChild(this.hoteVeille);
+        this.rv = this.hoteVeille.attachShadow({ mode: "open" });
+        this.rv.addEventListener("click", ev => this.clic(ev));
+      }
+      this.zone.querySelectorAll("iframe").forEach(x => { x.hidden = true; });
+      this.hoteVeille.hidden = false;
+      this.maj(); return;
+    }
+    if (this.hoteVeille) this.hoteVeille.hidden = true;
     this.vue = vid; try { localStorage.setItem("kit-secours-vue", vid); } catch (_) {}
     let f = this.zone.querySelector(`iframe[data-vue="${vid}"]`);
     if (!f) {
@@ -687,6 +863,36 @@ const UI = {
     }
     this.zone.querySelectorAll("iframe").forEach(x => { x.hidden = x !== f; });
     this.maj();
+  },
+  // widgets recréés (nouvelle base) : les cadres sont refaits à la prochaine ouverture
+  rechargerVues() { this.zone.querySelectorAll("iframe").forEach(f => f.remove()); this.ouvrirVue(this.vue || "veille"); },
+  majVeille() {
+    if (!this.rv) return;
+    const V = K.veille, R = K.relais, veille = K.mode === "veille";
+    const prochaine = V.copie ? new Date(V.copie.t + R.intervalle * 60000) : null;
+    const ligne = (l, v) => `<tr><th>${l}</th><td>${v}</td></tr>`;
+    this.rv.innerHTML = `<style>${CSS}${CSS_VEILLE}</style><div class="page-veille">
+      <h2>${veille ? "Veille : copies automatiques du document" : "Mode secours : saisie hors ligne"}</h2>
+      <p class="note">${veille
+        ? `Grist est accessible : la saisie se fait dans Grist. Ce poste demande les copies au relais et les dépose dans le dossier partagé, de ${R.debut} h à ${R.fin} h, toutes les ${R.intervalle} minutes (un seul poste suffit ; les autres lisent les copies du dossier). Laissez cet onglet ouvert.`
+        : `Les saisies sont faites sur la copie et réintégrées dans Grist au retour du réseau (Exporter › Saisies de tous les postes). Le relais est interrogé toutes les 5 minutes pour savoir quand Grist répond de nouveau.`}</p>
+      ${V.refus ? `<div class="alerte"><b>Copie des dossiers refusée à ${heure(V.refus.t)}</b> : ${esc(V.refus.message)}. La copie précédente est gardée dans le dossier partagé.
+        <p><button data-a="ecrire-refus" class="danger">Écrire quand même cette copie</button> <span class="note">si la baisse est normale (suppressions voulues dans Grist)</span></p></div>` : ""}
+      <table class="etat-veille">
+        ${ligne("Relais", V.erreur ? `<span class="ko">✗ ${esc(V.erreur)}</span>` : V.contact ? `<span class="ok">✓ dernier contact à ${heure(V.contact)}</span>` : "pas encore interrogé")}
+        ${ligne("Dossier partagé", K.dir && K.dirEtat === "ok" ? `<span class="ok">✓ ${esc(K.dir.name)}</span>` : `<span class="ko">✗ ${K.dir ? "à reconnecter" : "aucun"}</span>`)}
+        ${ligne("Copie des dossiers", V.copie ? `écrite à ${heure(V.copie.t)} — ${Object.entries(V.copie.compte).map(([t, n]) => `${esc(t)} ${n}`).join(", ")}${veille && prochaine ? ` · prochaine vers ${prochaine.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : ""}`
+          : complementValable() ? `copie du dossier : ${esc(dateHeure(K.complement.info.genere_le || K.complement.info.modifie))}${K.complement.info.ecrit_par ? ` (par ${esc(K.complement.info.ecrit_par)})` : ""}` : "aucune")}
+        ${ligne("Base (référentiels et structure)", V.base ? `${V.base.statut} à ${heure(V.base.t)}${V.base.taille ? ` (${(V.base.taille / 1048576).toFixed(1)} Mo)` : ""}` : K.base ? `copie du ${esc(dateHeure(K.base.info.modifie || K.base.info.charge_le))}` : "aucune")}
+        ${ligne("Plage horaire", `${R.debut} h – ${R.fin} h${dansPlage() ? "" : " <span class=\"attention\">(hors plage : pas de copie)</span>"}`)}
+      </table>
+      <p>${veille ? `<button data-a="veille-maintenant" ${V.enCours || !K.dir ? "disabled" : ""}>${V.enCours ? "Copie en cours…" : "Faire les copies maintenant"}</button>
+          <button data-a="mode-secours" class="danger">Passer en mode secours</button>`
+        : `<button data-a="mode-veille" class="secondaire">Revenir en mode veille</button>`}
+        <button data-a="reglages" class="secondaire">Réglages du relais</button></p>
+      <h3>Derniers événements</h3>
+      <ul class="evenements">${V.evenements.length ? V.evenements.map(e => `<li class="${e.gravite}"><span>${esc(dateHeure(e.t))}</span> ${esc(e.txt)}</li>`).join("") : "<li>—</li>"}</ul>
+    </div>`;
   },
   majTraces() { const p = this.r && this.r.querySelector("#traces"); if (p) p.textContent = traces.slice().reverse().join("\n"); },
   fenetre(html, fermable = true) {
@@ -704,7 +910,7 @@ const UI = {
         <p>${K.dirEtat !== "ok" ? `<button data-a="reconnecter">Reconnecter</button>` : ""}<button data-a="choisir-dossier" class="secondaire">Choisir un autre dossier</button><button data-a="oublier-dossier" class="secondaire">Ne plus utiliser de dossier</button></p>
         ${K.autres.size ? `<p class="note">Autres postes : ${[...K.autres.values()].map(a => `${esc(a.agent)} (${a.entrees.length} saisie${a.entrees.length > 1 ? "s" : ""})`).join(", ")}</p>` : ""}`
       : `<p class="note">Choisissez le dossier réseau commun à l'équipe : chaque poste y écrit son journal et lit ceux des autres. Sans dossier, ce poste travaille seul.</p><p><button data-a="choisir-dossier">Choisir le dossier partagé</button></p>`;
-    const fichiers = (K.fichiersDossier || []).slice(0, 8);
+    const fichiers = (K.fichiersDossier || []).filter(f => f.nom !== F_EMPREINTE).slice(0, 8);
     this.fenetre(`
       <h2>${premier ? "Mise en route du mode secours" : "Réglages du mode secours"}</h2>
       ${premier ? `<p class="note">Le formulaire fonctionne sans réseau à partir d'une copie du document Grist. Renseignez les quatre étapes, puis « Commencer la saisie ».</p>` : ""}
@@ -716,7 +922,7 @@ const UI = {
         ${info ? `<p>Base : <b>${esc(info.fichier)}</b> (${info.source === "grist" ? "document Grist" : "fichier JSON"}, ${esc(dateHeure(info.modifie || info.charge_le))})${info.auto ? " — suit le dossier partagé" : ""}</p>
           <p>Dossiers : ${K.complement ? `<b>${esc(K.complement.info.fichier)}</b> (${esc(dateHeure(K.complement.info.genere_le || K.complement.info.modifie))})${complementValable() ? "" : " — plus ancien que la base, non utilisé"}` : "ceux de la base"}</p>`
           : `<p class="note">Aucune copie chargée. Dans Grist, menu du document › Télécharger › document (.grist), sans l'historique, puis déposez le fichier dans le dossier partagé.</p>`}
-        <p class="note">Copies automatiques : « instantane-base.grist » (référentiel et configuration) et « instantane-dossiers.json » (signalements, toutes les 10 minutes) dans le dossier partagé ; les plus récentes sont prises d'office.</p>
+        <p class="note">Copies automatiques : « instantane-base.grist » (référentiel et configuration) et « instantane-dossiers.json » (réponses et sous-tables, écrites par le poste en mode veille) dans le dossier partagé ; les plus récentes sont prises d'office.</p>
         ${K.dir && K.dirEtat === "ok" ? (fichiers.length ? `<div class="liste">${fichiers.map(f => `<div><span>${esc(f.nom)} <small>${esc(dateHeure(f.mod))} · ${(f.taille / 1048576).toFixed(1)} Mo</small></span><button data-a="charger-dossier" data-nom="${esc(f.nom)}" class="petit secondaire">Charger</button></div>`).join("")}</div>` : `<p class="note">Aucun fichier .grist ou .json dans le dossier partagé.</p>`) : ""}
         <p><label class="bouton secondaire">Ouvrir un fichier (.grist ou .json)…<input type="file" id="fichier-base" accept=".grist,.json,.gz" hidden></label>
         ${window.__KIT_DEMO__ ? `<button data-a="demo" class="secondaire">Document de démonstration</button>` : ""}</p>
@@ -726,6 +932,16 @@ const UI = {
           <p class="note">Les pages des agents reprennent leur périmètre et leurs réglages. Les formulaires seuls s'affichent sans périmètre.</p>`
         : `<p class="note">${K.base ? "Aucune page de saisie ni formulaire publié dans cette copie." : "Chargez d'abord une copie du document."}</p>`}</section>
       ${K.base && pagesTableau(K.base.tables).length ? `<section><h3>5. Tableau de bord</h3><select id="page-tableau">${pagesTableau(K.base.tables).map(p => `<option value="${esc(p.cle)}" ${K.pageTableau && K.pageTableau.cle === p.cle ? "selected" : ""}>${esc(p.titre)}</option>`).join("")}</select></section>` : ""}
+      <section><h3>Relais n8n (mode veille)</h3>
+        <p class="note">Pendant que Grist est accessible, un poste en mode veille demande les copies au relais et les dépose dans le dossier partagé. Facultatif : sans relais, déposez la copie à la main.</p>
+        <label>Adresse du relais <input id="relais-url" value="${esc(K.relais.url)}" placeholder="https://n8n.exemple.fr/webhook/secours" autocomplete="off"></label>
+        <label>Clé du relais <input id="relais-cle" type="password" value="${esc(K.relais.cle)}" autocomplete="off"></label>
+        <div class="trois"><label>De (heure) <input id="relais-debut" type="number" min="0" max="23" value="${K.relais.debut}"></label>
+          <label>À (heure) <input id="relais-fin" type="number" min="0" max="24" value="${K.relais.fin}"></label>
+          <label>Toutes les (min) <input id="relais-intervalle" type="number" min="5" max="1440" value="${K.relais.intervalle}"></label></div>
+        <p><button data-a="relais-enregistrer" class="secondaire">Enregistrer le relais</button><button data-a="relais-tester" class="secondaire">Tester</button>
+          ${relaisRegle() && K.dir && K.dirEtat === "ok" ? `<button data-a="veille-maintenant" class="secondaire">Faire les copies maintenant</button>` : ""}</p>
+        <p class="etat-chargement" id="relais-etat"></p></section>
       <p class="actions"><button data-a="commencer" class="principal" ${K.agent && K.base && pages.length ? "" : "disabled"}>${premier ? "Commencer la saisie" : "Appliquer et recharger le formulaire"}</button></p>
       ${premier ? "" : `<section><h3>Données de ce poste</h3><p>${K.journal.length} saisie(s) de ce poste, ${toutesEntrees().length - K.journal.length} d'autres postes.</p>
         <p><button data-a="effacer" class="danger">Effacer les données du mode secours sur ce poste…</button></p></section>`}
@@ -758,6 +974,35 @@ const UI = {
       if (a === "fermer") this.fermer();
       else if (a === "reglages") this.ouvrirReglages();
       else if (a === "vue") this.ouvrirVue(b.dataset.v);
+      else if (a === "relais-enregistrer" || a === "relais-tester") {
+        const v = id => (this.r.querySelector(`#${id}`) || {}).value;
+        const n = (x, d, min, max) => { const y = Math.round(Number(x)); return Number.isFinite(y) ? Math.min(max, Math.max(min, y)) : d; };
+        K.relais = { url: String(v("relais-url") || "").trim(), cle: String(v("relais-cle") || "").trim(),
+          debut: n(v("relais-debut"), 7, 0, 23), fin: n(v("relais-fin"), 20, 1, 24), intervalle: n(v("relais-intervalle"), 60, 5, 1440) };
+        if (K.relais.fin <= K.relais.debut) K.relais.fin = Math.min(24, K.relais.debut + 1);
+        await BD.ecrire("kv", K.relais, "relais");
+        const zone = this.r.querySelector("#relais-etat");
+        if (a === "relais-tester") {
+          if (zone) zone.textContent = "Interrogation du relais…";
+          try { const p = await appelRelais("ping"); if (zone) zone.textContent = `✓ Le relais répond et lit le document « ${p.document} » (${p.duree_grist_ms} ms côté Grist).`; }
+          catch (e) { if (zone) zone.textContent = `✗ ${e.message}`; }
+        } else {
+          if (relaisRegle() && !(await BD.lire("kv", "mode"))) { K.mode = "veille"; await BD.ecrire("kv", "veille", "mode"); }
+          if (zone) zone.textContent = relaisRegle() ? "Relais enregistré." : "Relais retiré : copies à déposer à la main.";
+          this.maj();
+        }
+      }
+      else if (a === "veille-maintenant") { await veilleTic(true); }
+      else if (a === "mode-secours") { if (confirm("Passer en mode secours ?\n\nÀ faire quand Grist ne répond plus : la saisie se fera sur la copie du document, puis sera réintégrée dans Grist au retour du réseau.")) await passerEnMode("secours"); }
+      else if (a === "mode-veille") {
+        const n = K.journal.length;
+        if (!confirm(`Revenir en mode veille ?${n ? `\n\nCe poste a ${n} enregistrement(s) du mode secours : vérifiez qu'ils ont été réintégrés dans Grist (Exporter › Saisies de tous les postes, puis widget de réintégration).` : ""}`)) return;
+        await passerEnMode("veille");
+      }
+      else if (a === "ecrire-refus") {
+        if (!K.veille.refus || !confirm(`Écrire la copie refusée à la place de la copie en place ?\n\n${K.veille.refus.message}`)) return;
+        await ecrireCopieDossiers(K.veille.refus.copie); evenement("copie refusée écrite à la demande", "attention"); await lireDossier(); this.maj();
+      }
       else if (a === "exports") this.ouvrirExports();
       else if (a === "reconnecter") await connecterDossier(true);
       else if (a === "choisir-dossier") { await choisirDossier(); await apresChoixDossier(); }
@@ -834,10 +1079,25 @@ async function lireDossierAvantDemarrage() {
   } catch (e) { trace(`Dossier illisible : ${e.message}`); }
 }
 
+const CSS_VEILLE = `
+.page-veille { max-width: 860px; margin: 0 auto; padding: 18px 16px 40px; }
+.page-veille h2 { margin-top: 4px; }
+.etat-veille { width: 100%; border-collapse: collapse; margin: 12px 0; background: #fff; border: 1px solid #e3e6eb; border-radius: 6px; }
+.etat-veille th { text-align: left; font-weight: 600; width: 34%; padding: 7px 10px; border-bottom: 1px solid #eef0f3; color: #3a4150; }
+.etat-veille td { padding: 7px 10px; border-bottom: 1px solid #eef0f3; }
+.ok { color: #18794e; } .ko { color: #c0362c; } .attention { color: #b45f06; }
+.alerte { border-left: 4px solid #b45f06; background: #fff7e6; padding: 8px 12px; margin: 10px 0; border-radius: 4px; }
+.evenements { list-style: none; padding: 0; margin: 6px 0; font-size: 12.5px; }
+.evenements li { padding: 3px 0; border-bottom: 1px solid #eef0f3; } .evenements li span { color: #5d6675; margin-right: 6px; }
+.evenements li.ko { color: #c0362c; } .evenements li.attention { color: #b45f06; } .evenements li.ok { color: #18794e; }
+`;
 const CSS = `
 :host { all: initial; display: block; font: 13px/1.4 system-ui, "Segoe UI", Marianne, Arial, sans-serif; color: #1e2430; }
 * { box-sizing: border-box; }
 .barre { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 12px; background: #fff7e6; border-bottom: 2px solid #c0362c; }
+.barre.en-veille { background: #eef6f1; border-bottom-color: #18794e; } .barre.en-veille .marque { background: #18794e; }
+.trois { display: flex; gap: 10px; } .trois label { flex: 1; }
+input[type=number], input[type=password] { font: inherit; width: 100%; padding: 6px 8px; border: 1px solid #c9ced6; border-radius: 4px; margin-top: 4px; }
 .marque { background: #c0362c; color: #fff; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; font-size: 11px; padding: 3px 8px; border-radius: 3px; }
 .info { color: #3a4150; }
 .etat { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px; border-radius: 999px; border: 1px solid #d5d9e0; background: #fff; }
@@ -886,6 +1146,12 @@ async function demarrer() {
     .filter(id => id >= BASE_HORS_LIGNE + K.posteNum * PAR_POSTE && id < BASE_HORS_LIGNE + (K.posteNum + 1) * PAR_POSTE).map(id => id - BASE_HORS_LIGNE - K.posteNum * PAR_POSTE));
   for (const [f, d] of (await BD.lire("kv", "autres")) || []) K.autres.set(f, d);
   K.complement = (await BD.lire("base", "complement")) || null;
+  K.relais = { ...RELAIS_DEFAUT, ...((await BD.lire("kv", "relais")) || {}) };
+  K.mode = (await BD.lire("kv", "mode")) || (relaisRegle() ? "veille" : "secours");
+  K.veille.evenements = (await BD.lire("kv", "veille-evenements")) || [];
+  // la veille tourne aussi avant la mise en route : un premier poste peut récupérer la base et les dossiers
+  setTimeout(() => veilleTic(), 4000 + Math.random() * 20000);
+  setInterval(() => veilleTic(), 60000);
   if (FS_OK) { const h = await BD.lire("kv", "dossier"); if (h) { K.dir = h; await connecterDossier(false); if (K.dirEtat === "ok") { await lireDossierAvantDemarrage(); await copiesDuDossierAuDemarrage(); } } }
   else K.dirEtat = "aucun";
   if (!K.agent || !K.base || !K.page) { trace("Réglages à compléter avant la saisie"); UI.ouvrirReglages(); return; }
@@ -896,14 +1162,14 @@ async function demarrer() {
   K.pret = true;
   trace(`Formulaire prêt : ${K.journal.length} saisie(s) de ce poste et ${toutesEntrees().length - K.journal.length} d'autres postes rejouées en ${Math.round(performance.now() - t0)} ms`);
   resoudrePret();
-  let vue = "saisie"; try { vue = localStorage.getItem("kit-secours-vue") || vue; } catch (_) {}
+  let vue = K.mode === "veille" && relaisRegle() ? "veille" : "saisie"; try { vue = localStorage.getItem("kit-secours-vue") || vue; } catch (_) {}
   UI.ouvrirVue(vue);
   if (K.dirEtat === "ok") { await lireDossier(); if (K.enAttente || K.journal.length) ecrireJournalPartage(); }
   setInterval(tic, DELAI_LECTURE);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) tic(); });
 }
 // pour les essais automatisés
-window.__KIT__ = { K, pret, tic, UI, VUES, connecter: async h => { K.dir = h; await BD.ecrire("kv", h, "dossier").catch(() => {}); const r = await connecterDossier(false); if (!K.pret) await apresChoixDossier(); return r; }, lireDossier, lireCopie, importerJournaux, exporterCSV, BASE_HORS_LIGNE };
+window.__KIT__ = { K, pret, tic, UI, VUES, veilleTic, passerEnMode, connecter: async h => { K.dir = h; await BD.ecrire("kv", h, "dossier").catch(() => {}); const r = await connecterDossier(false); if (!K.pret) await apresChoixDossier(); return r; }, lireDossier, lireCopie, importerJournaux, exporterCSV, BASE_HORS_LIGNE };
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", demarrer); else demarrer();
 })();

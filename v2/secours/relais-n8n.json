@@ -1,0 +1,88 @@
+{
+  "name": "Relais du mode secours (signalements Grist)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "secours",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "Demande du kit",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "3e9b6f2a-8c1d-4b7e-a5f0-6d2c9e1b4a77"
+    },
+    {
+      "parameters": {
+        "jsCode": "/* Relais du mode secours : le kit (page ouverte sur un poste) demande ici les copies du document Grist,\n   que le navigateur ne peut pas lire directement. Paramètres de la demande : cle, quoi =\n   ping | dossiers | empreinte | base. Les erreurs sont renvoyées au kit (jamais d'arrêt du workflow,\n   sinon la réponse partirait sans l'en-tête qui autorise la page locale). */\n\n// ===== À RÉGLER =====\nconst CLE_KIT = 'changez-moi';                          // clé à saisir dans les réglages du kit (choisissez-la longue)\nconst API_GRIST = 'https://grist.numerique.gouv.fr/o/crise/api';   // serveur et organisation, suivis de /api\nconst DOC = 'identifiant-du-document';                  // dans l'adresse du document : …/o/crise/<identifiant>/…\nconst CLE_GRIST = 'cle-api-grist';                      // compte Grist qui a accès au document (Paramètres du compte › Clé d'API)\n// =====================\n\nconst q = $input.first().json.query || {};\nconst rep = (statut, corps) => [{ json: { statut, corps, binaire: false } }];\nif (!q.cle || q.cle !== CLE_KIT) return rep(403, { erreur: 'clé refusée' });\nconst quoi = q.quoi || 'ping';\nconst t0 = Date.now();\n\nconst grist = async (chemin, o = {}) => {\n  const url = `${API_GRIST}/docs/${DOC}${chemin}`;\n  let r;\n  try {\n    r = await this.helpers.httpRequest({ url, method: o.method || 'GET', body: o.body, json: !o.binaire, encoding: o.binaire ? 'arraybuffer' : undefined,\n      headers: { Authorization: `Bearer ${CLE_GRIST}`, ...(o.body ? { 'Content-Type': 'application/json' } : {}) }, returnFullResponse: true, timeout: 120000 });\n  } catch (e) { throw new Error(`${chemin.split('?')[0]} : ${e.message}`); }\n  let corps = r.body;\n  if (o.binaire) return corps;\n  if (typeof corps === 'string') { try { corps = JSON.parse(corps); } catch (_) {} }\n  if (!corps || typeof corps !== 'object') throw new Error(`${chemin.split('?')[0]} : réponse inattendue (HTTP ${r.statusCode}, ${(r.headers || {})['content-type'] || '?'}) — vérifiez API_GRIST et DOC`);\n  return corps;\n};\nconst lignes = async t => {\n  const c = await grist(`/tables/${encodeURIComponent(t)}/records`);\n  if (!Array.isArray(c.records)) throw new Error(`table ${t} : réponse sans lignes`);\n  return c.records;\n};\n// empreinte courte et stable (FNV-1a), sans module externe\nconst empreinte = s => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0') + '-' + s.length.toString(36); };\n\n// tables « vivantes » : tables des réponses (Config, clé general) et leurs sous-tables (questions tableau,\n// et toute table qui a une colonne de référence vers une table des réponses)\nasync function structure() {\n  const tables = ((await grist('/tables')).tables || []).map(t => t.id);\n  const colonnes = {};\n  for (const t of tables) colonnes[t] = ((await grist(`/tables/${encodeURIComponent(t)}/columns`)).columns || []).map(c => ({ id: c.id, type: (c.fields || {}).type || '' }));\n  const config = tables.includes('Config') ? await lignes('Config') : [];\n  const valeur = cle => { const l = config.find(x => (x.fields || {}).Cle === cle); try { return l && l.fields.Valeur ? JSON.parse(l.fields.Valeur) : null; } catch (_) { return null; } };\n  const g = valeur('general') || {};\n  const reponses = [g.reponses || 'Reponses', ...((Array.isArray(g.autres_champs) ? g.autres_champs : []).map(e => e && e.reponses))].filter(t => t && tables.includes(t));\n  const vivantes = new Set(reponses);\n  for (const t of tables) if (colonnes[t].some(c => reponses.some(r => c.type === `Ref:${r}` || c.type === `RefList:${r}`))) vivantes.add(t);\n  if (tables.includes('Formulaires')) for (const f of await lignes('Formulaires')) for (const k of ['Publie', 'Brouillon']) {\n    let conf = null; try { conf = JSON.parse((f.fields || {})[k] || 'null'); } catch (_) {}\n    for (const b of (conf && conf.blocs) || []) { const st = b && b.reglages && b.reglages.tableau && b.reglages.tableau.table; if (st && tables.includes(st)) vivantes.add(st); }\n  }\n  return { tables, colonnes, config, valeur, reponses, vivantes: [...vivantes] };\n}\n\ntry {\n  if (quoi === 'ping') {\n    const d = await grist('');\n    return rep(200, { format: 'kit-secours-ping', document: d.name || DOC, heure: new Date().toISOString(), duree_grist_ms: Date.now() - t0 });\n  }\n  if (quoi === 'dossiers') {\n    const s = await structure();\n    if (!s.reponses.length) return rep(502, { erreur: 'aucune table des réponses trouvée (clé general de Config)' });\n    const tables = {}, compte = {};\n    for (const t of s.vivantes) { const r = await lignes(t); tables[t] = { records: r }; compte[t] = r.length; }\n    return rep(200, { format: 'kit-secours-instantane', version: 1, complement: true, genere_le: new Date().toISOString(), document: DOC,\n      reponses: s.reponses, compte, secours: s.valeur('secours'), duree_grist_ms: Date.now() - t0, tables });\n  }\n  if (quoi === 'empreinte') {\n    // structure (tables, colonnes), configuration (sauf la clé « secours », qui bouge à chaque réintégration)\n    // et, pour chaque table hors tables vivantes : nombre de lignes, plus grand numéro, nombre total de caractères\n    const s = await structure();\n    const autres = s.tables.filter(t => !s.vivantes.includes(t));\n    const parts = [JSON.stringify(s.colonnes), JSON.stringify(s.config.filter(l => (l.fields || {}).Cle !== 'secours').map(l => [l.id, l.fields]))];\n    let mesure = 'sql';\n    try {\n      const sel = autres.map(t => {\n        const cols = s.colonnes[t].filter(c => !c.id.startsWith('gristHelper')).map(c => `LENGTH(COALESCE(\"${c.id.replace(/\"/g, '\"\"')}\", ''))`);\n        return `SELECT '${t.replace(/'/g, \"''\")}' AS t, COUNT(*) AS n, MAX(id) AS m, TOTAL(${cols.length ? cols.join(' + ') : '0'}) AS c FROM \"${t.replace(/\"/g, '\"\"')}\"`;\n      });\n      const r = sel.length ? await grist('/sql', { method: 'POST', body: { sql: sel.join(' UNION ALL ') } }) : { records: [] };\n      parts.push(JSON.stringify((r.records || []).map(x => x.fields)));\n    } catch (e) { mesure = `structure et configuration seulement (${e.message})`; }\n    return rep(200, { format: 'kit-secours-empreinte', empreinte: empreinte(parts.join('|')), mesure, tables_base: autres.length, duree_grist_ms: Date.now() - t0 });\n  }\n  if (quoi === 'base') {\n    const b = Buffer.from(await grist('/download?nohistory=true&template=false', { binaire: true }));\n    if (b.length < 1024 || b.subarray(0, 15).toString() !== 'SQLite format 3') return rep(502, { erreur: `téléchargement du document : fichier inattendu (${b.length} octets)` });\n    return [{ json: { statut: 200, binaire: true, taille: b.length }, binary: { data: { data: b.toString('base64'), mimeType: 'application/octet-stream', fileName: 'instantane-base.grist' } } }];\n  }\n  return rep(400, { erreur: `demande inconnue : ${quoi}` });\n} catch (e) {\n  return rep(502, { erreur: `lecture de Grist impossible : ${e.message}` });\n}"
+      },
+      "name": "Lecture de Grist",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            { "value1": "={{ $json.binaire }}", "value2": true }
+          ]
+        }
+      },
+      "name": "Fichier ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [480, 0]
+    },
+    {
+      "parameters": {
+        "respondWith": "binary",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Content-Type", "value": "application/octet-stream" },
+              { "name": "Access-Control-Allow-Origin", "value": "*" },
+              { "name": "Cache-Control", "value": "no-store" }
+            ]
+          }
+        }
+      },
+      "name": "Envoi du document",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [720, -100]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ JSON.stringify($json.corps) }}",
+        "options": {
+          "responseCode": "={{ $json.statut }}",
+          "responseHeaders": {
+            "entries": [
+              { "name": "Content-Type", "value": "application/json; charset=utf-8" },
+              { "name": "Access-Control-Allow-Origin", "value": "*" },
+              { "name": "Cache-Control", "value": "no-store" }
+            ]
+          }
+        }
+      },
+      "name": "Réponse au kit",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [720, 100]
+    }
+  ],
+  "connections": {
+    "Demande du kit": { "main": [[{ "node": "Lecture de Grist", "type": "main", "index": 0 }]] },
+    "Lecture de Grist": { "main": [[{ "node": "Fichier ?", "type": "main", "index": 0 }]] },
+    "Fichier ?": { "main": [[{ "node": "Envoi du document", "type": "main", "index": 0 }], [{ "node": "Réponse au kit", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": false,
+    "saveExecutionProgress": false
+  }
+}

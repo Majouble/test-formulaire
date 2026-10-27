@@ -51,7 +51,8 @@ const html = `<!doctype html>
   #kit-secours { flex: none; }
   #kit-vues { flex: 1; position: relative; min-height: 0; }
   #kit-vues iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
-  #kit-vues iframe[hidden] { display: none; }
+  #kit-vues iframe[hidden], #kit-vues .kit-panneau[hidden] { display: none; }
+  #kit-vues .kit-panneau { position: absolute; inset: 0; overflow: auto; background: #f4f5f7; }
 </style>
 <script>/* sql.js ${versionSql} — https://github.com/sql-js/sql.js — licence MIT */
 ${enScript(lire("v2/secours/vendor/sql-wasm.js"))}</script>
