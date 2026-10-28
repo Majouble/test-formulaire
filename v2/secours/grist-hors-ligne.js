@@ -146,6 +146,76 @@ function recalculerFormules() {
     if (!simples.length) continue;
     t.id.forEach((id, i) => { if (id < BASE_HORS_LIGNE) return; for (const [c, d] of simples) { if (!t[c]) t[c] = t.id.map(() => null); t[c][i] = evaluerChemin(tid, i, d.formula.match(FORMULE_CHEMIN)[1]); } });
   }
+  recalculerFormulesSuivi();
+}
+
+/* Formules de suivi des tables des réponses, qu'utilisent le tableau de bord et les exports : dernière version du
+   dossier, nombre de jours de mobilisation, état le plus grave de l'établissement. Reconnues à leur texte (formules
+   du socle et variantes des documents MEN et MESRE), recalculées ici pour les dossiers et les établissements qui ont
+   des lignes du mode secours ; les autres lignes gardent la valeur calculée par Grist. */
+const ESTRAS = q => /^\s*ras\s*$/i.test(String(q));
+function valeursQualif(v) { const l = Array.isArray(v) ? (v[0] === "L" ? v.slice(1) : v) : (v == null || v === "" ? [] : [v]); return l.map(x => String(x).trim()).filter(Boolean); }
+function jourDe(t, i, colFaits, colCree) {
+  const f = colFaits && t[colFaits] ? t[colFaits][i] : null;
+  if (typeof f === "number" && f) return Math.floor(f / 86400);
+  const c = colCree && t[colCree] ? t[colCree][i] : null;
+  if (typeof c !== "number" || !c) return null;
+  const d = new Date(c * 1000); return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000);   // jour de Paris (poste)
+}
+function recalculerFormulesSuivi() {
+  for (const [tid, cols] of M.cols) {
+    const t = K.doc[tid]; if (!t || !t.id.some(id => id >= BASE_HORS_LIGNE)) continue;
+    const a = c => cols.has(c) ? c : null;
+    for (const [c, d] of cols) {
+      const f = d.isFormula ? d.formula || "" : "";
+      if (!f) continue;
+      const colEtab = (f.match(/lookupRecords\(\s*(\w+)\s*=\s*\$\1\s*\)/) || [])[1];
+      if (/lookupRecords\(\s*\w+\s*=/.test(f) && /Dossier/.test(f) && (/==\s*\$id/.test(f) || /\$Cree_le\s*>=\s*max\(/.test(f) || /^derniere_?version/i.test(c))) {
+        const colDos = (f.match(/lookupRecords\(\s*(\w+)\s*=/) || [])[1] || "Dossier";
+        majDerniereVersion(t, c, a(colDos) || colDos, a("Cree_le"), /toordinal|Date_faits/.test(f) ? a("Date_faits") : null);
+      } else if (colEtab && /ORDRE\s*=\s*\[/.test(f)) {
+        let ordre = []; try { ordre = JSON.parse(f.match(/ORDRE\s*=\s*(\[[^\]]*\])/)[1].replace(/'/g, '"')); } catch (_) {}
+        majParEtab(t, c, colEtab, a("Date_faits"), a("Cree_le"), a("Qualification"), "grave", ordre);
+      } else if (colEtab && /jours\s*=\s*\{\s*jour\(r\)/.test(f)) {
+        majParEtab(t, c, colEtab, a("Date_faits"), a("Cree_le"), a("Qualification"), /RAS/.test(f) ? "jours-hors-ras" : "jours");
+      }
+    }
+  }
+}
+function majDerniereVersion(t, c, colDos, colCree, colFaits) {
+  if (!t[c]) t[c] = t.id.map(() => null);
+  const groupes = new Map();
+  t.id.forEach((id, i) => { const d = (t[colDos] && t[colDos][i]) || id; if (!groupes.has(d)) groupes.set(d, []); groupes.get(d).push(i); });
+  const cle = i => [colFaits ? (jourDe(t, i, colFaits, colCree) ?? -1) : 0, colCree && typeof t[colCree][i] === "number" ? t[colCree][i] : -1, t.id[i]];
+  const plusGrand = (x, y) => { for (let k = 0; k < x.length; k++) if (x[k] !== y[k]) return x[k] > y[k]; return false; };
+  for (const lignes of groupes.values()) {
+    if (!lignes.some(i => t.id[i] >= BASE_HORS_LIGNE)) continue;
+    let m = lignes[0]; for (const i of lignes) if (plusGrand(cle(i), cle(m))) m = i;
+    for (const i of lignes) t[c][i] = i === m;
+  }
+}
+function majParEtab(t, c, colEtab, colFaits, colCree, colQ, genre, ordre) {
+  if (!t[c]) t[c] = t.id.map(() => null);
+  const groupes = new Map();
+  t.id.forEach((id, i) => { const e = t[colEtab] && t[colEtab][i]; if (!e) return; if (!groupes.has(e)) groupes.set(e, []); groupes.get(e).push(i); });
+  for (const lignes of groupes.values()) {
+    if (!lignes.some(i => t.id[i] >= BASE_HORS_LIGNE)) continue;
+    const infos = lignes.map(i => ({ i, j: jourDe(t, i, colFaits, colCree), q: valeursQualif(colQ ? t[colQ][i] : null) }));
+    for (const x of infos) {
+      if (x.j == null) { t[c][x.i] = null; continue; }
+      if (genre === "grave") {
+        const vus = new Map();
+        for (const y of infos) if (y.j != null && y.j <= x.j) for (const q of y.q) if (!ESTRAS(q)) vus.set(q, Math.max(vus.get(q) ?? y.j, y.j));
+        if (!vus.size) { t[c][x.i] = null; continue; }
+        const rang = ([q, d]) => [ordre.includes(q) ? ordre.indexOf(q) : ordre.length, -d, q];
+        t[c][x.i] = [...vus].sort((u, v) => { const a = rang(u), b = rang(v); for (let k = 0; k < 3; k++) if (a[k] !== b[k]) return a[k] < b[k] ? -1 : 1; return 0; })[0][0];
+      } else {
+        const horsRas = genre === "jours-hors-ras", utile = y => !horsRas || y.q.some(q => !ESTRAS(q));
+        if (!utile(x)) { t[c][x.i] = null; continue; }
+        t[c][x.i] = new Set(infos.filter(y => y.j != null && y.j <= x.j && utile(y)).map(y => y.j)).size;
+      }
+    }
+  }
 }
 function valeurDeclencheur(d, entree) {
   const f = d.formula || "";
