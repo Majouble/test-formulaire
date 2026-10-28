@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Réintégration du mode secours</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="../commun/theme.js"></script>
+<script src="../commun/socle.js"></script>
+<style>
+  :root { --bleu: #000091; --fond: #f4f5f7; --carte: #fff; --texte: #1e2430; --discret: #5d6675; --ligne: #dde1e7; --ok: #18794e; --ko: #c0362c; --att: #a15c00; }
+  :root[data-theme="dark"] { --fond: #16181d; --carte: #1f2229; --texte: #e6e8ec; --discret: #a3aab6; --ligne: #353a45; --bleu: #8b8bff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fond); color: var(--texte); font: 14px/1.45 Marianne, system-ui, "Segoe UI", Arial, sans-serif; }
+  header { padding: 12px 16px; border-bottom: 1px solid var(--ligne); background: var(--carte); display: flex; align-items: baseline; gap: 12px; }
+  header h1 { font-size: 17px; margin: 0; } header span { color: var(--discret); font-size: 12px; }
+  main { max-width: 980px; margin: 0 auto; padding: 14px 16px 40px; }
+  .carte { background: var(--carte); border: 1px solid var(--ligne); border-radius: 8px; padding: 14px 16px; margin-bottom: 14px; }
+  h2 { font-size: 15px; margin: 0 0 8px; }
+  p { margin: 6px 0; } .note { color: var(--discret); font-size: 12.5px; }
+  button { font: inherit; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--bleu); background: transparent; color: var(--bleu); cursor: pointer; }
+  button.principal { background: var(--bleu); color: #fff; font-weight: 600; } button:disabled { opacity: .45; cursor: not-allowed; }
+  #depot { border: 2px dashed var(--ligne); border-radius: 8px; padding: 18px; text-align: center; color: var(--discret); margin: 8px 0; }
+  #depot.survol { border-color: var(--bleu); color: var(--bleu); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 6px 0; }
+  th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--ligne); vertical-align: top; }
+  th { color: var(--discret); font-weight: 600; } td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  .alerte { border-left: 3px solid var(--att); padding: 4px 10px; margin: 6px 0; background: rgba(161, 92, 0, .07); }
+  .erreur { border-left-color: var(--ko); background: rgba(192, 54, 44, .07); }
+  .succes { border-left: 3px solid var(--ok); padding: 4px 10px; background: rgba(24, 121, 78, .07); }
+  progress { width: 260px; vertical-align: middle; }
+  details summary { cursor: pointer; color: var(--discret); margin: 6px 0; }
+  .detail { max-height: 360px; overflow: auto; }
+</style>
+</head>
+<body>
+<header><h1>Réintégration du mode secours</h1><span id="version"></span></header>
+<main>
+  <section class="carte">
+    <h2>1. Fichiers du mode secours</h2>
+    <p>Choisissez le fichier « Saisies de tous les postes » (bouton <em>Exporter</em> du kit de secours), ou les journaux des postes (<code>secours-journal-….json</code>) pris dans le dossier partagé. Plusieurs fichiers peuvent être donnés : une saisie présente dans plusieurs fichiers n'est comptée qu'une fois.</p>
+    <div id="depot">Glissez les fichiers ici, ou <label style="color:var(--bleu);text-decoration:underline;cursor:pointer">choisissez-les<input type="file" id="fichiers" accept=".json" multiple hidden></label></div>
+    <div id="fichiers-lus"></div>
+  </section>
+
+  <section class="carte" id="apercu" hidden>
+    <h2>2. Ce qui sera écrit dans le document</h2>
+    <div id="resume"></div>
+    <div id="alertes"></div>
+    <details><summary>Détail des saisies à réintégrer</summary><div class="detail"><table id="detail"></table></div></details>
+    <p><label><input type="checkbox" id="sauvegarde"> J'ai téléchargé une sauvegarde du document (.grist) avant la réintégration.</label></p>
+    <p><button class="principal" id="btn-appliquer" disabled>Réintégrer dans le document</button></p>
+    <p class="note">Les lignes créées en mode secours reçoivent un numéro de Grist ; les références entre elles (dossier, version, établissement créé pendant la panne) suivent. L'heure et l'auteur de chaque saisie sont conservés. Une saisie déjà réintégrée est reconnue et ignorée : on peut relancer sans risque de doublon.</p>
+  </section>
+
+  <section class="carte" id="resultat" hidden>
+    <h2>3. Résultat</h2>
+    <p id="progression"><progress max="1" value="0"></progress> <span></span></p>
+    <div id="bilan"></div>
+    <p><button id="btn-rapport" hidden>Télécharger le rapport (.csv)</button></p>
+  </section>
+
+  <section class="carte">
+    <h2>Réintégrations précédentes</h2>
+    <div id="historique"><p class="note">Lecture…</p></div>
+  </section>
+</main>
+<script>
+"use strict";
+/* Réintégration dans Grist des saisies du kit de secours (v2/secours).
+   Réglage dans Config, clé « secours » : { entrees: { idSaisie: { t, agent, le } }, correspondances: { n° secours: n° Grist }, sessions: [...] } */
+const BASE_HORS_LIGNE = 1e12;
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const dateHeure = d => d ? new Date(d).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+$("version").textContent = window.Socle ? `version ${Socle.VERSION}` : "";
+grist.ready({ requiredAccess: "full" });
+
+let meta = null, deja = null, journaux = [], aFaire = [], rapport = [];
+async function lireMeta() {
+  const [T, C] = await Promise.all([grist.docApi.fetchTable("_grist_Tables"), grist.docApi.fetchTable("_grist_Tables_column")]);
+  const tables = new Map(T.id.map((id, i) => [id, T.tableId[i]])), m = new Map();
+  T.tableId.forEach(t => m.set(t, new Map()));
+  C.id.forEach((_, i) => { const t = tables.get(C.parentId[i]); if (t) m.get(t).set(C.colId[i], { type: C.type[i] || "Any", formule: !!C.isFormula[i] }); });
+  return m;
+}
+async function lireDeja() {
+  const cfg = await Socle.lireConfig();
+  if (!cfg) throw new Error("La table Config n'existe pas : ce document n'a pas le socle installé.");
+  const v = cfg.valeurs.secours || {};
+  return { entrees: v.entrees || {}, correspondances: v.correspondances || {}, sessions: v.sessions || [] };
+}
+async function sauverDeja() { await Socle.ecrireConfig("secours", deja); }
+function afficherHistorique() {
+  const s = deja.sessions || [];
+  $("historique").innerHTML = s.length ? `<table><tr><th>Date</th><th>Fichiers</th><th class="n">Saisies</th><th class="n">Lignes créées</th></tr>${s.slice().reverse().map(x =>
+    `<tr><td>${esc(dateHeure(x.le))}</td><td>${esc((x.fichiers || []).join(", "))}</td><td class="n">${x.saisies}</td><td class="n">${x.creees}</td></tr>`).join("")}</table>`
+    : `<p class="note">Aucune réintégration dans ce document.</p>`;
+}
+(async () => {
+  try { meta = await lireMeta(); deja = await lireDeja(); afficherHistorique(); }
+  catch (e) { $("historique").innerHTML = `<p class="alerte erreur">${esc(e.message)}</p>`; }
+})();
+
+/* ---------- lecture des fichiers ---------- */
+async function lireFichiers(liste) {
+  const lus = [];
+  for (const f of liste) {
+    try {
+      const d = JSON.parse(await f.text());
+      const js = d.format === "kit-secours-consolide" ? d.journaux : d.format === "kit-secours-journal" ? [d] : null;
+      if (!js) throw new Error("ce n'est pas un fichier du mode secours");
+      js.forEach(j => journaux.push({ ...j, fichier: f.name, document: d.document || j.document }));
+      lus.push(`<li>${esc(f.name)} — ${js.length} poste(s), ${js.reduce((n, j) => n + (j.entrees || []).length, 0)} saisie(s)${(d.document || {}).fichier ? `, copie « ${esc(d.document.fichier)} »` : ""}</li>`);
+    } catch (e) { lus.push(`<li class="alerte erreur">${esc(f.name)} : ${esc(e.message)}</li>`); }
+  }
+  $("fichiers-lus").insertAdjacentHTML("beforeend", `<ul>${lus.join("")}</ul>`);
+  analyser();
+}
+$("fichiers").addEventListener("change", e => lireFichiers([...e.target.files]));
+const depot = $("depot");
+["dragenter", "dragover"].forEach(t => depot.addEventListener(t, e => { e.preventDefault(); depot.classList.add("survol"); }));
+["dragleave", "drop"].forEach(t => depot.addEventListener(t, e => { e.preventDefault(); depot.classList.remove("survol"); }));
+depot.addEventListener("drop", e => lireFichiers([...e.dataTransfer.files]));
+
+/* ---------- analyse ---------- */
+const estHL = v => typeof v === "number" && v >= BASE_HORS_LIGNE;
+function analyser() {
+  if (!meta || !deja) return;
+  const vues = new Map();
+  for (const j of journaux) for (const e of j.entrees || []) if (e && e.id && !vues.has(e.id)) vues.set(e.id, { ...e, agent: e.agent || j.agent });
+  const toutes = [...vues.values()].sort((a, b) => (a.t < b.t ? -1 : a.t > b.t ? 1 : a.id < b.id ? -1 : 1));
+  aFaire = toutes.filter(e => !deja.entrees[e.id]);
+  const parTable = new Map(), alertes = new Map(), creees = new Set();
+  const compte = (t, k, n = 1) => { if (!parTable.has(t)) parTable.set(t, { ajouts: 0, completes: 0, modifs: 0, suppr: 0 }); parTable.get(t)[k] += n; };
+  const alerte = (cle, txt) => alertes.set(cle, txt);
+  for (const e of aFaire) for (const [nom, t, x, y] of e.actions || []) {
+    if (!meta.has(t)) { alerte(`t:${t}`, `La table « ${t} » n'existe pas dans ce document : ses saisies seront ignorées.`); continue; }
+    const cols = meta.get(t);
+    for (const c of Object.keys(nom === "BulkAddRecord" || nom === "BulkUpdateRecord" ? y || {} : y || {})) {
+      if (!cols.has(c)) alerte(`c:${t}.${c}`, `La colonne « ${c} » de « ${t} » n'existe plus : sa valeur sera ignorée.`);
+      else if (cols.get(c).formule) alerte(`f:${t}.${c}`, `La colonne « ${c} » de « ${t} » est une formule : la valeur saisie en mode secours sera recalculée par Grist.`);
+    }
+    if (nom === "AddRecord") { compte(t, "ajouts"); creees.add(x); }
+    else if (nom === "BulkAddRecord") { compte(t, "ajouts", x.length); x.forEach(i => creees.add(i)); }
+    else if (/UpdateRecord/.test(nom)) (nom === "UpdateRecord" ? [x] : x).forEach(i => compte(t, estHL(i) ? "completes" : "modifs"));
+    else if (/RemoveRecord/.test(nom)) compte(t, "suppr", nom === "RemoveRecord" ? 1 : x.length);
+    else alerte(`a:${nom}`, `Action « ${nom} » non prise en charge : ignorée.`);
+  }
+  const ignorees = toutes.length - aFaire.length;
+  $("apercu").hidden = false;
+  $("resume").innerHTML = !aFaire.length
+    ? `<p class="succes">Rien à réintégrer : ${ignorees ? `les ${ignorees} saisie(s) de ces fichiers sont déjà dans le document.` : "ces fichiers ne contiennent aucune saisie."}</p>`
+    : `<p><b>${aFaire.length}</b> saisie(s) à réintégrer, par ${new Set(aFaire.map(e => e.agent)).size} agent(s), du ${esc(dateHeure(aFaire[0].t))} au ${esc(dateHeure(aFaire[aFaire.length - 1].t))}${ignorees ? ` · ${ignorees} déjà réintégrée(s), ignorée(s)` : ""}.</p>
+       <table><tr><th>Table</th><th class="n">Lignes créées</th><th class="n">Compléments de ces lignes</th><th class="n">Lignes existantes modifiées</th><th class="n">Suppressions</th></tr>
+       ${[...parTable].map(([t, c]) => `<tr><td>${esc(t)}</td><td class="n">${c.ajouts}</td><td class="n">${c.completes}</td><td class="n">${c.modifs}</td><td class="n">${c.suppr}</td></tr>`).join("")}</table>`;
+  $("alertes").innerHTML = [...alertes.values()].map(a => `<p class="alerte">${esc(a)}</p>`).join("")
+    + ([...parTable.values()].some(c => c.modifs) ? `<p class="alerte">Des lignes qui existaient avant la panne ont été modifiées en mode secours (voir « Lignes existantes modifiées ») : leur valeur actuelle dans Grist sera remplacée.</p>` : "");
+  const resumeAction = ([nom, t, x, y]) => {
+    const f = y || {}, txt = ["Description", "Nature", "Qualification", "Commentaire"].map(c => f[c]).filter(v => typeof v === "string" && v).join(" · ");
+    return `${{ AddRecord: "Ajout", BulkAddRecord: `Ajout de ${Array.isArray(x) ? x.length : "?"} lignes`, UpdateRecord: "Modification", BulkUpdateRecord: "Modifications", RemoveRecord: "Suppression", BulkRemoveRecord: "Suppressions" }[nom] || nom} — ${t}${txt ? ` : ${txt.slice(0, 140)}` : ""}`;
+  };
+  $("detail").innerHTML = `<tr><th>Heure</th><th>Agent</th><th>Saisie</th></tr>` + aFaire.map(e => `<tr><td>${esc(dateHeure(e.t))}</td><td>${esc(e.agent)}</td><td>${(e.actions || []).map(a => esc(resumeAction(a))).join("<br>")}</td></tr>`).join("");
+  majBouton();
+}
+function majBouton() { $("btn-appliquer").disabled = !aFaire.length || !$("sauvegarde").checked; }
+$("sauvegarde").addEventListener("change", majBouton);
+
+/* ---------- réintégration ---------- */
+function convertir([nom, t, x, y], corr, alertes) {
+  const cols = meta.get(t); if (!cols) return null;
+  const id = v => { if (!estHL(v)) return v; const n = corr[v]; if (n == null) { alertes.add(`Référence vers une ligne du mode secours introuvable (${v}) : laissée vide.`); return 0; } return n; };
+  const valeur = (c, v) => {
+    const d = cols.get(c), b = String(d.type).split(":")[0];
+    if (b === "Ref") return id(v);
+    if (b === "RefList" && Array.isArray(v)) return v.map((x, k) => (k === 0 && x === "L" ? x : id(x)));
+    // textes (JSON des questions tableau…) qui citent un numéro du mode secours
+    if (typeof v === "string" && /1\d{12}/.test(v)) return v.replace(/\b1\d{12}\b/g, m => (corr[m] != null ? String(corr[m]) : m));
+    return v;
+  };
+  const champs = f => { const r = {}; for (const [c, v] of Object.entries(f || {})) { const d = cols.get(c); if (d && !d.formule && c !== "id") r[c] = valeur(c, v); } return r; };
+  switch (nom) {
+    case "AddRecord": return ["AddRecord", t, null, champs(y)];
+    case "BulkAddRecord": { const r = {}; for (const [c, l] of Object.entries(y || {})) { const d = cols.get(c); if (d && !d.formule && c !== "id") r[c] = l.map(v => valeur(c, v)); } return ["BulkAddRecord", t, x.map(() => null), r]; }
+    case "UpdateRecord": { const i = id(x); return i ? ["UpdateRecord", t, i, champs(y)] : null; }
+    case "BulkUpdateRecord": { const ids = x.map(id), r = {}; for (const [c, l] of Object.entries(y || {})) { const d = cols.get(c); if (d && !d.formule) r[c] = l.map(v => valeur(c, v)); }
+      const garder = ids.map((i, k) => (i ? k : -1)).filter(k => k >= 0); if (!garder.length) return null;
+      for (const c of Object.keys(r)) r[c] = garder.map(k => r[c][k]); return ["BulkUpdateRecord", t, garder.map(k => ids[k]), r]; }
+    case "RemoveRecord": { const i = id(x); return i ? ["RemoveRecord", t, i] : null; }
+    case "BulkRemoveRecord": { const ids = x.map(id).filter(Boolean); return ids.length ? ["BulkRemoveRecord", t, ids] : null; }
+    default: return null;
+  }
+}
+$("btn-appliquer").addEventListener("click", async () => {
+  if (!confirm(`Réintégrer ${aFaire.length} saisie(s) dans ce document ?`)) return;
+  $("btn-appliquer").disabled = true; $("resultat").hidden = false; rapport = [];
+  const barre = $("progression").querySelector("progress"), texte = $("progression").querySelector("span");
+  barre.max = aFaire.length; barre.value = 0;
+  deja = await lireDeja();   // relu : un autre propriétaire a pu réintégrer entre-temps
+  const corr = deja.correspondances, alertes = new Set();
+  let n = 0, creees = 0, erreurs = 0;
+  for (const e of aFaire) {
+    if (deja.entrees[e.id]) { n++; continue; }
+    try {
+      for (const a of e.actions || []) {
+        const act = convertir(a, corr, alertes); if (!act) continue;
+        const r = await grist.docApi.applyUserActions([act]), ret = r && r.retValues ? r.retValues[0] : null;
+        if (a[0] === "AddRecord") { corr[a[2]] = ret; creees++; rapport.push([a[1], a[2], ret, e.agent, e.t]); }
+        if (a[0] === "BulkAddRecord") a[2].forEach((o, k) => { corr[o] = ret[k]; creees++; rapport.push([a[1], o, ret[k], e.agent, e.t]); });
+      }
+      deja.entrees[e.id] = { t: e.t, agent: e.agent, le: new Date().toISOString() };
+    } catch (err) { erreurs++; alertes.add(`Saisie de ${e.agent} du ${dateHeure(e.t)} : ${err.message}`); }
+    n++; barre.value = n; texte.textContent = `${n} / ${aFaire.length}`;
+    if (n % 10 === 0) await sauverDeja().catch(() => {});
+  }
+  deja.sessions = [...(deja.sessions || []), { le: new Date().toISOString(), fichiers: [...new Set(journaux.map(j => j.fichier))], saisies: n - erreurs, creees }];
+  await sauverDeja();
+  $("bilan").innerHTML = `<p class="${erreurs ? "alerte erreur" : "succes"}">${n - erreurs} saisie(s) réintégrée(s), ${creees} ligne(s) créée(s)${erreurs ? `, ${erreurs} en erreur (relancez la réintégration : les saisies déjà passées seront ignorées)` : ""}.</p>`
+    + [...alertes].map(a => `<p class="alerte">${esc(a)}</p>`).join("");
+  $("btn-rapport").hidden = !rapport.length;
+  afficherHistorique(); analyser();
+});
+$("btn-rapport").addEventListener("click", () => {
+  const cell = s => { s = String(s ?? ""); return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const csv = [["Table", "N° mode secours", "N° Grist", "Agent", "Saisi le"], ...rapport.map(([t, o, n, a, d]) => [t, o, n, a, dateHeure(d)])].map(l => l.map(cell).join(";")).join("\r\n");
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
+  a.download = `reintegration-secours-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+});
+</script>
+</body>
+</html>

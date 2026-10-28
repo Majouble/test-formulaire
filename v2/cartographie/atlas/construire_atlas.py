@@ -25,9 +25,12 @@ p.setTitle("Atlas des signalements par académie")
 MARINE, ORANGE = "#000091", "#c3551e"
 COULEURS = [("École", "#f2c12e"), ("Collège", "#d1336a"), ("Lycée", "#5f59c6"), ("Autre", "#4cbf62")]
 # Pages de l'atlas (pages.geojson, écrit par le widget) : une par académie, ou une par département pour une académie
-# trop dense ; champs cle (nom de la page), academie, dep (code ou vide), titre, surtitre, ordre, Nb_etablissements.
+# trop dense, une par région académique, ou une pour la France métropolitaine ; champs cle (nom de la page), academie,
+# academies (|A|B|), dep (code ou vide), titre, surtitre, ordre, Nb_etablissements.
 # Chaque établissement porte le champ Page (cle de sa page).
 ACA_PAGE = "coalesce(attribute(@atlas_feature, 'academie'), @atlas_pagename)"
+# académies de la page : celle de la page, ou celles d'une région académique ou de la France métropolitaine (champ academies, « |A|B| »)
+DANS_ACAS = '("nom" = ' + ACA_PAGE + " OR strpos(coalesce(attribute(@atlas_feature, 'academies'), ''), '|' || \"nom\" || '|') > 0)"
 DANS_PAGE = '@atlas_pagename IS NULL OR "Page" IS NULL OR "Page" = @atlas_pagename'   # hors atlas (canevas) et légende : tous les points
 # page d'un jour (atlas sur plusieurs jours) : les points des autres jours ne sont pas dessinés
 MEME_JOUR = "(attribute(@atlas_feature, 'jour') IS NULL OR coalesce(attribute(@feature, 'Jour'), '') = attribute(@atlas_feature, 'jour'))"
@@ -69,7 +72,7 @@ rd2 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "0,0,0,0", 
 rd2.setIsElse(True); rd.appendChild(rd1); rd.appendChild(rd2); dep.setRenderer(QgsRuleBasedRenderer(rd))
 # académie de la page : trait épais ; les autres : trait fin (hors atlas, toutes en trait épais)
 ra = QgsRuleBasedRenderer.Rule(None)
-ra1 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "0,0,0,0", "outline_color": "45,46,127,255", "outline_width": "1.1", "joinstyle": "round"}), 0, 0, '@atlas_pagename IS NULL OR "nom" = ' + ACA_PAGE, "Académie")
+ra1 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "0,0,0,0", "outline_color": "45,46,127,255", "outline_width": "1.1", "joinstyle": "round"}), 0, 0, '@atlas_pagename IS NULL OR ' + DANS_ACAS, "Académie")
 ra2 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "0,0,0,0", "outline_color": "45,46,127,160", "outline_width": "0.4"}), 0, 0, "ELSE", "Académies voisines")
 ra2.setIsElse(True); ra.appendChild(ra1); ra.appendChild(ra2)
 aca.setRenderer(QgsRuleBasedRenderer(ra))
@@ -79,7 +82,7 @@ rv = QgsRuleBasedRenderer.Rule(None)
 rv.appendChild(QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "95,95,110,95", "outline_style": "no"}), 0, 0, '@atlas_pagename IS NULL OR "cle" = @atlas_pagename', "Page"))
 voile.setRenderer(QgsInvertedPolygonRenderer(QgsRuleBasedRenderer(rv)))
 racine = QgsRuleBasedRenderer.Rule(None)
-r1 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "0,0,145,255", "outline_color": "255,255,255,255", "outline_width": "0.15"}), 0, 0, '"nom" = ' + ACA_PAGE, "Académie de la page")
+r1 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "0,0,145,255", "outline_color": "255,255,255,255", "outline_width": "0.15"}), 0, 0, DANS_ACAS, "Académie de la page")
 r2 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "214,218,232,255", "outline_color": "255,255,255,255", "outline_width": "0.15"}), 0, 0, "ELSE", "Autres académies")
 r2.setIsElse(True); racine.appendChild(r1); racine.appendChild(r2)
 rep.setRenderer(QgsRuleBasedRenderer(racine))

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tableau des signalements</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="../commun/theme.js"></script>
+<script src="../commun/socle.js"></script>
+<script src="../commun/point-moteur.js"></script>
+<style>
+  :root { --bleu: #000091; --fond: #f4f4f4; --carte: #fff; --texte: #161616; --discret: #555; --ligne: #ddd; }
+  :root[data-theme="dark"] { --fond: #0d0d0d; --carte: #1e1e1e; --texte: #eee; --discret: #aaa; --ligne: #333; --bleu: #8585f6; }
+  * { box-sizing: border-box; } [hidden] { display: none !important; }
+  body { margin: 0; font: 13px/1.4 Marianne, system-ui, Arial, sans-serif; background: var(--fond); color: var(--texte); }
+  .barre { position: sticky; top: 0; z-index: 2; background: var(--carte); border-bottom: 1px solid var(--ligne); padding: 8px 12px; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; }
+  .barre label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--discret); }
+  select, input { font: inherit; padding: 3px 5px; border: 1px solid #bbb; border-radius: 3px; background: var(--carte); color: var(--texte); }
+  button { font: inherit; padding: 5px 10px; border: 1px solid var(--bleu); background: var(--carte); color: var(--bleu); border-radius: 3px; cursor: pointer; }
+  button.principal { background: var(--bleu); color: #fff; } button:disabled { opacity: .5; cursor: default; }
+  #etat { flex-basis: 100%; font-size: 12px; color: var(--discret); white-space: pre-line; } #etat.erreur { color: #ce0500; } #etat.alerte { color: #b34000; }
+  .page { background: #fff; color: #161616; width: 277mm; max-width: calc(100% - 24px); margin: 12px auto; padding: 10mm; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+  h1 { font-size: 15px; margin: 0 0 4px; } .sous-titre { color: #555; margin: 0 0 10px; }
+  h2 { font-size: 14px; font-weight: normal; border-bottom: 2px solid #000091; margin: 14px 0 8px; padding-bottom: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 11.5px; table-layout: fixed; }
+  th { text-align: left; padding: 6px 5px; border: 1px solid #000; } td { border: 1px solid #000; padding: 3px 5px; vertical-align: top; overflow-wrap: anywhere; }
+  mark { background: #ffff00; } .vide { font-style: italic; color: #555; }
+</style>
+</head>
+<body>
+<div class="barre">
+  <label>Signalements <select id="champ"></select></label>
+  <label>Période <select id="periode"><option value="jour">Dossiers du jour</option><option value="depuis">Depuis le…</option><option value="tout">Tous les dossiers</option></select></label>
+  <label id="bloc-depuis" hidden>Depuis le <input type="datetime-local" id="depuis"></label>
+  <button id="actualiser">Actualiser</button>
+  <button id="copier" disabled>Copier pour Word</button>
+  <button id="docx" class="principal" disabled>Télécharger (.docx)</button>
+  <p id="etat"></p>
+</div>
+<div id="apercu"></div>
+<script>
+"use strict";
+/* Tableau des signalements, triés par établissement de A à Z : un seul tableau, avec les colonnes publiées du point
+   de situation (administration › Point de situation), sans modèle Word. Utilisé par le kit de secours, et utilisable
+   comme widget Grist. */
+const $ = id => document.getElementById(id);
+const etat = (t, c) => { $("etat").textContent = t; $("etat").className = c || ""; };
+const enLocal = d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+let ctx = null, point = null, titre = "", situation = null;
+
+grist.ready({ requiredAccess: "full", allowSelectBy: false });
+
+async function initialiser() {
+  const meta = await Socle.lireMeta(), config = await Socle.lireConfig(meta), g = Socle.general(config);
+  const esp = Socle.espaces(g).filter(e => meta[e.reponses]);
+  if (!esp.length) throw new Error("aucune table des réponses dans ce document");
+  let voulu = null; try { voulu = await grist.getOption("table"); } catch (_) {}
+  $("champ").innerHTML = esp.map(e => `<option value="${echap(e.reponses)}">${echap(e.libelle)} (${echap(e.reponses)})</option>`).join("");
+  if (voulu && esp.some(e => e.reponses === voulu)) $("champ").value = voulu;
+  const minuit = new Date(); minuit.setHours(0, 0, 0, 0); $("depuis").value = enLocal(minuit);
+  ctx = { meta, config, g, esp };
+}
+async function reglages(e) {
+  const { meta, config, g } = ctx;
+  const cfg2 = config ? { ...config, valeurs: { ...config.valeurs, general: { ...g, reponses: e.reponses, referentiel: e.referentiel } } } : null;
+  const R = await Socle.reglagesPointParDefaut(meta, cfg2);
+  const assoc = (config && config.valeurs.roles) || {};
+  const rf = Socle.resoudreRoles("referentiel", meta[e.referentiel], { reponses: e.reponses, referentiel: e.referentiel }, assoc.referentiel || {}, {});
+  const etab = R.champAcademie.split(".")[0], nom = (rf.Nom && rf.Nom.col) || "Nom";
+  const ps = config && config.valeurs.point_situation, publie = ps && ps.publie;
+  const options = {};
+  for (const [k, v] of Object.entries((publie && publie.options) || {})) if (v !== "" && v != null && !["table", "dossier", "date", "dateFaits", "nature", "champAcademie"].includes(k)) options[k] = v;
+  const colonnes = publie && Array.isArray(publie.colonnes) ? publie.colonnes.map((r, i) => ({ ...r, Ordre: i + 1, Actif: r.Actif !== false })) : null;
+  return { R: { ...R, ...options, tri: `${etab}.${nom}` }, colonnes };
+}
+async function calculer() {
+  const e = ctx.esp.find(x => x.reponses === $("champ").value) || ctx.esp[0];
+  const { R, colonnes } = await reglages(e);
+  const per = $("periode").value; $("bloc-depuis").hidden = per !== "depuis";
+  const minuit = new Date(); minuit.setHours(0, 0, 0, 0);
+  const depuis = per === "jour" ? minuit : per === "depuis" && $("depuis").value ? new Date($("depuis").value) : null;
+  situation = new Date();
+  point = await assemblerPoint(creerSource(), {
+    reglages: { ...R, depuis, dernierPoint: null, academie: "", surlignage: "version" },
+    colonnes, sections: [{ Ordre: 1, Titre: "Signalements", Condition: "", Actif: true }], tri: null,
+  });
+  point.sections[0].titre = `Signalements par établissement, de A à Z${per === "jour" ? " — dossiers du jour" : depuis ? ` — depuis le ${depuis.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}` : ""}`;
+  titre = `Signalements ${e.libelle}`;
+  const date = situation.toLocaleString("fr-FR", { dateStyle: "full", timeStyle: "short" });
+  $("apercu").innerHTML = `<article class="page"><h1>${echap(titre)}</h1><p class="sous-titre">Situation au ${echap(date)} — ${point.nb} dossier(s)</p>${sectionsHTML(point)}</article>`;
+  $("copier").disabled = $("docx").disabled = false;
+  const msgs = [`${point.nb} dossier(s), triés par nom d'établissement.`];
+  if (point.manquants.length) msgs.push("Champs introuvables : " + point.manquants.join(", ") + " (colonnes du point de situation réglées pour une autre table ?).");
+  if (!colonnes) msgs.push("Colonnes par défaut : aucune configuration du point de situation n'est publiée dans ce document.");
+  etat(msgs.join("\n"), point.manquants.length ? "alerte" : "");
+}
+const relancer = () => calculer().catch(e => { console.error(e); etat("Erreur : " + (e.message || e), "erreur"); });
+["champ", "periode", "depuis"].forEach(id => $(id).addEventListener("change", relancer));
+$("actualiser").onclick = relancer;
+initialiser().then(relancer).catch(e => { console.error(e); etat("Erreur : " + (e.message || e), "erreur"); });
+
+/* ---------- Copier-coller vers Word : HTML « à la Word » (surlignage, styles sur chaque cellule) ---------- */
+const STYLE_CELLULE = "border:1px solid #000;padding:2pt 4pt;vertical-align:top;font-family:Marianne,Arial,sans-serif;font-size:9pt";
+function htmlPourWord(racine) {
+  const div = document.createElement("div"); div.appendChild(racine);
+  div.querySelectorAll("mark").forEach(m => { const s = document.createElement("span"); s.setAttribute("style", "background-color:#FFFF00;mso-highlight:yellow"); s.innerHTML = m.innerHTML; m.replaceWith(s); });
+  div.querySelectorAll("strong").forEach(b => { const n = document.createElement("b"); n.innerHTML = b.innerHTML; b.replaceWith(n); });
+  div.querySelectorAll("table").forEach(t => t.setAttribute("style", "border-collapse:collapse;width:100%;table-layout:fixed"));
+  div.querySelectorAll("td").forEach(c => c.setAttribute("style", STYLE_CELLULE));
+  div.querySelectorAll("th").forEach(c => c.setAttribute("style", `${STYLE_CELLULE};font-weight:bold;${c.getAttribute("style") || ""}`));
+  div.querySelectorAll("h1, h2").forEach(h => h.setAttribute("style", "font-family:Marianne,Arial,sans-serif;font-size:12pt;font-weight:normal;border-bottom:1.5pt solid #000091;margin:12pt 0 6pt"));
+  div.querySelectorAll("p").forEach(p => p.setAttribute("style", "font-family:Marianne,Arial,sans-serif;font-size:10pt"));
+  return div.innerHTML;
+}
+let aCopier = null;
+document.addEventListener("copy", ev => {
+  if (!aCopier) return;
+  ev.clipboardData.setData("text/html", htmlPourWord(aCopier.cloneNode(true)));
+  ev.clipboardData.setData("text/plain", aCopier.innerText);
+  ev.preventDefault();
+});
+$("copier").onclick = () => {
+  const p = $("apercu").querySelector(".page"); if (!p) return;
+  aCopier = p; let ok = false;
+  try { ok = document.execCommand("copy"); } finally { aCopier = null; }
+  etat(ok ? "Tableau copié : collez-le dans Word (Ctrl+V)." : "Copie impossible : utilisez « Télécharger (.docx) ».", ok ? "" : "erreur");
+};
+
+/* ---------- Document Word (.docx) sans modèle : paquet minimal, archive zip sans compression ---------- */
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+const crc32 = o => { let c = 0xffffffff; for (let i = 0; i < o.length; i++) c = CRC[(c ^ o[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+function zip(fichiers) {
+  const enc = new TextEncoder(), morceaux = [], central = []; let pos = 0;
+  for (const [nom, texte] of fichiers) {
+    const n = enc.encode(nom), d = enc.encode(texte), c = crc32(d);
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint32(14, c, true); h.setUint32(18, d.length, true); h.setUint32(22, d.length, true); h.setUint16(26, n.length, true);
+    const ce = new DataView(new ArrayBuffer(46));
+    ce.setUint32(0, 0x02014b50, true); ce.setUint16(4, 20, true); ce.setUint16(6, 20, true); ce.setUint16(8, 0x0800, true); ce.setUint32(16, c, true); ce.setUint32(20, d.length, true); ce.setUint32(24, d.length, true); ce.setUint16(28, n.length, true); ce.setUint32(42, pos, true);
+    morceaux.push(new Uint8Array(h.buffer), n, d); central.push(new Uint8Array(ce.buffer), n);
+    pos += 30 + n.length + d.length;
+  }
+  const taille = central.reduce((s, x) => s + x.length, 0), fin = new DataView(new ArrayBuffer(22));
+  fin.setUint32(0, 0x06054b50, true); fin.setUint16(8, fichiers.length, true); fin.setUint16(10, fichiers.length, true); fin.setUint32(12, taille, true); fin.setUint32(16, pos, true);
+  return new Blob([...morceaux, ...central, new Uint8Array(fin.buffer)], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+}
+function docx() {
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
+  const p = (t, taille, gras) => `<w:p><w:pPr><w:spacing w:after="60"/></w:pPr><w:r><w:rPr><w:rFonts w:ascii="Marianne" w:hAnsi="Marianne"/>${gras ? "<w:b/>" : ""}<w:sz w:val="${taille}"/></w:rPr><w:t xml:space="preserve">${xmlEsc(t)}</w:t></w:r></w:p>`;
+  // tableau du moteur (largeur d'une page portrait) élargi à la page paysage, sans retrait ni numérotation de titre
+  const k = (16838 - 850 - 850) / LARGEUR_TABLE;
+  const corps = sectionsXML(point, "Titre1").replace(/<w:numPr>.*?<\/w:numPr>/g, "")
+    .replace(/<w:(tblW|tcW|gridCol) w:w="(\d+)"/g, (_, t, n) => `<w:${t} w:w="${Math.round(n * k)}"`).replace(/<w:tblInd w:w="-?\d+"/g, '<w:tblInd w:w="0"');
+  const doc = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${W}><w:body>${p(titre, 28, true)}${p(`Situation au ${situation.toLocaleString("fr-FR", { dateStyle: "full", timeStyle: "short" })} — ${point.nb} dossier(s)`, 20)}${corps}`
+    + `<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="850" w:right="850" w:bottom="850" w:left="850" w:header="425" w:footer="425" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  const styles = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles ${W}><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Marianne" w:hAnsi="Marianne" w:cs="Arial"/><w:sz w:val="20"/><w:lang w:val="fr-FR"/></w:rPr></w:rPrDefault></w:docDefaults>`
+    + `<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style><w:style w:type="paragraph" w:styleId="Titre1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:pPr><w:keepNext/><w:pBdr><w:bottom w:val="single" w:sz="12" w:space="1" w:color="000091"/></w:pBdr><w:outlineLvl w:val="0"/></w:pPr><w:rPr><w:sz w:val="24"/></w:rPr></w:style></w:styles>`;
+  return zip([
+    ["[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`],
+    ["_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`],
+    ["word/_rels/document.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`],
+    ["word/document.xml", doc],
+    ["word/styles.xml", styles],
+  ]);
+}
+$("docx").onclick = () => {
+  try {
+    const b = docx(), n = situation, p2 = x => String(x).padStart(2, "0");
+    const nom = `${n.getFullYear()}_${p2(n.getMonth() + 1)}_${p2(n.getDate())}_${p2(n.getHours())}h${p2(n.getMinutes())}_Signalements_${$("champ").selectedOptions[0].textContent.split(" (")[0].normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w-]+/g, "_")}.docx`;
+    const a = document.createElement("a"); a.href = URL.createObjectURL(b); a.download = nom; document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+    etat("Document généré : " + nom);
+  } catch (e) { console.error(e); etat("Erreur : " + (e.message || e), "erreur"); }
+};
+</script>
+</body>
+</html>

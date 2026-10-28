@@ -8,13 +8,13 @@ Scénarios Playwright qui ouvrent les widgets (`v2/…`) dans Chromium avec un *
 cd tests
 npm install
 npx playwright install chromium     # ou : CHROMIUM=/chemin/vers/chromium
-sh lancer.sh                        # suite actuelle (run63 à run101)
+sh lancer.sh                        # suite actuelle (run63 à run102)
 sh lancer.sh run74 run76            # quelques scénarios
 ```
 
 `lancer.sh` écrit la sortie de chaque scénario dans `sorties/journaux/` et signale un échec en cas d'erreur de page ou d'exception. `run68` dépend du jour : il vise les créneaux du jour dans le planning d'essai (semaine du 19/10/2026) et échoue un jour sans créneau. Les scénarios n'ont pas d'assertions : comparez les journaux avec la description de la version dans `v2/README.md`.
 
-Les scénarios de l'atlas (run63 à run69, run73) exportent un zip ; pour vérifier le rendu QGIS : `QT_QPA_PLATFORM=offscreen python3.12 qgis/rendu.py <dossier>/atlas.qgs page.png Versailles` (PyQGIS 3.34). `qgis/poids_pdf.py` mesure le poids du PDF selon la résolution ; `PYTHON=python3.12 sh qgis/refaire_modele.sh` reconstruit le modèle QGIS intégré (python3.12 : l'interpréteur qui a PyQGIS).
+Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pour vérifier le rendu QGIS : `QT_QPA_PLATFORM=offscreen python3.12 qgis/rendu.py <dossier>/atlas.qgs page.png Versailles` (PyQGIS 3.34). `qgis/poids_pdf.py` mesure le poids du PDF selon la résolution ; `PYTHON=python3.12 sh qgis/refaire_modele.sh` reconstruit le modèle QGIS intégré (python3.12 : l'interpréteur qui a PyQGIS).
 
 ## Suite actuelle
 
@@ -43,6 +43,7 @@ Les scénarios de l'atlas (run63 à run69, run73) exportent un zip ; pour vérif
 | `run98` | Mode secours : kit hors ligne sur deux postes et un dossier partagé (saisie et mise à jour croisées, tableau de bord, tableau des signalements de A à Z et son .docx, rechargement, exports), copies en couches, puis réintégration dans Grist (renumérotation, références, sans doublon). Lancer d'abord `node ../outils/construire-secours.js` |
 | `run99` | Mode veille : relais (code du workflow n8n, `relais-local.js`) et faux Grist (`faux-grist-api.js`) ; premières copies sans dépôt manuel, copie précédente, copie anormalement vide refusée, intervalle et plage horaire, nouvelle base, panne de Grist puis du relais, mode secours, retour du réseau, second poste |
 | `run100` | Administration, carte « Mode secours » : téléchargement du kit (version), du relais n8n préréglé (API, document, clé aléatoire, chemin propre), page de réintégration ; widgets servis en http |
+| `run102` | Atlas QGIS ouvert au supérieur et à tous les risques : un point par site (référentiel des sites), couleurs et formes libres (colonne au choix, valeurs gardées), pages par région académique et France métropolitaine, réglages prêts à l'emploi, colonne du référentiel |
 | `run101` | Kit de secours : formules de suivi recalculées pour les lignes du mode secours (dernière version, état le plus grave, jours de mobilisation ; variante MESRE), tableau de bord à jour |
 | `run95` | Sites désactivés du référentiel : écartés du rapprochement, de la reprise du dernier état (revenus à la normale) et des suggestions du formulaire |
 | `run94` | Rapprochement des sites saisis dans une colonne référence aux sites (anciens noms) : administration et widget « Référentiel des sites » (tous les établissements, établissement choisi), avec le contexte des signalements (date des faits, qualification, description) |

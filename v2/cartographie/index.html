@@ -42,6 +42,10 @@
   details.atlas-bloc label { display: inline-flex; gap: 6px; align-items: center; margin: 3px 12px 3px 0; }
   .atlas-col { display: grid; grid-template-columns: minmax(9em, 1.4fr) minmax(7em, 1fr) minmax(7em, 1fr) auto auto auto; gap: 4px; align-items: center; margin: 3px 0; }
   .atlas-col button { padding: 4px 8px; }
+  .atlas-sym { display: grid; grid-template-columns: auto minmax(8em, 1.2fr) minmax(8em, 1.2fr) auto minmax(6em, .8fr) auto auto auto; gap: 4px; align-items: center; margin: 2px 0; }
+  .atlas-sym button { padding: 3px 7px; } .atlas-sym .val { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .atlas-sym input[type=color] { width: 2.6em; height: 1.9em; padding: 0 2px; } .atlas-sym.autres { border-top: 1px dashed var(--line); padding-top: 4px; margin-top: 4px; }
+  @media (max-width: 560px) { .atlas-sym { grid-template-columns: auto 1fr 1fr; } }
   @media (max-width: 560px) { .atlas-col { grid-template-columns: 1fr 1fr; } }
   button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
   button:disabled { opacity: .5; cursor: not-allowed; }
@@ -121,7 +125,7 @@
         <option value="gpx">GPX – GPS (.gpx, points uniquement)</option>
         <option value="csv">CSV avec géométrie WKT (.csv)</option>
         <option value="shp">Shapefile (.zip)</option>
-        <option value="atlas">Atlas QGIS par académie (.zip)</option>
+        <option value="atlas">Atlas QGIS par territoire (.zip)</option>
       </select>
     </label>
     <label>Nom du fichier
@@ -129,13 +133,18 @@
     </label>
   </div>
   <div id="atlasBox" class="row" style="display:none;flex-direction:column;align-items:stretch;gap:8px">
-    <p class="hint" style="margin:0">Projet QGIS prêt à l'emploi : une page A4 par académie (carte de repérage, légende, carte des établissements signalés, tableau). Dézippez le dossier, ouvrez <code>atlas.qgs</code> dans QGIS (3.34 ou plus récent), puis Mise en page › « Atlas par académie » › Atlas › Exporter en PDF. Tous les réglages ci-dessous forment un <b>profil</b>, enregistré dans le document et partagé avec l'équipe.</p>
+    <p class="hint" style="margin:0">Projet QGIS prêt à l'emploi : une page A4 par territoire (France, région académique, académie ou département : carte de repérage, légende, carte des points signalés, tableau), pour tout type de risque ou de menace, dans le scolaire comme dans le supérieur. Dézippez le dossier, ouvrez <code>atlas.qgs</code> dans QGIS (3.34 ou plus récent), puis Mise en page › « Atlas par académie » › Atlas › Exporter en PDF. Tous les réglages ci-dessous forment un <b>profil</b>, enregistré dans le document et partagé avec l'équipe.</p>
     <div class="row atlas-bloc" id="atlasProfilBloc" style="margin:0;align-items:end">
       <label>Profil <select id="atlasProfil"></select></label>
       <label>Nom <input type="text" id="atlasProfilNom" style="width:14em"></label>
       <button type="button" id="atlasEnregistrer" class="primary">Enregistrer le profil</button>
       <button type="button" id="atlasSupprimer">Supprimer</button>
       <span class="hint" id="atlasModifie" style="display:none">modifications non enregistrées (elles servent quand même à l'export)</span>
+    </div>
+    <div class="row atlas-bloc" style="margin:0;align-items:end">
+      <label>Partir d'un réglage prêt à l'emploi <select id="atlasPrereglage"></select></label>
+      <button type="button" id="atlasAppliquerPrereglage">Appliquer au profil affiché</button>
+      <span class="hint" id="atlasPrereglageAide"></span>
     </div>
     <p class="hint" style="margin:-4px 0 0">Nouveau profil : changez le nom puis enregistrez (le profil affiché est copié). Seuls les propriétaires du document peuvent enregistrer ; sinon les réglages restent dans ce navigateur.</p>
     <p id="atlasStatut" class="hint" role="status" style="margin:0"></p>
@@ -146,24 +155,36 @@
         <label style="flex:1">Service (une ligne par retour) <textarea id="atlasService" rows="2" style="width:100%"></textarea></label>
       </div>
     </details>
-    <details class="atlas-bloc" open><summary>Établissements retenus <span class="hint" id="atlasCompte"></span></summary>
-      <p class="hint" style="margin:0 0 4px">En plus des filtres du widget. Les zones de zoom et le classement sont calculés sur les établissements retenus.</p>
-      <div id="atlasFiltreCat" class="row" style="margin:0;gap:4px 12px"><span>Catégories :</span></div>
+    <details class="atlas-bloc" open><summary>Points retenus <span class="hint" id="atlasCompte"></span></summary>
+      <p class="hint" style="margin:0 0 4px">En plus des filtres du widget. Les zones de zoom et le classement sont calculés sur les points retenus.</p>
+      <div class="row" style="margin:0 0 4px;align-items:center">
+        <label>Un point par <select id="atlasRegroupement"><option value="etablissement">établissement</option><option value="site">site (sous-table des sites)</option><option value="jour">établissement et par jour</option><option value="aucun">signalement (sans regroupement)</option></select></label>
+        <label id="atlasSitesBloc">sites lus dans <select id="atlasSitesTable"></select></label>
+        <label class="check" id="atlasParJourBloc"><input type="checkbox" id="atlasParJour"> une page par jour</label>
+      </div>
+      <p class="hint" id="atlasSitesAide" style="margin:0 0 4px"></p>
       <div id="atlasFiltreQualif" class="row" style="margin:4px 0 0;gap:4px 12px"></div>
       <div class="row" style="margin:4px 0 0;align-items:center">
-        <label>Un point par <select id="atlasRegroupement"><option value="etablissement">établissement</option><option value="jour">établissement et par jour</option><option value="aucun">signalement (sans regroupement)</option></select></label>
-        <label class="check" id="atlasParJourBloc"><input type="checkbox" id="atlasParJour"> une page par jour</label>
         <label>du <input type="date" id="atlasDebut"></label><label>au <input type="date" id="atlasFin"></label>
       </div>
       <div class="row" style="margin:4px 0 0">
         <label>au moins <input type="number" id="atlasMinSig" min="1" step="1" style="width:4em"> signalement(s)</label>
-        <label>au moins <input type="number" id="atlasMinJours" min="0" step="1" style="width:4em"> jour(s) de mobilisation</label>
+        <label>au moins <input type="number" id="atlasMinJours" min="0" step="1" style="width:4em"> jour(s) concerné(s)</label>
       </div>
+    </details>
+    <details class="atlas-bloc" open><summary>Couleurs et formes des points</summary>
+      <div class="row" style="margin:0;align-items:center">
+        <label>Selon <select id="atlasSymChamp"></select></label>
+        <label>titre dans la légende <input type="text" id="atlasSymTitre" style="width:16em"></label>
+        <button type="button" id="atlasSymProposer" title="Ajoute les valeurs présentes dans les données qui ne sont pas encore dans la liste">Proposer les valeurs présentes</button>
+      </div>
+      <p class="hint" style="margin:2px 0 4px">Une ligne par valeur : décochée, ses points sont écartés de l'atlas. Deux valeurs avec le même libellé forment une seule entrée de légende. Pour une colonne à plusieurs valeurs, la première valeur gardée de la liste l'emporte (montez les plus importantes).</p>
+      <div id="atlasSymItems"></div>
     </details>
     <details class="atlas-bloc" open><summary>Tableau sous la carte</summary>
       <div class="row" style="margin:0;align-items:center">
-        <label>Les <input type="number" id="atlasLignes" min="0" max="500" step="1" style="width:4.5em"> premiers établissements de l'académie</label>
-        <label>classés par <select id="atlasCritere"><option value="signalements">nombre de signalements</option><option value="jours">jours de mobilisation</option><option value="recent">date du dernier signalement</option></select></label>
+        <label>Les <input type="number" id="atlasLignes" min="0" max="500" step="1" style="width:4.5em"> premiers points de chaque page</label>
+        <label>classés par <select id="atlasCritere"><option value="signalements">nombre de signalements</option><option value="jours">nombre de jours concernés</option><option value="recent">date du dernier signalement</option></select></label>
         <label>affichés <select id="atlasTri"><option value="geo">par DSDEN, commune, établissement</option><option value="rang">dans l'ordre du classement</option></select></label>
       </div>
       <p class="hint" style="margin:4px 0">Une vingtaine tient sous la carte ; 0 = tous, sur des pages supplémentaires.</p>
@@ -171,22 +192,22 @@
       <div id="atlasColonnesBloc">
         <div id="atlasColonnes"></div>
         <button type="button" id="atlasAjouterCol">+ Ajouter une colonne</button>
-        <p class="hint" style="margin:4px 0 0">Champ calculé ou colonne de la table ; pour une colonne de la table, choisissez comment regrouper les lignes d'un même établissement. Les largeurs s'ajustent au contenu.</p>
+        <p class="hint" style="margin:4px 0 0">Champ calculé, colonne de la table ou colonne du référentiel des établissements ; pour une colonne, choisissez comment regrouper les lignes d'un même point. Les largeurs s'ajustent au contenu.</p>
       </div>
     </details>
-    <details class="atlas-bloc"><summary>Regroupement par établissement</summary>
+    <details class="atlas-bloc"><summary>Regroupement des signalements d'un même point</summary>
       <label>Qualification principale <select id="atlasPrincipale"><option value="frequente">la plus fréquente (à égalité, la plus récente)</option><option value="recente">la plus récente</option><option value="ordre">la première dans l'ordre des choix de Grist</option></select></label>
       <p class="hint" id="atlasOrdreAide" style="margin:2px 0 6px"></p>
       <label>Qualifications à ignorer <input type="text" id="atlasExclues" placeholder="RAS, …" style="width:16em"></label>
       <label class="check"><input type="checkbox" id="atlasExclureTout"> Écarter aussi ces signalements de l'atlas (sinon : ignorés seulement pour la qualification principale et les jours)</label>
-      <label>Jours de mobilisation <select id="atlasJours"></select></label>
+      <label>Jours concernés (durée) <select id="atlasJours"></select></label>
     </details>
     <details class="atlas-bloc"><summary>Carte et modèle QGIS</summary>
       <label class="check"><input type="checkbox" id="atlasIgn"> Fonds IGN (relief et plan, Géoplateforme : connexion internet nécessaire)</label>
       <label>Résolution des fonds dans le PDF <select id="atlasResolution"><option value="100">100 dpi (le plus léger, écran)</option><option value="150">150 dpi (recommandé)</option><option value="200">200 dpi</option><option value="300">300 dpi (impression soignée, lourd)</option></select></label>
-      <label class="check"><input type="checkbox" id="atlasVoile"> Voile gris sur les académies voisines</label>
+      <label class="check"><input type="checkbox" id="atlasVoile"> Voile gris hors du territoire de la page</label>
       <div class="row" style="margin:0 0 4px;align-items:center">
-        <label>Pages <select id="atlasDecoupage"><option value="auto">une par académie, découpée en départements si elle reste illisible</option><option value="academie">une par académie</option><option value="departement">une par département (académies de plusieurs départements)</option></select></label>
+        <label>Pages <select id="atlasDecoupage"><option value="national">une pour la France métropolitaine (et une par territoire d'outre-mer concerné)</option><option value="region">une par région académique</option><option value="auto">une par académie, découpée en départements si elle reste illisible</option><option value="academie">une par académie</option><option value="departement">une par département (académies de plusieurs départements)</option></select></label>
         <label id="atlasSeuilBloc">illisible = plus de <input type="number" id="atlasSeuil" min="0" max="100" step="5" style="width:4em"> % d'étiquettes sans place malgré les encarts</label>
       </div>
       <div class="row" style="margin:0;align-items:center">

@@ -43,7 +43,7 @@ async function telecharger(page, out) {
   await page.selectOption('#format', 'atlas'); await page.waitForTimeout(1200);
   console.log('PROFILS :', await page.$$eval('#atlasProfil option', o => o.map(x => x.textContent)), '| titre', await page.inputValue('#atlasTitre'));
   console.log('COLONNES :', await page.$$eval('.atlas-col', d => d.map(x => x.querySelector('[data-k=champ]').value + '=' + x.querySelector('[data-k=titre]').value)).then(a => a.join(' | ')));
-  console.log('OPTIONS table :', await page.$$eval('.atlas-col:first-child [data-k=champ] optgroup:last-child option', o => o.map(x => x.value).join(',')));
+  console.log('OPTIONS table :', await page.$$eval('.atlas-col:first-child [data-k=champ] optgroup[label^="Colonnes de la table"] option', o => o.map(x => x.value).join(',')));
   console.log('JOURS :', await page.$$eval('#atlasJours option', o => o.map(x => x.value).join(',')));
   // retirer UAI, ajouter Gravité (colonne de la table), monter « Gravité » d'un cran, tri par rang, critère jours
   await page.click('.atlas-col:nth-child(3) [data-a=suppr]');
@@ -56,7 +56,9 @@ async function telecharger(page, out) {
   await page.fill('#atlasTitre', 'Mouvements lycéens'); await page.fill('#atlasProfilNom', 'Mouvements');
   await page.evaluate(() => document.querySelectorAll('#atlasBox details').forEach(d => d.open = true));
   await page.waitForTimeout(500); console.log('COMPTE :', await page.textContent('#atlasCompte'));
-  await page.check('#atlasFiltreCat input[data-cat="Collège"]'); await page.waitForTimeout(600);
+  // collèges seulement : les autres valeurs de la symbologie sont décochées (remplace le filtre des catégories)
+  for (const d of await page.$$('#atlasSymItems .atlas-sym')) { if ((await d.$eval('.val', e => e.textContent.trim())) !== 'Collège') await (await d.$('[data-s=garder]')).uncheck(); }
+  await page.waitForTimeout(600);
   console.log('FILTRE PROFIL Collège :', await page.textContent('#atlasCompte'), '| qualifs proposées', await page.$$eval('#atlasFiltreQualif input', l => l.map(x => x.dataset.qualif).join(',')));
   await page.uncheck('#atlasVoisins');
   console.log('SOUS-TABLES :', await page.$$eval('#atlasMarqueTable option', o => o.map(x => x.textContent).join(' | ')));

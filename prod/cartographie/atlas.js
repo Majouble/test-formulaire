@@ -29,13 +29,41 @@ const CHAMPS_ATLAS = [
   ["Type_etablissement", "Type (référentiel)", "texte"], ["Nature", "Nature (référentiel)", "texte"],
   ["Commune", "Commune", "texte"], ["DSDEN", "DSDEN", "texte"], ["Academie", "Académie", "texte"],
   ["REP", "REP/REP+", "texte"], ["Internat", "Internat", "texte"],
-  ["Nb_signalements", "Nombre de signalements", "nombre"], ["Nb_jours", "Jours de mobilisation", "nombre"],
+  ["Region_academique", "Région académique", "texte"], ["Sigle", "Sigle de l'établissement", "texte"],
+  ["Site", "Site (point par site)", "texte"], ["Nb_sites", "Nombre de sites touchés", "nombre"], ["Sites", "Sites touchés", "texte"],
+  ["Nb_signalements", "Nombre de signalements", "nombre"], ["Nb_jours", "Jours concernés (durée)", "nombre"],
   ["Qualification_principale", "Qualification principale", "texte"], ["Qualifications", "Qualifications (toutes)", "texte"],
   ["Derniere_date", "Date du dernier signalement", "date"], ["Rang", "Rang dans la page", "nombre"],
   ["Jour", "Jour (point par jour ou par signalement)", "date"],
   ["Marque", "Marque (sous-table)", "texte"], ["Marque_nb", "Lignes de la sous-table", "nombre"], ["Marque_valeurs", "Valeurs de la sous-table", "texte"],
 ];
 const AGREGATS = { liste: "valeurs distinctes", max: "maximum", min: "minimum", somme: "somme", derniere: "valeur la plus récente", nb: "nombre de lignes renseignées" };
+
+/* Couleurs et formes des points (profil.symbologie) : une colonne au choix (champ calculé, colonne de la table ou du
+   référentiel), les valeurs gardées, et pour chacune un libellé de légende, une couleur et une forme (marqueurs simples
+   de QGIS). Le champ « Categorie » de chaque point reçoit le libellé ; le widget réécrit la symbologie catégorisée du
+   modèle QGIS en conséquence. Sans réglage : catégories du scolaire (École, Collège, Lycée, Autre). */
+const FORMES = { circle: "cercle", square: "carré", triangle: "triangle", diamond: "losange", star: "étoile", pentagon: "pentagone", hexagon: "hexagone", cross_fill: "croix" };
+const PALETTE_SYMBO = ["#000091", "#e1000f", "#18753c", "#b34000", "#6a6af4", "#a558a0", "#009081", "#c3992a", "#d1336a", "#666666"];
+const SYMBO_SCOLAIRE = { champ: "Categorie", titre: "Établissements signalés", items: [
+  { valeur: "École", libelle: "Écoles", couleur: "#f2c12e", forme: "circle", garder: true }, { valeur: "Collège", libelle: "Collèges", couleur: "#d1336a", forme: "circle", garder: true },
+  { valeur: "Lycée", libelle: "Lycées", couleur: "#5f59c6", forme: "circle", garder: true }, { valeur: "Autre", libelle: "Autres", couleur: "#4cbf62", forme: "circle", garder: true }],
+  autres: { garder: true, libelle: "Autres", couleur: "#4cbf62", forme: "circle" } };
+// réglage des couleurs et formes d'un profil (profils antérieurs : catégories du scolaire, filtre des catégories repris)
+function symbologieDe(P) {
+  if (P.symbologie && P.symbologie.champ) return { titre: "", items: [], ...P.symbologie, autres: { garder: true, libelle: "Autres", couleur: "#999999", forme: "circle", ...(P.symbologie.autres || {}) } };
+  const s = copie(SYMBO_SCOLAIRE), cats = ((P.filtre || {}).categories) || [];
+  if (cats.length) { s.items.forEach(it => { it.garder = cats.includes(it.valeur); }); s.autres.garder = cats.includes("Autre"); }
+  return s;
+}
+// Régions académiques : académies de chaque région (outre-mer : une académie par région)
+const REGIONS_ACADEMIQUES = {
+  "Auvergne-Rhône-Alpes": ["Clermont-Ferrand", "Grenoble", "Lyon"], "Bourgogne-Franche-Comté": ["Besançon", "Dijon"], "Bretagne": ["Rennes"],
+  "Centre-Val de Loire": ["Orléans-Tours"], "Corse": ["Corse"], "Grand Est": ["Nancy-Metz", "Reims", "Strasbourg"], "Hauts-de-France": ["Amiens", "Lille"],
+  "Île-de-France": ["Créteil", "Paris", "Versailles"], "Normandie": ["Normandie"], "Nouvelle-Aquitaine": ["Bordeaux", "Limoges", "Poitiers"],
+  "Occitanie": ["Montpellier", "Toulouse"], "Pays de la Loire": ["Nantes"], "Provence-Alpes-Côte d'Azur": ["Aix-Marseille", "Nice"],
+  "Guadeloupe": ["Guadeloupe"], "Martinique": ["Martinique"], "Guyane": ["Guyane"], "La Réunion": ["La Réunion"], "Mayotte": ["Mayotte"] };
+const regionDe = aca => Object.keys(REGIONS_ACADEMIQUES).find(r => REGIONS_ACADEMIQUES[r].includes(aca)) || "";
 
 const PROFIL_DEFAUT = {
   titre: "", service: SERVICE_DEFAUT,
@@ -59,6 +87,28 @@ const PROFIL_DEFAUT = {
   marques: { table: "", colonne: "", titre: "", inclure: true },
   // un point par établissement (défaut), par établissement et par jour, ou par signalement ; une page par jour en option
   regroupement: "etablissement", pagesParJour: true,
+  // point par site : sous-table des sites (question tableau dont une colonne renvoie vers un référentiel des sites)
+  sites: { table: "" },
+  symbologie: null,   // null : catégories du scolaire (voir symbologieDe)
+};
+/* Réglages prêts à l'emploi : appliqués au profil affiché (à enregistrer ensuite sous le nom voulu). « symbo » : colonne
+   de la symbologie ; les valeurs sont proposées à partir des données (couleurs de Grist pour une liste de choix). */
+const PREREGLAGES = {
+  scolaire: { libelle: "Scolaire : établissements par académie", aide: "Le réglage d'origine : écoles, collèges et lycées, une page par académie.",
+    profil: { regroupement: "etablissement", decoupage: "auto", symbologie: null, critere: "signalements", tri: "geo", lignes: 22,
+      colonnes: PROFIL_DEFAUT.colonnes } },
+  sup_sites: { libelle: "Supérieur : un point par site, par région académique", aide: "Un point par site touché (référentiel des sites), couleur selon la qualification du site, une page par région académique.",
+    profil: { regroupement: "site", decoupage: "region", symbo: "Qualification_principale", symboTitre: "Sites signalés", critere: "signalements", tri: "rang", lignes: 22,
+      colonnes: [{ champ: "Academie", titre: "Académie" }, { champ: "Sigle", titre: "Établissement" }, { champ: "Site", titre: "Site" }, { champ: "Commune", titre: "Commune" },
+        { champ: "Qualification_principale", titre: "Qualification" }, { champ: "Nb_signalements", titre: "Signal." }, { champ: "Derniere_date", titre: "Dernier signalement" }] } },
+  sup_etab: { libelle: "Supérieur : un point par établissement, par région académique", aide: "Un point par établissement, couleur selon son type (référentiel), nombre de sites touchés.",
+    profil: { regroupement: "etablissement", decoupage: "region", symbo: "Type_etablissement", symboTitre: "Établissements signalés", critere: "signalements", tri: "rang", lignes: 22,
+      colonnes: [{ champ: "Academie", titre: "Académie" }, { champ: "Commune", titre: "Commune" }, { champ: "Etablissement", titre: "Établissement" }, { champ: "Nb_sites", titre: "Sites" },
+        { champ: "Qualification_principale", titre: "Qualification" }, { champ: "Nb_signalements", titre: "Signal." }, { champ: "Derniere_date", titre: "Dernier signalement" }] } },
+  tous_risques: { libelle: "Tous risques et menaces : France entière", aide: "Une page pour la métropole (et une par territoire d'outre-mer concerné), couleur selon la qualification ; à adapter à la colonne qui décrit le risque ou la menace.",
+    profil: { regroupement: "etablissement", decoupage: "national", symbo: "Qualification_principale", symboTitre: "Points signalés", critere: "recent", tri: "rang", lignes: 25, encartsMax: 3,
+      colonnes: [{ champ: "Region_academique", titre: "Région académique" }, { champ: "Commune", titre: "Commune" }, { champ: "Etiquette", titre: "Établissement" },
+        { champ: "Qualification_principale", titre: "Qualification" }, { champ: "Nb_signalements", titre: "Signal." }, { champ: "Nb_jours", titre: "Jours" }, { champ: "Derniere_date", titre: "Dernier signalement" }] } },
 };
 const copie = o => JSON.parse(JSON.stringify(o));
 
@@ -110,6 +160,12 @@ function colonnesTable() {
   return [...cles].filter(k => k !== "id" && k !== "manualSort" && !k.startsWith("gristHelper_") && !ajoutees.has(k))
     .map(k => ({ col: k, libelle: libelles[k] || k, type: colTypes[k] || "" }));
 }
+// colonnes du référentiel des établissements recopiées sur chaque réponse (Etab_…) : proposées pour le tableau et les couleurs
+function colonnesRef() {
+  const tech = new Set([socle && socle.auto && socle.auto.Latitude, socle && socle.auto && socle.auto.Longitude].filter(Boolean));
+  return ((socle && socle.ajoutees) || []).filter(c => !tech.has(c) && !/^(manualSort|gristHelper_|uuid$|lien$)/i.test(c)).map(col => ({ col, libelle: libelleRef(col), type: colTypes[col] || "" }));
+}
+function libelleRef(col) { return String(col).replace(/^Etab_/, "").replace(/_+/g, " ").trim(); }
 // nom du champ exporté pour une colonne de la table (préfixé s'il porte le nom d'un champ calculé)
 const nomExport = col => CHAMPS_ATLAS.some(c => c[0] === col) || ["Date", "Qualification", "Dossier", "grist_id"].includes(col) ? `Table_${col}` : col;
 const agregatParDefaut = type => /^(Int|Numeric)/.test(type) ? "max" : /^Date/.test(type) ? "derniere" : type === "Bool" ? "nb" : "liste";
@@ -123,6 +179,9 @@ function choixColonne(col) {
 
 /* ---------- sous-tables (questions tableau) : tables dont une colonne référence la table des réponses ---------- */
 let sousTablesAtlas = [];
+// référentiels des sites (table visée par une colonne Référence d'une sous-table, avec Latitude / Longitude) : table → { idx, nom(j), lat(j), lon(j), commune(j) }
+const refSitesAtlas = new Map();
+const normAtlas = t => sansAccents(t).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 async function chargerSousTables() {
   try {
     if (!mainTableId || !grist.docApi) return (sousTablesAtlas = []);
@@ -140,7 +199,21 @@ async function chargerSousTables() {
         .map(i => { let o = {}; try { o = JSON.parse(metaC.widgetOptions[i] || "{}"); } catch (_) { o = {}; }
           return { col: metaC.colId[i], libelle: metaC.label[i] || metaC.colId[i], type: metaC.type[i], choix: o.choices || [], couleurs: Object.fromEntries(Object.entries(o.choiceOptions || {}).filter(([, x]) => x && x.fillColor).map(([v, x]) => [v, x.fillColor])) }; });
       let data = null; try { data = await grist.docApi.fetchTable(table); } catch (_) { data = null; }
-      if (data) sousTablesAtlas.push({ table, ref, colonnes, data });
+      if (!data) continue;
+      // tableau des sites : colonne vers un référentiel des sites (table avec Latitude / Longitude), nom libre, qualification du site
+      const colsDe = t2 => { const id2 = metaT.id[metaT.tableId.indexOf(t2)]; return metaC.id.map((_, i) => i).filter(i => metaC.parentId[i] === id2).map(i => ({ col: metaC.colId[i], type: metaC.type[i] })); };
+      const coordsDe = t2 => { const cs = colsDe(t2), f = re => (cs.find(c => re.test(c.col)) || {}).col;
+        return { lat: f(/^lat(itude)?$/i), lon: f(/^(lon|lng|longitude)$/i), nom: f(/^(nom|libelle|denomination|intitule)$/i) || (cs.find(c => /^Text/.test(c.type) && !/^(site_?id|uai|code)/i.test(c.col)) || {}).col, commune: f(/^(commune|ville)$/i) }; };
+      const siteCol = colonnes.find(c => /^Ref:/.test(c.type) && c.type !== `Ref:${mainTableId}` && (() => { const k = coordsDe(c.type.slice(4)); return k.lat && k.lon; })());
+      const siteRef = siteCol ? { col: siteCol.col, table: siteCol.type.slice(4) } : null;
+      if (siteRef && !refSitesAtlas.has(siteRef.table)) {
+        try { const t2 = await grist.docApi.fetchTable(siteRef.table), k = coordsDe(siteRef.table), v = (c, j) => c && t2[c] ? t2[c][j] : null;
+          refSitesAtlas.set(siteRef.table, { idx: new Map(t2.id.map((id, j) => [id, j])), nom: j => texteCellule(v(k.nom, j)), lat: j => toNumber(v(k.lat, j)), lon: j => toNumber(v(k.lon, j)), commune: j => texteCellule(v(k.commune, j)) }); }
+        catch (_) { /* référentiel des sites illisible : sites placés sur leur établissement */ }
+      }
+      const libre = (colonnes.find(c => /^Text/.test(c.type) && /libre|hors_?ref/i.test(c.col)) || (siteRef ? null : colonnes.find(c => /^Text/.test(c.type) && /(^|_)(nom_du_)?site/i.test(c.col))) || {}).col || null;
+      const qualif = (colonnes.find(c => /^Choice/.test(c.type) && /qualif/i.test(c.col)) || {}).col || null;
+      sousTablesAtlas.push({ table, ref, colonnes, data, siteRef, libre, qualif, estSites: !!(siteRef || libre) });
     }
   } catch (_) { sousTablesAtlas = []; }
   return sousTablesAtlas;
@@ -185,6 +258,37 @@ function localisateurSous(ST) {
   return aucun;
 }
 
+/* ---------- lignes d'une sous-table rattachées à chaque réponse ----------
+   Sous-table historisée (colonne Version) : chaque version de la réponse a sa copie des lignes (retraits exclus) ;
+   lignes sans version (antérieures à l'historique) : rattachées au dossier, comme une sous-table simple.
+   uniques : une ligne du tableau vue dans plusieurs versions ne compte qu'une fois (sa version la plus récente). */
+function indexSous(ST, R) {
+  const lignesDe = new Map(), lignesDeVersion = new Map(), avecVersions = !!(ST && ST.data.Version);
+  if (ST) ST.data.id.forEach((id, i) => {
+    if (avecVersions && ST.data.Mouvement && ST.data.Mouvement[i] === "Retrait") return;
+    const ver = avecVersions ? refIdOf(ST.data.Version[i]) || (typeof ST.data.Version[i] === "number" ? ST.data.Version[i] : 0) : 0;
+    if (ver) { if (!lignesDeVersion.has(ver)) lignesDeVersion.set(ver, []); lignesDeVersion.get(ver).push(i); return; }
+    const v = ST.data[ST.ref][i], k = typeof v === "number" ? v : refIdOf(v); if (k) { if (!lignesDe.has(k)) lignesDe.set(k, []); lignesDe.get(k).push(i); } });
+  const parDossier = r => (R.Dossier && refIdOf(r[R.Dossier])) || r.id;
+  const sousDe = r => !ST ? [] : lignesDeVersion.has(r.id) ? lignesDeVersion.get(r.id)
+    : [...new Set([...(lignesDe.get(r.id) || []), ...(parDossier(r) !== r.id ? (lignesDe.get(parDossier(r)) || []) : [])])];
+  const uniques = set => { if (!avecVersions || !ST.data.Ligne_id) return [...set];
+    const m = new Map(); for (const i of set) { const k = ST.data.Ligne_id[i] || `#${i}`, p = m.get(k);
+      if (p === undefined || (refIdOf(ST.data.Version[i]) || 0) > (refIdOf(ST.data.Version[p]) || 0)) m.set(k, i); }
+    return [...m.values()]; };
+  return { sousDe, uniques, avecVersions };
+}
+// site d'une ligne de la sous-table des sites : site du référentiel (nom, coordonnées), ancien nom resté en texte, ou nom libre
+function siteDeLigne(SS, i) {
+  if (!SS) return null;
+  const v = SS.siteRef ? SS.data[SS.siteRef.col][i] : null, id = typeof v === "number" ? v : refIdOf(v);
+  const ref = SS.siteRef ? refSitesAtlas.get(SS.siteRef.table) : null, j = id && ref ? ref.idx.get(id) : undefined;
+  if (j !== undefined) { const lat = ref.lat(j), lon = ref.lon(j);
+    return { cle: `s${id}`, nom: ref.nom(j) || `Site ${id}`, lat: Math.abs(lat) <= 90 ? lat : NaN, lon: Math.abs(lon) <= 180 ? lon : NaN, commune: ref.commune(j) }; }
+  const nom = (typeof v === "string" ? v : "").trim() || (SS.libre ? texteCellule(SS.data[SS.libre][i]).trim() : "");
+  return nom ? { cle: `l${normAtlas(nom)}`, nom, lat: NaN, lon: NaN, commune: "" } : null;
+}
+
 /* ---------- données : un point par établissement, un point par signalement ---------- */
 function signalementsAtlas(profil) {
   const P = { ...PROFIL_DEFAUT, ...profil };
@@ -204,6 +308,7 @@ function signalementsAtlas(profil) {
     type: trouve(R.Type, "Type", "Etab_Type", "Type_etablissement", "Etab_Type_etablissement") || motif(/^(etab_)?type_?(d_)?etab/i),
     nature: trouve(R.Libelle_nature, "Libelle_nature", "Etab_Libelle_nature") || motif(/libelle_?nature/i),
     rep: motif(/education_prioritaire|^(etab_)?rep(_rep_plus)?$/i), internat: motif(/hebergement|internat/i),
+    sigle: trouve("Sigle", "Etab_Sigle") || motif(/^(etab_)?sigle$/i),
     qualif: (socle && socle.qualif) || trouve("Qualification"), faits: trouve(R.Date_faits, "Date_faits"), cree: trouve(R.Cree_le, "Cree_le") };
   // jours de mobilisation : colonne choisie, colonne reconnue (« auto »), ou calcul
   C.jours = P.jours === "calcul" ? null : P.jours && P.jours !== "auto" ? (cles.has(P.jours) ? P.jours : null) : motif(/jours?_de_mobilisation|^nb_?(de_)?jours/i);
@@ -216,18 +321,11 @@ function signalementsAtlas(profil) {
   const F = { categories: [], qualifs: [], minSignalements: 1, minJours: 0, ...(P.filtre || {}) };
   // sous-table des marques : lignes rattachées à chaque réponse (par son identifiant ou celui de son dossier)
   const M = { table: "", colonne: "", titre: "", inclure: true, ...(P.marques || {}) };
-  const ST = M.table ? sousTablesAtlas.find(t => t.table === M.table) : null, lignesDe = new Map(), lignesDeVersion = new Map();
-  // sous-table historisée (colonne Version) : chaque version de la réponse a sa copie des lignes (retraits exclus) ;
-  // lignes sans version (antérieures à l'historique) : rattachées au dossier, comme une sous-table simple
-  const avecVersions = !!(ST && ST.data.Version);
-  if (ST) ST.data.id.forEach((id, i) => {
-    if (avecVersions && ST.data.Mouvement && ST.data.Mouvement[i] === "Retrait") return;
-    const ver = avecVersions ? refIdOf(ST.data.Version[i]) || (typeof ST.data.Version[i] === "number" ? ST.data.Version[i] : 0) : 0;
-    if (ver) { if (!lignesDeVersion.has(ver)) lignesDeVersion.set(ver, []); lignesDeVersion.get(ver).push(i); return; }
-    const v = ST.data[ST.ref][i], k = typeof v === "number" ? v : refIdOf(v); if (k) { if (!lignesDe.has(k)) lignesDe.set(k, []); lignesDe.get(k).push(i); } });
-  const parDossierAtlas = r => (R.Dossier && refIdOf(r[R.Dossier])) || r.id;
-  const sousDe = r => !ST ? [] : lignesDeVersion.has(r.id) ? lignesDeVersion.get(r.id)
-    : [...new Set([...(lignesDe.get(r.id) || []), ...(parDossierAtlas(r) !== r.id ? (lignesDe.get(parDossierAtlas(r)) || []) : [])])];
+  const ST = M.table ? sousTablesAtlas.find(t => t.table === M.table) : null;
+  const { sousDe, uniques, avecVersions } = indexSous(ST, R);
+  // point par site : sous-table des sites (choisie dans le profil, sinon la première reconnue)
+  const SS = sousTablesAtlas.find(t => t.table === ((P.sites || {}).table || "") && t.estSites) || sousTablesAtlas.find(t => t.estSites) || null;
+  const IS = SS === ST ? { sousDe, uniques } : indexSous(SS, R);
   // lignes de la sous-table qui citent leur propre établissement (référence au référentiel, UAI ou coordonnées) : points à part
   const lieuSous = localisateurSous(ST);
   // réponse retenue seulement pour sa sous-table (filtre de qualification) : pas de point à elle si ses lignes citent d'autres établissements
@@ -239,12 +337,17 @@ function signalementsAtlas(profil) {
   }
   // période (date des faits, à défaut de saisie), bornes comprises
   if (F.debut || F.fin) { const dansPeriode = r => { const d = jourDe(dateDe(r)); return !!d && (!F.debut || d >= F.debut) && (!F.fin || d <= F.fin); }; tous = tous.filter(dansPeriode); recs = recs.filter(dansPeriode); }
-  const REG = ["jour", "aucun"].includes(P.regroupement) ? P.regroupement : "etablissement";
+  const REG = ["jour", "aucun", "site"].includes(P.regroupement) ? P.regroupement : "etablissement";
+  if (REG === "site" && !SS) throw new Error("Un point par site : aucune sous-table de sites (question tableau dont une colonne renvoie vers le référentiel des sites, ou colonne « site hors référentiel »).");
+  const SY = symbologieDe(P);
   const cleDe = r => { const lat = toNumber(r[cols.Latitude]), lon = toNumber(r[cols.Longitude]); if (isNaN(lat) || isNaN(lon)) return null;
     return (C.uai ? texteCellule(r[C.uai]).trim() : "") || `${lat.toFixed(5)},${lon.toFixed(5)}`; };
   // colonnes de la table recopiées dans les deux couches (détail : telles quelles ; établissement : regroupées)
-  const tableCols = colonnesTable().filter(c => ![cols.Latitude, cols.Longitude, socle && socle.etabCol].includes(c.col));
-  const agregatDe = col => { const c = (P.colonnes || []).find(x => x.champ === "col:" + col); return (c && c.agregat) || agregatParDefaut(colTypes[col] || ""); };
+  // colonnes du référentiel des établissements utilisées par le profil (tableau, couleurs) : exportées comme celles de la table
+  const refUtilisees = [...new Set([...(P.colonnes || []).map(c => c.champ), SY.champ].filter(c => c && c.startsWith("ref:")).map(c => c.slice(4)))].filter(c => cles.has(c));
+  const tableCols = [...colonnesTable().filter(c => ![cols.Latitude, cols.Longitude, socle && socle.etabCol].includes(c.col)),
+    ...refUtilisees.map(col => ({ col, libelle: libelleRef(col), type: colTypes[col] || "" }))];
+  const agregatDe = col => { const c = (P.colonnes || []).find(x => x.champ === "col:" + col || x.champ === "ref:" + col); return (c && c.agregat) || agregatParDefaut(colTypes[col] || ""); };
   const valeurExport = (col, v) => /^Date/.test(colTypes[col] || "") ? jourDe(v) : typeof v === "number" || typeof v === "boolean" ? v : texteCellule(v);
 
   // jours de mobilisation par établissement, sur toutes les versions
@@ -262,15 +365,29 @@ function signalementsAtlas(profil) {
     const academie = (G && x.aca && G.acaKey(x.aca)) || (lieu && lieu.academie) || x.aca || "";
     const depCode = (G && x.uai && G.depFromUai(x.uai)) || (lieu && lieu.dep) || "";
     const depNom = (G && G.DEP_NAMES[depCode]) || x.dep || (lieu && lieu.departement) || "";
-    const n = natureCourte(x.nature || "", x.type || ""), nom = nomCourt(x.nom || ""), intern = x.internat;
-    return { Etiquette: `${n.court} ${nom}`.trim(), Etablissement: nom, Type_court: n.court, Type_libelle: n.libelle, Categorie: n.categorie,
+    // scolaire : sigle du type + nom court en capitales (« CLG JULES FERRY ») ; autres (supérieur…) : sigle, sinon nom tel quel
+    const n = natureCourte(x.nature || "", x.type || ""), scolaire = !!n.court, nom = scolaire ? nomCourt(x.nom || "") : String(x.nom || "").trim(), intern = x.internat;
+    const sigle = String(x.sigle || "").trim();
+    return { Etiquette: scolaire ? `${n.court} ${nom}`.trim() : (sigle || nom), Etablissement: nom, Sigle: sigle || nom, Type_court: n.court, Type_libelle: n.libelle, Categorie: n.categorie,
       Type_etablissement: x.type || "", Nature: x.nature || "",
-      UAI: x.uai || "", Commune: x.commune || "", DSDEN: depCode ? `${depCode} - ${depNom}` : depNom, Dep: depCode || "", Academie: academie,
+      UAI: x.uai || "", Commune: x.commune || "", DSDEN: depCode ? `${depCode} - ${depNom}` : depNom, Dep: depCode || "", Academie: academie, Region_academique: regionDe(academie),
       REP: (x.rep || "").trim() || "-", Internat: intern === true || intern === 1 || /^(1|oui|o|true|vrai)$/i.test(texteCellule(intern).trim()) ? "Oui" : "-" };
   };
-  const etabProps = (r, lat, lon, uai) => propsEtab({ nom: C.nom ? texteCellule(r[C.nom]) : "", uai, commune: C.commune ? texteCellule(r[C.commune]) : "",
+  const xEtab = (r, uai) => ({ nom: C.nom ? texteCellule(r[C.nom]) : "", uai, commune: C.commune ? texteCellule(r[C.commune]) : "",
     type: C.type ? texteCellule(r[C.type]) : "", nature: C.nature ? texteCellule(r[C.nature]) : "", aca: C.aca ? texteCellule(r[C.aca]) : "",
-    dep: C.dep ? texteCellule(r[C.dep]) : "", rep: C.rep ? texteCellule(r[C.rep]) : "", internat: C.internat ? r[C.internat] : null }, lat, lon);
+    dep: C.dep ? texteCellule(r[C.dep]) : "", rep: C.rep ? texteCellule(r[C.rep]) : "", internat: C.internat ? r[C.internat] : null, sigle: C.sigle ? texteCellule(r[C.sigle]) : "" });
+  const etabProps = (r, lat, lon, uai) => propsEtab(xEtab(r, uai), lat, lon);
+  // sites (sous-table des sites) : qualification de la ligne (à défaut, celle du signalement), clé du site
+  const qualifsLigne = (i, r) => SS && SS.qualif ? texteCellule(SS.data[SS.qualif][i]).split(", ").map(q => q.trim()).filter(Boolean) : qualifsDe(r);
+  const cleSite = (s, r) => s.cle.startsWith("s") ? s.cle : `${cleDe(r) || ""}|${s.cle}`;
+  const joursSite = new Map();
+  if (REG === "site") for (const r of tous) {
+    const d = dateDe(r); if (!d) continue;
+    for (const i of IS.sousDe(r)) { const s = siteDeLigne(SS, i); if (!s) continue; const q = qualifsLigne(i, r);
+      if (q.length && q.every(x => exclues.has(x.toUpperCase()))) continue;
+      const k = cleSite(s, r); if (!joursSite.has(k)) joursSite.set(k, new Set()); joursSite.get(k).add(jourDe(d)); }
+  }
+  const parSite = new Map();
   const parSous = new Map();
   const parEtab = new Map(), detail = [];
   for (const r of recs) {
@@ -289,6 +406,20 @@ function signalementsAtlas(profil) {
       if (typeof dr === "number" && (!x.date || dr > x.date)) x.date = dr;
     }
     if ((exclu && P.exclureTout) || (horsFiltre.has(r.id) && !memes.length)) continue;
+    if (REG === "site") {
+      // un point par site : chaque ligne de la sous-table des sites, sur le site du référentiel (à défaut, sur l'établissement)
+      const d = dateDe(r);
+      for (const i of IS.sousDe(r)) {
+        const st = siteDeLigne(SS, i); if (!st) continue;
+        const q = qualifsLigne(i, r), ex = q.length > 0 && q.every(x => exclues.has(x.toUpperCase()));
+        if (ex && P.exclureTout) continue;
+        const k = cleSite(st, r), place = !isNaN(st.lat) && !isNaN(st.lon);
+        if (!parSite.has(k)) parSite.set(k, { cle: k, lat: place ? st.lat : lat, lon: place ? st.lon : lon, uai, place, nom: st.nom, commune: st.commune, r0: r, reps: new Set(), qualifs: new Map(), date: null, lignes: [] });
+        const g = parSite.get(k); g.reps.add(r.id); g.lignes.push({ r, d });
+        if (!ex) q.forEach(x => { const o = g.qualifs.get(x) || { n: 0, date: 0 }; o.n++; if (typeof d === "number" && d > o.date) o.date = d; g.qualifs.set(x, o); });
+        if (typeof d === "number" && (!g.date || d > g.date)) { g.date = d; g.r0 = r; }
+      }
+    }
     // groupe : l'établissement, l'établissement un jour donné, ou la ligne elle-même
     const gk = REG === "aucun" ? `${cle}|r${r.id}` : REG === "jour" ? `${cle}|${jourDe(dr)}` : cle;
     if (!parEtab.has(gk)) parEtab.set(gk, { cle, lat, lon, uai, n: 0, qualifs: new Map(), date: null, jour: REG === "etablissement" ? null : jourDe(dr), lignes: [], sous: new Set(), props: etabProps(r, lat, lon, uai) });
@@ -323,11 +454,6 @@ function signalementsAtlas(profil) {
   // marque de l'établissement : valeur de la colonne choisie (la première dans l'ordre des choix de Grist, sinon la plus
   // fréquente) parmi ses lignes de la sous-table ; sans colonne, le titre de la marque
   const colM = ST && M.colonne ? ST.colonnes.find(c => c.col === M.colonne) : null;
-  // une ligne du tableau vue dans plusieurs versions (table historisée) ne compte qu'une fois : sa version la plus récente
-  const uniques = set => { if (!avecVersions || !ST.data.Ligne_id) return [...set];
-    const m = new Map(); for (const i of set) { const k = ST.data.Ligne_id[i] || `#${i}`, p = m.get(k);
-      if (p === undefined || (refIdOf(ST.data.Version[i]) || 0) > (refIdOf(ST.data.Version[p]) || 0)) m.set(k, i); }
-    return [...m.values()]; };
   const marqueDe = e => {
     if (!ST || !e.sous.size) return { Marque: null, Marque_nb: 0, Marque_valeurs: "" };
     e = { ...e, sous: new Set(uniques(e.sous)) };
@@ -337,31 +463,64 @@ function signalementsAtlas(profil) {
     const principale = [...compte.entries()].sort((a, b) => rang(a[0]) - rang(b[0]) || b[1] - a[1] || a[0].localeCompare(b[0], "fr"))[0];
     return { Marque: colM ? (principale ? principale[0] : "Non précisé") : (M.titre || "Oui"), Marque_nb: e.sous.size, Marque_valeurs: [...compte.keys()].join(", ") };
   };
+  // sites touchés d'un établissement (sous-table des sites) : nombre et noms
+  const sitesDe = lignes => { if (!SS) return { Nb_sites: null, Sites: "" };
+    // sites revenus à la normale (qualification ignorée, RAS…) : pas comptés
+    const m = new Map(); lignes.forEach(({ r }) => IS.sousDe(r).forEach(i => { const st = siteDeLigne(SS, i), q = qualifsLigne(i, r);
+      if (st && !m.has(st.cle) && !(q.length && q.every(x => exclues.has(x.toUpperCase())))) m.set(st.cle, st.nom); }));
+    return { Nb_sites: m.size, Sites: [...m.values()].sort((a, b) => a.localeCompare(b, "fr")).join(", ") }; };
   const features = [];
-  for (const e of parEtab.values()) {
+  if (REG !== "site") for (const e of parEtab.values()) {
     const principale = [...e.qualifs.entries()].sort((a, b) => triQualif(a, b) || a[0].localeCompare(b[0], "fr"))[0];
     const regroupees = {}; tableCols.forEach(c => { regroupees[nomExport(c.col)] = regrouper(c.col, e.lignes); });
     const j = joursEtab.get(e.cle);
     features.push({ _cle: e.cle, type: "Feature", geometry: { type: "Point", coordinates: [e.lon, e.lat] }, properties: { ...e.props, ...regroupees,
       Nb_signalements: e.n, Qualification_principale: principale ? principale[0] : "", Qualifications: [...e.qualifs.keys()].join(", "),
-      Nb_jours: j ? (j.max !== null ? j.max : j.jours.size || null) : null,
+      Nb_jours: j ? (j.max !== null ? j.max : j.jours.size || null) : null, Site: "", ...sitesDe(e.lignes),
       Derniere_date: e.date ? jourDe(e.date) : "", Jour: e.jour, Couche: "principale", Signale_par: "", ...marqueDe(e) } });
+  }
+  // un point par site : champs de l'établissement, lieu (académie, département, commune) d'après le site
+  for (const g of parSite.values()) {
+    const principale = [...g.qualifs.entries()].sort((a, b) => triQualif(a, b) || a[0].localeCompare(b[0], "fr"))[0];
+    const regroupees = {}; tableCols.forEach(c => { regroupees[nomExport(c.col)] = regrouper(c.col, g.lignes); });
+    // site placé : commune du référentiel des sites (sinon vide : celle de l'établissement serait trompeuse)
+    const x = xEtab(g.r0, g.uai), pe = propsEtab(g.place ? { ...x, uai: "", aca: "", dep: "", commune: g.commune } : x, g.lat, g.lon);
+    const jours = joursSite.get(g.cle);
+    features.push({ _cle: g.cle, _etab: cleDe(g.r0), type: "Feature", geometry: { type: "Point", coordinates: [g.lon, g.lat] }, properties: { ...pe, ...regroupees, UAI: g.uai,
+      Site: g.nom, Etiquette: `${g.nom}${pe.Sigle && pe.Sigle !== g.nom ? ` (${pe.Sigle})` : ""}`, Nb_sites: 1, Sites: g.nom,
+      Nb_signalements: g.reps.size, Qualification_principale: principale ? principale[0] : "", Qualifications: [...g.qualifs.keys()].join(", "),
+      Nb_jours: jours ? jours.size || null : null, Derniere_date: g.date ? jourDe(g.date) : "", Jour: null, Couche: "principale", Signale_par: "",
+      Marque: null, Marque_nb: 0, Marque_valeurs: "" } });
   }
   // établissements cités dans la sous-table (hors établissement de la réponse) : couche à part, mêmes champs de page
   const sousFeatures = [...parSous.values()].map(x => ({ type: "Feature", geometry: { type: "Point", coordinates: [x.lon, x.lat] }, properties: { ...x.props,
     Nb_signalements: uniques(x.sous).length, Qualification_principale: "", Qualifications: "", Nb_jours: null, Derniere_date: x.date ? jourDe(x.date) : "", Jour: x.jour,
     Couche: "sous-table", Signale_par: [...x.parents].filter(Boolean).join(", "), ...marqueDe(x) } }));
-  // filtre du profil sur les établissements : catégorie, nombre de signalements, jours de mobilisation
-  const avantFiltre = features.length;
+  // couleurs et formes (symbologie du profil) : catégorie de chaque point ; valeurs non gardées écartées
+  const champSym = /^(col|ref):/.test(SY.champ) ? nomExport(SY.champ.slice(4)) : SY.champ;
+  const classer = p => {
+    const vals = texteCellule(p[champSym]).split(", ").map(x => x.trim()).filter(Boolean);
+    const it = SY.items.find(x => x.garder !== false && vals.includes(String(x.valeur)));
+    if (it) return it;
+    if (SY.items.some(x => vals.includes(String(x.valeur)))) return null;   // valeur listée mais écartée
+    return SY.autres.garder !== false ? SY.autres : null;
+  };
+  const avantFiltre = features.length, valeursSym = new Map();
   for (let i = features.length - 1; i >= 0; i--) {
     const p = features[i].properties;
-    if ((F.categories.length && !F.categories.includes(p.Categorie)) || p.Nb_signalements < (+F.minSignalements || 1) || (p.Nb_jours || 0) < (+F.minJours || 0)) features.splice(i, 1);
+    texteCellule(p[champSym]).split(", ").map(x => x.trim()).filter(Boolean).forEach(v => valeursSym.set(v, (valeursSym.get(v) || 0) + 1));
+    const it = classer(p);
+    if (!it || p.Nb_signalements < (+F.minSignalements || 1) || (p.Nb_jours || 0) < (+F.minJours || 0)) { features.splice(i, 1); continue; }
+    p.Categorie = String(it.libelle || it.valeur || "Autres");
   }
-  // sous-table : filtre des catégories seulement (ni signalements ni jours de mobilisation)
-  for (let i = sousFeatures.length - 1; i >= 0; i--) if (F.categories.length && !F.categories.includes(sousFeatures[i].properties.Categorie)) sousFeatures.splice(i, 1);
-  const clesRetenues = new Set(features.map(f => f._cle)); features.forEach(f => { delete f._cle; });
+  // légende : libellés dans l'ordre de la liste, puis « autres » ; seulement ceux qui ont des points
+  const presents = new Set(features.map(f => f.properties.Categorie)), categories = [];
+  [...SY.items.filter(x => x.garder !== false), SY.autres].forEach(it => { const l = String(it.libelle || it.valeur || "Autres");
+    if (presents.has(l) && !categories.some(c => c.libelle === l)) categories.push({ libelle: l, couleur: it.couleur || "#666666", forme: FORMES[it.forme] ? it.forme : "circle" }); });
+  // établissements d'origine des points par site : leur détail reste dans signalements_detail
+  const clesRetenues = new Set(features.flatMap(f => [f._cle, f._etab].filter(Boolean))); features.forEach(f => { delete f._cle; delete f._etab; });
   for (let i = detail.length - 1; i >= 0; i--) { if (!clesRetenues.has(detail[i].cle)) detail.splice(i, 1); else delete detail[i].cle; }
-  if (!features.length && !sousFeatures.length) throw new Error(avantFiltre ? `Aucun établissement ne passe le filtre du profil (${avantFiltre} avant filtre).` : "Aucun établissement localisé à mettre dans l'atlas.");
+  if (!features.length && !sousFeatures.length) throw new Error(avantFiltre ? `Aucun point ne passe le filtre du profil (${avantFiltre} avant filtre).` : REG === "site" ? "Aucun site localisé à mettre dans l'atlas (sous-table des sites vide pour ces signalements ?)." : "Aucun établissement localisé à mettre dans l'atlas.");
   // Rang dans l'académie selon le critère du profil : le tableau garde les N premiers
   const cmp = {
     signalements: (a, b) => b.Nb_signalements - a.Nb_signalements || (b.Nb_jours || 0) - (a.Nb_jours || 0) || String(b.Derniere_date).localeCompare(String(a.Derniere_date)),
@@ -373,7 +532,8 @@ function signalementsAtlas(profil) {
   for (const l of parAca.values()) { l.sort((a, b) => cmp(a, b) || a.Etablissement.localeCompare(b.Etablissement, "fr")); l.forEach((p, i) => { p.Rang = i + 1; }); }
   return { fc: { type: "FeatureCollection", name: "signalements", features }, detail: { type: "FeatureCollection", name: "signalements_detail", features: detail },
     sous: { type: "FeatureCollection", name: "sous_table", features: sousFeatures },
-    infos: { jours: C.jours, qualif: C.qualif, ordre, tableCols, avantFiltre, marques: ST ? { table: ST.table, colonne: colM, titre: M.titre, lieu: lieuSous.mode } : null } };
+    infos: { jours: C.jours, qualif: C.qualif, ordre, tableCols, avantFiltre, marques: ST ? { table: ST.table, colonne: colM, titre: M.titre, lieu: lieuSous.mode } : null,
+      symbologie: { ...SY, categories, valeurs: valeursSym }, sites: SS ? { table: SS.table, siteRef: SS.siteRef, libre: SS.libre, qualif: SS.qualif } : null, regroupement: REG } };
 }
 
 /* ---------- encarts de zoom : zones denses et place libre sur la carte ----------
@@ -567,14 +727,19 @@ function preparerPages(features, acasJson, depsJson, P, lignes) {
     jours: (a, b) => (b.Nb_jours || 0) - (a.Nb_jours || 0) || b.Nb_signalements - a.Nb_signalements || String(b.Derniere_date).localeCompare(String(a.Derniere_date)),
     recent: (a, b) => String(b.Derniere_date).localeCompare(String(a.Derniere_date)) || b.Nb_signalements - a.Nb_signalements,
   }[P.critere] || ((a, b) => b.Nb_signalements - a.Nb_signalements);
-  const pageAca = a => ({ type: "Feature", geometry: a.geometry, properties: { cle: a.properties.nom, type: "academie", academie: a.properties.nom, dep: null,
+  // pages : une académie, un département, une région académique (ses académies réunies), la France métropolitaine ;
+  // « academies » : liste des académies de la page (|A|B|), lue par le modèle QGIS (contours en trait épais, repérage)
+  const pageAca = a => ({ type: "Feature", geometry: a.geometry, properties: { cle: a.properties.nom, type: "academie", academie: a.properties.nom, academies: `|${a.properties.nom}|`, dep: null,
     titre: a.properties.nom, surtitre: "Académie :" } });
-  const pageDep = (d, aca) => ({ type: "Feature", geometry: d.geometry, properties: { cle: `${aca} – ${d.properties.code} ${d.properties.nom}`, type: "departement", academie: aca, dep: d.properties.code,
+  const pageDep = (d, aca) => ({ type: "Feature", geometry: d.geometry, properties: { cle: `${aca} – ${d.properties.code} ${d.properties.nom}`, type: "departement", academie: aca, academies: `|${aca}|`, dep: d.properties.code,
     titre: d.properties.nom, surtitre: `${aca} — département ${d.properties.code} :` } });
+  const reunir = acas => ({ type: "MultiPolygon", coordinates: acas.flatMap(a => a.geometry.type === "Polygon" ? [a.geometry.coordinates] : a.geometry.coordinates) });
+  const pageGroupe = (cle, type, titre, surtitre, acas) => acas.length === 1 && type === "region" && OUTRE_MER.has(acas[0].properties.nom) ? pageAca(acas[0])
+    : { type: "Feature", geometry: reunir(acas), properties: { cle, type, academie: null, academies: `|${acas.map(a => a.properties.nom).join("|")}|`, dep: null, titre, surtitre } };
   // une page par jour (points par jour ou par signalement) : chaque page de base est déclinée sur les jours où elle a des points
-  const parJour = P.regroupement && P.regroupement !== "etablissement" && P.pagesParJour !== false;
+  const parJour = ["jour", "aucun"].includes(P.regroupement) && P.pagesParJour !== false;
   const libelleJour = j => j ? new Date(j + "T12:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "date inconnue";
-  const dansBase = (pg, p) => pg.properties.academie === p.Academie && (!pg.properties.dep || pg.properties.dep === p.Dep);
+  const dansBase = (pg, p) => String(pg.properties.academies || `|${pg.properties.academie}|`).includes(`|${p.Academie}|`) && (!pg.properties.dep || pg.properties.dep === p.Dep);
   const decliner = bases => !parJour ? bases : bases.flatMap(pg => [...new Set(features.filter(f => dansBase(pg, f.properties)).map(f => f.properties.Jour || ""))].sort()
     .map(j => ({ ...pg, properties: { ...pg.properties, cle: `${pg.properties.cle} · ${j || "sans date"}`, jour: j, jour_libelle: libelleJour(j) } })))
     .sort((a, b) => a.properties.jour.localeCompare(b.properties.jour));   // tri stable : par jour, puis dans l'ordre des académies
@@ -585,7 +750,7 @@ function preparerPages(features, acasJson, depsJson, P, lignes) {
   const evaluer = pages => {
     features.forEach(f => {
       const p = f.properties, jourOk = x => x.properties.jour == null || x.properties.jour === (p.Jour || "");
-      const pg = pages.find(x => dansBase(x, p) && jourOk(x)) || pages.find(x => x.properties.academie === p.Academie && jourOk(x));
+      const pg = pages.find(x => dansBase(x, p) && jourOk(x)) || pages.find(x => String(x.properties.academies || "").includes(`|${p.Academie}|`) && jourOk(x));
       p.Page = pg ? pg.properties.cle : p.Academie;
       ["Zoom", "Lx", "Ly", "La", "Lv", "Lh", "Ex", "Ey", "Ea", "Ev", "Eh"].forEach(c => { p[c] = null; });
     });
@@ -606,6 +771,21 @@ function preparerPages(features, acasJson, depsJson, P, lignes) {
   // points de chaque page : tous (Nb_etablissements, filtre de l'atlas), signalés (Nb_signales) et cités dans la sous-table (Nb_cites)
   const compter = pgs => pgs.forEach(pg => { const l = features.filter(f => f.properties.Page === pg.properties.cle), c = l.filter(f => f.properties.Couche === "sous-table").length;
     Object.assign(pg.properties, { Nb_etablissements: l.length, Nb_signales: l.length - c, Nb_cites: c }); });
+  // France métropolitaine (une page) et territoires d'outre-mer concernés ; régions académiques ayant des points
+  if (P.decoupage === "national" || P.decoupage === "region") {
+    let bases;
+    if (P.decoupage === "national") {
+      const metro = acasJson.features.filter(a => !OUTRE_MER.has(a.properties.nom));
+      bases = [...(academiesUtiles.some(a => !OUTRE_MER.has(a.properties.nom)) ? [pageGroupe("France métropolitaine", "national", "France métropolitaine", "Territoire :", metro)] : []),
+        ...academiesUtiles.filter(a => OUTRE_MER.has(a.properties.nom)).map(pageAca)];
+    } else {
+      bases = Object.entries(REGIONS_ACADEMIQUES).map(([reg, noms]) => [reg, acasJson.features.filter(a => noms.includes(a.properties.nom))])
+        .filter(([, acas]) => acas.some(a => academiesUtiles.includes(a))).map(([reg, acas]) => pageGroupe(reg, "region", reg, "Région académique :", acas));
+    }
+    const pages = decliner(bases), res = evaluer(pages);
+    compter(pages);
+    return { pages, enc: res.enc, decoupees: [] };
+  }
   let pages = decliner(academiesUtiles.map(pageAca)), decoupees = [];
   const decoupable = a => !OUTRE_MER.has(a.properties.nom) && depsDe(a.properties.nom).length > 1;
   if (P.decoupage === "departement") decoupees = academiesUtiles.filter(decoupable).map(a => a.properties.nom);
@@ -644,6 +824,52 @@ function poserMarques(qgs, fc, m) {
   if (valeurs.length) return qgs.split("@@MARQUES_TITRE@@").join(xmlTexte(m.titre || (m.colonne ? m.colonne.libelle : m.table)));
   qgs = qgs.replace(/<layer-tree-layer [^>]*name="marques"[^>]*>(?:(?!<\/layer-tree-layer>)[\s\S])*?@@MARQUES_TITRE@@[\s\S]*?<\/layer-tree-layer>/, "");
   return cocherCouches(qgs, t => /name="marques"/.test(t), false);
+}
+
+/* ---------- couleurs et formes des points : catégories de la couche « signalements » (champ Categorie) ----------
+   Le symbole de la première catégorie du modèle sert de patron (taille, contour, atténuation hors page) : sa couleur et sa
+   forme sont remplacées pour chaque catégorie du profil. Titre de la légende : celui du profil. */
+function poserCategories(qgs, categories, titre) {
+  const blocRenderer = /(<renderer-v2 [^>]*attr="Categorie"[^>]*>)([\s\S]*?)(<\/renderer-v2>)/;
+  const rgb = h => { const x = String(h || "").replace("#", ""); return x.length >= 6 ? `${parseInt(x.slice(0, 2), 16)},${parseInt(x.slice(2, 4), 16)},${parseInt(x.slice(4, 6), 16)}` : "102,102,102"; };
+  let applique = false;
+  if (categories.length) qgs = qgs.replace(blocRenderer, (tout, debut, corps, fin) => {
+    const cat = (/<category [^>]*\/>/.exec(corps) || [])[0], debutSym = corps.search(/<symbol [^>]*name="0"/);
+    let sym = null;
+    if (debutSym >= 0) { const re = /<symbol[\s>]|<\/symbol>/g; re.lastIndex = debutSym; let n = 0, m;
+      while ((m = re.exec(corps))) { n += m[0] === "</symbol>" ? -1 : 1; if (!n) { sym = corps.slice(debutSym, m.index + 9); break; } } }
+    if (!cat || !sym) return tout;
+    // couleur du patron : celle de sa couche de symbole (« r,g,b,a »), reprise aussi dans les expressions d'atténuation
+    // (ordre des attributs variable selon l'enregistrement de QGIS : options repérées par leur nom, quel que soit l'ordre)
+    const optColor = /<Option\b[^>]*\bname="color"[^>]*>/.exec(sym), modele = optColor ? (/\bvalue="(\d+,\d+,\d+),\d+"/.exec(optColor[0]) || [])[1] : null;
+    const cats = categories.map((c, i) => cat.replace(/value="[^"]*"/, `value="${xmlTexte(c.libelle)}"`).replace(/label="[^"]*"/, `label="${xmlTexte(c.libelle)}"`)
+      .replace(/symbol="\d+"/, `symbol="${i}"`).replace(/uuid="[^"]*"/, `uuid="{categorie-${i}}"`).replace(/render="false"/, 'render="true"')).join("");
+    const syms = categories.map((c, i) => {
+      let x = sym.replace(/name="0"/, `name="${i}"`).replace(/name="@0@/g, `name="@${i}@`);
+      if (modele) x = x.split(modele).join(rgb(c.couleur));
+      // forme du marqueur simple (option « name » non vide de la couche de symbole)
+      return x.replace(/<Option\b[^>]*\bname="name"[^>]*\/>/g, o => /\bvalue="[a-z_]+"/.test(o) ? o.replace(/\bvalue="[a-z_]+"/, `value="${c.forme}"`) : o)
+        .replace(/(<prop k="name" v=")([a-z_]+)(")/, `$1${c.forme}$3`);
+    }).join("");
+    applique = true;
+    return debut + corps.replace(/<categories>[\s\S]*?<\/categories>/, `<categories>${cats}</categories>`).replace(/<symbols>[\s\S]*?<\/symbols>/, `<symbols>${syms}</symbols>`) + fin;
+  });
+  // titre de la couche dans la légende
+  if (titre) qgs = qgs.replace(/(name="legend\/title-label" value=")Établissements signalés(")/g, `$1${xmlTexte(titre)}$2`).replace(/(value=")Établissements signalés(" name="legend\/title-label")/g, `$1${xmlTexte(titre)}$2`);
+  return { qgs, applique };
+}
+/* Pages de plusieurs académies (région académique, France métropolitaine) : les règles du modèle qui comparent une académie
+   à celle de la page (contours épais, carte de repérage) acceptent aussi les académies listées dans le champ « academies ». */
+function poserAcademiesPage(qgs) {
+  if (qgs.includes("attribute(@atlas_feature, 'academies')")) return qgs;   // modèle déjà à jour
+  const ancien = "&quot;nom&quot; = coalesce(attribute(@atlas_feature, 'academie'), @atlas_pagename)";
+  const nouveau = "(&quot;nom&quot; = coalesce(attribute(@atlas_feature, 'academie'), @atlas_pagename) OR strpos(coalesce(attribute(@atlas_feature, 'academies'), ''), '|' || &quot;nom&quot; || '|') &gt; 0)";
+  return qgs.split(ancien).join(nouveau);
+}
+// Compte en bas de carte : « sites signalés » au lieu d'« établissements signalés » pour un point par site
+function poserUnite(qgs, unite) {
+  if (unite !== "site") return qgs;
+  return qgs.split("établissements signalés").join("sites signalés").split("établissement signalé").join("site signalé");
 }
 
 /* ---------- projet QGIS ---------- */
@@ -728,7 +954,7 @@ function verifierModele(qgs, champsConnus) {
 const CHAMPS_CONTOURS = ["nom", "departements", "code", "dsden", "academie", "Nb_etablissements",
   "cle", "page", "num", "nb", "Nb_signales", "Nb_cites", "px", "py", "pw", "ph", "xmin", "xmax", "ymin", "ymax", "zoom",   // zones d'encart
   "Zoom", "Lx", "Ly", "La", "Lv", "Lh", "Ex", "Ey", "Ea", "Ev", "Eh",
-  "Page", "Dep", "ordre", "titre", "surtitre", "type", "dep"];                                      // pages de l'atlas                          // positions d'étiquettes
+  "Page", "Dep", "ordre", "titre", "surtitre", "type", "dep", "academies", "jour", "jour_libelle"];                                      // pages de l'atlas                          // positions d'étiquettes
 
 async function lireFichierAtlas(f) {
   const r = await fetch(new URL(`atlas/${f}`, location.href).href);
@@ -785,7 +1011,7 @@ async function construireAtlas(name) {
   if (modele && !/pages\.geojson/.test(qgsBase) && decoupees.length)
     notes.push(`Le modèle QGIS déposé date d'avant les pages départementales : il garde une page par académie (${decoupees.join(", ")} restent illisibles). Repartez du modèle intégré (« Revenir au modèle intégré »), reportez-y vos retouches et déposez-le à nouveau.`);
   if (P.tableauWidget !== false) {
-    const colonnes = (P.colonnes || []).map(c => ({ nom: c.champ.startsWith("col:") ? nomExport(c.champ.slice(4)) : c.champ, titre: c.titre || c.champ.replace(/^col:/, "") }))
+    const colonnes = (P.colonnes || []).map(c => ({ nom: /^(col|ref):/.test(c.champ) ? nomExport(c.champ.slice(4)) : c.champ, titre: c.titre || c.champ.replace(/^(col|ref):/, "") }))
       .filter(c => c.nom);
     if (colonnes.length) {
       const r = poserTableau(projet, colonnes, largeursColonnes(colonnes, fc.features), P.tri);
@@ -805,41 +1031,47 @@ async function construireAtlas(name) {
   const maj = await majCoucheMarques(projet, modele);
   projet = maj.qgs; if (maj.note && marquesFc.features.some(f => f.properties.Couche === "sous-table")) notes.push(maj.note);
   projet = poserMarques(projet, marquesFc, infos.marques);
+  // couleurs et formes des points, titre de la légende ; pages de plusieurs académies ; unité du compte (sites)
+  const SYM = infos.symbologie, pc = poserCategories(projet, SYM.categories, SYM.titre || (infos.regroupement === "site" ? "Sites signalés" : ""));
+  projet = pc.qgs; if (!pc.applique && SYM.categories.length) notes.push("Le modèle QGIS n'a pas de symbologie catégorisée sur le champ Categorie pour la couche « signalements » : couleurs et formes du profil non appliquées.");
+  projet = poserUnite(poserAcademiesPage(projet), infos.regroupement);
   projet = cocherCouches(projet, t => /providerKey="wms"/.test(t), P.fondsIgn !== false);
   projet = poserExportPdf(projet, resolutionPdf(P));
   // étiquettes des établissements voisins (autres académies ou départements) : règle d'étiquetage activée ou non
   projet = projet.replace(/<rule ([^>]*description="(?:Académies voisines|Établissements voisins[^"]*)"[^>]*)>/g, (m, attrs) => {
     const a = attrs.replace(/\s*active="[01]"/, ""); return P.etiquettesVoisins === false ? `<rule ${a} active="0">` : `<rule ${a}>`; });
   projet = cocherCouches(projet, t => /name="voile hors académie"/.test(t), P.voile !== false);
-  const nb = new Set(tousPoints.map(f => f.properties.Academie)).size;
-  const champTable = c => c.champ.startsWith("col:") ? `${nomExport(c.champ.slice(4))} (${AGREGATS[c.agregat || agregatParDefaut(colTypes[c.champ.slice(4)] || "")]})` : c.champ;
-  const lisezmoi = [`Atlas des signalements par académie — ${fc.features.length} établissement(s), ${nb} académie(s).`,
+  const nb = new Set(tousPoints.map(f => f.properties.Academie)).size, unite = infos.regroupement === "site" ? "site(s)" : "établissement(s)";
+  const champTable = c => /^(col|ref):/.test(c.champ) ? `${nomExport(c.champ.slice(4))} (${AGREGATS[c.agregat || agregatParDefaut(colTypes[c.champ.slice(4)] || "")]})` : c.champ;
+  const SYMB = infos.symbologie;
+  const lisezmoi = [`Atlas des signalements — ${fc.features.length} ${unite}, ${nb} académie(s), ${pages.length} page(s).`,
     `Profil : « ${AtlasUI.nomProfil()} » ; modèle QGIS : ${modele ? modele.origine : "modèle intégré au widget"}.`, "",
     "1. Dézippez le dossier (les fichiers doivent rester ensemble).", "2. Ouvrez atlas.qgs dans QGIS (3.34 ou plus récent).",
-    "3. Projet › Mises en page › « Atlas par académie ».", "4. Atlas › Exporter l'atlas en PDF : une page par académie ayant des signalements.", "",
+    "3. Projet › Mises en page › « Atlas par académie ».", "4. Atlas › Exporter l'atlas en PDF : une page par territoire ayant des signalements.", "",
     "Réglages du profil",
-    `- Tableau : ${lignes ? `les ${lignes} premiers établissements de chaque académie` : "tous les établissements (pages supplémentaires si besoin)"}, classés par ${{ signalements: "nombre de signalements", jours: "jours de mobilisation", recent: "date du dernier signalement" }[P.critere] || P.critere} (champ Rang), triés ${P.tri === "rang" ? "par rang" : "par DSDEN, commune, établissement"}.`,
+    `- Tableau : ${lignes ? `les ${lignes} premiers points de chaque page` : "tous les points (pages supplémentaires si besoin)"}, classés par ${{ signalements: "nombre de signalements", jours: "nombre de jours concernés", recent: "date du dernier signalement" }[P.critere] || P.critere} (champ Rang), triés ${P.tri === "rang" ? "par rang" : "par DSDEN, commune, établissement"}.`,
+    `- Couleurs et formes : selon « ${SYMB.champ.replace(/^(col|ref):/, "")} » (champ Categorie = libellé de la légende) : ${SYMB.categories.map(c => `${c.libelle} (${FORMES[c.forme] || c.forme}, ${c.couleur})`).join(" ; ") || "aucune catégorie"}${SYMB.items.some(x => x.garder === false) || SYMB.autres.garder === false ? ` ; écartées : ${[...SYMB.items.filter(x => x.garder === false).map(x => x.valeur), ...(SYMB.autres.garder === false ? ["autres valeurs"] : [])].join(", ")}` : ""}.`,
     P.tableauWidget !== false ? `- Colonnes : ${(P.colonnes || []).map(c => `${c.titre || c.champ} = ${champTable(c)}`).join(" ; ")}.` : "- Colonnes : celles du modèle QGIS.",
     `- Qualification principale : ${{ frequente: "la plus fréquente, à égalité la plus récente", recente: "la plus récente", ordre: "la première dans l'ordre des choix de la colonne dans Grist" }[P.principale]}.`,
     `- Valeurs ignorées${P.exclureTout ? " (signalements écartés de l'atlas)" : " (pour la qualification principale et les jours)"} : ${(P.exclues || []).join(", ") || "aucune"}.`,
-    `- Jours de mobilisation : ${infos.jours ? `valeur la plus haute de la colonne « ${infos.jours} », toutes versions` : "jours distincts (date des faits, à défaut de saisie) ayant un signalement non ignoré, toutes versions"}.`,
-    `- Fonds IGN : ${P.fondsIgn !== false ? "cochés" : "décochés (à cocher dans le groupe « Fonds de carte »)"} ; voile gris hors académie : ${P.voile !== false ? "oui" : "non"}.`,
+    `- Jours concernés (Nb_jours) : ${infos.regroupement === "site" ? "jours distincts où le site figure dans un signalement non ignoré, toutes versions" : infos.jours ? `valeur la plus haute de la colonne « ${infos.jours} », toutes versions` : "jours distincts (date des faits, à défaut de saisie) ayant un signalement non ignoré, toutes versions"}.`,
+    `- Fonds IGN : ${P.fondsIgn !== false ? "cochés" : "décochés (à cocher dans le groupe « Fonds de carte »)"} ; voile gris hors du territoire de la page : ${P.voile !== false ? "oui" : "non"}.`,
     `- PDF : fonds à ${resolutionPdf(P)} dpi (Mise en page › Exporter les paramètres › Résolution d'export), textes exportés comme du texte (sélectionnables, plus légers). Pour un fichier encore plus léger : 100 dpi dans le profil.`,
     `- Encarts de zoom : ${P.encarts !== false ? `${enc.zones.length} sur l'ensemble des pages (au plus ${P.encartsMax} par page, zones d'au moins ${P.encartsMin} établissements à moins de ${P.encartsEcart} mm sur la carte) ; couche « zones », cadres pointillés numérotés` : "non"}.`,
-    `- Établissements retenus : ${fc.features.length} sur ${infos.avantFiltre}${(() => { const F = { categories: [], qualifs: [], minSignalements: 1, minJours: 0, ...(P.filtre || {}) };
-      const l = [F.categories.length ? `catégories ${F.categories.join(", ")}` : "", F.qualifs.length ? `qualifications ${F.qualifs.join(", ")}` : "", F.minSignalements > 1 ? `au moins ${F.minSignalements} signalements` : "", F.minJours > 0 ? `au moins ${F.minJours} jours de mobilisation` : ""].filter(Boolean);
+    `- Points retenus : ${fc.features.length} sur ${infos.avantFiltre}${(() => { const F = { categories: [], qualifs: [], minSignalements: 1, minJours: 0, ...(P.filtre || {}) };
+      const l = [F.qualifs.length ? `qualifications ${F.qualifs.join(", ")}` : "", F.minSignalements > 1 ? `au moins ${F.minSignalements} signalements` : "", F.minJours > 0 ? `au moins ${F.minJours} jours concernés` : ""].filter(Boolean);
       return l.length ? ` (${l.join(" ; ")})` : ""; })()}.`,
     `- Sous-table : ${infos.marques ? `table « ${infos.marques.table} »${infos.marques.colonne ? `, couleur selon « ${infos.marques.colonne.libelle} »` : ""} — ${fc.features.filter(f => f.properties.Marque).length} établissement(s) signalé(s) marqué(s) (losange en haut à droite du point) ; ${sous.features.length} établissement(s) cité(s) dans la sous-table, avec leur propre point (losange) et leur étiquette${infos.marques.lieu ? `, localisés par la ${infos.marques.lieu}` : " (aucune colonne de la sous-table ne désigne un établissement : référence au référentiel, UAI ou Latitude/Longitude)"}. Couche « marques » (marques.geojson : Decale = 1 losange accolé, 0 point propre ; champs Marque, Marque_nb, Marque_valeurs, Signale_par). Pages, encarts et étiquettes tiennent compte des deux couches` : "aucune"}.`,
     `- Étiquettes : ${+P.etiquettes || 5} pt (variable atlas_etiquette)${P.etiquettesPlacees !== false ? " ; placées par le widget (champs Lx/Ly sur la carte, Ex/Ey dans les encarts, traits de rappel), retirées faute de place sauf pour les établissements du tableau (Lh/Eh = 1)" : " ; placement automatique de QGIS"}.`,
-    `- Points : ${{ etablissement: "un par établissement", jour: "un par établissement et par jour", aucun: "un par signalement" }[P.regroupement || "etablissement"]}${P.regroupement && P.regroupement !== "etablissement" && P.pagesParJour !== false ? ", une page par jour (date en haut à droite)" : ""}${(P.filtre || {}).debut || (P.filtre || {}).fin ? ` ; période ${(P.filtre || {}).debut || "…"} → ${(P.filtre || {}).fin || "…"}` : ""}.`,
-    `- Pages : ${pages.length} (${pages.filter(p => p.properties.type === "departement").length} départementales)${decoupees.length ? ` ; académies découpées en départements : ${decoupees.join(", ")}` : ""} ; découpage ${{ academie: "par académie", departement: "par département", auto: `automatique (plus de ${+P.seuilIllisible || 20} % d'étiquettes sans place)` }[P.decoupage || "auto"]}.`,
+    `- Points : ${{ etablissement: "un par établissement", site: `un par site (sous-table « ${infos.sites ? infos.sites.table : "?"} »${infos.sites && infos.sites.siteRef ? `, coordonnées de « ${infos.sites.siteRef.table} », à défaut celles de l'établissement` : ", placés sur leur établissement"})`, jour: "un par établissement et par jour", aucun: "un par signalement" }[infos.regroupement || "etablissement"]}${P.regroupement && P.regroupement !== "etablissement" && P.pagesParJour !== false ? ", une page par jour (date en haut à droite)" : ""}${(P.filtre || {}).debut || (P.filtre || {}).fin ? ` ; période ${(P.filtre || {}).debut || "…"} → ${(P.filtre || {}).fin || "…"}` : ""}.`,
+    `- Pages : ${pages.length} (${pages.filter(p => p.properties.type === "departement").length} départementales)${decoupees.length ? ` ; académies découpées en départements : ${decoupees.join(", ")}` : ""} ; découpage ${{ national: "France métropolitaine, plus une page par territoire d'outre-mer concerné", region: "par région académique", academie: "par académie", departement: "par département", auto: `automatique (plus de ${+P.seuilIllisible || 20} % d'étiquettes sans place)` }[P.decoupage || "auto"]}.`,
     ...(sansPage.length ? [`- Académie non reconnue (établissements sans page) : ${sansPage.map(x => x || "(vide)").join(", ")}.`] : []),
     ...notes.map(n => "- " + n), "",
     "Variables du projet (Projet › Propriétés › Variables) : atlas_titre, atlas_date, atlas_service, atlas_lignes (0 = tous).",
     "Si les fonds IGN restent blancs ou si la carte met longtemps à s'afficher, QGIS n'atteint pas internet :",
     "Préférences › Options › Réseau › cocher « Utiliser un proxy pour l'accès web », type « DefaultProxy », puis redémarrer QGIS.", "",
     "Couches de points",
-    "- signalements : un point par établissement (carte et tableau). Champs calculés : " + CHAMPS_ATLAS.map(c => c[0]).join(", ") + ".",
+    `- signalements : un point par ${infos.regroupement === "site" ? "site" : "établissement"} (carte et tableau). Champs calculés : ` + CHAMPS_ATLAS.map(c => c[0]).join(", ") + ".",
     `  Colonnes de la table, regroupées par établissement : ${infos.tableCols.map(c => `${nomExport(c.col)} (${AGREGATS[agregatDeProfil(P, c)]})`).join(", ") || "aucune"}.`,
     "- signalements_detail (décochée) : un point par signalement, avec toutes les colonnes de la table telles quelles,",
     "  plus Qualification, Date et Nb_jours de la ligne. Pratique pour symboliser par qualification, gravité, etc.", "",
@@ -857,7 +1089,33 @@ async function construireAtlas(name) {
   dossier.file("academies.geojson", JSON.stringify(acasJson)); dossier.file("departements.geojson", deps); dossier.file("LISEZMOI.txt", lisezmoi);
   return { name: name + ".zip", blob: await zip.generateAsync({ type: "blob", compression: "DEFLATE" }) };
 }
-const agregatDeProfil = (P, c) => { const x = (P.colonnes || []).find(k => k.champ === "col:" + c.col); return (x && x.agregat) || agregatParDefaut(c.type); };
+const agregatDeProfil = (P, c) => { const x = (P.colonnes || []).find(k => k.champ === "col:" + c.col || k.champ === "ref:" + c.col); return (x && x.agregat) || agregatParDefaut(c.type); };
+// couleurs des choix d'une colonne de la table dans Grist (liste de choix) : { valeur: "#rrggbb" }
+function couleursChoix(col) {
+  if (!col || !metaT || !metaC || !mainTableId) return {};
+  const t = metaT.id[metaT.tableId.indexOf(mainTableId)], i = metaC.id.findIndex((_, k) => metaC.parentId[k] === t && metaC.colId[k] === col);
+  try { const o = i < 0 ? {} : JSON.parse(metaC.widgetOptions[i] || "{}"); return Object.fromEntries(Object.entries(o.choiceOptions || {}).filter(([, x]) => x && x.fillColor).map(([v, x]) => [v, x.fillColor])); } catch (_) { return {}; }
+}
+/* Valeurs proposées pour les couleurs et formes : celles des points (toutes gardées le temps du calcul), dans l'ordre des
+   choix de Grist pour une liste de choix (qualification…), sinon de la plus fréquente à la plus rare ; couleurs de Grist,
+   sinon une palette. Les valeurs déjà réglées gardent leur réglage. */
+function proposerValeurs(P, champ, existants) {
+  if (champ === "Categorie") return copie(SYMBO_SCOLAIRE.items);
+  let vals = new Map();
+  try { const essai = { ...P, symbologie: { champ, items: [], autres: { garder: true } }, filtre: { ...(P.filtre || {}), minSignalements: 1, minJours: 0 } };
+    vals = signalementsAtlas(essai).infos.symbologie.valeurs; } catch (_) { vals = new Map(); }
+  const qualif = champ === "Qualification_principale" || champ === "Qualifications";
+  // point par site : qualification du site, colonne de la sous-table des sites (ordre et couleurs de ses choix)
+  const SS = P.regroupement === "site" ? (sousTablesAtlas.find(t => t.table === ((P.sites || {}).table || "") && t.estSites) || sousTablesAtlas.find(t => t.estSites)) : null;
+  const cs = qualif && SS && SS.qualif ? SS.colonnes.find(c => c.col === SS.qualif) : null;
+  const col = qualif ? ((socle && socle.qualif) || "Qualification") : /^col:/.test(champ) ? champ.slice(4) : null;
+  const ordre = cs ? cs.choix : col ? choixColonne(col) : [], couleurs = cs ? cs.couleurs : col ? couleursChoix(col) : {};
+  const liste = [...vals.keys()].sort((a, b) => ((ordre.indexOf(a) + 1) || 1e6) - ((ordre.indexOf(b) + 1) || 1e6) || vals.get(b) - vals.get(a) || a.localeCompare(b, "fr"));
+  const deja = new Map((existants || []).map(x => [String(x.valeur), x]));
+  const res = [...(existants || [])];
+  liste.filter(v => !deja.has(v)).forEach(v => res.push({ valeur: v, libelle: v, couleur: couleurs[v] || PALETTE_SYMBO[res.length % PALETTE_SYMBO.length], forme: "circle", garder: true }));
+  return res;
+}
 
 /* ---------- profils : lecture, enregistrement, formulaire ---------- */
 const AtlasUI = (() => {
@@ -974,7 +1232,7 @@ const AtlasUI = (() => {
   }
   function champsConnus() {
     const s = new Set([...CHAMPS_ATLAS.map(c => c[0]), "Type_court", "Qualification", "Qualifications", "Date", "Dossier", "grist_id", "Decale", "Couche", "Signale_par", ...CHAMPS_CONTOURS]);
-    colonnesTable().forEach(c => s.add(nomExport(c.col)));
+    colonnesTable().forEach(c => s.add(nomExport(c.col))); colonnesRef().forEach(c => s.add(nomExport(c.col)));
     ["fid", "id", "Layer"].forEach(x => s.add(x));
     return s;
   }
@@ -983,11 +1241,12 @@ const AtlasUI = (() => {
   const optionsChamp = (val) => {
     const calc = CHAMPS_ATLAS.map(([k, lib]) => `<option value="${k}"${val === k ? " selected" : ""}>${htmlTexte(lib)}</option>`).join("");
     const table = colonnesTable().map(c => `<option value="col:${htmlTexte(c.col)}"${val === "col:" + c.col ? " selected" : ""}>${htmlTexte(c.libelle)}</option>`).join("");
-    const manquant = val && val.startsWith("col:") && !colonnesTable().some(c => "col:" + c.col === val) ? `<option value="${htmlTexte(val)}" selected>${htmlTexte(val.slice(4))} (absente)</option>` : "";
-    return `<optgroup label="Calculés par établissement">${calc}</optgroup><optgroup label="Colonnes de la table (regroupées)">${table}${manquant}</optgroup>`;
+    const ref = colonnesRef().map(c => `<option value="ref:${htmlTexte(c.col)}"${val === "ref:" + c.col ? " selected" : ""}>${htmlTexte(c.libelle)}</option>`).join("");
+    const manquant = val && /^(col|ref):/.test(val) && ![...colonnesTable().map(c => "col:" + c.col), ...colonnesRef().map(c => "ref:" + c.col)].includes(val) ? `<option value="${htmlTexte(val)}" selected>${htmlTexte(val.slice(4))} (absente)</option>` : "";
+    return `<optgroup label="Calculés pour chaque point">${calc}</optgroup><optgroup label="Colonnes de la table (regroupées)">${table}${manquant}</optgroup>${ref ? `<optgroup label="Colonnes du référentiel des établissements">${ref}</optgroup>` : ""}`;
   };
   function ligneColonne(c, i, n) {
-    const estTable = c.champ.startsWith("col:");
+    const estTable = /^(col|ref):/.test(c.champ);
     const ag = c.agregat || (estTable ? agregatParDefaut(colTypes[c.champ.slice(4)] || "") : "");
     return `<div class="atlas-col" data-i="${i}">
       <select data-k="champ" aria-label="Champ de la colonne ${i + 1}">${optionsChamp(c.champ)}</select>
@@ -1028,13 +1287,35 @@ const AtlasUI = (() => {
       ? `Chaque ligne est placée sur l'établissement qu'elle cite (${lieu.mode}) : point et étiquette propres, comptés dans les pages, les encarts et le placement des étiquettes. Une ligne sur l'établissement de la réponse, ou sans établissement, donne un losange accolé à son point.`
       : "Aucune colonne de la sous-table ne désigne un établissement (référence au référentiel, UAI ou Latitude/Longitude) : un losange en haut à droite du point de la réponse.";
     const F = { categories: [], qualifs: [], minSignalements: 1, minJours: 0, ...(P.filtre || {}) };
-    el("atlasFiltreCat").innerHTML = `<span>Catégories :</span>` + ["École", "Collège", "Lycée", "Autre"].map(c => `<label><input type="checkbox" data-cat="${c}"${F.categories.includes(c) ? " checked" : ""}> ${c}</label>`).join("") + `<span class="hint">aucune cochée = toutes</span>`;
+    // couleurs et formes des points
+    const SY = symbologieDe(P);
+    el("atlasSymChamp").innerHTML = optionsChamp(SY.champ); el("atlasSymTitre").value = SY.titre || "";
+    el("atlasSymTitre").placeholder = (P.regroupement === "site" ? "Sites signalés" : "Établissements signalés");
+    const formes = f => Object.entries(FORMES).map(([k, l]) => `<option value="${k}"${k === (f || "circle") ? " selected" : ""}>${l}</option>`).join("");
+    const ligneSym = (it, i, n) => `<div class="atlas-sym${i === "autres" ? " autres" : ""}" data-i="${i}">
+      <input type="checkbox" data-s="garder"${it.garder !== false ? " checked" : ""} aria-label="Garder ${i === "autres" ? "les autres valeurs" : htmlTexte(it.valeur)}">
+      <span class="val" title="${htmlTexte(i === "autres" ? "valeurs absentes de la liste" : it.valeur)}">${i === "autres" ? "<i>autres valeurs</i>" : htmlTexte(it.valeur)}</span>
+      <input type="text" data-s="libelle" value="${htmlTexte(it.libelle || "")}" placeholder="libellé dans la légende" aria-label="Libellé de légende">
+      <input type="color" data-s="couleur" value="${/^#[0-9a-f]{6}$/i.test(it.couleur || "") ? it.couleur : "#666666"}" aria-label="Couleur">
+      <select data-s="forme" aria-label="Forme">${formes(it.forme)}</select>
+      ${i === "autres" ? "<span></span><span></span><span></span>" : `<button type="button" data-sa="haut" aria-label="Monter"${i === 0 ? " disabled" : ""}>↑</button><button type="button" data-sa="bas" aria-label="Descendre"${i === n - 1 ? " disabled" : ""}>↓</button><button type="button" data-sa="suppr" aria-label="Retirer">✕</button>`}</div>`;
+    el("atlasSymItems").innerHTML = SY.items.map((it, i, a) => ligneSym(it, i, a.length)).join("") + ligneSym(SY.autres, "autres", 0);
+    // point par site : sous-tables de sites reconnues
+    const tablesSites = sousTablesAtlas.filter(t => t.estSites), PS = { table: "", ...(P.sites || {}) };
+    el("atlasSitesTable").innerHTML = tablesSites.length ? tablesSites.map(t => `<option value="${htmlTexte(t.table)}"${t.table === PS.table ? " selected" : ""}>${htmlTexte(t.table)}${t.siteRef ? ` (sites de ${htmlTexte(t.siteRef.table)})` : ""}</option>`).join("") : `<option value="">aucune sous-table de sites</option>`;
+    el("atlasSitesBloc").style.display = P.regroupement === "site" ? "" : "none";
+    const ts = tablesSites.find(t => t.table === PS.table) || tablesSites[0];
+    el("atlasSitesAide").textContent = P.regroupement !== "site" ? "" : !ts ? "Aucune sous-table de sites : il faut une question tableau dont une colonne renvoie vers le référentiel des sites (ou une colonne « site hors référentiel »)."
+      : `Un point par site cité dans « ${ts.table} »${ts.siteRef ? `, placé selon les coordonnées de « ${ts.siteRef.table} » (à défaut, sur son établissement)` : ", placé sur son établissement"} ; couleur et classement selon ${ts.qualif ? `la qualification du site (« ${ts.qualif} »)` : "la qualification du signalement"}. Académie et département : ceux du lieu du site.`;
+    const prChoisi = el("atlasPrereglage").value;
+    el("atlasPrereglage").innerHTML = Object.entries(PREREGLAGES).map(([k, x]) => `<option value="${k}"${k === prChoisi ? " selected" : ""}>${htmlTexte(x.libelle)}</option>`).join("");
+    el("atlasPrereglageAide").textContent = (PREREGLAGES[el("atlasPrereglage").value] || {}).aide || "";
     const vq = valeursQualif();
     el("atlasFiltreQualif").innerHTML = vq.length ? `<span>Qualifications :</span>` + vq.map(q => `<label><input type="checkbox" data-qualif="${htmlTexte(q)}"${F.qualifs.includes(q) ? " checked" : ""}> ${htmlTexte(q)}</label>`).join("") + `<span class="hint">aucune cochée = toutes</span>` : "";
     el("atlasMinSig").value = F.minSignalements; el("atlasMinJours").value = F.minJours;
     el("atlasDebut").value = F.debut || ""; el("atlasFin").value = F.fin || "";
     el("atlasRegroupement").value = P.regroupement || "etablissement"; el("atlasParJour").checked = P.pagesParJour !== false;
-    el("atlasParJourBloc").style.display = (P.regroupement || "etablissement") === "etablissement" ? "none" : "";
+    el("atlasParJourBloc").style.display = ["jour", "aucun"].includes(P.regroupement) ? "" : "none";
     compterPlusTard();
     const ordre = choixColonne((socle && socle.qualif) || "Qualification");
     el("atlasOrdreAide").textContent = ordre.length ? `Ordre actuel : ${ordre.join(" › ")}.` : "La colonne de qualification n'a pas de liste de choix.";
@@ -1050,7 +1331,7 @@ const AtlasUI = (() => {
     p.tableauWidget = el("atlasTableauWidget").checked;
     p.colonnes = [...el("atlasColonnes").querySelectorAll(".atlas-col")].map(d => {
       const c = { champ: d.querySelector('[data-k="champ"]').value, titre: d.querySelector('[data-k="titre"]').value };
-      const ag = d.querySelector('[data-k="agregat"]'); if (ag && c.champ.startsWith("col:")) c.agregat = ag.value;
+      const ag = d.querySelector('[data-k="agregat"]'); if (ag && /^(col|ref):/.test(c.champ)) c.agregat = ag.value;
       return c;
     });
     p.principale = el("atlasPrincipale").value; p.exclues = el("atlasExclues").value.split(/[,;]/).map(s => s.trim()).filter(Boolean);
@@ -1060,7 +1341,14 @@ const AtlasUI = (() => {
     p.etiquettesVoisins = el("atlasVoisins").checked;
     p.marques = { table: el("atlasMarqueTable").value, colonne: el("atlasMarqueColonne").value, titre: el("atlasMarqueTitre").value, inclure: el("atlasMarqueInclure").checked };
     p.etiquettes = Math.max(3, Math.min(9, parseFloat(el("atlasEtiquettes").value) || 5)); p.etiquettesPlacees = el("atlasPlacees").checked;
-    p.filtre = { categories: [...el("atlasFiltreCat").querySelectorAll("input:checked")].map(b => b.dataset.cat),
+    // couleurs et formes : lues dans le formulaire (le filtre des catégories est remplacé par les valeurs gardées)
+    const lit = d => ({ garder: d.querySelector('[data-s="garder"]').checked, libelle: d.querySelector('[data-s="libelle"]').value, couleur: d.querySelector('[data-s="couleur"]').value, forme: d.querySelector('[data-s="forme"]').value });
+    const SYa = symbologieDe(p);
+    const items = [...el("atlasSymItems").querySelectorAll('.atlas-sym:not(.autres)')].map(d => ({ valeur: (SYa.items[+d.dataset.i] || {}).valeur, ...lit(d) })).filter(x => x.valeur != null);
+    const dAutres = el("atlasSymItems").querySelector(".atlas-sym.autres");
+    p.symbologie = { champ: el("atlasSymChamp").value || SYa.champ, titre: el("atlasSymTitre").value, items, autres: dAutres ? lit(dAutres) : SYa.autres };
+    p.sites = { table: el("atlasSitesTable").value || "" };
+    p.filtre = { categories: [],
       qualifs: [...el("atlasFiltreQualif").querySelectorAll("input:checked")].map(b => b.dataset.qualif),
       minSignalements: Math.max(1, parseInt(el("atlasMinSig").value, 10) || 1), minJours: Math.max(0, parseInt(el("atlasMinJours").value, 10) || 0),
       debut: el("atlasDebut").value || "", fin: el("atlasFin").value || "" };
@@ -1082,8 +1370,8 @@ const AtlasUI = (() => {
     clearTimeout(minuteur);
     minuteur = setTimeout(() => {
       const c = el("atlasCompte"); if (!c) return;
-      try { const r = signalementsAtlas(profilCourant()); const n = r.fc.features.length, a = new Set(r.fc.features.map(f => f.properties.Academie)).size;
-        c.textContent = `— ${n} établissement${n > 1 ? "s" : ""} sur ${r.infos.avantFiltre}, ${a} académie${a > 1 ? "s" : ""}`; }
+      try { const r = signalementsAtlas(profilCourant()); const n = r.fc.features.length, a = new Set(r.fc.features.map(f => f.properties.Academie)).size, u = r.infos.regroupement === "site" ? "site" : "établissement";
+        c.textContent = `— ${n} ${u}${n > 1 ? "s" : ""} sur ${r.infos.avantFiltre}, ${a} académie${a > 1 ? "s" : ""}`; }
       catch (e) { c.textContent = "— " + e.message; }
     }, 300);
   }
@@ -1096,7 +1384,10 @@ const AtlasUI = (() => {
       if (e.target.closest("#atlasProfilBloc") || e.target.id === "atlasDate" || e.target.id === "atlasModeleFichier") return;
       changer();
       // un champ changé : en-tête proposé, regroupement par défaut ; tableau réglé ici ou non
-      if (e.target.dataset.k === "champ" || e.target.id === "atlasTableauWidget" || e.target.id === "atlasEncarts" || e.target.id === "atlasDecoupage" || e.target.id === "atlasMarqueTable" || e.target.id === "atlasRegroupement") {
+      // colonne des couleurs changée : valeurs proposées d'après les données
+      if (e.target.id === "atlasSymChamp") { const p = etat.profils[etat.actif]; p.symbologie = { ...p.symbologie, champ: e.target.value, items: proposerValeurs(p, e.target.value, []) }; dessiner(); return; }
+      if (e.target.id === "atlasPrereglage") { el("atlasPrereglageAide").textContent = (PREREGLAGES[e.target.value] || {}).aide || ""; return; }
+      if (e.target.dataset.k === "champ" || e.target.id === "atlasTableauWidget" || e.target.id === "atlasEncarts" || e.target.id === "atlasDecoupage" || e.target.id === "atlasMarqueTable" || e.target.id === "atlasRegroupement" || e.target.id === "atlasSitesTable") {
         const d = e.target.closest(".atlas-col");
         if (d) { const p = etat.profils[etat.actif], c = p.colonnes[+d.dataset.i], o = e.target.selectedOptions[0];
           c.titre = (o ? o.textContent : c.champ).replace(/\s*\(.*\)$/, ""); delete c.agregat; }
@@ -1109,6 +1400,29 @@ const AtlasUI = (() => {
       const p = etat.profils[etat.actif], i = +b.closest(".atlas-col").dataset.i, l = p.colonnes;
       if (b.dataset.a === "suppr") l.splice(i, 1);
       else { const j = b.dataset.a === "haut" ? i - 1 : i + 1; if (j >= 0 && j < l.length) [l[i], l[j]] = [l[j], l[i]]; }
+      modifie = true; dessiner();
+    });
+    el("atlasSymItems").addEventListener("click", e => {
+      const b = e.target.closest("button[data-sa]"); if (!b) return;
+      lireFormulaire();
+      const l = etat.profils[etat.actif].symbologie.items, i = +b.closest(".atlas-sym").dataset.i;
+      if (b.dataset.sa === "suppr") l.splice(i, 1);
+      else { const j = b.dataset.sa === "haut" ? i - 1 : i + 1; if (j >= 0 && j < l.length) [l[i], l[j]] = [l[j], l[i]]; }
+      modifie = true; dessiner();
+    });
+    el("atlasSymProposer").addEventListener("click", () => {
+      lireFormulaire(); const p = etat.profils[etat.actif], n0 = p.symbologie.items.length;
+      p.symbologie.items = proposerValeurs(p, p.symbologie.champ, p.symbologie.items);
+      modifie = true; dessiner(); statut(p.symbologie.items.length > n0 ? `${p.symbologie.items.length - n0} valeur(s) ajoutée(s).` : "Toutes les valeurs présentes sont déjà dans la liste.", "ok");
+    });
+    el("atlasAppliquerPrereglage").addEventListener("click", () => {
+      const pr = PREREGLAGES[el("atlasPrereglage").value]; if (!pr) return;
+      lireFormulaire();
+      const p = etat.profils[etat.actif], { symbo, symboTitre, ...reste } = copie(pr.profil);
+      Object.assign(p, reste);
+      p.symbologie = symbo ? { champ: symbo, titre: symboTitre || "", items: proposerValeurs(p, symbo, []), autres: { garder: true, libelle: "Autres", couleur: "#999999", forme: "circle" } } : null;
+      if (p.regroupement === "site" && !sousTablesAtlas.some(t => t.estSites)) statut("Ce réglage place un point par site, mais aucune sous-table de sites n'a été trouvée : choisissez un autre regroupement.", "warn");
+      else statut(`Réglage « ${pr.libelle} » appliqué au profil affiché : vérifiez-le, puis enregistrez (sous un nouveau nom pour garder l'ancien profil).`, "ok");
       modifie = true; dessiner();
     });
     el("atlasAjouterCol").addEventListener("click", () => { lireFormulaire(); etat.profils[etat.actif].colonnes.push({ champ: "Nb_signalements", titre: "Nombre de signalements" }); modifie = true; dessiner(); });
