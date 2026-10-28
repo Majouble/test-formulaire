@@ -14,6 +14,14 @@ function docAtlasEsr() {
   const RS = D.Referentiel_sites; RS.Latitude = [48.80, 48.118, 48.121, 47.748]; RS.Longitude = [2.13, -1.638, -1.703, -3.366];
   D.Etablissements.Sigle = ['UJM', 'LRR', 'EJF'];
   D.Reponses.Derniere_version = [true, true, true, false, true, false, true];
+  // outre-mer : université à La Réunion et en Guadeloupe (page France entière : encarts)
+  const E = D.Etablissements, R = D.Reponses;
+  [['Université de La Réunion', 'UR', 'La Réunion', -20.90, 55.48], ['Université des Antilles', 'UA', 'Guadeloupe', 16.22, -61.53]].forEach(([nom, sigle, aca, lat, lon]) => {
+    const id = Math.max(...E.id) + 1;
+    for (const c of Object.keys(E)) E[c].push(c === 'id' ? id : c === 'Nom' ? nom : c === 'Sigle' ? sigle : c === 'Academie' ? aca : c === 'Latitude' ? lat : c === 'Longitude' ? lon : c === 'UAI' ? `97${id}000X` : c === 'Type' ? 'Université' : c === 'Libelle_nature' ? 'UNIVERSITE' : (typeof E[c][0] === 'string' ? '' : null));
+    const rid = Math.max(...R.id) + 1;
+    for (const c of Object.keys(R)) R[c].push(c === 'id' ? rid : c === 'Etablissement' ? id : c === 'Dossier' ? rid : c === 'Derniere_version' ? true : c === 'Qualification' ? 'Rassemblement' : c === 'Nature' ? 'Nouveau signalement' : c === 'Description' ? 'Rassemblement' : c === 'Date_faits' ? 1792627200 : c === 'Cree_le' ? 1792630000 : (typeof R[c][0] === 'string' ? '' : null));
+  });
   // sous-table historisée des sites : une copie des lignes par version
   const L = [[3, 3, 'a', 2, null, 'Blocage total'], [3, 3, 'b', 3, null, 'Rassemblement'], [4, 4, 'c', 1, null, 'Blocage partiel'],
     [4, 5, 'c', 1, null, 'Rassemblement'], [4, 5, 'd', 0, 'Gymnase du Moulin', 'Rassemblement'], [6, 6, 'e', 4, null, 'Rassemblement'], [6, 7, 'e', 4, null, 'RAS']];
@@ -62,7 +70,7 @@ if (require.main === module) (async () => {
     console.log('CATÉGORIES QGIS :', [...rend.matchAll(/<category [^>]*label="([^"]*)"[^>]*symbol="(\d+)"/g)].map(m => `${m[1]}#${m[2]}`).join(', '),
       '| formes :', [...rend.matchAll(/<Option name="name" value="([a-z_]+)" type="QString"\/>/g)].map(m => m[1]).join(','),
       '| couleurs :', [...rend.matchAll(/<Option name="color" value="([\d,]+)"/g)].map(m => m[1]).join(' / '));
-    console.log('LÉGENDE :', [...qgs.matchAll(/name="legend\/title-label" value="([^"]*)"/g)].map(m => m[1]).join(', '), '| compte :', /sites signalés/.test(qgs) ? 'sites signalés' : 'établissements', '| académies de la page :', (qgs.match(/'academies'/g) || []).length);
+    console.log('LÉGENDE :', [...qgs.matchAll(/<Option\b[^>]*name="legend\/title-label"[^>]*\/>/g)].map(m => (/value="([^"]*)"/.exec(m[0]) || [])[1]).join(', '), '| compte :', /sites signalés/.test(qgs) ? 'sites signalés' : 'établissements', '| académies de la page :', (qgs.match(/'academies'/g) || []).length);
     console.log('LISEZMOI :', (await lire(zip, 'LISEZMOI.txt')).split('\r\n').filter(l => /^- (Points|Pages|Couleurs)/.test(l)).join('\n   '));
   }
   // 2. tous risques : France entière, un point par établissement
@@ -71,6 +79,7 @@ if (require.main === module) (async () => {
   zip = await telecharger(page, S + '/export102b.zip');
   if (zip) { const pages = JSON.parse(await lire(zip, 'pages.geojson')), sig = JSON.parse(await lire(zip, 'signalements.geojson'));
     console.log('PAGES :', pages.features.map(f => `${f.properties.cle} (${f.properties.type}, ${f.properties.academies.split('|').filter(Boolean).length} académies, ${f.properties.Nb_etablissements} pts)`).join(' ; '));
+    console.log('MODÈLE : encarts outre-mer', ((await lire(zip, 'atlas.qgs')).match(/id="om[1-5]"/g) || []).length);
     console.log('POINTS :', sig.features.map(f => `${f.properties.Etiquette} [${f.properties.Categorie}] sites ${f.properties.Nb_sites} (${f.properties.Sites})`).join(' ; ')); }
   // 3. couleurs selon une colonne du référentiel (Statut public / privé), en carrés
   await page.selectOption('#atlasSymChamp', 'ref:Statut_public_prive'); await page.waitForTimeout(800);

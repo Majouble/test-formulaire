@@ -25,7 +25,8 @@ p.setTitle("Atlas des signalements par académie")
 MARINE, ORANGE = "#000091", "#c3551e"
 COULEURS = [("École", "#f2c12e"), ("Collège", "#d1336a"), ("Lycée", "#5f59c6"), ("Autre", "#4cbf62")]
 # Pages de l'atlas (pages.geojson, écrit par le widget) : une par académie, ou une par département pour une académie
-# trop dense, une par région académique, ou une pour la France métropolitaine ; champs cle (nom de la page), academie,
+# trop dense, une par région académique, une pour la France métropolitaine, ou une pour la France entière (type « france » :
+# outre-mer en encarts) ; champs cle (nom de la page), academie,
 # academies (|A|B|), dep (code ou vide), titre, surtitre, ordre, Nb_etablissements.
 # Chaque établissement porte le champ Page (cle de sa page).
 ACA_PAGE = "coalesce(attribute(@atlas_feature, 'academie'), @atlas_pagename)"
@@ -73,6 +74,9 @@ rd2.setIsElse(True); rd.appendChild(rd1); rd.appendChild(rd2); dep.setRenderer(Q
 # académie de la page : trait épais ; les autres : trait fin (hors atlas, toutes en trait épais)
 ra = QgsRuleBasedRenderer.Rule(None)
 ra1 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "0,0,0,0", "outline_color": "45,46,127,255", "outline_width": "1.1", "joinstyle": "round"}), 0, 0, '@atlas_pagename IS NULL OR ' + DANS_ACAS, "Académie")
+# page France entière ou France métropolitaine : toutes les académies sont « de la page » : trait plus fin
+ra1.symbol().symbolLayer(0).setDataDefinedProperty(QgsSymbolLayer.PropertyStrokeWidth, QgsProperty.fromExpression(
+    "CASE WHEN coalesce(attribute(@atlas_feature, 'type'), '') IN ('france', 'national') THEN 0.5 ELSE 1.1 END"))
 ra2 = QgsRuleBasedRenderer.Rule(QgsFillSymbol.createSimple({"color": "0,0,0,0", "outline_color": "45,46,127,160", "outline_width": "0.4"}), 0, 0, "ELSE", "Académies voisines")
 ra2.setIsElse(True); ra.appendChild(ra1); ra.appendChild(ra2)
 aca.setRenderer(QgsRuleBasedRenderer(ra))
@@ -268,6 +272,8 @@ fe = QgsTextFormat(); fe.setFont(QFont("DejaVu Sans")); fe.setSize(7); ech.setTe
 from qgis.core import QgsScaleBarSettings
 ech.setSegmentSizeMode(QgsScaleBarSettings.SegmentSizeFitWidth); ech.setMinimumBarWidth(18); ech.setMaximumBarWidth(36)
 ech.setBackgroundEnabled(True); ech.setBackgroundColor(QColor(255, 255, 255, 200)); ech.refresh(); place(ech, 152, 178, 48, 10)
+# page France entière : échelle en haut à droite (la Corse occupe le bas) ; garder ECHELLE_FRANCE_MM du widget
+ech.dataDefinedProperties().setProperty(QgsLayoutObject.PositionY, QgsProperty.fromExpression("CASE WHEN coalesce(attribute(@atlas_feature, 'type'), '') = 'france' THEN 58 ELSE 178 END"))
 # --- encarts de zoom (jusqu'à 3 par page) : position, taille et emprise lues dans zones.geojson (calculées par le widget,
 # sur une partie peu chargée de la carte) ; hors page et exclus de l'export quand la page en a moins
 from qgis.core import QgsLayoutObject, QgsLayoutItemMap as _M
@@ -287,6 +293,29 @@ for k in (1, 2, 3):
     dn = num.dataDefinedProperties()
     dn.setProperty(QgsLayoutObject.PositionX, val("px", 230)); dn.setProperty(QgsLayoutObject.PositionY, val("py", 60))
     dn.setProperty(QgsLayoutObject.ExcludeFromExports, QgsProperty.fromExpression(absent)); num.setDataDefinedProperties(dn)
+# --- page « France entière » (champ type = 'france' de la page) : la métropole sur la carte principale, les cinq territoires
+# d'outre-mer en encarts fixes dans la colonne de gauche (projection locale de chaque territoire, emprise du territoire),
+# masqués sur les autres pages. Le widget laisse cette colonne libre (encarts de zoom, étiquettes) : garder OM_MM du widget.
+from qgis.core import QgsCoordinateTransform
+EST_FRANCE = "coalesce(attribute(@atlas_feature, 'type'), '') = 'france'"
+OM = (("Guadeloupe", "EPSG:5490"), ("Martinique", "EPSG:5490"), ("Guyane", "EPSG:2972"), ("La Réunion", "EPSG:2975"), ("Mayotte", "EPSG:4471"))
+OM_X, OM_L, OM_H, OM_Y0, OM_PAS = 7, 27, 24.5, 57, 26.4
+couches_om = [marq, sig, aca, dep, relief, plan, terres]
+for k, (nom_om, epsg) in enumerate(OM):
+    f_om = next(f for f in aca.getFeatures() if f["nom"] == nom_om)
+    crs = QgsCoordinateReferenceSystem(epsg); g_om = f_om.geometry(); g_om.transform(QgsCoordinateTransform(QgsCoordinateReferenceSystem("EPSG:2154"), crs, p))
+    r = g_om.boundingBox(); ratio = OM_L / OM_H; w, h = r.width(), r.height()
+    if w / h < ratio: d = (ratio * h - w) / 2; r = QgsRectangle(r.xMinimum() - d, r.yMinimum(), r.xMaximum() + d, r.yMaximum())
+    else: d = (w / ratio - h) / 2; r = QgsRectangle(r.xMinimum(), r.yMinimum() - d, r.xMaximum(), r.yMaximum() + d)
+    r.scale(1.25)
+    y = OM_Y0 + k * OM_PAS
+    m = QgsLayoutItemMap(lay); m.setId(f"om{k + 1}"); lay.addLayoutItem(m); place(m, OM_X, y, OM_L, OM_H)
+    m.setCrs(crs); m.setExtent(r); m.setLayers(couches_om); m.setKeepLayerSet(True)
+    m.setFrameEnabled(True); m.setFrameStrokeColor(QColor(MARINE)); m.setFrameStrokeWidth(QgsLayoutMeasurement(0.3, MM)); m.setBackgroundColor(QColor("#e4e6ee"))
+    m.dataDefinedProperties().setProperty(QgsLayoutObject.ExcludeFromExports, QgsProperty.fromExpression(f"NOT ({EST_FRANCE})"))
+    t_om = texte(nom_om, OM_X, y + OM_H - 3.6, OM_L, 3.6, 5.5, MARINE, True, Qt.AlignHCenter, nom=f"om{k + 1}_nom")
+    t_om.setBackgroundEnabled(False)
+    t_om.dataDefinedProperties().setProperty(QgsLayoutObject.ExcludeFromExports, QgsProperty.fromExpression(f"NOT ({EST_FRANCE})"))
 texte("Sources : signalements (Grist) ; IGN Admin Express ; fond IGN Géoplateforme", 6, 190.5, 104, 4, 5.5, "#666666", nom="sources")
 # compte des établissements de l'académie, et rappel quand le tableau n'en montre qu'une partie
 # nombre d'établissements de la page : champ Nb_etablissements des académies, écrit par le widget

@@ -105,8 +105,8 @@ const PREREGLAGES = {
     profil: { regroupement: "etablissement", decoupage: "region", symbo: "Type_etablissement", symboTitre: "Établissements signalés", critere: "signalements", tri: "rang", lignes: 22,
       colonnes: [{ champ: "Academie", titre: "Académie" }, { champ: "Commune", titre: "Commune" }, { champ: "Etablissement", titre: "Établissement" }, { champ: "Nb_sites", titre: "Sites" },
         { champ: "Qualification_principale", titre: "Qualification" }, { champ: "Nb_signalements", titre: "Signal." }, { champ: "Derniere_date", titre: "Dernier signalement" }] } },
-  tous_risques: { libelle: "Tous risques et menaces : France entière", aide: "Une page pour la métropole (et une par territoire d'outre-mer concerné), couleur selon la qualification ; à adapter à la colonne qui décrit le risque ou la menace.",
-    profil: { regroupement: "etablissement", decoupage: "national", symbo: "Qualification_principale", symboTitre: "Points signalés", critere: "recent", tri: "rang", lignes: 25, encartsMax: 3,
+  tous_risques: { libelle: "Tous risques et menaces : France entière", aide: "Une page France entière (métropole, outre-mer en encarts), couleur selon la qualification ; à adapter à la colonne qui décrit le risque ou la menace.",
+    profil: { regroupement: "etablissement", decoupage: "france", symbo: "Qualification_principale", symboTitre: "Points signalés", critere: "recent", tri: "rang", lignes: 25, encartsMax: 3,
       colonnes: [{ champ: "Region_academique", titre: "Région académique" }, { champ: "Commune", titre: "Commune" }, { champ: "Etiquette", titre: "Établissement" },
         { champ: "Qualification_principale", titre: "Qualification" }, { champ: "Nb_signalements", titre: "Signal." }, { champ: "Nb_jours", titre: "Jours" }, { champ: "Derniere_date", titre: "Dernier signalement" }] } },
 };
@@ -544,6 +544,11 @@ function signalementsAtlas(profil) {
    cache le moins : peu de points, peu de surface de l'académie, loin de l'échelle et des autres encarts. */
 const CARTE_MM = { x: 6, y: 56, l: 198, h: 134, marge: 0.06 }, ENCART_MM = { l: 60, h: 44 }, ECHELLE_MM = { x: 150, y: 176, l: 52, h: 14 };
 const OUTRE_MER = new Set(["Guadeloupe", "Martinique", "Guyane", "La Réunion", "Mayotte"]);
+// page « France entière » : encarts fixes de l'outre-mer dans la colonne de gauche de la carte (mêmes valeurs que OM_* du modèle)
+const OM_MM = [0, 1, 2, 3, 4].map(k => ({ x: 7, y: 57 + k * 26.4, l: 27, h: 24.5 }));
+const estFrance = pg => pg && pg.properties && pg.properties.type === "france";
+// échelle de la carte : en bas à droite, en haut à droite sur la page France entière (la Corse occupe le bas)
+const echelleDe = pg => estFrance(pg) ? { ...ECHELLE_MM, y: 58 } : ECHELLE_MM;
 // Lambert-93 (EPSG:2154) : conique conforme sécante, GRS80
 function versL93(lon, lat) {
   const a = 6378137, e = 0.0818191910428158, rad = Math.PI / 180, l0 = 3 * rad, p0 = 46.5 * rad, p1 = 44 * rad, p2 = 49 * rad;
@@ -613,7 +618,8 @@ function calculerEncarts(features, academies, opts) {
       xs.sort((u, v) => u - v);
       for (let q = 0; q + 1 < xs.length; q += 2) ajouter(xs[q], yc - pas / 2, xs[q + 1] - xs[q], pas, 0.35);
     }
-    ajouter(ECHELLE_MM.x, ECHELLE_MM.y, ECHELLE_MM.l, ECHELLE_MM.h, 1e4);
+    const ech = echelleDe(aca); ajouter(ech.x, ech.y, ech.l, ech.h, 1e4);
+    if (estFrance(aca)) OM_MM.forEach(o => ajouter(o.x - 1, o.y - 1, o.l + 2, o.h + 2, 1e4));   // encarts de l'outre-mer
     choisies.forEach(c => { const zl = ENCART_MM.l / c.z, zh = ENCART_MM.h / c.z; ajouter(c.cx - zl / 2 - 3, c.cy - zh / 2 - 3, zl + 6, zh + 6, 30); });
     choisies.forEach((c, n) => {
       // somme des poids sous chaque position possible (tableau des sommes cumulées), plus un peu de distance à la zone
@@ -702,9 +708,11 @@ function placerEtiquettes(features, academies, zones, taille, protege) {
     const { E, k } = emprisePage(aca), zs = zonesDe.get(page) || [];
     const jourPage = aca.properties.jour, base = pts.filter(p => jourPage == null || (p.f.properties.Jour || "") === jourPage);
     // carte principale : sans les établissements montrés dans un encart ; les encarts et l'échelle sont des obstacles
-    const obst = [{ x1: ECHELLE_MM.x, y1: ECHELLE_MM.y, x2: ECHELLE_MM.x + ECHELLE_MM.l, y2: ECHELLE_MM.y + ECHELLE_MM.h },
-      ...zs.map(z => ({ x1: z.px - 1, y1: z.py - 1, x2: z.px + z.pw + 1, y2: z.py + z.ph + 1 }))];
-    poser(CARTE_MM, E, k, dePage.filter(p => !p.f.properties.Zoom), obst, "L", base);
+    const ech = echelleDe(aca), obst = [{ x1: ech.x, y1: ech.y, x2: ech.x + ech.l, y2: ech.y + ech.h },
+      ...zs.map(z => ({ x1: z.px - 1, y1: z.py - 1, x2: z.px + z.pw + 1, y2: z.py + z.ph + 1 })),
+      ...(estFrance(aca) ? OM_MM.map(o => ({ x1: o.x - 1, y1: o.y - 1, x2: o.x + o.l + 1, y2: o.y + o.h + 1 })) : [])];
+    // points hors de la carte principale (outre-mer de la page France entière) : étiquettes placées par QGIS dans leur encart
+    poser(CARTE_MM, E, k, dePage.filter(p => !p.f.properties.Zoom && p.x >= E.x1 && p.x <= E.x2 && p.y >= E.y1 && p.y <= E.y2), obst, "L", base);
     // encarts : les établissements de l'académie qui tombent dans l'emprise de l'encart
     zs.forEach(z => {
       const Ez = { x1: z.xmin, y1: z.ymin, x2: z.xmax, y2: z.ymax };
@@ -772,9 +780,14 @@ function preparerPages(features, acasJson, depsJson, P, lignes) {
   const compter = pgs => pgs.forEach(pg => { const l = features.filter(f => f.properties.Page === pg.properties.cle), c = l.filter(f => f.properties.Couche === "sous-table").length;
     Object.assign(pg.properties, { Nb_etablissements: l.length, Nb_signales: l.length - c, Nb_cites: c }); });
   // France métropolitaine (une page) et territoires d'outre-mer concernés ; régions académiques ayant des points
-  if (P.decoupage === "national" || P.decoupage === "region") {
+  if (P.decoupage === "national" || P.decoupage === "region" || P.decoupage === "france") {
     let bases;
-    if (P.decoupage === "national") {
+    if (P.decoupage === "france") {
+      // France entière : emprise de la métropole (carte principale), académies d'outre-mer comprises dans la page (encarts)
+      const metro = acasJson.features.filter(a => !OUTRE_MER.has(a.properties.nom)), pg = pageGroupe("France entière", "france", "France entière", "Territoire :", metro);
+      pg.properties.academies = `|${acasJson.features.map(a => a.properties.nom).join("|")}|`;
+      bases = [pg];
+    } else if (P.decoupage === "national") {
       const metro = acasJson.features.filter(a => !OUTRE_MER.has(a.properties.nom));
       bases = [...(academiesUtiles.some(a => !OUTRE_MER.has(a.properties.nom)) ? [pageGroupe("France métropolitaine", "national", "France métropolitaine", "Territoire :", metro)] : []),
         ...academiesUtiles.filter(a => OUTRE_MER.has(a.properties.nom)).map(pageAca)];
@@ -855,7 +868,7 @@ function poserCategories(qgs, categories, titre) {
     return debut + corps.replace(/<categories>[\s\S]*?<\/categories>/, `<categories>${cats}</categories>`).replace(/<symbols>[\s\S]*?<\/symbols>/, `<symbols>${syms}</symbols>`) + fin;
   });
   // titre de la couche dans la légende
-  if (titre) qgs = qgs.replace(/(name="legend\/title-label" value=")Établissements signalés(")/g, `$1${xmlTexte(titre)}$2`).replace(/(value=")Établissements signalés(" name="legend\/title-label")/g, `$1${xmlTexte(titre)}$2`);
+  if (titre) qgs = qgs.replace(/<Option\b[^>]*\bname="legend\/title-label"[^>]*\/>/g, o => o.replace('value="Établissements signalés"', `value="${xmlTexte(titre)}"`));
   return { qgs, applique };
 }
 /* Pages de plusieurs académies (région académique, France métropolitaine) : les règles du modèle qui comparent une académie
@@ -1008,6 +1021,8 @@ async function construireAtlas(name) {
   let projet = poserVariables(qgsBase.replace("@@TITRE@@", "").replace("@@DATE@@", "").replace("@@SERVICE@@", "").replace("@@LIGNES@@", "22"),
     { atlas_titre: P.titre || "Signalements", atlas_date: $("atlasDate").value.trim(), atlas_service: P.service || "", atlas_lignes: String(lignes), atlas_etiquette: String(+P.etiquettes || 5) });
   const notes = [];
+  if (P.decoupage === "france" && !/id="om1"/.test(qgsBase))
+    notes.push("Le modèle QGIS déposé n'a pas les encarts de l'outre-mer (page France entière) : les points d'outre-mer figurent au tableau mais pas sur la carte. Repartez du modèle intégré, reportez-y vos retouches et déposez-le à nouveau.");
   if (modele && !/pages\.geojson/.test(qgsBase) && decoupees.length)
     notes.push(`Le modèle QGIS déposé date d'avant les pages départementales : il garde une page par académie (${decoupees.join(", ")} restent illisibles). Repartez du modèle intégré (« Revenir au modèle intégré »), reportez-y vos retouches et déposez-le à nouveau.`);
   if (P.tableauWidget !== false) {
@@ -1064,7 +1079,7 @@ async function construireAtlas(name) {
     `- Sous-table : ${infos.marques ? `table « ${infos.marques.table} »${infos.marques.colonne ? `, couleur selon « ${infos.marques.colonne.libelle} »` : ""} — ${fc.features.filter(f => f.properties.Marque).length} établissement(s) signalé(s) marqué(s) (losange en haut à droite du point) ; ${sous.features.length} établissement(s) cité(s) dans la sous-table, avec leur propre point (losange) et leur étiquette${infos.marques.lieu ? `, localisés par la ${infos.marques.lieu}` : " (aucune colonne de la sous-table ne désigne un établissement : référence au référentiel, UAI ou Latitude/Longitude)"}. Couche « marques » (marques.geojson : Decale = 1 losange accolé, 0 point propre ; champs Marque, Marque_nb, Marque_valeurs, Signale_par). Pages, encarts et étiquettes tiennent compte des deux couches` : "aucune"}.`,
     `- Étiquettes : ${+P.etiquettes || 5} pt (variable atlas_etiquette)${P.etiquettesPlacees !== false ? " ; placées par le widget (champs Lx/Ly sur la carte, Ex/Ey dans les encarts, traits de rappel), retirées faute de place sauf pour les établissements du tableau (Lh/Eh = 1)" : " ; placement automatique de QGIS"}.`,
     `- Points : ${{ etablissement: "un par établissement", site: `un par site (sous-table « ${infos.sites ? infos.sites.table : "?"} »${infos.sites && infos.sites.siteRef ? `, coordonnées de « ${infos.sites.siteRef.table} », à défaut celles de l'établissement` : ", placés sur leur établissement"})`, jour: "un par établissement et par jour", aucun: "un par signalement" }[infos.regroupement || "etablissement"]}${P.regroupement && P.regroupement !== "etablissement" && P.pagesParJour !== false ? ", une page par jour (date en haut à droite)" : ""}${(P.filtre || {}).debut || (P.filtre || {}).fin ? ` ; période ${(P.filtre || {}).debut || "…"} → ${(P.filtre || {}).fin || "…"}` : ""}.`,
-    `- Pages : ${pages.length} (${pages.filter(p => p.properties.type === "departement").length} départementales)${decoupees.length ? ` ; académies découpées en départements : ${decoupees.join(", ")}` : ""} ; découpage ${{ national: "France métropolitaine, plus une page par territoire d'outre-mer concerné", region: "par région académique", academie: "par académie", departement: "par département", auto: `automatique (plus de ${+P.seuilIllisible || 20} % d'étiquettes sans place)` }[P.decoupage || "auto"]}.`,
+    `- Pages : ${pages.length} (${pages.filter(p => p.properties.type === "departement").length} départementales)${decoupees.length ? ` ; académies découpées en départements : ${decoupees.join(", ")}` : ""} ; découpage ${{ france: "une page France entière (métropole, outre-mer en encarts)", national: "France métropolitaine, plus une page par territoire d'outre-mer concerné", region: "par région académique", academie: "par académie", departement: "par département", auto: `automatique (plus de ${+P.seuilIllisible || 20} % d'étiquettes sans place)` }[P.decoupage || "auto"]}.`,
     ...(sansPage.length ? [`- Académie non reconnue (établissements sans page) : ${sansPage.map(x => x || "(vide)").join(", ")}.`] : []),
     ...notes.map(n => "- " + n), "",
     "Variables du projet (Projet › Propriétés › Variables) : atlas_titre, atlas_date, atlas_service, atlas_lignes (0 = tous).",
