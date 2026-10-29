@@ -43,7 +43,7 @@ const { docSites } = require('./run78');
   await page.goto('file://' + __C.racine + '/v2/saisie/index.html'); await page.waitForTimeout(1500);
   await page.click('#porte-nouveau'); await page.waitForTimeout(300);
   await page.fill('#nom', 'Jean Moulin'); await page.waitForTimeout(700); await page.click('#liste [role=option] >> nth=0'); await page.waitForTimeout(700);
-  console.log('PAR DÉFAUT :', await lignes(), '| bouton :', await page.$('.offre-reprise') ? 'proposé' : 'aucun');
+  console.log('PAR DÉFAUT :', await lignes(), '| bouton :', await page.$('.offre-reprise') ? 'proposé' : 'aucun', '| encadré des signalements récents :', await page.$eval('#proposition-encours', e => e.hidden ? 'masqué' : e.innerText.replace(/\s+/g, ' ').slice(0, 80)));
   const rep = await page.$('#proposition button[data-reprendre], [data-reprendre]');
   if (rep) { await rep.click(); await page.waitForTimeout(600); console.log('APRÈS « Reprendre » LE SIGNALEMENT PRÉCÉDENT :', await lignes(), '|', (await page.textContent('#statut-signalement')).trim().slice(0, 90)); }
   else console.log('APRÈS « Reprendre » : bouton de reprise absent');

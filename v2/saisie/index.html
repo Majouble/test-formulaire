@@ -5874,6 +5874,9 @@ $("rep-ok").addEventListener("click", () => enFile(async () => {
      colonne Qualification, du plus grave au moins grave) ; contrôle de cohérence avant l'enregistrement. */
 const sitesCtrl = () => controleursTableau("q").find(c => c.sites && c.pret) || null;
 const formulaireParSite = () => defsQuestions.some(d => d.tableau && d.tableau.sites);
+// reprise du dernier état des sites (réglage du tableau des sites) : "auto", "bouton" ou "non" (par défaut)
+const modeRepriseSites = () => { const d = defsQuestions.find(x => x.tableau && x.tableau.sites); if (!d) return null; const r = d.tableau.sites.reprise;
+  return r === true || r === "auto" ? "auto" : r === "bouton" ? "bouton" : "non"; };
 const retourNormale = () => new Set((socleGeneral.retour_normale && socleGeneral.retour_normale.length ? socleGeneral.retour_normale : ["RAS"]).map(x => String(x).trim().toUpperCase()));
 // rang de gravité d'une qualification : 0 = la plus grave (premier choix) ; retour à la normale en dernier
 function rangGravite(q) {
@@ -7066,6 +7069,8 @@ function majProposition() {
   };
   // Un dossier par jour : celui du même jour s'actualise ; celui d'un jour précédent sert de point de départ
   const jour = jourDuFormulaire(), memeJour = liste.filter(x => versionsDe(x.d).some(l => jourDeLaVersion(l) === jour)), avant = liste.filter(x => !memeJour.includes(x));
+  // formulaire par site, reprise désactivée : rien à reprendre des jours précédents (seul le signalement du même jour est proposé)
+  if (!memeJour.length && formulaireParSite() && modeRepriseSites() === "non") { bloc.hidden = true; bloc.innerHTML = ""; document.body.classList.remove("proposition-visible"); return; }
   bloc.innerHTML = memeJour.length
     ? `<p class="prop-titre">${memeJour.length > 1 ? `${memeJour.length} signalements existent` : "Un signalement existe"} déjà pour cet établissement ce jour-là</p>
       <ul>${memeJour.slice(0, 3).map(x => `<li><span>${esc(ligne(x))}</span>
