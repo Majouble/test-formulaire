@@ -6,7 +6,7 @@
    absent, sans coordonnées ou hors périmètre, qualification manquante, saisie d'essai), statuts (clé « qualite » de
    Config : vérifié / corrigé) et corrections (rattachement d'un dossier à un autre établissement).
    API : QualiteMoteur.analyser() → { espaces, le, config } ; TYPES ; GRAVITES ; statuts(config) ; marquer(liste, s, note) ;
-         rattacher(etat, liste, versId?) ; dateFr(iso) ; genreSection(...).
+         rattacher(etat, liste, versId?) ; supprimer(esp, fiche, versionId?) ; dateFr(iso) ; genreSection(...).
    ===================================================================== */
 (function () {
   "use strict";
@@ -217,5 +217,28 @@
     if (acts.length) await grist.docApi.applyUserActions(acts);
     return acts.length;
   }
-  window.QualiteMoteur = { analyser, TYPES, GRAVITES, statuts, marquer, rattacher, dateFr, genreSection };
+  /* Suppression d'une saisie erronée : une version d'un dossier (versionId), ou le dossier entier (sans versionId, ou dossier
+     d'une seule saisie). Les lignes des autres tables qui renvoient vers les saisies supprimées partent avec elles, en une
+     seule action Grist : sous-tables des questions tableau (colonne Version pour une version ; Dossier aussi pour le dossier
+     entier), visas, suivis… La première saisie porte le numéro du dossier : elle ne se supprime pas seule tant que d'autres
+     versions la suivent. Renvoie { versions, liees: ["n ligne(s) de « table »", …] }. */
+  async function supprimer(esp, fiche, versionId) {
+    const rep = esp.espace.reponses, meta = await S.lireMeta();
+    const entier = !versionId || fiche.lignes.length === 1;
+    if (!entier && versionId === fiche.id) throw new Error("la première saisie porte le numéro du dossier : supprimez une mise à jour, ou le dossier entier");
+    const ids = new Set(entier ? fiche.lignes.map(l => l.id) : [versionId]), acts = [], liees = [];
+    for (const [t, tm] of Object.entries(meta)) {
+      if (t === rep || t.startsWith("_grist")) continue;
+      const refs = Object.values(tm.colonnes).filter(c => c.type === `Ref:${rep}` && !c.isFormula); if (!refs.length) continue;
+      const hist = refs.some(c => c.colId === "Version");
+      let data; try { data = await grist.docApi.fetchTable(t); } catch (_) { continue; }
+      // une version seule : dans une sous-table historisée, ses lignes (Version) ; la colonne Dossier y désigne le dossier entier
+      const del = data.id.filter((id, i) => refs.some(c => ids.has(refId(data[c.colId][i])) && (entier || !hist || c.colId === "Version")));
+      if (del.length) { acts.push(["BulkRemoveRecord", t, del]); liees.push(`${del.length} ligne(s) de « ${t} »`); }
+    }
+    acts.push(["BulkRemoveRecord", rep, [...ids]]);
+    await grist.docApi.applyUserActions(acts);
+    return { versions: ids.size, liees, entier };
+  }
+  window.QualiteMoteur = { analyser, TYPES, GRAVITES, statuts, marquer, rattacher, supprimer, dateFr, genreSection };
 })();

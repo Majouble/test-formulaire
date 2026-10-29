@@ -11,6 +11,8 @@
    - qualification manquante sur la dernière version ; description d'essai ou vide.
    Chaque anomalie peut être marquée « vérifiée » (elle ne revient pas tant que les dossiers en cause ne changent pas)
    ou corrigée par l'action proposée. Statuts dans la clé « qualite » de Config.
+   Chaque dossier en cause : « Modifier ou supprimer… » (saisies modifiables sur place, suppression d'une saisie ou du
+   dossier entier : commun/qualite-edition.js).
    ===================================================================== */
 (function () {
   "use strict";
@@ -54,8 +56,8 @@
       <h2>À vérifier</h2>
       <p class="aide">Contrôle des signalements enregistrés : sections ou composantes choisies au lieu de l'établissement, doublons, établissements mal identifiés, champs manquants.
         Corrigez avec l'action proposée, ou marquez « vérifié » ce qui est correct : l'anomalie ne revient pas tant que les dossiers en cause ne changent pas.
-        Pour corriger sur place (placer un établissement, modifier sa fiche, la qualification ou la description d'un dossier, rattacher un dossier à un autre établissement) :
-        widget « Référentiel des sites », vue « À vérifier » (mêmes anomalies, mêmes statuts).</p>
+        Une saisie incorrecte se modifie ou se supprime ici : « Modifier ou supprimer une saisie… » sous chaque dossier (une mise à jour, ou le dossier entier avec ses lignes liées).
+        Pour placer un établissement, modifier sa fiche ou rattacher un dossier à un autre établissement : widget « Référentiel des sites », vue « À vérifier » (mêmes anomalies, mêmes statuts).</p>
       <div class="qa-outils">
         ${etat.espaces.length > 1 ? `<label>Champ <select id="qa-espace"><option value="">tous</option>${etat.espaces.map(x => `<option value="${esc(x.espace.reponses)}"${filtre.espace === x.espace.reponses ? " selected" : ""}>${esc(x.espace.libelle || x.espace.champ)}</option>`).join("")}</select></label>` : ""}
         <label>Contrôle <select id="qa-type"><option value="">tous</option>${Object.entries(TYPES).map(([k, t]) => `<option value="${k}"${filtre.type === k ? " selected" : ""}>${esc(t.titre)} (${nbType(k)})</option>`).join("")}</select></label>
@@ -73,10 +75,12 @@
     </section>`;
     lier();
   }
+  const espaceDe = a => etat.espaces.find(x => x.anomalies.includes(a));
   function carteAnomalie(a) {
-    const st = statuts()[a.cle], g = GRAVITES[a.gravite];
+    const st = statuts()[a.cle], g = GRAVITES[a.gravite], esp = espaceDe(a);
     const fiches = a.fiches.map(f => { const d = f.derniere;
-      return `<li>Dossier n° ${f.id} · ${esc(dateFr(f.jour))}${d.qualif ? ` · ${esc(d.qualif)}` : ""}${d.auteur ? ` · <span class="aide">${esc(d.auteur)}</span>` : ""}${d.desc ? `<br><span class="qa-extrait">${esc(d.desc.slice(0, 160))}${d.desc.length > 160 ? "…" : ""}</span>` : ""}</li>`; }).join("");
+      return `<li>Dossier n° ${f.id} · ${esc(dateFr(f.jour))}${d.qualif ? ` · ${esc(d.qualif)}` : ""}${d.auteur ? ` · <span class="aide">${esc(d.auteur)}</span>` : ""}${d.desc ? `<br><span class="qa-extrait">${esc(d.desc.slice(0, 160))}${d.desc.length > 160 ? "…" : ""}</span>` : ""}
+        ${window.QualiteEdition && esp ? `<details class="qe-details" data-dossier="${f.id}"><summary>Modifier ou supprimer une saisie…</summary>${window.QualiteEdition.html(esp, f)}</details>` : ""}</li>`; }).join("");
     return `<li class="qa-item${st ? " traite" : ""}" data-cle="${esc(a.cle)}">
       <div class="qa-tete"><span class="pastille qa-${g[0]}">${g[1]}</span> <strong>${esc(a.titre)}</strong></div>
       ${a.detail ? `<div class="qa-detail">${esc(a.detail)}</div>` : ""}
@@ -102,6 +106,12 @@
       b("[data-verifie]", () => marquer([a], "ok"));
       b("[data-rouvrir]", () => marquer([a], null));
       b("[data-corriger]", () => corriger([a]));
+      // saisies du dossier : modifier sur place, supprimer une saisie ou le dossier
+      const esp = espaceDe(a);
+      if (window.QualiteEdition && esp) li.querySelectorAll(".qe-details").forEach(d => {
+        const f = a.fiches.find(x => x.id === +d.dataset.dossier); if (!f) return;
+        window.QualiteEdition.lier(d, esp, f, { dire, apres: message => { if (S.viderCacheLecture) S.viderCacheLecture(); relancer(message); } });
+      });
     });
   }
   const dire = (t, err) => { const s = $("qa-statut-msg"); if (s) { s.textContent = t; s.className = `statut${err ? " err" : " ok"}`; } };

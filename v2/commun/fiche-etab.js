@@ -8,7 +8,10 @@
    - champ adapté au type de la colonne (nombre, date, liste de choix, case, référence vers une autre table) ;
    - chaque modification est enregistrée aussitôt (UpdateRecord) ;
    - « Ajouter une information au référentiel » crée une colonne (texte, nombre, liste de choix, case, date).
-   API : FicheEtab.charger(meta, table) → fiche ; FicheEtab.html(fiche, idLigne, prefixe) ;
+   Sert aussi à modifier une saisie (table des réponses, « À vérifier ») : options de charger { exclure: [colonnes],
+   lectureSeule(colId, valeur, fiche) → vrai pour afficher sans modifier, ordre: "table" (ordre des colonnes, sans « Autres
+   informations »), sansAjout: vrai (pas d'ajout de colonne) }.
+   API : FicheEtab.charger(meta, table, options?) → fiche ; FicheEtab.html(fiche, idLigne, prefixe) ;
          FicheEtab.lier(racine, fiche, idLigne, { prefixe, dire(texte, erreur), apresAjout() }).
    ===================================================================== */
 (function () {
@@ -22,12 +25,12 @@
   const cleTxt = x => norm(x).replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
   const rang = c => { const k = PRIORITE.findIndex(re => re.test(cleTxt(c.colId)) || re.test(cleTxt(c.label))); return k < 0 ? 999 : k; };
 
-  async function charger(meta, table) {
+  async function charger(meta, table, opts = {}) {
     const tm = meta[table]; if (!tm) return null;
-    const t = await grist.docApi.fetchTable(table);
-    const cols = Object.values(tm.colonnes).filter(c => !/^(manualSort|gristHelper)/.test(c.colId) && !/^(uuid|lien|cle)$/i.test(c.colId));
+    const t = await grist.docApi.fetchTable(table), exclure = new Set(opts.exclure || []);
+    const cols = Object.values(tm.colonnes).filter(c => !/^(manualSort|gristHelper)/.test(c.colId) && !/^(uuid|lien|cle)$/i.test(c.colId) && !exclure.has(c.colId));
     const nomCol = (cols.find(c => /^(nom|etablissement)$/i.test(c.colId) && /^Text/.test(c.type)) || cols.find(c => /^Text/.test(c.type)) || {}).colId;
-    cols.sort((a, b) => rang(a) - rang(b));
+    if (opts.ordre !== "table") cols.sort((a, b) => rang(a) - rang(b));
     // libellés des colonnes Référence (académie, établissement de rattachement…)
     const refs = {};
     for (const c of cols) {
@@ -39,17 +42,20 @@
         refs[cible] = tc.id.map((id, i) => ({ id, lib: String(cn ? tc[cn][i] ?? "" : id) })).sort((a, b) => a.lib.localeCompare(b.lib, "fr"));
       } catch (_) { refs[cible] = []; }
     }
-    return { table, meta: tm, cols, t, nomCol, pos: new Map(t.id.map((id, i) => [id, i])), principales: cols.filter(c => rang(c) < 999).length, refs };
+    return { table, meta: tm, cols, t, nomCol, pos: new Map(t.id.map((id, i) => [id, i])), principales: opts.ordre === "table" ? cols.length : cols.filter(c => rang(c) < 999).length, refs, opts };
   }
   const versDate = s => typeof s === "number" ? new Date(s * 1000).toISOString().slice(0, 10) : "";
   function champ(fe, c, i, px) {
     const v = fe.t[c.colId] ? fe.t[c.colId][i] : null, ty = String(c.type).split(":")[0], id = `${px}${c.colId}`;
-    const lab = `<label for="${id}">${esc(c.label)}${c.isFormula ? ` <span class="aide">(formule)</span>` : ""}</label>`;
+    const lecture = c.isFormula || !!(fe.opts && fe.opts.lectureSeule && fe.opts.lectureSeule(c.colId, v, fe));
+    const lab = `<label for="${id}">${esc(c.label)}${c.isFormula ? ` <span class="aide">(formule)</span>` : lecture ? ` <span class="aide">(non modifiable ici)</span>` : ""}</label>`;
     let ctl;
-    if (c.isFormula) ctl = `<div class="aide" id="${id}">${esc(Array.isArray(v) ? v.slice(1).join(", ") : v == null ? "—" : typeof v === "object" ? JSON.stringify(v) : v)}</div>`;
+    const montre = Array.isArray(v) ? v.slice(1).join(", ") : v == null ? "—" : typeof v === "number" && /^Date/.test(ty) ? new Date(v * 1000).toLocaleString("fr-FR", ty === "Date" ? { timeZone: "UTC", dateStyle: "short" } : { dateStyle: "short", timeStyle: "short" }) : typeof v === "object" ? JSON.stringify(v) : String(v);
+    if (lecture) ctl = `<div class="aide fe-lecture" id="${id}">${esc(montre.length > 240 ? montre.slice(0, 240) + "…" : montre)}</div>`;
     else if (ty === "Bool") ctl = `<input type="checkbox" id="${id}" data-fe="${esc(c.colId)}"${v ? " checked" : ""}>`;
     else if (ty === "Int" || ty === "Numeric") ctl = `<input type="number" id="${id}" data-fe="${esc(c.colId)}" step="${ty === "Int" ? 1 : "any"}" value="${v ?? ""}">`;
     else if (ty === "Date") ctl = `<input type="date" id="${id}" data-fe="${esc(c.colId)}" value="${versDate(v)}">`;
+    else if (ty === "DateTime") ctl = `<input type="datetime-local" id="${id}" data-fe="${esc(c.colId)}" value="${typeof v === "number" ? (d => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16))(new Date(v * 1000)) : ""}">`;
     else if (ty === "Choice") {
       let ch = []; try { ch = JSON.parse(c.widgetOptions || "{}").choices || []; } catch (_) { ch = []; }
       if (v && !ch.includes(v)) ch = [v, ...ch];
@@ -63,6 +69,7 @@
   }
   function html(fe, idLigne, px = "fe-") {
     const i = fe && fe.pos.get(+idLigne); if (i === undefined) return "";
+    if (fe.opts && fe.opts.sansAjout) return `<div class="fe-grille">${fe.cols.slice(0, fe.principales).map(c => champ(fe, c, i, px)).join("")}</div>`;
     return `<div class="fe-grille">${fe.cols.slice(0, fe.principales).map(c => champ(fe, c, i, px)).join("")}</div>
       ${fe.cols.length > fe.principales ? `<details class="fe-autres"><summary>Autres informations (${fe.cols.length - fe.principales})</summary><div class="fe-grille">${fe.cols.slice(fe.principales).map(c => champ(fe, c, i, px)).join("")}</div></details>` : ""}
       <details class="fe-autres"><summary>Ajouter une information au référentiel</summary>
@@ -80,6 +87,7 @@
       if (ty === "Bool") v = el.checked;
       else if (ty === "Int" || ty === "Numeric") v = el.value === "" ? null : (ty === "Int" ? parseInt(el.value, 10) : parseFloat(el.value));
       else if (ty === "Date") v = el.value ? Date.parse(el.value + "T00:00:00Z") / 1000 : null;
+      else if (ty === "DateTime") v = el.value ? new Date(el.value).getTime() / 1000 : null;
       else if (ty === "Ref") v = +el.value || 0;
       else if (el.dataset.liste) { const l = el.value.split(/\s*,\s*/).map(x => x.trim()).filter(Boolean); v = l.length ? ["L", ...l] : null; }
       else v = el.value.trim() === "" ? null : el.value;
