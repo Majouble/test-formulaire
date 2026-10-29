@@ -4407,7 +4407,8 @@ class Tableau {
     const parNom = (re, ty) => (cols.find(c => !RESERVES_TABLEAU.includes(c.colId) && ty.test(c.type || "") && re.test(normColonne(`${c.colId} ${c.libelle || ""}`))) || {}).colId || null;
     const sSite = st && (a(st.site) || parNom(/(^|_)site/, /^Ref:/)), sLibre = st && st.libre ? (a(st.libre) || parNom(/libre|hors_referentiel/, /^Text/)) : null;   // « — » dans l'administration : pas de nom libre
     const sQualif = st && (a(st.qualif) || parNom(/qualif/, /^Choice/));
-    this.sites = st && (sSite || sLibre) ? { site: sSite, libre: sLibre, qualif: sQualif, avecRas: st.avecRas !== false, reprise: st.reprise !== false,
+    this.sites = st && (sSite || sLibre) ? { site: sSite, libre: sLibre, qualif: sQualif, avecRas: st.avecRas !== false, // reprise du dernier état des sites : "auto" (ancien réglage true), "bouton" (à la demande), "non" (par défaut)
+      reprise: st.reprise === true || st.reprise === "auto" ? "auto" : st.reprise === "bouton" ? "bouton" : "non",
       historique: Array.isArray(st.historique) ? st.historique.filter(h => h && h.colonne) : [], alias: st.alias || "Sites_correspondances" } : null;
     this.alias = new Map(); this.aliasParSite = new Map();
     // colonnes qui désignent un site du référentiel (table des sites reliée aux établissements) : sites de l'établissement
@@ -5936,7 +5937,8 @@ function reprendreEtatSites(c, etabId, avecRas = c.sites.avecRas !== false) {
 }
 /* « Une ligne par site connu » : nouveau dossier d'un établissement déjà signalé, le tableau des sites se remplit seul
    du dernier état connu de chaque site (sites revenus à la normale compris, sauf réglage contraire). Reprise
-   automatique désactivable (reglages.tableau.sites.reprise = false) : un bouton la propose alors. Refait si
+   réglable (reglages.tableau.sites.reprise) : "auto", "bouton" (proposée par un bouton), "non" (désactivée, par défaut :
+   le tableau part vide, rien n'est proposé ; une reprise d'un signalement précédent ne reprend pas les sites). Refait si
    l'établissement change tant qu'aucune ligne n'a été touchée. */
 let sitesAutoPour = null;
 function reprendreSitesAuto() {
@@ -5945,7 +5947,8 @@ function reprendreSitesAuto() {
   const intactes = c.lignes.every(l => c.ligneVide(l) || (l._repris && !["modifie", "confirme"].includes(l._repris.etat)));
   if (!intactes) return;
   sitesAutoPour = e;
-  if (!c.sites.reprise) {
+  if (c.sites.reprise === "non") { c.offreReprise = null; c.noteAuto = ""; return; }
+  if (c.sites.reprise === "bouton") {
     // reprise automatique désactivée (administration) : le tableau reste vide, la reprise est proposée par un bouton
     const nb = dernierEtatSites(c, e, c.sites.avecRas).length;
     c.offreReprise = nb ? { etab: e, n: nb } : null;
@@ -6003,8 +6006,11 @@ async function reprendreReponses(d) {
   cocherQualif(val(der, "Qualification"));
   if (col("Site") && val(der, "Site")) $("site").value = val(der, "Site");
   await remplirChamps("q", defsQuestions, def => der[def.colId]);
-  // formulaire par site : le tableau des sites reprend le dernier état connu de chaque site (tous les jours précédents)
-  const cs = sitesCtrl(), nbSites = cs ? reprendreEtatSites(cs, refId(val(der, "Etablissement"))) : null;
+  // formulaire par site : le tableau des sites reprend le dernier état connu de chaque site (tous les jours précédents),
+  // sauf reprise désactivée (réglage du tableau des sites) : il part vide
+  let cs = sitesCtrl(), nbSites = null;
+  if (cs && cs.sites.reprise === "non") { cs.lignes = []; cs.retires = []; cs.dessiner(); cs = null; }
+  else if (cs) nbSites = reprendreEtatSites(cs, refId(val(der, "Etablissement")));
   if (cs) { qualifTouchee = false; majQualifDeduite(); }
   appliquerConditions("q", defsQuestions);
   descriptionManuelle = false;

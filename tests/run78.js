@@ -33,7 +33,7 @@ function docSites() {
   ajR(d3, 22, 16, 'RAS', [{ _id: 'f', Site: 4, Qualification: 'RAS' }]);
   const F = D.Formulaires, i = F.Nom.indexOf('Signalements'), conf = JSON.parse(F.Publie[i]);
   conf.blocs = [{ id: 'b1', section: 'q', genre: 'question', colonne: 'Detail_des_sites', reglages: { libelle: 'Sites concernés',
-    tableau: { table: 'Sites_signales', sites: { site: 'Site', libre: 'Site_libre', qualif: 'Qualification', historique: [{ colonne: 'Ancien_detail', libre: 'Nom_du_site', qualif: 'Qualification' }] } } } }];
+    tableau: { table: 'Sites_signales', sites: { site: 'Site', libre: 'Site_libre', qualif: 'Qualification', reprise: 'auto', historique: [{ colonne: 'Ancien_detail', libre: 'Nom_du_site', qualif: 'Qualification' }] } } } }];
   conf.saisie = { version: 'esr' };
   F.Publie[i] = JSON.stringify(conf);
   return doc;

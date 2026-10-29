@@ -48,7 +48,7 @@ Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pou
 | `run101` | Kit de secours : formules de suivi recalculées pour les lignes du mode secours (dernière version, état le plus grave, jours de mobilisation ; variante MESRE), tableau de bord à jour |
 | `run95` | Sites désactivés du référentiel : écartés du rapprochement, de la reprise du dernier état (revenus à la normale) et des suggestions du formulaire |
 | `run94` | Rapprochement des sites saisis dans une colonne référence aux sites (anciens noms) : administration et widget « Référentiel des sites » (tous les établissements, établissement choisi), avec le contexte des signalements (date des faits, qualification, description) |
-| `run93` | Formulaire par site : reprise automatique du dernier état des sites désactivable, reprise à la demande par un bouton |
+| `run93` | Formulaire par site : reprise du dernier état des sites réglable — désactivée (par défaut, et pas de sites repris d'un signalement précédent), à la demande (bouton), automatique (ancien réglage) |
 | `run92` | Formulaire par site : site obligatoire et nom hors référentiel, ancien nom resté en texte dans la colonne référence |
 | `run91` | « Corriger les saisies » sur une colonne référence aux sites qui garde les anciens noms (run90 avec l'option `ref`) |
 | `run90` | Widget « Référentiel des sites » : « Corriger les saisies » (sites tapés dans une sous-table, rattachés par lot, nouveau site, correspondances) |
