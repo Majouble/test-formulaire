@@ -44,6 +44,8 @@ if (require.main === module) (async () => {
   const browser = await chromium.launch({ executablePath: __C.chromium }); const page = await browser.newPage({ viewport: { width: 1100, height: 1400 } });
   page.on('pageerror', e => console.log('PAGEERROR', e.message)); page.on('dialog', d => { console.log('DIALOG :', d.message().replace(/\n+/g, ' | ')); d.dismiss(); });
   const opts = { formulaire: 'Signalements', libelle: 'Alice', perimetre: { Academie: ['Versailles'] } };
+  // date du jour fixée (les données d'essai datent du 20 au 22/10/2026 : signalements « en cours » = moins de 7 jours)
+  await page.clock.setSystemTime(new Date('2026-10-23T10:00:00+02:00'));
   await page.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__DOC__=${JSON.stringify(doc)};window.__OPTS__=${JSON.stringify(opts)};` + fs.readFileSync('mock.js') + fs.readFileSync('fakeapi.js') + fs.readFileSync('mock-saisie.js') }));
   await page.goto('file://' + __C.racine + '/v2/saisie/index.html'); await page.waitForTimeout(1500);
   await page.click('#porte-nouveau'); await page.waitForTimeout(400);

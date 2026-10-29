@@ -1120,7 +1120,11 @@ function dessinerPanneauBase() {
     </div>
     ${choixPossibles ? `<div class="groupe"><div class="t">Choix proposés</div><div id="pa-choix"></div><button type="button" class="ajout-lien" id="pa-ajout-choix">+ Ajouter un choix</button>
       <p class="note" style="margin:6px 0 0">Les choix et leurs couleurs sont enregistrés tout de suite dans la colonne Grist. Renommer un choix met à jour les réponses déjà saisies.</p></div>` : ""}
-    ${r.tableau ? `<div class="groupe"><div class="t">Champs de chaque ligne (table ${esc(r.tableau.table)})</div><div id="pa-sous"></div>
+    ${r.tableau ? `<div class="groupe"><div class="t">Table des lignes</div>
+      <div class="ligne-sc"><input type="text" id="pa-table-nom" value="${esc(r.tableau.table)}" aria-label="Nom de la table des lignes" style="flex:1">
+        <button type="button" class="secondaire petit" id="pa-table-renommer">Renommer la table</button></div>
+      <p class="note" style="margin:4px 0 0">Renomme la table dans Grist (lignes, références et formules suivent) et dans tous les formulaires qui l'utilisent, brouillons et versions publiées.</p></div>
+      <div class="groupe"><div class="t">Champs de chaque ligne (table ${esc(r.tableau.table)})</div><div id="pa-sous"></div>
       <div class="sous-col"><div class="ligne-sc"><input type="text" id="sc-nouveau-lib" placeholder="Nouveau champ (ex. Fonction)"><select id="sc-nouveau-type" style="width:auto;margin:0">
         <option value="Choice">Choix unique</option><option value="ChoiceList">Choix multiple</option><option value="Text">Texte</option><option value="Int">Nombre</option><option value="Bool">Oui / Non</option><option value="Date">Date</option></select>
         <button type="button" class="secondaire petit" id="sc-ajouter">Ajouter</button></div></div>
@@ -1148,6 +1152,8 @@ function dessinerPanneauBase() {
   lier("pa-min", "input", e => { r.min = e.target.value === "" ? undefined : parseFloat(e.target.value); sauver(); });
   lier("pa-max", "input", e => { r.max = e.target.value === "" ? undefined : parseFloat(e.target.value); sauver(); });
   lier("pa-lignes", "change", e => { r.tableau.lignes = e.target.value || null; majBloc(b); sauver(); });
+  lier("pa-table-renommer", "click", () => renommerTableTableau(b, $("pa-table-nom").value));
+  lier("pa-table-nom", "keydown", e => { if (e.key === "Enter") { e.preventDefault(); renommerTableTableau(b, e.target.value); } });
   p.querySelectorAll("[data-court]").forEach(x => x.addEventListener("click", () => { r.court = x.dataset.court === "1"; dessinerPanneau(); majBloc(b); sauver(); }));
   p.querySelectorAll("[data-num]").forEach(x => x.addEventListener("click", () => changerTypeNombre(b, x.dataset.num)));
   lier("pa-retirer", "click", () => retirerBloc(b));
@@ -1810,6 +1816,52 @@ async function reglesApresTableau(table) {
   else if (["incomplet", "refusees", "illisibles"].includes(acces.etat)) message(`Table ${table} : ${acces.texte}`, "err");
 }
 $("btn-publier").addEventListener("click", publier);
+/* ---------- renommer la table d'une question tableau ----------
+   RenameTable de Grist (lignes, colonnes Référence et formules suivent), puis le nom est remplacé dans tous les formulaires
+   (brouillons et versions publiées : réglages.tableau.table) et dans les réglages de Config qui le citent (profils de
+   l'atlas : sous-table des marques, sous-table des sites). Identifiant Grist : lettres sans accents, chiffres et « _ »,
+   commençant par une majuscule. */
+const idTable = s => { let x = String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9_]+/g, "_").replace(/^_+|_+$/g, "");
+  if (/^[0-9]/.test(x)) x = "T_" + x; return x ? x.charAt(0).toUpperCase() + x.slice(1) : ""; };
+async function renommerTableTableau(b, saisi) {
+  const ancien = b.reglages.tableau.table, voulu = idTable(saisi);
+  if (!voulu) { message("Donnez un nom à la table (lettres, chiffres, « _ »).", "err"); return; }
+  if (voulu === ancien) { if ($("pa-table-nom")) $("pa-table-nom").value = ancien; return; }
+  if (tables.includes(voulu)) { message(`La table « ${voulu} » existe déjà dans le document : choisissez un autre nom.`, "err"); return; }
+  const autres = formulaires.filter(f => [f.brouillon, f.publie].some(j => String(j || "").includes(`"table":"${ancien}"`))).map(f => f.nom);
+  if (!confirm(`Renommer la table « ${ancien} » en « ${voulu} » ?\n\nDans Grist : lignes, références et formules suivent.\nFormulaires mis à jour (brouillon et version publiée) : ${autres.join(", ") || courant.nom}.\n\nLes widgets ouverts ailleurs (saisie, cartographie) sont à recharger.`)) return;
+  try {
+    await clearTimeout(minuterie); await enregistrementEnCours;   // brouillon en attente : écrit avant
+    const avant = new Set(tables);
+    await actions([["RenameTable", ancien, voulu]]);
+    await lireMeta();
+    const nouveau = tables.includes(voulu) ? voulu : (tables.find(x => !avant.has(x)) || voulu);   // nom éventuellement ajusté par Grist
+    // formulaires : réglages.tableau.table, brouillons et versions publiées
+    const remplacer = j => { if (!j) return j; let c; try { c = JSON.parse(j); } catch (_) { return j; }
+      let n = 0; (c.blocs || []).forEach(x => { if (x.reglages && x.reglages.tableau && x.reglages.tableau.table === ancien) { x.reglages.tableau.table = nouveau; n++; } });
+      return n ? JSON.stringify(c) : j; };
+    courant.conf.blocs.forEach(x => { if (x.reglages && x.reglages.tableau && x.reglages.tableau.table === ancien) x.reglages.tableau.table = nouveau; });
+    const acts = [];
+    for (const f of formulaires) {
+      const br = f.id === courant.id ? JSON.stringify(courant.conf) : remplacer(f.brouillon), pu = remplacer(f.publie);
+      if (br !== f.brouillon || pu !== f.publie) { acts.push(["UpdateRecord", TABLE_FORMULAIRES, f.id, { Brouillon: br, Publie: pu }]); f.brouillon = br; f.publie = pu; }
+      if (f.id === courant.id) courant.publie = pu;
+    }
+    // Config : profils de l'atlas (marques.table, sites.table) et tout autre réglage dont une clé « table » vaut l'ancien nom
+    try {
+      const S = window.Socle, cfg = await S.lireConfig();
+      if (cfg) for (const [cle, val] of Object.entries(cfg.valeurs || {})) {
+        if (!val || typeof val !== "object") continue;
+        let n = 0; const marcher = o => { if (Array.isArray(o)) o.forEach(marcher); else if (o && typeof o === "object") for (const k of Object.keys(o)) { if (k === "table" && o[k] === ancien) { o[k] = nouveau; n++; } else marcher(o[k]); } };
+        const copieVal = JSON.parse(JSON.stringify(val)); marcher(copieVal);
+        if (n) acts.push(S.actionConfig(cfg, cle, copieVal));
+      }
+    } catch (_) { /* sans Config : formulaires seulement */ }
+    if (acts.length) await actions(acts);
+    meta = metaCourante(); dessinerApercu(); dessinerPanneau(); majEtat();
+    message(`Table renommée « ${nouveau} »${autres.length ? ` ; formulaire(s) mis à jour : ${autres.join(", ")}` : ""}. Rechargez les widgets ouverts ailleurs.`, "ok");
+  } catch (e) { message(`Renommage refusé par Grist (${e.message || e}).`, "err"); if ($("pa-table-nom")) $("pa-table-nom").value = ancien; }
+}
 async function publier() {
   if (!courant) return;
   if (courant.type === "etablissement") {

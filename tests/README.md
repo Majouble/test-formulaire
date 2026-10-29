@@ -8,7 +8,7 @@ Scénarios Playwright qui ouvrent les widgets (`v2/…`) dans Chromium avec un *
 cd tests
 npm install
 npx playwright install chromium     # ou : CHROMIUM=/chemin/vers/chromium
-sh lancer.sh                        # suite actuelle (run63 à run103)
+sh lancer.sh                        # suite actuelle (run63 à run104)
 sh lancer.sh run74 run76            # quelques scénarios
 ```
 
@@ -43,6 +43,7 @@ Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pou
 | `run98` | Mode secours : kit hors ligne sur deux postes et un dossier partagé (saisie et mise à jour croisées, tableau de bord, tableau des signalements de A à Z et son .docx, rechargement, exports), copies en couches, puis réintégration dans Grist (renumérotation, références, sans doublon). Lancer d'abord `node ../outils/construire-secours.js` |
 | `run99` | Mode veille : relais (code du workflow n8n, `relais-local.js`) et faux Grist (`faux-grist-api.js`) ; premières copies sans dépôt manuel, copie précédente, copie anormalement vide refusée, intervalle et plage horaire, nouvelle base, panne de Grist puis du relais, mode secours, retour du réseau, second poste |
 | `run100` | Administration, carte « Mode secours » : téléchargement du kit (version), du relais n8n préréglé (API, document, clé aléatoire, chemin propre), page de réintégration ; widgets servis en http |
+| `run104` | Administration › Formulaires : renommer la table d'une question tableau (Grist, formulaires publiés et brouillons, profils d'atlas), nom déjà pris refusé, saisie dans la table renommée |
 | `run103` | « À vérifier » : modifier une saisie sur place, supprimer une mise à jour (lignes de sites de cette version), supprimer un dossier entier, dans l'administration et le widget « Référentiel des sites » |
 | `run102` | Atlas QGIS ouvert au supérieur et à tous les risques : un point par site (référentiel des sites), couleurs et formes libres (colonne au choix, valeurs gardées), pages par région académique, France métropolitaine et France entière (outre-mer en encarts), réglages prêts à l'emploi, colonne du référentiel |
 | `run101` | Kit de secours : formules de suivi recalculées pour les lignes du mode secours (dernière version, état le plus grave, jours de mobilisation ; variante MESRE), tableau de bord à jour |

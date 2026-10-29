@@ -11,6 +11,10 @@ const actions = {
   SetDisplayFormula:()=>{},
   AddRawTable:(tid)=>{ addTable(tid,[{id:'A'},{id:'B'},{id:'C'}]); },
   AddTable:(tid,cols)=>{ addTable(tid,cols); },
+  // RenameTable de Grist : identifiant de la table, données, références (Ref:/RefList:) des autres colonnes
+  RenameTable:(ancien,nouveau)=>{ if(!T.tableId.includes(ancien)) throw new Error('no table '+ancien); if(T.tableId.includes(nouveau)) throw new Error('table exists '+nouveau);
+    T.tableId[T.tableId.indexOf(ancien)]=nouveau; data[nouveau]=data[ancien]; delete data[ancien];
+    C.type.forEach((ty,k)=>{ if(ty==='Ref:'+ancien) C.type[k]='Ref:'+nouveau; else if(ty==='RefList:'+ancien) C.type[k]='RefList:'+nouveau; }); },
   AddColumn:(tid,colId,info)=>{ if(!T.tableId.includes(tid)) throw new Error('no table '+tid); addCol(tid,colId,info); },
   RemoveColumn:(tid,colId)=>{ const r=tref(tid); const i=C.id.findIndex((_,k)=>C.parentId[k]===r&&C.colId[k]===colId); if(i<0) throw new Error('no col'); for(const k of Object.keys(C)) C[k].splice(i,1); },
   ModifyColumn:(tid,colId,info)=>{ const r=tref(tid); const i=C.id.findIndex((_,k)=>C.parentId[k]===r&&C.colId[k]===colId); if(i<0) throw new Error('no col '+colId); for(const [k,v] of Object.entries(info)) { if (k==='untieColIdFromLabel') continue; if(!C[k]) C[k]=C.id.map(()=>''); C[k][i]=v; } },
