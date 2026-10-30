@@ -110,6 +110,20 @@
   @media (max-width: 520px) { .grille { grid-template-columns: 1fr; } .ligne { flex-wrap: wrap; } }
   .aide { display: block; font-weight: 400; color: var(--gris); font-size: .82rem; margin-top: 2px; }
   .coches { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+  /* pièces jointes : vignettes, ajout depuis la galerie, l'appareil photo ou les fichiers */
+  .pj-liste { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+  .pj-liste li { position: relative; width: 104px; border: 1px solid var(--trait, #ddd); border-radius: 6px; padding: 4px; background: var(--fond, #fff); font-size: 11.5px; }
+  .pj-liste .pj-vignette { display: flex; align-items: center; justify-content: center; height: 70px; background: #f2f2f6; border-radius: 4px; overflow: hidden; font-size: 26px; color: #666; text-decoration: none; }
+  .pj-liste .pj-vignette img { width: 100%; height: 100%; object-fit: cover; }
+  .pj-liste .pj-nom { display: block; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pj-liste .pj-taille { color: #666; }
+  .pj-liste .pj-retirer { position: absolute; top: 2px; right: 2px; width: 24px; height: 24px; padding: 0; border-radius: 50%; border: 0; background: rgba(0,0,0,.6); color: #fff; font-size: 14px; line-height: 24px; cursor: pointer; }
+  .pj-liste li.pj-envoi { opacity: .6; }
+  .pj-ajout { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 8px 14px; border: 1px dashed var(--bleu, #000091); border-radius: 6px; color: var(--bleu, #000091); cursor: pointer; font-weight: 600; }
+  .pj-ajout:focus-within { outline: 2px solid var(--bleu, #000091); outline-offset: 2px; }
+  .pj-ajout input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+  .pj-etat { display: block; font-size: 12.5px; margin-top: 4px; }
+  .pj-etat.err { color: #ce0500; }
   .coches label, .case { display: flex; align-items: center; gap: 8px; font-weight: 400; margin: 0; }
   .coches input, .case input { width: 18px; height: 18px; accent-color: var(--bleu); }
   .lecture { padding: 9px 12px; background: var(--x-fafafa); border-left: 3px solid var(--trait); color: var(--gris); }
@@ -2521,6 +2535,104 @@ async function optionsReference(def) {
   return opts;
 }
 
+/* ---------- Pièces jointes (colonne Grist de type Pièces jointes) ----------
+   Photos (galerie ou appareil photo du téléphone) et documents, envoyés dès qu'ils sont choisis dans les pièces jointes du
+   document Grist (API /attachments, jeton du widget) ; la cellule reçoit la liste de leurs numéros à l'enregistrement.
+   Photos lourdes réduites avant l'envoi (2 048 px au plus, JPEG) : rapide sur réseau mobile. Une mise à jour garde les
+   pièces de la version précédente (retirables pour cette version) ; « Reprendre » un signalement d'un jour précédent ne
+   les reprend pas. Sans jeton (mode secours hors ligne…) : ajout indisponible, pièces déjà jointes listées. */
+const PJ = (() => {
+  const etat = {}, infos = new Map();   // champ → { ids, envois, msg, err } ; numéro → { nom, taille, image }
+  let lecture = null, metaLue = null;
+  const ACCEPTE = "image/*,application/pdf,.pdf,.doc,.docx,.odt,.xls,.xlsx,.ods,.ppt,.pptx,.odp,.txt,.csv,.eml,.msg,.zip";
+  const taille = n => n == null ? "" : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} Ko` : `${(n / 1048576).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} Mo`;
+  const st = id => etat[id] || (etat[id] = { ids: [], envois: 0, msg: "", err: false });
+  async function jeton(ecriture) {
+    if (!grist.docApi.getAccessToken) throw new Error("pièces jointes indisponibles ici");
+    if (!ecriture && lecture && Date.now() - lecture.le < 60000) return lecture;
+    const t = await grist.docApi.getAccessToken({ readOnly: !ecriture });
+    if (!ecriture) lecture = { ...t, le: Date.now() };
+    return t;
+  }
+  // noms et tailles des pièces déjà jointes : table _grist_Attachments (lue une fois)
+  async function lireMeta() {
+    if (!metaLue) metaLue = grist.docApi.fetchTable("_grist_Attachments").then(t => { t.id.forEach((id, i) => { if (!infos.has(id)) infos.set(id, {
+      nom: String((t.fileName || [])[i] || `pièce ${id}`), taille: (t.fileSize || [])[i], image: !!((t.imageHeight || [])[i]) || /\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(String((t.fileName || [])[i] || "")) }); }); }).catch(() => {});
+    return metaLue;
+  }
+  // photo lourde : réduite (2 048 px au plus sur le grand côté, JPEG 85 %), orientation de l'appareil respectée
+  async function reduire(f) {
+    if (!/^image\/(jpeg|png|webp|heic|heif)$/i.test(f.type) || f.size < 1.5e6 || typeof createImageBitmap !== "function") return f;
+    try {
+      const bmp = await createImageBitmap(f, { imageOrientation: "from-image" }), k = Math.min(1, 2048 / Math.max(bmp.width, bmp.height));
+      const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+      c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+      const b = await new Promise(r => c.toBlob(r, "image/jpeg", 0.85));
+      return b && b.size < f.size ? new File([b], String(f.name || "photo").replace(/\.[^.]+$/, "") + ".jpg", { type: "image/jpeg" }) : f;
+    } catch (_) { return f; }
+  }
+  function html(id) {
+    return `<div class="pj" id="${id}"><ul class="pj-liste" aria-label="Pièces jointes"></ul>
+      <label class="pj-ajout"><input type="file" id="${id}-fichiers" multiple accept="${ACCEPTE}"><span aria-hidden="true">📎</span> Ajouter des photos ou des fichiers</label>
+      <span class="pj-etat" aria-live="polite"></span></div>`;
+  }
+  async function dessiner(id) {
+    const z = document.getElementById(id); if (!z) return;
+    const s = st(id), ul = z.querySelector(".pj-liste");
+    let t = null; try { if (s.ids.length) t = await jeton(false); } catch (_) { t = null; }
+    const url = n => t ? `${t.baseUrl}/attachments/${n}/download?auth=${encodeURIComponent(t.token)}` : null;
+    ul.innerHTML = s.ids.map(n => { const x = infos.get(n) || { nom: `pièce ${n}` }, u = url(n);
+      return `<li><a class="pj-vignette" ${u ? `href="${esc(u)}" target="_blank" rel="noopener"` : ""} title="${esc(x.nom)}">${x.image && u ? `<img src="${esc(u)}" alt="${esc(x.nom)}" loading="lazy">` : "📄"}</a>
+        <span class="pj-nom" title="${esc(x.nom)}">${esc(x.nom)}</span><span class="pj-taille">${esc(taille(x.taille))}</span>
+        <button type="button" class="pj-retirer" data-pj-retirer="${n}" aria-label="Retirer ${esc(x.nom)}" title="Retirer de ce signalement">✕</button></li>`; }).join("")
+      + (s.envois ? `<li class="pj-envoi"><span class="pj-vignette">⏳</span><span class="pj-nom">Envoi de ${s.envois} fichier${s.envois > 1 ? "s" : ""}…</span></li>` : "");
+    const e = z.querySelector(".pj-etat"); e.textContent = s.msg; e.classList.toggle("err", !!s.err);
+  }
+  function lier(bloc, id, surChangement) {
+    etat[id] = { ids: [], envois: 0, msg: "", err: false };   // formulaire redessiné : rien de joint
+    const inp = bloc.querySelector('input[type="file"]');
+    if (!grist.docApi.getAccessToken) { inp.disabled = true; inp.closest(".pj-ajout").hidden = true; st(id).msg = "Ajout de pièces jointes indisponible ici (mode secours)."; dessiner(id); }
+    inp.addEventListener("change", async () => {
+      const fichiers = [...inp.files]; inp.value = ""; if (!fichiers.length) return;
+      const s = st(id); s.envois += fichiers.length; s.msg = ""; s.err = false; dessiner(id);
+      const echecs = [];
+      for (const f of fichiers) {
+        try {
+          const f2 = await reduire(f), t = await jeton(true), fd = new FormData();
+          fd.append("upload", f2, f2.name || "fichier");
+          const r = await fetch(`${t.baseUrl}/attachments?auth=${encodeURIComponent(t.token)}`, { method: "POST", body: fd, headers: { "X-Requested-With": "XMLHttpRequest" } });
+          if (!r.ok) { let d = ""; try { d = (await r.json()).error || ""; } catch (_) { /* corps illisible */ } throw new Error(`${r.status}${d ? ` : ${d}` : ""}`); }
+          const res = await r.json(), n = Array.isArray(res) ? res[0] : res;
+          if (typeof n !== "number") throw new Error("réponse inattendue de Grist");
+          infos.set(n, { nom: f2.name || "fichier", taille: f2.size, image: /^image\//.test(f2.type) }); s.ids.push(n);
+        } catch (e) { echecs.push(`${f.name} (${e.message || e})`); }
+        s.envois--; dessiner(id);
+      }
+      if (echecs.length) { s.msg = `Envoi impossible : ${echecs.join(" ; ")}.`; s.err = true; }
+      dessiner(id); if (surChangement) surChangement();
+      if (typeof appliquerConditions === "function") appliquerConditions("q", defsQuestions);
+    });
+    bloc.addEventListener("click", ev => {
+      const b = ev.target.closest("[data-pj-retirer]"); if (!b) return;
+      const s = st(id), n = +b.dataset.pjRetirer; s.ids = s.ids.filter(x => x !== n); s.msg = "Pièce retirée de ce signalement."; s.err = false;
+      dessiner(id); if (surChangement) surChangement();
+    });
+  }
+  function remplir(id, v) {
+    const s = st(id); s.ids = Array.isArray(v) ? v.slice(v[0] === "L" ? 1 : 0).filter(n => typeof n === "number") : []; s.msg = ""; s.err = false;
+    lireMeta().then(() => dessiner(id)); dessiner(id);
+  }
+  const valeur = id => { const s = etat[id]; return s && s.ids.length ? ["L", ...s.ids] : null; };
+  const enCours = id => !!(etat[id] && etat[id].envois);
+  // texte (description automatique, historique) : nombre et noms des pièces
+  function texte(v) {
+    const l = Array.isArray(v) ? v.slice(v[0] === "L" ? 1 : 0) : []; if (!l.length) return "—";
+    const noms = l.map(n => (infos.get(n) || {}).nom).filter(Boolean);
+    return `${l.length} pièce${l.length > 1 ? "s" : ""} jointe${l.length > 1 ? "s" : ""}${noms.length ? ` (${noms.join(", ")})` : ""}`;
+  }
+  return { html, lier, remplir, valeur, enCours, texte, lireMeta };
+})();
+
 function rendreChamps(zone, prefix, defs, surChangement) {
   zone.innerHTML = "";
   queueMicrotask(() => { if (prefix === "q") for (const dc of decorsQ.fin) zone.insertAdjacentHTML("beforeend", decorHtml(dc)); });
@@ -2561,6 +2673,7 @@ function rendreChamps(zone, prefix, defs, surChangement) {
       }).catch(e => console.warn(`Références de ${def.colId} illisibles`, e));
     }
     else if (def.tableau) html = `<label>${titre}${txtAide}</label><div class="tableau-rep" id="${id}"></div>`;
+    else if (t === "Attachments") html = `<label for="${id}-fichiers">${titre}${txtAide}</label>${PJ.html(id)}`;
     else if (def.court) html = `${entete}<input type="text" id="${id}">`;
     else html = `${entete}<textarea id="${id}" style="min-height:${def.colId === col("Description") ? 100 : 70}px"></textarea>`;
     bloc.innerHTML = html;
@@ -2601,6 +2714,7 @@ function rendreChamps(zone, prefix, defs, surChangement) {
     bloc.querySelectorAll(".choix[data-valeur]").forEach(l => styleChoix(l, l.dataset.valeur, t === "Bool" ? carteOuiNon(def) : (def.opts.choiceOptions || {})));
     if (prefix === "q") for (const dc of (decorsQ.avant[def.colId] || [])) zone.insertAdjacentHTML("beforeend", decorHtml(dc));
     zone.appendChild(bloc);
+    if (t === "Attachments" && !def.formule) PJ.lier(bloc, id, surChangement);
     bloc.querySelectorAll("input, select, textarea").forEach(el => {
       const majConditions = () => appliquerConditions(prefix, defs);
       el.addEventListener("input", surChangement);
@@ -2620,6 +2734,7 @@ async function remplirChamps(prefix, defs, valeurDe) {
     if (!lisible(v)) v = null;
     if (def.tableau) { if (tableaux[id]) await tableaux[id].charger(v, dossierId); continue; }
     if (def.formule) { el.textContent = formatValeur(def, v); continue; }
+    if (t === "Attachments") { PJ.remplir(id, v); continue; }
     if (t === "Bool") {
       if (el) el.checked = !!v;
       else document.querySelectorAll(`input[name="${id}"]`).forEach(r => r.checked = v != null && r.value === String(!!v));
@@ -2692,6 +2807,7 @@ function lireUnChamp(prefix, def) {
   if (t === "ChoiceList") { const l = [...document.querySelectorAll(`input[name="${id}"]:checked`)].map(c => c.value); return l.length ? ["L", ...l] : null; }
   if (t === "Ref") return el && el.value ? +el.value : 0;
   if (t === "RefList") { const l = el ? [...el.selectedOptions].map(o => +o.value).filter(Boolean) : []; return l.length ? ["L", ...l] : null; }
+  if (t === "Attachments") return PJ.valeur(id);
   return el ? el.value.trim() : "";
 }
 
@@ -2704,6 +2820,7 @@ function lireChamps(prefix, defs, manquants) {
     const v = lireUnChamp(prefix, def);
     if (def.obligatoire && (typeBase(def.type) === "Bool" ? !boolRepondu(prefix, def) : estVide(def, v))) manquants.push(`« ${def.libelle} »`);
     else if (typeof v === "number" && horsBornes(def, v)) manquants.push(`« ${def.libelle} » avec une valeur ${horsBornes(def, v)}`);
+    if (typeBase(def.type) === "Attachments" && PJ.enCours(`${prefix}-${def.colId}`)) manquants.push(`« ${def.libelle} » (envoi des fichiers en cours : patientez un instant)`);
     if (def.tableau && tableaux[`${prefix}-${def.colId}`]) {
       const pb = tableaux[`${prefix}-${def.colId}`].verifier();
       if (pb.length) manquants.push(`« ${def.libelle} » (${pb.join(" ; ")})`);
@@ -2994,6 +3111,7 @@ function formatValeur(def, v) {
   if (t === "Date" || t === "DateTime") return dateFr(v, def);
   if (t === "Numeric" || t === "Int") return typeof v === "number" ? v.toLocaleString("fr-FR") : String(v);
   if (t === "Ref") return (def._labels && def._labels.get(v)) || `n° ${v}`;
+  if (t === "Attachments") return PJ.texte(v);
   if (Array.isArray(v) && v[0] === "L") {
     const l = v.slice(1);
     return (t === "RefList" ? l.map(x => (def._labels && def._labels.get(x)) || `n° ${x}`) : l).join(", ");
@@ -6008,7 +6126,8 @@ async function reprendreReponses(d) {
   if (!der) return;
   cocherQualif(val(der, "Qualification"));
   if (col("Site") && val(der, "Site")) $("site").value = val(der, "Site");
-  await remplirChamps("q", defsQuestions, def => der[def.colId]);
+  // pièces jointes : propres à chaque jour, jamais reprises d'un signalement précédent
+  await remplirChamps("q", defsQuestions, def => typeBase(def.type) === "Attachments" ? null : der[def.colId]);
   // formulaire par site : le tableau des sites reprend le dernier état connu de chaque site (tous les jours précédents),
   // sauf reprise désactivée (réglage du tableau des sites) : il part vide
   let cs = sitesCtrl(), nbSites = null;

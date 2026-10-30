@@ -53,6 +53,7 @@ const TYPES = [
   { cle: "multi", nom: "Choix multiple", icone: "☑", type: "ChoiceList", choix: ["Option 1", "Option 2"] },
   { cle: "bool", nom: "Oui / Non", icone: "⇄", type: "Bool" },
   { cle: "date", nom: "Date", icone: "▤", type: "Date" },
+  { cle: "pj", nom: "Pièces jointes (photos, documents)", icone: "📎", type: "Attachments" },
   { cle: "tableau", nom: "Tableau (lignes)", icone: "▦", type: "Text" },
   { cle: "etab", nom: "Donnée de la fiche établissement", icone: "É", etab: true },
   { cle: "titre", nom: "Titre de section", icone: "H", decor: "titre" },
@@ -459,6 +460,8 @@ function champHtml(b) {
   if (t === "Date") return `<div class="champ"><label for="${id}">${titre}${aide}</label><input type="date" id="${id}" name="${id}"${dis}></div>`;
   if (t === "DateTime") return `<div class="champ"><label for="${id}">${titre}${aide}</label><input type="datetime-local" id="${id}" name="${id}"${dis}></div>`;
   if (t === "Ref" || t === "RefList") return `<div class="champ"><label for="${id}">${titre}${aide}</label><select id="${id}" name="${id}"${dis}><option>Choisir…</option></select></div>`;
+  if (t === "Attachments") return `<div class="champ"><label>${titre}${aide}</label><div class="pj-apercu" style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px dashed var(--bleu,#000091);border-radius:6px;color:var(--bleu,#000091);font-weight:600">📎 Ajouter des photos ou des fichiers</div>
+    <div class="note" style="margin-top:4px">Photos de la galerie ou de l'appareil photo, PDF, documents bureautiques ; envoyés dans les pièces jointes du document Grist.</div></div>`;
   if (r.court) return `<div class="champ"><label for="${id}">${titre}${aide}</label><input type="text" id="${id}" name="${id}"${dis}></div>`;
   return `<div class="champ"><label for="${id}">${titre}${aide}</label><textarea id="${id}" name="${id}" style="min-height:70px"${dis}></textarea></div>`;
 }
@@ -470,7 +473,7 @@ function typeAffiche(b) {
   if (c.formule) return sourceEtab(c) ? "Donnée établissement" : "Formule";
   if (r.tableau) return "Tableau";
   return ({ Text: r.court ? "Texte court" : "Texte long", Int: "Nombre entier", Numeric: "Nombre décimal", Choice: "Choix unique", ChoiceList: "Choix multiple",
-    Bool: "Oui / Non", Date: "Date", DateTime: "Date et heure", Ref: "Référence", RefList: "Références" })[typeBase(c.type)] || typeBase(c.type);
+    Bool: "Oui / Non", Date: "Date", DateTime: "Date et heure", Ref: "Référence", RefList: "Références", Attachments: "Pièces jointes" })[typeBase(c.type)] || typeBase(c.type);
 }
 function blocHtml(b) {
   const contenu = b.genre === "titre" ? `<h3 class="titre-section">${esc(b.texte || "Titre de section")}</h3>`
@@ -1133,7 +1136,7 @@ function dessinerPanneauBase() {
 
     ${r.tableau ? groupeSitesHtml(b) : ""}
     <div class="groupe"><div class="t">Affichage conditionnel</div><div id="pa-condition"></div></div>
-    ${!r.tableau && t !== "Text" && t !== "Ref" && t !== "RefList" ? `<div class="groupe"><div class="t">Couleur du formulaire</div><div id="pa-couleur"></div></div>` : ""}
+    ${!r.tableau && t !== "Text" && t !== "Ref" && t !== "RefList" && t !== "Attachments" ? `<div class="groupe"><div class="t">Couleur du formulaire</div><div id="pa-couleur"></div></div>` : ""}
     <div class="groupe"><div class="t">Données et diffusion</div>
       <label class="interrupteur">Confidentiel (exclu de la description automatique) <input type="checkbox" id="pa-conf"${r.confidentiel ? " checked" : ""}></label>
       <label class="l" for="pa-format">Dans la description automatique</label>

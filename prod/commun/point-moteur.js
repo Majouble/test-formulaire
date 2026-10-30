@@ -71,6 +71,8 @@ async function creerLecteur(source, tableBase) {
   }
   // valeur affichée d'une colonne Référence : colonne d'affichage de Grist, sinon colonne visible, sinon premier texte
   function afficher(t, col, val, ligne) {
+    // pièces jointes : leur nombre (les fichiers restent dans Grist)
+    if (/^Attachments/.test((cacheTypes[t] || {})[col] || "")) { const l = Array.isArray(val) ? val.filter(x => typeof x === "number") : []; return l.length ? `${l.length} pièce${l.length > 1 ? "s" : ""} jointe${l.length > 1 ? "s" : ""}` : ""; }
     const cible = (((cacheTypes[t] || {})[col] || "").match(/^Ref(?:List)?:(.+)$/) || [])[1];
     if (!cible) return val;
     const inf = (cacheAff[t] || {})[col] || {};

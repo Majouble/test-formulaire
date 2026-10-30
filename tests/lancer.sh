@@ -2,7 +2,7 @@
 # Lance la suite actuelle (ou les scénarios donnés : sh lancer.sh run74 run76) et résume les erreurs de page.
 # Prérequis : Node 18+, « npm install » dans ce dossier, puis « npx playwright install chromium » (ou CHROMIUM=…).
 cd "$(dirname "$0")"
-SUITE="run63 run64 run65 run66 run67 run68 run69 run70 run71 run72 run73 run74 run75 run76 run77 run78 run79 run80 run81 run82 run83 run84 run85 run86 run87 run88 run89 run90 run91 run92 run93 run94 run95 run96 run97 run98 run99 run100 run101 run102 run103 run104"
+SUITE="run63 run64 run65 run66 run67 run68 run69 run70 run71 run72 run73 run74 run75 run76 run77 run78 run79 run80 run81 run82 run83 run84 run85 run86 run87 run88 run89 run90 run91 run92 run93 run94 run95 run96 run97 run98 run99 run100 run101 run102 run103 run104 run105"
 [ $# -gt 0 ] && SUITE="$*"
 mkdir -p sorties/journaux
 echec=0
