@@ -197,8 +197,12 @@
       }
       ajouterEn(g.table, "*", `${g.table} — référentiel`, [{ aclFormula: `${E} and rec.id == user.${g.attribut}.id`, permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : sa seule ligne` }],
         ["Établissement ouvert par son lien : sa seule ligne, en lecture."]);
-      ajouterEn(g.table, [R.LIEN.cle, R.LIEN.lien].sort().join(","), `${g.table} — clé et lien d'accès`, [{ aclFormula: E, permissionsText: "-RU", memo: `${MEMO} — ${qui} : clé et lien illisibles` }],
-        ["Établissement ouvert par son lien : clé et lien illisibles (le widget passe ainsi en mode établissement)."]);
+      ajouterEn(g.table, R.LIEN.cle, `${g.table} — clé d'accès`, [{ aclFormula: E, permissionsText: "-RU", memo: `${MEMO} — ${qui} : clé illisible` }],
+        ["Établissement ouvert par son lien : clé illisible (le widget passe ainsi en mode établissement)."]);
+      // lien : lisible sur sa seule ligne (il le possède déjà) ; le formulaire en reprend les paramètres pour ouvrir
+      // les pièces jointes (Grist ne reconnaît l'établissement, pour un téléchargement, que par ces paramètres)
+      ajouterEn(g.table, R.LIEN.lien, `${g.table} — lien d'accès`, [{ aclFormula: E, permissionsText: "-U", memo: `${MEMO} — ${qui} : lien en lecture seule` }],
+        ["Établissement ouvert par son lien : son propre lien en lecture seule (utile pour ouvrir les pièces jointes)."]);
     }
     groupes.forEach(g => lecture.delete(g.table));
     const tous = groupes.map(condEtab), cond = tous.length > 1 ? tous.map(c => `(${c})`).join(" or ") : tous[0];

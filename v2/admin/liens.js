@@ -126,7 +126,7 @@
         ${etape(attributs !== null && attributEnPlace(g), "4. Règles d'accès",
           attributs === null ? "Règles illisibles : seul un propriétaire du document peut les appliquer (onglet Accès)."
             : attributEnPlace(g) ? `Attribut utilisateur « ${esc(g.attribut)} » en place (clé du lien → ligne de ${esc(g.table)}). Après toute modification des formulaires, réappliquez les règles dans l'onglet Accès.`
-            : "Onglet Accès, « Appliquer les règles » : elles ajoutent l'attribut « " + esc(g.attribut) + " » et limitent chaque lien à son établissement (signalements sans visas, référentiel réduit à sa ligne, clé et lien illisibles).",
+            : "Onglet Accès, « Appliquer les règles » : elles ajoutent l'attribut « " + esc(g.attribut) + " » et limitent chaque lien à son établissement (signalements sans visas, référentiel réduit à sa ligne, clé illisible).",
           `<button class="secondaire" data-act="onglet-acces">Ouvrir l'onglet Accès</button>`)}
         <li class="li-etape"><span class="pastille reco">dans Grist</span><div><strong>5. Partage public du document</strong>
           <div class="detail">Une fois les règles appliquées et vérifiées : bouton « Partager » de Grist, « Accès public » en <strong>Éditeur</strong>. Les personnes sans lien ni place dans l'équipe ne voient alors aucune donnée ; avec un lien, seulement leur établissement.

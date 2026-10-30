@@ -2587,12 +2587,58 @@ const PJ = (() => {
   const ACCEPTE = "image/*,application/pdf,.pdf,.doc,.docx,.odt,.xls,.xlsx,.ods,.ppt,.pptx,.odp,.txt,.csv,.eml,.msg,.zip";
   const taille = n => n == null ? "" : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} Ko` : `${(n / 1048576).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} Mo`;
   const st = id => etat[id] || (etat[id] = { ids: [], envois: 0, msg: "", err: false });
-  async function jeton(ecriture) {
+  // Jeton d'accès : jamais en lecture seule — Grist traiterait un propriétaire comme simple lecteur, que les règles
+  // d'accès privent des signalements (« Cannot access attachment »). Il ne figure jamais dans la page : les pièces
+  // sont lues par fetch puis affichées depuis la mémoire du navigateur.
+  async function jeton() {
     if (!grist.docApi.getAccessToken) throw new Error("pièces jointes indisponibles ici");
-    if (!ecriture && lecture && Date.now() - lecture.le < 60000) return lecture;
-    const t = await grist.docApi.getAccessToken({ readOnly: !ecriture });
-    if (!ecriture) lecture = { ...t, le: Date.now() };
+    if (lecture && Date.now() - lecture.le < 60000) return lecture;
+    const t = await grist.docApi.getAccessToken({ readOnly: false });
+    lecture = { ...t, le: Date.now() };
     return t;
+  }
+  // Établissement ouvert par son lien : Grist ne le reconnaît, pour un téléchargement, que si l'adresse porte les
+  // paramètres de son lien (« Etab_=… »), repris de la colonne Lien de sa ligne (lisible par lui seul).
+  function parametresLien() {
+    if (typeof modeEtab === "undefined" || !modeEtab || !etabs || !etabs[0]) return "";
+    const l = String(etabs[0][E.lien] || "");
+    return [...l.matchAll(/[?&]([A-Za-z][A-Za-z0-9_]*_)=([^&#\s"'<>]+)/g)].filter(m => !/^aclAs/i.test(m[1])).map(m => `&${m[1]}=${m[2]}`).join("");
+  }
+  // contenu d'une pièce (Blob), gardé en mémoire ; adresse locale (blob:) pour l'afficher ou l'ouvrir
+  const contenus = new Map(), prets = new Map();   // numéro → Promise<{ url, type, nom }> ; contenus déjà lus
+  function contenu(n) {
+    if (!contenus.has(n)) contenus.set(n, (async () => {
+      const t = await jeton();
+      const r = await fetch(`${t.baseUrl}/attachments/${n}/download?auth=${encodeURIComponent(t.token)}${parametresLien()}`);
+      if (!r.ok) { let d = ""; try { d = (await r.json()).error || ""; } catch (_) { /* corps illisible */ } throw new Error(r.status === 403 ? `accès refusé par Grist${modeEtab && !parametresLien() ? " (lien de l'établissement illisible : règles d'accès à réappliquer)" : ""}` : `${r.status}${d ? ` : ${d}` : ""}`); }
+      const b = await r.blob();
+      // nom d'origine (en-tête de Grist, s'il est lisible) : utile quand _grist_Attachments est fermée (lien d'établissement)
+      let nom = ""; try { const cd = r.headers.get("content-disposition") || ""; const m = /filename\*=UTF-8''([^;]+)/i.exec(cd) || /filename="?([^";]+)"?/i.exec(cd); nom = m ? decodeURIComponent(m[1]) : ""; } catch (_) { nom = ""; }
+      const c = { url: URL.createObjectURL(b), type: b.type || "", nom };
+      const x = infos.get(n) || {};
+      if (!x.nom || /^pièce \d+$/.test(x.nom) || x.image == null) infos.set(n, { ...x, nom: (x.nom && !/^pièce \d+$/.test(x.nom)) ? x.nom : (nom || x.nom || `pièce ${n}`), image: x.image || /^image\//.test(c.type) });
+      prets.set(n, c);
+      return c;
+    })().catch(e => { contenus.delete(n); throw e; }));
+    return contenus.get(n);
+  }
+  const affichableType = t => /^(image\/|application\/pdf|text\/plain)/i.test(t || "");
+  async function ouvrir(n, id) {
+    const x = infos.get(n) || {}, nom = x.nom || `pièce ${n}`, deja = prets.get(n);
+    // contenu déjà lu : ouverture immédiate (le navigateur l'accepte, le geste est encore « frais »)
+    if (deja && affichableType(deja.type)) { if (window.open(deja.url, "_blank")) return; }
+    const affichable = deja ? affichableType(deja.type) : (x.image || /\.(pdf|txt|jpe?g|png|gif|webp|heic)$/i.test(nom) || !x.nom || /^pièce \d+$/.test(nom));
+    let w = null;
+    if (affichable && !deja) { try { w = window.open("", "_blank"); } catch (_) { w = null; } }   // ouverte tout de suite : sinon bloquée après l'attente
+    try {
+      const c = await contenu(n);
+      if (w) { if (affichableType(c.type)) { w.location.href = c.url; return; } try { w.close(); } catch (_) { /* déjà fermée */ } w = null; }
+      const a = document.createElement("a"); a.href = c.url; a.download = (infos.get(n) || {}).nom || c.nom || nom; a.rel = "noopener";
+      document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) {
+      if (w) try { w.close(); } catch (_) { /* fenêtre déjà fermée */ }
+      const s = st(id); s.msg = `Ouverture de « ${nom} » impossible : ${e.message || e}.`; s.err = true; dessiner(id);
+    }
   }
   // noms et tailles des pièces déjà jointes : table _grist_Attachments (lue une fois)
   async function lireMeta() {
@@ -2619,14 +2665,20 @@ const PJ = (() => {
   async function dessiner(id) {
     const z = document.getElementById(id); if (!z) return;
     const s = st(id), ul = z.querySelector(".pj-liste");
-    let t = null; try { if (s.ids.length) t = await jeton(false); } catch (_) { t = null; }
-    const url = n => t ? `${t.baseUrl}/attachments/${n}/download?auth=${encodeURIComponent(t.token)}` : null;
-    ul.innerHTML = s.ids.map(n => { const x = infos.get(n) || { nom: `pièce ${n}` }, u = url(n);
-      return `<li><a class="pj-vignette" ${u ? `href="${esc(u)}" target="_blank" rel="noopener"` : ""} title="${esc(x.nom)}">${x.image && u ? `<img src="${esc(u)}" alt="${esc(x.nom)}" loading="lazy" onerror="this.replaceWith('🖼️')">` : "📄"}</a>
+    const ouvrable = !!grist.docApi.getAccessToken;
+    ul.innerHTML = s.ids.map(n => { const x = infos.get(n) || { nom: `pièce ${n}` };
+      return `<li><a class="pj-vignette" ${ouvrable ? `href="#" data-pj-ouvrir="${n}"` : ""} title="Ouvrir ${esc(x.nom)}">${x.image && ouvrable ? `<img data-pj-image="${n}" alt="${esc(x.nom)}" hidden>🖼️` : "📄"}</a>
         <span class="pj-nom" title="${esc(x.nom)}">${esc(x.nom)}</span><span class="pj-taille">${esc(taille(x.taille))}</span>
         <button type="button" class="pj-retirer" data-pj-retirer="${n}" aria-label="Retirer ${esc(x.nom)}" title="Retirer de ce signalement">✕</button></li>`; }).join("")
       + (s.envois ? `<li class="pj-envoi"><span class="pj-vignette">⏳</span><span class="pj-nom">Envoi de ${s.envois} fichier${s.envois > 1 ? "s" : ""}…</span></li>` : "");
     const e = z.querySelector(".pj-etat"); e.textContent = s.msg; e.classList.toggle("err", !!s.err);
+    // pièces dont on ne sait rien (lien d'établissement : _grist_Attachments fermée) : contenu lu pour connaître nom et type
+    if (grist.docApi.getAccessToken) s.ids.filter(n => { const x = infos.get(n); return (!x || !x.nom || /^pièce \d+$/.test(x.nom)) && !prets.has(n) && !contenus.has(n); })
+      .forEach(n => contenu(n).then(() => dessiner(id)).catch(() => { /* icône gardée */ }));
+    // vignettes : contenu lu par fetch (jeton hors de la page)
+    ul.querySelectorAll("img[data-pj-image]").forEach(img => {
+      contenu(+img.dataset.pjImage).then(c => { img.onload = () => { img.hidden = false; if (img.nextSibling) img.nextSibling.remove(); }; img.src = c.url; }).catch(() => { /* icône gardée */ });
+    });
   }
   function lier(bloc, id, surChangement) {
     etat[id] = { ids: [], envois: 0, msg: "", err: false };   // formulaire redessiné : rien de joint
@@ -2638,7 +2690,7 @@ const PJ = (() => {
       const echecs = [];
       for (const f of fichiers) {
         try {
-          const f2 = await reduire(f), t = await jeton(true), fd = new FormData();
+          const f2 = await reduire(f), t = await jeton(), fd = new FormData();
           fd.append("upload", f2, f2.name || "fichier");
           const r = await fetch(`${t.baseUrl}/attachments?auth=${encodeURIComponent(t.token)}`, { method: "POST", body: fd, headers: { "X-Requested-With": "XMLHttpRequest" } });
           if (!r.ok) { let d = ""; try { d = (await r.json()).error || ""; } catch (_) { /* corps illisible */ } throw new Error(`${r.status}${d ? ` : ${d}` : ""}`); }
@@ -2655,6 +2707,8 @@ const PJ = (() => {
       if (typeof appliquerConditions === "function") appliquerConditions("q", defsQuestions);
     });
     bloc.addEventListener("click", ev => {
+      const o = ev.target.closest("[data-pj-ouvrir]");
+      if (o) { ev.preventDefault(); ouvrir(+o.dataset.pjOuvrir, id); return; }
       const b = ev.target.closest("[data-pj-retirer]"); if (!b) return;
       const s = st(id), n = +b.dataset.pjRetirer; s.ids = s.ids.filter(x => x !== n); s.msg = "Pièce retirée de ce signalement."; s.err = false;
       dessiner(id); if (surChangement) surChangement();
