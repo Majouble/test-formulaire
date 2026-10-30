@@ -20,7 +20,8 @@ function docPj(formule) {
   doc._grist_Attachments = { id: [7], fileName: ['ancienne.jpg'], fileSize: [1000], imageHeight: [10], fileIdent: ['c'.repeat(40) + '.jpg'] };
   return doc;
 }
-(async () => {
+module.exports = { docPj, FORMULE };
+if (require.main === module) (async () => {
   let doc = docPj(false);
   const browser = await chromium.launch({ executablePath: __C.chromium });
   // 1. administration : type de question proposé, aperçu ; colonne simple rendue utilisable par les liens d'établissement
@@ -38,6 +39,8 @@ function docPj(formule) {
   console.log('ADMIN, ADAPTÉE :', await pa.textContent('#msg-global'), '|', await pa.evaluate(() => { const D = window.__DOC__, C = D._grist_Tables_column, k = C.colId.indexOf('Photos'), R = D.__data.Reponses;
     return `Photos formule ? ${C.isFormula[k]} | envoi : ${JSON.stringify(R.Photos_et_documents_envoi)}`; }));
   console.log('ADMIN, FORMULE ÉCRITE = FORMULE ESSAYÉE DANS LE MOTEUR DE GRIST :', await pa.evaluate(() => { const C = window.__DOC__._grist_Tables_column; return C.formula[C.colId.indexOf('Photos')]; }) === FORMULE.split('Photos_envoi').join('Photos_et_documents_envoi'));
+  console.log('ADMIN, COPIE POUR LES LIENS RAFRAÎCHIE :', await pa.evaluate(() => { const C = window.__DOC__.__data.Config, i = C.Cle.indexOf('schema'); if (i < 0) return 'absente';
+    const l = JSON.parse(C.Valeur[i]).tables.Reponses || []; const ph = l.find(c => c.colId === 'Photos'); return `Photos formule ? ${!!(ph && ph.isFormula)} | colonne d'envoi : ${l.some(c => c.colId === 'Photos_et_documents_envoi')}`; }));
   console.log('ADMIN, PANNEAU (adaptée) :', await pa.$eval('#panneau', p => (p.innerText.match(/Utilisable par tous[^\n]*/) || ['?'])[0].slice(0, 110)));
   await pa.close();
   doc = docPj(true);
@@ -48,7 +51,7 @@ function docPj(formule) {
   const envois = []; let prochain = 41;
   const route = async () => {
     // fetch vers les pièces jointes : vrai réseau (intercepté ci-dessous), pas l'API simulée
-    await page.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__vraiFetch=window.fetch.bind(window);window.__DOC__=${JSON.stringify(doc)};window.__OPTS__=${JSON.stringify({ formulaire: 'Signalements' })};` + fs.readFileSync('mock.js') + fs.readFileSync('fakeapi.js') + fs.readFileSync('mock-saisie.js') + `;{const f=window.fetch;window.fetch=(u,...a)=>String(u).includes('/attachments')?window.__vraiFetch(u,...a):f(u,...a);}` }));
+    await page.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__FORMULES_STRICTES__=true;window.__vraiFetch=window.fetch.bind(window);window.__DOC__=${JSON.stringify(doc)};window.__OPTS__=${JSON.stringify({ formulaire: 'Signalements' })};` + fs.readFileSync('mock.js') + fs.readFileSync('fakeapi.js') + fs.readFileSync('mock-saisie.js') + `;{const f=window.fetch;window.fetch=(u,...a)=>String(u).includes('/attachments')?window.__vraiFetch(u,...a):f(u,...a);}` }));
     await page.route(/http:\/\/localhost\/x\/attachments/, async r => {
       const q = r.request();
       if (q.method() === 'POST') { const corps = q.postDataBuffer() || Buffer.alloc(0), nom = (/filename="([^"]+)"/.exec(corps.toString('latin1')) || [])[1];

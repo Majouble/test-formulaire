@@ -961,6 +961,12 @@ const formulePiecesJointes = envoi => [
   "  if a and len(h) >= 40 and (a.fileIdent or '').startswith(h) and a.id not in ids:",
   "    ids.append(a.id)",
   "return ids"].join("\n");
+// Copie des colonnes lue par les liens d'établissement (clé « schema » de Config) : à rafraîchir dès qu'une colonne
+// publiée change de nature (sinon le formulaire ouvert par lien écrit encore dans l'ancienne colonne)
+async function majCopieLiens() {
+  try { const S = window.Socle, cfg = await S.lireConfig(), g = S.general(cfg); return await R.majSchemaPublic(await S.lireMeta(), cfg, g, await R.lireFormulairesPublies(g)); }
+  catch (_) { return false; /* copie pour les liens : facultative */ }
+}
 // Question Pièces jointes déjà créée en colonne simple : passe en formule avec sa colonne d'envoi (pièces déjà jointes reprises)
 async function adapterPiecesJointes(b) {
   const c = meta[b.colonne]; if (!c || c.formule || c.pjEnvoi || typeBase(c.type) !== "Attachments") return;
@@ -976,7 +982,8 @@ async function adapterPiecesJointes(b) {
     if (ids.length) acts.push(["BulkUpdateRecord", courant.table, ids, { [envoi]: vals }]);
     acts.push(["ModifyColumn", courant.table, b.colonne, { isFormula: true, formula: formulePiecesJointes(envoi) }]);
     await actions(acts); await lireMeta(); meta = metaCourante(); dessinerApercu(); dessinerPanneau();
-    message(`Question « ${libelleQuestion(b.colonne)} » adaptée aux liens d'établissement (colonne ${envoi} ajoutée${ids.length ? `, ${ids.length} réponse(s) reprise(s)` : ""}).`, "ok");
+    await majCopieLiens();
+    message(`Question « ${libelleQuestion(b.colonne)} » adaptée aux liens d'établissement (colonne ${envoi} ajoutée${ids.length ? `, ${ids.length} réponse(s) reprise(s)` : ""}). Les formulaires déjà ouverts doivent être rechargés.`, "ok");
   } catch (e) { message(`Adaptation refusée par Grist (${e.message || e}).`, "err"); }
 }
 async function ajouterBloc(type, texte, nomTable, tableExistante) {
@@ -1940,7 +1947,7 @@ async function publier() {
     await lireMeta(); meta = metaCourante();
     dessinerApercu(); dessinerPanneau();
     await lirePagesSaisie(); dessinerPanneau();
-    try { const S = window.Socle, cfg = await S.lireConfig(), g = S.general(cfg); await R.majSchemaPublic(await S.lireMeta(), cfg, g, await R.lireFormulairesPublies(g)); } catch (_) { /* copie pour les liens : facultative */ }
+    await majCopieLiens();
     // règles d'accès du socle : réappliquées si le formulaire publié les a rendues incomplètes (nouvelle sous-table…)
     let acces = { etat: "", texte: "" };
     try { if (window.OngletAcces && window.OngletAcces.reappliquerSiBesoin) acces = await window.OngletAcces.reappliquerSiBesoin(); } catch (_) { /* facultatif */ }

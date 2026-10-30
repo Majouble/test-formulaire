@@ -1163,7 +1163,10 @@ async function etape(libelle, table, action) {
   catch (e) {
     const msg = e && e.message || String(e);
     const acl = /access rules|blocked/i.test(msg);
-    const err = new Error(`${libelle} (table « ${table} ») : ${acl ? "refusé par les règles d'accès" : msg}`);
+    // pièces jointes : structure vue par le lien d'établissement pas à jour (copie des colonnes) ou question non adaptée
+    const pj = /formula column|cannot access attachment/i.test(msg)
+      ? " — Pièces jointes : la responsable ou le responsable du document doit ouvrir l'administration, onglet « Formulaires », vérifier que la question Pièces jointes est « adaptée aux liens d'établissement », puis republier le formulaire ; rechargez ensuite cette page." : "";
+    const err = new Error(`${libelle} (table « ${table} ») : ${acl ? "refusé par les règles d'accès" : msg}${pj}`);
     err.acl = acl; err.table = table;
     throw err;
   }
@@ -1556,6 +1559,36 @@ async function metaDeSecours() {
     metaCopie = true;
     return [tables, cols];
   } catch (_) { return null; }
+}
+// Pièces jointes et copie des colonnes (liens d'établissement) : si la copie date d'avant l'adaptation d'une question
+// Pièces jointes, la colonne y figure encore comme simple colonne alors qu'elle est devenue une formule. Les colonnes
+// réelles de la table disent si sa colonne d'envoi existe : le formulaire écrit alors dans celle-ci.
+function idColonne(libelle) {   // identifiant donné par l'administration à une colonne créée (voir admin/formulaires.js)
+  let b = String(libelle || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+  if (/^\d/.test(b)) b = "Q_" + b;
+  return b ? b.charAt(0).toUpperCase() + b.slice(1) : "";
+}
+function colonneEnvoiPj(m, cols) {
+  const bas = x => String(x).toLowerCase(), autres = cols.filter(c => c !== m.colId);
+  const pref = bas(`${m.colId}_envoi`);
+  const parPrefixe = autres.find(c => bas(c).startsWith(pref));
+  if (parPrefixe) return parPrefixe;
+  const base = idColonne(`${m.libelle} (envoi)`);
+  if (!base) return null;
+  const re = new RegExp(`^${base.replace(/[^A-Za-z0-9_]/g, "")}(_\\d+)?$`, "i");
+  return autres.find(c => re.test(c) && bas(c) !== bas(m.colId)) || null;
+}
+async function completerPjCopie(tid, meta) {
+  const pj = Object.values(meta).filter(m => typeBase(m.type) === "Attachments" && !m.formule);
+  if (!pj.length) return;
+  let cols;
+  try { cols = Object.keys(await grist.docApi.fetchTable(tid) || {}); } catch (_) { return; }
+  for (const m of pj) {
+    const envoi = colonneEnvoiPj(m, cols);
+    if (!envoi) continue;
+    m.formule = true; m.texteFormule = `for x in ($${envoi} or "").split():`;
+    if (!meta[envoi]) meta[envoi] = { colId: envoi, libelle: `${m.libelle} (envoi)`, type: "Text", opts: {}, description: "", formule: false, texteFormule: "", colAffichee: null };
+  }
 }
 async function metaColonnes(tid) {
   const [tables, cols] = await lireMeta();
@@ -1957,6 +1990,7 @@ async function chargerConfigurationEtapes() {
   try {
     tableId = await grist.getTable().getTableId();
     metaSig = await metaColonnes(tableId).catch(() => null) || {};
+    if (metaCopie) await completerPjCopie(tableId, metaSig);
     if (!Object.keys(metaSig).length) alertes.push("La structure du document n'est pas lisible depuis cette page. Responsable du document : ouvrez l'onglet « Établissements » de l'administration (ou republiez le formulaire) pour la mettre à disposition des liens d'accès.");
     await choisirFormulaire();
     // Aucun formulaire publié pour la table liée : on indique ceux qui existent, et la table à choisir
