@@ -1,23 +1,29 @@
-// Pièces jointes : question « Pièces jointes » (administration), ajout de photos et de documents depuis le formulaire sur
-// téléphone (photo lourde réduite avant l'envoi), retrait, enregistrement, mise à jour d'un dossier (pièces gardées)
+// Pièces jointes : question « Pièces jointes » (administration ; colonne simple adaptée aux liens d'établissement : colonne
+// d'envoi + formule), ajout de photos et de documents depuis le formulaire sur téléphone (photo lourde réduite avant
+// l'envoi, empreinte SHA-1), retrait, enregistrement dans la colonne d'envoi, mise à jour d'un dossier (pièces gardées)
 const __C = require('./chemins');
 const { chromium, devices } = require('playwright'); const fs = require('fs');
 const { docSites } = require('./run78');
-function docPj() {
+const FORMULE = ["# Pièces jointes envoyées par le formulaire (colonne Photos_envoi : « numéro:empreinte » de chaque fichier).", "# Seuls les fichiers dont l'empreinte (SHA-1 du contenu) correspond sont retenus.",
+  "ids = []", "for x in ($Photos_envoi or \"\").split():", "  n, _, h = x.partition(':')", "  a = _grist_Attachments.lookupOne(id=int(n)) if n.isdigit() else None",
+  "  if a and len(h) >= 40 and (a.fileIdent or '').startswith(h) and a.id not in ids:", "    ids.append(a.id)", "return ids"].join("\n");
+function docPj(formule) {
   const doc = docSites(), T = doc._grist_Tables, C = doc._grist_Tables_column, D = doc.__data;
-  const tr = T.id[T.tableId.indexOf('Reponses')], n = Math.max(...C.id) + 1;
-  for (const k of Object.keys(C)) C[k].push(k === 'id' ? n : k === 'parentId' ? tr : k === 'colId' ? 'Photos' : k === 'label' ? 'Photos et documents' : k === 'type' ? 'Attachments' : k === 'isFormula' ? false : (typeof C[k][0] === 'number' ? 0 : typeof C[k][0] === 'boolean' ? false : ''));
-  D.Reponses.Photos = D.Reponses.id.map(() => null);
+  const tr = T.id[T.tableId.indexOf('Reponses')];
+  const ajCol = (col, label, type, f) => { const n = Math.max(...C.id) + 1; for (const k of Object.keys(C)) C[k].push(k === 'id' ? n : k === 'parentId' ? tr : k === 'colId' ? col : k === 'label' ? label : k === 'type' ? type : k === 'isFormula' ? !!f : k === 'formula' ? (f || '') : (typeof C[k][0] === 'number' ? 0 : typeof C[k][0] === 'boolean' ? false : '')); };
+  if (formule) { ajCol('Photos_envoi', 'Photos et documents (envoi)', 'Text'); D.Reponses.Photos_envoi = D.Reponses.id.map(() => ''); }
+  ajCol('Photos', 'Photos et documents', 'Attachments', formule ? FORMULE : '');
+  D.Reponses.Photos = D.Reponses.id.map((_, i) => !formule && i === 2 ? ['L', 7] : null);
   const F = D.Formulaires, i = F.Nom.indexOf('Signalements'), conf = JSON.parse(F.Publie[i]);
   conf.blocs.push({ id: 'b2', section: 'q', genre: 'question', colonne: 'Photos', reglages: { libelle: 'Photos et documents', aide: 'Photos de la situation, courriers…' } });
   F.Publie[i] = JSON.stringify(conf); if (F.Brouillon) F.Brouillon[i] = F.Publie[i];
-  doc._grist_Attachments = { id: [], fileName: [], fileSize: [], imageHeight: [] };
+  doc._grist_Attachments = { id: [7], fileName: ['ancienne.jpg'], fileSize: [1000], imageHeight: [10], fileIdent: ['c'.repeat(40) + '.jpg'] };
   return doc;
 }
 (async () => {
-  let doc = docPj();
+  let doc = docPj(false);
   const browser = await chromium.launch({ executablePath: __C.chromium });
-  // 1. administration : type de question proposé, aperçu
+  // 1. administration : type de question proposé, aperçu ; colonne simple rendue utilisable par les liens d'établissement
   const pa = await browser.newPage({ viewport: { width: 1300, height: 1300 } });
   pa.on('pageerror', e => console.log('PAGEERROR', e.message));
   await pa.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__DOC__=${JSON.stringify(doc)};` + fs.readFileSync('mock.js') + fs.readFileSync('fakeapi.js') + `;grist.onRecords=()=>{};grist.getOption=async()=>null;` }));
@@ -25,7 +31,16 @@ function docPj() {
   await pa.click('nav button[data-onglet=formulaires]'); await pa.waitForTimeout(1800);
   console.log('ADMIN, APERÇU :', await pa.$eval('[data-bloc="b2"]', e => e.innerText.replace(/\s+/g, ' ').trim().slice(0, 120)));
   console.log('ADMIN, TYPE DE QUESTION :', await pa.$eval('[data-bloc="b2"]', e => (e.querySelector('.type, .bloc-type, [class*=type]') || {}).textContent || '').catch(() => '?'));
+  pa.on('dialog', d => d.accept());
+  await pa.click('[data-bloc="b2"]'); await pa.waitForTimeout(500);
+  console.log('ADMIN, PANNEAU (colonne simple) :', await pa.$eval('#panneau', p => (p.innerText.match(/Les liens d'établissement ne peuvent pas[^\n]*/) || ['?'])[0]));
+  await pa.click('#pa-pj-adapter'); await pa.waitForTimeout(1200);
+  console.log('ADMIN, ADAPTÉE :', await pa.textContent('#msg-global'), '|', await pa.evaluate(() => { const D = window.__DOC__, C = D._grist_Tables_column, k = C.colId.indexOf('Photos'), R = D.__data.Reponses;
+    return `Photos formule ? ${C.isFormula[k]} | envoi : ${JSON.stringify(R.Photos_et_documents_envoi)}`; }));
+  console.log('ADMIN, FORMULE ÉCRITE = FORMULE ESSAYÉE DANS LE MOTEUR DE GRIST :', await pa.evaluate(() => { const C = window.__DOC__._grist_Tables_column; return C.formula[C.colId.indexOf('Photos')]; }) === FORMULE.split('Photos_envoi').join('Photos_et_documents_envoi'));
+  console.log('ADMIN, PANNEAU (adaptée) :', await pa.$eval('#panneau', p => (p.innerText.match(/Utilisable par tous[^\n]*/) || ['?'])[0].slice(0, 110)));
   await pa.close();
+  doc = docPj(true);
   // 2. formulaire sur téléphone
   const ctx = await browser.newContext({ ...devices['iPhone 13'], defaultBrowserType: undefined });
   const page = await ctx.newPage();
@@ -70,8 +85,8 @@ function docPj() {
   console.log('APRÈS RETRAIT :', await vignettes(), '|', await page.textContent(`${champ} .pj-etat`));
   for (const b of await page.$$('[data-action=confirmer-site]')) await b.click().catch(() => {});
   await page.fill('#description', 'Rassemblement, photos jointes'); await page.click('#btn-signalement'); await page.waitForTimeout(1500);
-  const R = await page.evaluate(() => { const R = window.__DOC__.__data.Reponses, k = R.id.length - 1; return { id: R.id[k], photos: JSON.stringify(R.Photos[k]), desc: R.Description[k] }; });
-  console.log('ENREGISTRÉ :', R.id, R.photos, '| description :', R.desc.replace(/\s+/g, ' ').slice(0, 160));
+  const R = await page.evaluate(() => { const R = window.__DOC__.__data.Reponses, k = R.id.length - 1; return { id: R.id[k], photos: JSON.stringify(R.Photos[k]), envoi: R.Photos_envoi[k], desc: R.Description[k] }; });
+  console.log('ENREGISTRÉ :', R.id, '| colonne Photos (formule, non écrite) :', R.photos, '| colonne d\'envoi :', R.envoi.split(' ').map(x => x.replace(/:([0-9a-f]{40})$/, ':<sha1 ok>')).join(' '));
   // 3. mise à jour du dossier : pièces gardées, nouvelle pièce ajoutée
   doc = await page.evaluate(() => window.__DOC__);
   await page.unrouteAll({ behavior: 'ignoreErrors' }); await route();

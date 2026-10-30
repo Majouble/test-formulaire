@@ -115,6 +115,9 @@ function colonnesDe(tid) {
     try { opts = JSON.parse(c.widgetOptions[i] || "{}"); } catch (_) {}
     res[colId] = { colId, libelle: c.label[i] || colId, type: c.type[i], opts, description: (c.description && c.description[i]) || "",
       formule: !!(c.isFormula && c.isFormula[i] && c.formula[i]), texteFormule: (c.isFormula && c.isFormula[i] && c.formula[i]) || "", pos: c.parentPos ? c.parentPos[i] : i, ref: c.id[i] };
+    // pièces jointes calculées depuis une colonne d'envoi (formulePiecesJointes) : question ordinaire pour l'administration
+    const pj = /^Attachments/.test(c.type[i]) && res[colId].formule && /\(\$(\w+) or ""\)\.split\(\)/.exec(res[colId].texteFormule);
+    if (pj) { res[colId].formule = false; res[colId].pjEnvoi = pj[1]; }
   }
   return res;
 }
@@ -943,6 +946,39 @@ async function creerColonne(table, libelle, type, opts, formule) {
   meta = metaCourante();
   return (rv && rv.colId) || colId;
 }
+/* Pièces jointes et liens d'établissement : Grist n'accepte qu'un utilisateur à accès restreint (lien d'établissement)
+   place dans une cellule un fichier envoyé dans la même session que lui ; le formulaire envoie les fichiers par l'API
+   (autre session). La cellule Pièces jointes est donc une formule : elle reprend les numéros écrits par le formulaire
+   dans la colonne d'envoi, en vérifiant pour chacun l'empreinte SHA-1 du contenu (fileIdent de Grist) : seul celui qui a
+   le fichier en main peut le joindre, impossible d'afficher la pièce d'un autre établissement en devinant son numéro. */
+const formulePiecesJointes = envoi => [
+  `# Pièces jointes envoyées par le formulaire (colonne ${envoi} : « numéro:empreinte » de chaque fichier).`,
+  "# Seuls les fichiers dont l'empreinte (SHA-1 du contenu) correspond sont retenus.",
+  "ids = []",
+  `for x in ($${envoi} or "").split():`,
+  "  n, _, h = x.partition(':')",
+  "  a = _grist_Attachments.lookupOne(id=int(n)) if n.isdigit() else None",
+  "  if a and len(h) >= 40 and (a.fileIdent or '').startswith(h) and a.id not in ids:",
+  "    ids.append(a.id)",
+  "return ids"].join("\n");
+// Question Pièces jointes déjà créée en colonne simple : passe en formule avec sa colonne d'envoi (pièces déjà jointes reprises)
+async function adapterPiecesJointes(b) {
+  const c = meta[b.colonne]; if (!c || c.formule || c.pjEnvoi || typeBase(c.type) !== "Attachments") return;
+  if (!confirm(`Rendre la question « ${libelleQuestion(b.colonne)} » utilisable par les liens d'établissement ?\n\nUne colonne « ${c.libelle} (envoi) » est ajoutée ; la colonne des pièces jointes devient une formule qui la lit. Les pièces déjà jointes sont conservées.`)) return;
+  try {
+    const envoi = await creerColonne(courant.table, `${c.libelle} (envoi)`, "Text", null);
+    const [t, att] = await Promise.all([grist.docApi.fetchTable(courant.table), grist.docApi.fetchTable("_grist_Attachments")]);
+    const ident = new Map(att.id.map((id, i) => [id, String((att.fileIdent || [])[i] || "").replace(/\..*$/, "")]));
+    const ids = [], vals = [];
+    t.id.forEach((id, i) => { const v = t[b.colonne][i], l = Array.isArray(v) ? v.slice(1).filter(n => typeof n === "number") : [];
+      if (l.length) { ids.push(id); vals.push(l.map(n => `${n}:${ident.get(n) || ""}`).join(" ")); } });
+    const acts = [];
+    if (ids.length) acts.push(["BulkUpdateRecord", courant.table, ids, { [envoi]: vals }]);
+    acts.push(["ModifyColumn", courant.table, b.colonne, { isFormula: true, formula: formulePiecesJointes(envoi) }]);
+    await actions(acts); await lireMeta(); meta = metaCourante(); dessinerApercu(); dessinerPanneau();
+    message(`Question « ${libelleQuestion(b.colonne)} » adaptée aux liens d'établissement (colonne ${envoi} ajoutée${ids.length ? `, ${ids.length} réponse(s) reprise(s)` : ""}).`, "ok");
+  } catch (e) { message(`Adaptation refusée par Grist (${e.message || e}).`, "err"); }
+}
 async function ajouterBloc(type, texte, nomTable, tableExistante) {
   const ctx = menuCtx;
   const b = { id: nouvelId(), section: ctx.section };
@@ -975,6 +1011,13 @@ async function ajouterBloc(type, texte, nomTable, tableExistante) {
     b.genre = "question";
     b.colonne = await creerColonne(courant.table, texte, "Text", null);
     b.reglages = { libelle: texte, tableau: { table: nomT } };
+  } else if (type.cle === "pj") {
+    // pièces jointes : colonne texte d'envoi (remplie par le formulaire) + colonne Pièces jointes en formule, qui ne
+    // retient que les fichiers dont le formulaire prouve l'envoi (empreinte) : compatible avec les liens d'établissement
+    b.genre = "question";
+    const envoi = await creerColonne(courant.table, `${texte} (envoi)`, "Text", null);
+    b.colonne = await creerColonne(courant.table, texte, "Attachments", null, formulePiecesJointes(envoi));
+    b.reglages = { libelle: texte };
   } else {
     b.genre = "question";
     const opts = type.choix ? { choices: type.choix, choiceOptions: {} } : null;
@@ -1135,6 +1178,9 @@ function dessinerPanneauBase() {
         blocs().filter(x => x.genre === "question" && meta[x.colonne] && ["Int", "Numeric"].includes(typeBase(meta[x.colonne].type))).map(x => `<option value="${esc(x.colonne)}"${r.tableau.lignes === x.colonne ? " selected" : ""}>${esc(libelleQuestion(x.colonne))}</option>`).join("")}</select></div>` : ""}
 
     ${r.tableau ? groupeSitesHtml(b) : ""}
+    ${t === "Attachments" ? `<div class="groupe"><div class="t">Pièces jointes</div>${c && c.pjEnvoi
+      ? `<p class="note" style="margin:0">Utilisable par tous, liens d'établissement compris : le formulaire écrit dans la colonne « ${esc((meta[c.pjEnvoi] || {}).libelle || c.pjEnvoi)} » et ne sont retenus que les fichiers qu'il a envoyés (empreinte vérifiée).</p>`
+      : `<p class="note" style="margin:0 0 6px">Les liens d'établissement ne peuvent pas joindre de fichier à cette question (Grist : « cannot access attachment »).</p><button type="button" class="secondaire petit" id="pa-pj-adapter">Rendre utilisable par les liens d'établissement</button>`}</div>` : ""}
     <div class="groupe"><div class="t">Affichage conditionnel</div><div id="pa-condition"></div></div>
     ${!r.tableau && t !== "Text" && t !== "Ref" && t !== "RefList" && t !== "Attachments" ? `<div class="groupe"><div class="t">Couleur du formulaire</div><div id="pa-couleur"></div></div>` : ""}
     <div class="groupe"><div class="t">Données et diffusion</div>
@@ -1156,6 +1202,7 @@ function dessinerPanneauBase() {
   lier("pa-max", "input", e => { r.max = e.target.value === "" ? undefined : parseFloat(e.target.value); sauver(); });
   lier("pa-lignes", "change", e => { r.tableau.lignes = e.target.value || null; majBloc(b); sauver(); });
   lier("pa-table-renommer", "click", () => renommerTableTableau(b, $("pa-table-nom").value));
+  lier("pa-pj-adapter", "click", () => adapterPiecesJointes(b));
   lier("pa-table-nom", "keydown", e => { if (e.key === "Enter") { e.preventDefault(); renommerTableTableau(b, e.target.value); } });
   p.querySelectorAll("[data-court]").forEach(x => x.addEventListener("click", () => { r.court = x.dataset.court === "1"; dessinerPanneau(); majBloc(b); sauver(); }));
   p.querySelectorAll("[data-num]").forEach(x => x.addEventListener("click", () => changerTypeNombre(b, x.dataset.num)));

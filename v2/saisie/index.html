@@ -1730,6 +1730,12 @@ function defDepuisBloc(b) {
   def.court = !!r.court;
   if (def.tableau && r.tableau && r.tableau.sites) def.tableau.sites = r.tableau.sites;   // tableau des sites (formulaire par site)
   if (r.format && r.format !== "defaut") def.formatDescription = r.format;
+  // pièces jointes compatibles avec les liens d'établissement : colonne Pièces jointes en formule, calculée à partir
+  // d'une colonne texte d'envoi (« numéro:empreinte ») que le formulaire remplit (voir PJ)
+  if (typeBase(def.type) === "Attachments" && def.formule) {
+    const m = /\(\$(\w+) or ""\)\.split\(\)/.exec(def.texteFormule || "");
+    if (m && metaSig[m[1]]) { def.pjEnvoi = m[1]; def.formule = false; }
+  }
   def.depuisFormulaire = true;
   return def;
 }
@@ -2542,7 +2548,7 @@ async function optionsReference(def) {
    pièces de la version précédente (retirables pour cette version) ; « Reprendre » un signalement d'un jour précédent ne
    les reprend pas. Sans jeton (mode secours hors ligne…) : ajout indisponible, pièces déjà jointes listées. */
 const PJ = (() => {
-  const etat = {}, infos = new Map();   // champ → { ids, envois, msg, err } ; numéro → { nom, taille, image }
+  const etat = {}, infos = new Map();   // champ → { ids, envois, msg, err } ; numéro → { nom, taille, image, empreinte }
   let lecture = null, metaLue = null;
   const ACCEPTE = "image/*,application/pdf,.pdf,.doc,.docx,.odt,.xls,.xlsx,.ods,.ppt,.pptx,.odp,.txt,.csv,.eml,.msg,.zip";
   const taille = n => n == null ? "" : n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} Ko` : `${(n / 1048576).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} Mo`;
@@ -2582,7 +2588,7 @@ const PJ = (() => {
     let t = null; try { if (s.ids.length) t = await jeton(false); } catch (_) { t = null; }
     const url = n => t ? `${t.baseUrl}/attachments/${n}/download?auth=${encodeURIComponent(t.token)}` : null;
     ul.innerHTML = s.ids.map(n => { const x = infos.get(n) || { nom: `pièce ${n}` }, u = url(n);
-      return `<li><a class="pj-vignette" ${u ? `href="${esc(u)}" target="_blank" rel="noopener"` : ""} title="${esc(x.nom)}">${x.image && u ? `<img src="${esc(u)}" alt="${esc(x.nom)}" loading="lazy">` : "📄"}</a>
+      return `<li><a class="pj-vignette" ${u ? `href="${esc(u)}" target="_blank" rel="noopener"` : ""} title="${esc(x.nom)}">${x.image && u ? `<img src="${esc(u)}" alt="${esc(x.nom)}" loading="lazy" onerror="this.replaceWith('🖼️')">` : "📄"}</a>
         <span class="pj-nom" title="${esc(x.nom)}">${esc(x.nom)}</span><span class="pj-taille">${esc(taille(x.taille))}</span>
         <button type="button" class="pj-retirer" data-pj-retirer="${n}" aria-label="Retirer ${esc(x.nom)}" title="Retirer de ce signalement">✕</button></li>`; }).join("")
       + (s.envois ? `<li class="pj-envoi"><span class="pj-vignette">⏳</span><span class="pj-nom">Envoi de ${s.envois} fichier${s.envois > 1 ? "s" : ""}…</span></li>` : "");
@@ -2604,7 +2610,9 @@ const PJ = (() => {
           if (!r.ok) { let d = ""; try { d = (await r.json()).error || ""; } catch (_) { /* corps illisible */ } throw new Error(`${r.status}${d ? ` : ${d}` : ""}`); }
           const res = await r.json(), n = Array.isArray(res) ? res[0] : res;
           if (typeof n !== "number") throw new Error("réponse inattendue de Grist");
-          infos.set(n, { nom: f2.name || "fichier", taille: f2.size, image: /^image\//.test(f2.type) }); s.ids.push(n);
+          // empreinte SHA-1 du contenu envoyé (celle que Grist enregistre) : preuve que ce poste a bien envoyé le fichier
+          let empreinte = ""; try { empreinte = [...new Uint8Array(await crypto.subtle.digest("SHA-1", await f2.arrayBuffer()))].map(x => x.toString(16).padStart(2, "0")).join(""); } catch (_) { empreinte = ""; }
+          infos.set(n, { nom: f2.name || "fichier", taille: f2.size, image: /^image\//.test(f2.type), empreinte }); s.ids.push(n);
         } catch (e) { echecs.push(`${f.name} (${e.message || e})`); }
         s.envois--; dessiner(id);
       }
@@ -2618,11 +2626,19 @@ const PJ = (() => {
       dessiner(id); if (surChangement) surChangement();
     });
   }
-  function remplir(id, v) {
+  function remplir(id, v, envoi) {
     const s = st(id); s.ids = Array.isArray(v) ? v.slice(v[0] === "L" ? 1 : 0).filter(n => typeof n === "number") : []; s.msg = ""; s.err = false;
+    // colonne d'envoi (« numéro:empreinte ») : pièces de la version précédente, gardées avec leur empreinte
+    if (typeof envoi === "string" && envoi.trim()) {
+      const paires = envoi.split(/\s+/).map(x => x.split(":")).filter(([n, h]) => /^\d+$/.test(n) && h);
+      paires.forEach(([n, h]) => { const x = infos.get(+n) || {}; infos.set(+n, { ...x, nom: x.nom || `pièce ${n}`, empreinte: h }); });
+      if (!s.ids.length) s.ids = paires.map(([n]) => +n);
+    }
     lireMeta().then(() => dessiner(id)); dessiner(id);
   }
   const valeur = id => { const s = etat[id]; return s && s.ids.length ? ["L", ...s.ids] : null; };
+  // colonne d'envoi : « numéro:empreinte » de chaque pièce (la colonne Pièces jointes en formule ne retient que celles-là)
+  const envoi = id => { const s = etat[id]; return s && s.ids.length ? s.ids.map(n => `${n}:${(infos.get(n) || {}).empreinte || ""}`).join(" ") : ""; };
   const enCours = id => !!(etat[id] && etat[id].envois);
   // texte (description automatique, historique) : nombre et noms des pièces
   function texte(v) {
@@ -2630,7 +2646,7 @@ const PJ = (() => {
     const noms = l.map(n => (infos.get(n) || {}).nom).filter(Boolean);
     return `${l.length} pièce${l.length > 1 ? "s" : ""} jointe${l.length > 1 ? "s" : ""}${noms.length ? ` (${noms.join(", ")})` : ""}`;
   }
-  return { html, lier, remplir, valeur, enCours, texte, lireMeta };
+  return { html, lier, remplir, valeur, envoi, enCours, texte, lireMeta };
 })();
 
 function rendreChamps(zone, prefix, defs, surChangement) {
@@ -2734,7 +2750,7 @@ async function remplirChamps(prefix, defs, valeurDe) {
     if (!lisible(v)) v = null;
     if (def.tableau) { if (tableaux[id]) await tableaux[id].charger(v, dossierId); continue; }
     if (def.formule) { el.textContent = formatValeur(def, v); continue; }
-    if (t === "Attachments") { PJ.remplir(id, v); continue; }
+    if (t === "Attachments") { PJ.remplir(id, v, def.pjEnvoi ? valeurDe({ ...def, colId: def.pjEnvoi }) : null); continue; }
     if (t === "Bool") {
       if (el) el.checked = !!v;
       else document.querySelectorAll(`input[name="${id}"]`).forEach(r => r.checked = v != null && r.value === String(!!v));
@@ -2825,6 +2841,7 @@ function lireChamps(prefix, defs, manquants) {
       const pb = tableaux[`${prefix}-${def.colId}`].verifier();
       if (pb.length) manquants.push(`« ${def.libelle} » (${pb.join(" ; ")})`);
     }
+    if (def.pjEnvoi) { fields[def.pjEnvoi] = PJ.envoi(`${prefix}-${def.colId}`); continue; }   // colonne Pièces jointes calculée
     fields[def.colId] = v;
   }
   return fields;
