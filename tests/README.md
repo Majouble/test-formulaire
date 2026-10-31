@@ -8,7 +8,7 @@ Scénarios Playwright qui ouvrent les widgets (`v2/…`) dans Chromium avec un *
 cd tests
 npm install
 npx playwright install chromium     # ou : CHROMIUM=/chemin/vers/chromium
-sh lancer.sh                        # suite actuelle (run63 à run106)
+sh lancer.sh                        # suite actuelle (run63 à run107)
 sh lancer.sh run74 run76            # quelques scénarios
 ```
 
@@ -45,6 +45,7 @@ Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pou
 | `run100` | Administration, carte « Mode secours » : téléchargement du kit (version), du relais n8n préréglé (API, document, clé aléatoire, chemin propre), page de réintégration ; widgets servis en http |
 | `run105` | Pièces jointes : question « Pièces jointes » (administration, colonne simple adaptée aux liens d'établissement : colonne d'envoi + formule), photos et documents depuis le formulaire sur téléphone (photo lourde réduite, empreinte SHA-1), retrait, enregistrement dans la colonne d'envoi, mise à jour d'un dossier ; copie des colonnes pour les liens rafraîchie à l'adaptation |
 | `run106` | Pièces jointes et liens d'établissement : métadonnées illisibles, copie des colonnes périmée ou à jour : le formulaire écrit dans la colonne d'envoi, jamais dans la colonne en formule (formules strictes) ; dossier rouvert par un lien : vignette, ouverture dans un onglet, téléchargement avec les paramètres du lien (Etab_=…) et un jeton non limité, jamais placé dans la page |
+| `run107` | Atlas national appliqué au supérieur (85 établissements d'essai, `esr_essai.js`) : réglage « Tous risques », toutes les étiquettes gardées, pas d'abréviation scolaire devant les sigles, aucun point caché par un encart, tableau de 22 lignes |
 | `run104` | Administration › Formulaires : renommer la table d'une question tableau (Grist, formulaires publiés et brouillons, profils d'atlas), nom déjà pris refusé, saisie dans la table renommée |
 | `run103` | « À vérifier » : modifier une saisie sur place, supprimer une mise à jour (lignes de sites de cette version), supprimer un dossier entier, dans l'administration et le widget « Référentiel des sites » |
 | `run102` | Atlas QGIS ouvert au supérieur et à tous les risques : un point par site (référentiel des sites), couleurs et formes libres (colonne au choix, valeurs gardées), pages par région académique, France métropolitaine et France entière (outre-mer en encarts), réglages prêts à l'emploi, colonne du référentiel |
