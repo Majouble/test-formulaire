@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.40.0 (31/10/2026)";
+  const VERSION = "2.42.0 (01/11/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -477,7 +477,107 @@ return sorted(champs)`;
       { id: INVITE.lien, type: "Text", isFormula: true, formula: formuleLienInvite() },
       // lien encore valable (recalculé par Grist à chaque modification et au moins toutes les heures) : lu par les règles d'accès
       { id: INVITE.valide, type: "Bool", isFormula: true, formula: `bool($${INVITE.cle}) and (not $${INVITE.expire} or $${INVITE.expire} > NOW())` },
+      // viseurs (onglet Validation) : échelon et périmètre de visa ; périmètre vide = tous les départements ou académies
+      ...COLONNES_VISEURS,
     ];
+  }
+
+  /* ---------- Circuit de validation (onglet Validation de l'administration) ----------
+     Viseurs : agents (compte Grist ou lien d'invité) dont Echelon_visa est renseigné. Un viseur départemental pose le visa
+     départemental sur les établissements des départements de Visa_departements ; un viseur académique, le visa académique
+     sur ceux des académies de Visa_academies (et, si le réglage le permet, le visa départemental) ; liste vide = tous.
+     Réglages par table de réponses : clé « validation » de Config = { tables: { <table>: { actif, echelons: "dep_aca" | "aca",
+     verdict_dep, verdict_aca (colonnes Choix des parties de visa), favorables: [valeurs], aca_vise_dep, colonne } } }.
+     Statut du dossier : colonne formule (Statut_validation), calculée sur la dernière version ; une mise à jour du dossier
+     crée une nouvelle version, sans visa : le dossier repart dans la file du premier échelon. */
+  const ECHELONS_VISA = ["Départemental", "Académique"];
+  const COLONNES_VISEURS = [
+    { id: "Echelon_visa", type: "Choice", widgetOptions: json({ choices: ECHELONS_VISA }) },
+    { id: "Visa_departements", type: "ChoiceList" }, { id: "Visa_academies", type: "ChoiceList" },
+  ];
+  const STATUTS_VALIDATION = [
+    { nom: "À viser (département)", fond: "#FEECC2", texte: "#716043", echelon: "Départemental" },
+    { nom: "À viser (académie)", fond: "#E8EDFF", texte: "#000091", echelon: "Académique" },
+    { nom: "À revoir", fond: "#FFE9E6", texte: "#CE0500" },
+    { nom: "Validé", fond: "#B8FEC9", texte: "#18753C" },
+  ];
+  const STATUT = { dep: STATUTS_VALIDATION[0].nom, aca: STATUTS_VALIDATION[1].nom, revoir: STATUTS_VALIDATION[2].nom, valide: STATUTS_VALIDATION[3].nom };
+  const COLONNE_STATUT = "Statut_validation";
+  const MARQUE_STATUT = "# Statut de validation (socle v2.41)";
+  const FAVORABLE = /favorable|valid|accord|conforme|^ok$|^oui$|vis[ée]/i;
+  const DEFAVORABLE = /d[ée]favorable|non|refus|revoir|incomplet/i;
+  const estFavorable = v => FAVORABLE.test(String(v || "")) && !DEFAVORABLE.test(String(v || ""));
+  // Réglage d'une table (null si le circuit n'y est pas actif)
+  function reglagesValidation(config, table) {
+    const t = config && config.valeurs && config.valeurs.validation && config.valeurs.validation.tables;
+    const r = t && table && t[table];
+    if (!r || !r.actif) return null;
+    return { echelons: r.echelons === "aca" ? "aca" : "dep_aca", verdict_dep: r.verdict_dep || "", verdict_aca: r.verdict_aca || "",
+      favorables: Array.isArray(r.favorables) ? r.favorables.map(String) : [], aca_vise_dep: r.aca_vise_dep !== false, colonne: r.colonne || COLONNE_STATUT };
+  }
+  const optionsStatutValidation = () => json({ choices: STATUTS_VALIDATION.map(s => s.nom),
+    choiceOptions: Object.fromEntries(STATUTS_VALIDATION.map(s => [s.nom, { fillColor: s.fond, textColor: s.texte }])) });
+  // Formule du statut d'après le réglage r et les colonnes résolues de la table (cols.Derniere_version)
+  function formuleStatutValidation(r, cols) {
+    const dv = cols && cols.Derniere_version, dep = r.echelons === "dep_aca" && r.verdict_dep;
+    return [
+      `${MARQUE_STATUT} — réglé dans l'onglet Validation de l'administration`,
+      ...(dv ? [`if not $${dv}:`, `  return None`] : []),
+      `FAVORABLES = ${JSON.stringify(r.favorables)}`,
+      `def avis(v):`,
+      `  v = " ".join(str(x) for x in v) if isinstance(v, (list, tuple)) else str(v or "")`,
+      `  v = v.strip()`,
+      `  if not v:`,
+      `    return None`,
+      `  return "ok" if v in FAVORABLES else "ko"`,
+      r.verdict_aca ? `aca = avis($${r.verdict_aca})` : `aca = None`,
+      dep ? `dep = avis($${r.verdict_dep})` : `dep = "ok"`,
+      `if aca == "ok":`, `  return ${JSON.stringify(STATUT.valide)}`,
+      `if aca == "ko" or dep == "ko":`, `  return ${JSON.stringify(STATUT.revoir)}`,
+      `if dep == "ok":`, `  return ${JSON.stringify(STATUT.aca)}`,
+      `return ${JSON.stringify(STATUT.dep)}`,
+    ].join("\n");
+  }
+  // Statut attendu calculé en JavaScript (mêmes règles que la formule) : pour les contrôles et les essais
+  function statutValidation(r, ligne) {
+    const avis = v => { const s = (Array.isArray(v) ? v.filter(x => x !== "L").join(" ") : String(v == null ? "" : v)).trim(); return !s ? null : r.favorables.includes(s) ? "ok" : "ko"; };
+    const aca = r.verdict_aca ? avis(ligne[r.verdict_aca]) : null, dep = r.echelons === "dep_aca" && r.verdict_dep ? avis(ligne[r.verdict_dep]) : "ok";
+    return aca === "ok" ? STATUT.valide : aca === "ko" || dep === "ko" ? STATUT.revoir : dep === "ok" ? STATUT.aca : STATUT.dep;
+  }
+  // Le viseur v ({ echelon, departements, academies }) peut-il viser cet établissement à cet échelon (« dep » | « aca ») ?
+  function viseurCouvre(v, echelonVisa, dep, aca, r) {
+    if (!v || !v.echelon) return false;
+    const dans = (liste, x) => !liste || !liste.length || liste.includes(String(x || ""));
+    if (echelonVisa === "aca") return v.echelon === "Académique" && dans(v.academies, aca);
+    if (v.echelon === "Départemental") return dans(v.departements, dep);
+    return v.echelon === "Académique" && (!r || r.aca_vise_dep) && dans(v.academies, aca);
+  }
+
+  /* ---------- Campagnes de sollicitation des établissements (onglet Établissements) ----------
+     Clé « campagnes » de Config = { liste: [{ id, nom, referentiel, crit: { colonne: [valeurs] }, recherche, avecMail,
+     mode: "une" | "quotidienne", debut (secondes), fin (secondes | null), close, message: { objet, corps } }] }.
+     Un établissement visé a répondu s'il a enregistré un signalement (ou « Rien à signaler ») depuis le lancement
+     (mode « une »), ou ce jour-là (mode « quotidienne »). */
+  const MODES_CAMPAGNE = { une: "Une réponse attendue", quotidienne: "Une réponse attendue chaque jour" };
+  const campagnes = config => ((config && config.valeurs && config.valeurs.campagnes && config.valeurs.campagnes.liste) || []).filter(c => c && c.id);
+  const campagneEnCours = (c, t = Date.now() / 1000) => !!c && !c.close && (!c.debut || c.debut <= t) && (!c.fin || t <= c.fin);
+  const valeursCellule = v => (Array.isArray(v) ? (v[0] === "L" ? v.slice(1) : v) : [v]).map(x => (x == null ? "" : String(x).trim())).filter(Boolean);
+  // L'établissement (ligne du référentiel { colonne: valeur }) est-il visé par la campagne ? cols : { nom, uai, commune, mail }
+  function campagneVise(c, ligne, cols) {
+    if (!c || !ligne) return false;
+    for (const [col, vals] of Object.entries(c.crit || {})) if (Array.isArray(vals) && vals.length && !valeursCellule(ligne[col]).some(x => vals.includes(x))) return false;
+    if (c.avecMail && cols && cols.mail && !String(ligne[cols.mail] || "").trim()) return false;
+    const q = norm(c.recherche || "");
+    if (q && cols) { const txt = norm([cols.nom, cols.uai, cols.commune].filter(Boolean).map(k => ligne[k]).join(" ")); if (!txt.includes(q)) return false; }
+    return true;
+  }
+  // Jour civil à Paris (AAAA-MM-JJ) d'un instant en secondes
+  const fmtJour = new Intl.DateTimeFormat("fr-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" });
+  const jourParis = s => s == null || s === "" ? "" : fmtJour.format(new Date(Number(s) * 1000));
+  // Réponse attendue : saisie (en secondes) qui compte pour la campagne, le jour donné (AAAA-MM-JJ, mode quotidien)
+  function reponseCompte(c, saisie, jour) {
+    if (saisie == null || saisie === "" || (c.debut && saisie < c.debut)) return false;
+    return c.mode === "quotidienne" ? jourParis(saisie) === (jour || jourParis(Date.now() / 1000)) : true;
   }
   const COLONNES_CRENEAUX = [
     { id: "Date", type: "Date" }, { id: "Nom", type: "Text" },
@@ -1013,5 +1113,8 @@ return sorted(champs)`;
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer, COLONNES_ETABLISSEMENT,
     instantaneSchema, majSchemaPublic, tableauxDeBord, valeurTableauxDeBord, INVITE, DUREES_INVITE, formuleAuteur, auteurAMettreAJour,
     REGIONS_ACADEMIQUES, regionDeAcademie, genreSection, rattachementSection, colonnesHistoriqueTableau, MOUVEMENTS_TABLEAU,
+    ECHELONS_VISA, COLONNES_VISEURS, STATUTS_VALIDATION, STATUT, COLONNE_STATUT, MARQUE_STATUT, estFavorable, reglagesValidation,
+    optionsStatutValidation, formuleStatutValidation, statutValidation, viseurCouvre,
+    MODES_CAMPAGNE, campagnes, campagneEnCours, campagneVise, valeursCellule, jourParis, reponseCompte,
   };
 })();
