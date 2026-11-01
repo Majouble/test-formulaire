@@ -136,8 +136,47 @@
       { aclFormula: PROPRIETAIRE, permissionsText: "+RU", memo: `${MEMO} — propriétaires : clés et liens des invités` },
       { aclFormula: NON_PROPRIETAIRE, permissionsText: "-RU", memo: `${MEMO} — clés et liens des invités réservés aux propriétaires` },
     ], lignes: ["Clé et lien personnel des agents invités : lisibles par les propriétaires seulement (le lien vaut mot de passe)."] });
+    reglesValidation(out);
     reglesEtablissements(out);
     return out;
+  }
+
+  /* ---------- Circuit de validation (onglet Validation, 2.41) ----------
+     Table où le circuit est actif : l'avis départemental (questions de la partie « Visa départemental ») ne se modifie que
+     par un viseur départemental du département de l'établissement (ou, si le réglage le permet, un viseur académique de son
+     académie) ; l'avis académique, par un viseur académique de son académie. Périmètre vide = tous. Les autres agents lisent.
+     Une colonne ne peut figurer que dans un seul ensemble de règles : les règles des établissements sur les visas
+     reprennent le même découpage (visasDeTable). */
+  const PARTIES_VISA = [{ id: "q", role: "q" }, { id: "vd", role: "vd" }, { id: "va", role: "va" }];
+  function visasDeTable(table) {
+    const out = { vd: new Set(), va: new Set() }, cols = meta[table] ? meta[table].colonnes : {};
+    for (const f of formulaires.filter(x => x.table === table)) {
+      const parties = Array.isArray(f.conf.parties) && f.conf.parties.length ? f.conf.parties : PARTIES_VISA;
+      (f.conf.blocs || []).forEach(b => { const p = parties.find(x => x.id === (b.section || "q")); if (p && (p.role === "vd" || p.role === "va") && b.colonne && cols[b.colonne]) out[p.role].add(b.colonne); });
+    }
+    return { vd: [...out.vd].sort(), va: [...out.va].sort() };
+  }
+  // Circuit actif et viseurs possibles (colonnes de la table Agents) : réglage, sinon null
+  const circuit = table => meta[general.agents] && meta[general.agents].colonnes.Echelon_visa && meta[table] ? S.reglagesValidation(config, table) : null;
+  function reglesValidation(out) {
+    for (const t of [...new Set(formulaires.map(f => f.table))]) {
+      const r = circuit(t); if (!r) continue;
+      const v = visasDeTable(t), cols = meta[t].colonnes;
+      const perim = (u, liste, c) => cols[c] ? ` and (not ${u}.${liste} or rec.${c} in ${u}.${liste})` : "";
+      const dep = u => `${u}.Actif and ${u}.Echelon_visa == "Départemental"${perim(u, "Visa_departements", "Departement")}`;
+      const aca = u => `${u}.Actif and ${u}.Echelon_visa == "Académique"${perim(u, "Visa_academies", "Academie")}`;
+      const ajouter = (colonnes, build, qui, ligne) => {
+        if (!colonnes.length) return;
+        out.push({ tableId: t, colIds: colonnes.join(","), titre: `${t} — avis ${qui} (${colonnes.join(", ")})`, regles: [
+          { aclFormula: PROPRIETAIRE, permissionsText: "+U", memo: `${MEMO} — propriétaires : avis ${qui}` },
+          { aclFormula: agentSi(build), permissionsText: "+U", memo: `${MEMO} — avis ${qui} : viseurs de l'échelon, dans leur périmètre` },
+          { aclFormula: membre(), permissionsText: "-U", memo: `${MEMO} — avis ${qui} réservé aux viseurs de l'échelon (onglet Validation)` },
+        ], lignes: [ligne, "Autres agents de l'équipe : lecture seule de cet avis."] });
+      };
+      if (r.echelons === "dep_aca") ajouter(v.vd, u => r.aca_vise_dep ? `((${dep(u)}) or (${aca(u)}))` : `(${dep(u)})`, "départemental",
+        `Viseurs départementaux (onglet Validation), sur les établissements de leurs départements${r.aca_vise_dep ? " ; viseurs académiques, sur ceux de leurs académies" : ""} : modification.`);
+      ajouter(v.va, u => `(${aca(u)})`, "académique", "Viseurs académiques (onglet Validation), sur les établissements de leurs académies : modification.");
+    }
   }
 
   /* ---------- Accès des établissements par lien ---------- */
@@ -183,10 +222,16 @@
       for (const f of g.formulaires) {
         ajouterEn(f.table, "*", `${f.table} — signalements`, signalements(f.table, f.colEtab),
           [`Établissement ouvert par son lien : ses seuls signalements (lecture, ajout, mise à jour ; pas de suppression).`]);
-        const { visas, auteur } = colonnesMasquees(f);
-        if (visas.length) ajouterEn(f.table, visas.join(","), `${f.table} — visas (${visas.join(", ")})`,
+        const { visas, auteur } = colonnesMasquees(f), rv = circuit(f.table);
+        // circuit de validation actif : mêmes ensembles de colonnes que les règles des viseurs (une colonne, un seul ensemble)
+        const ensembles = rv ? (() => { const v = visasDeTable(f.table), reste = visas.filter(c => !v.vd.includes(c) && !v.va.includes(c));
+          return [rv.echelons === "dep_aca" ? v.vd : [], v.va, rv.echelons === "dep_aca" ? reste : [...v.vd.filter(c => visas.includes(c)), ...reste].sort()].filter(l => l.length); })() : [visas];
+        for (const l of ensembles) if (l.length) ajouterEn(f.table, l.join(","), `${f.table} — visas (${l.join(", ")})`,
           [{ aclFormula: E, permissionsText: "-RU", memo: `${MEMO} — ${qui} : visas réservés à la cellule` }],
           ["Établissement ouvert par son lien : ni lecture ni modification des visas."]);
+        if (rv && meta[f.table].colonnes[rv.colonne]) ajouterEn(f.table, rv.colonne, `${f.table} — statut de validation (${rv.colonne})`,
+          [{ aclFormula: E, permissionsText: "-R", memo: `${MEMO} — ${qui} : statut de validation réservé à la cellule` }],
+          ["Établissement ouvert par son lien : statut de validation illisible (il découle des visas)."]);
         if (auteur) ajouterEn(f.table, auteur, `${f.table} — auteur (${auteur})`,
           [{ aclFormula: E, permissionsText: "-R", memo: `${MEMO} — ${qui} : adresse de l'auteur illisible` }],
           ["Établissement ouvert par son lien : adresse de l'auteur illisible."]);

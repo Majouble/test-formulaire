@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.40.0 (31/10/2026)";
+  const VERSION = "2.43.0 (02/11/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -33,6 +33,8 @@
     affectations: "Affectations",          // planning : agents affectés à chaque créneau
     emargements: "Emargements",            // émargement : prises et fins de service
     actions: "Actions",                    // suivi des actions (kanban des coordinateurs)
+    vigilances: "Vigilances",              // veille : vigilances météo en cours (relais n8n, onglet Veille)
+    vigilances_journal: "Vigilances_journal", // veille : changements de vigilance (alertes, retour d'expérience)
     retour_normale: ["RAS"],               // qualifications qui valent retour à la normale
   };
   const NATURES = ["Nouveau signalement", "Mise à jour"];
@@ -477,7 +479,142 @@ return sorted(champs)`;
       { id: INVITE.lien, type: "Text", isFormula: true, formula: formuleLienInvite() },
       // lien encore valable (recalculé par Grist à chaque modification et au moins toutes les heures) : lu par les règles d'accès
       { id: INVITE.valide, type: "Bool", isFormula: true, formula: `bool($${INVITE.cle}) and (not $${INVITE.expire} or $${INVITE.expire} > NOW())` },
+      // viseurs (onglet Validation) : échelon et périmètre de visa ; périmètre vide = tous les départements ou académies
+      ...COLONNES_VISEURS,
     ];
+  }
+
+  /* ---------- Circuit de validation (onglet Validation de l'administration) ----------
+     Viseurs : agents (compte Grist ou lien d'invité) dont Echelon_visa est renseigné. Un viseur départemental pose le visa
+     départemental sur les établissements des départements de Visa_departements ; un viseur académique, le visa académique
+     sur ceux des académies de Visa_academies (et, si le réglage le permet, le visa départemental) ; liste vide = tous.
+     Réglages par table de réponses : clé « validation » de Config = { tables: { <table>: { actif, echelons: "dep_aca" | "aca",
+     verdict_dep, verdict_aca (colonnes Choix des parties de visa), favorables: [valeurs], aca_vise_dep, colonne } } }.
+     Statut du dossier : colonne formule (Statut_validation), calculée sur la dernière version ; une mise à jour du dossier
+     crée une nouvelle version, sans visa : le dossier repart dans la file du premier échelon. */
+  const ECHELONS_VISA = ["Départemental", "Académique"];
+  const COLONNES_VISEURS = [
+    { id: "Echelon_visa", type: "Choice", widgetOptions: json({ choices: ECHELONS_VISA }) },
+    { id: "Visa_departements", type: "ChoiceList" }, { id: "Visa_academies", type: "ChoiceList" },
+  ];
+  const STATUTS_VALIDATION = [
+    { nom: "À viser (département)", fond: "#FEECC2", texte: "#716043", echelon: "Départemental" },
+    { nom: "À viser (académie)", fond: "#E8EDFF", texte: "#000091", echelon: "Académique" },
+    { nom: "À revoir", fond: "#FFE9E6", texte: "#CE0500" },
+    { nom: "Validé", fond: "#B8FEC9", texte: "#18753C" },
+  ];
+  const STATUT = { dep: STATUTS_VALIDATION[0].nom, aca: STATUTS_VALIDATION[1].nom, revoir: STATUTS_VALIDATION[2].nom, valide: STATUTS_VALIDATION[3].nom };
+  const COLONNE_STATUT = "Statut_validation";
+  const MARQUE_STATUT = "# Statut de validation (socle v2.41)";
+  const FAVORABLE = /favorable|valid|accord|conforme|^ok$|^oui$|vis[ée]/i;
+  const DEFAVORABLE = /d[ée]favorable|non|refus|revoir|incomplet/i;
+  const estFavorable = v => FAVORABLE.test(String(v || "")) && !DEFAVORABLE.test(String(v || ""));
+  // Réglage d'une table (null si le circuit n'y est pas actif)
+  function reglagesValidation(config, table) {
+    const t = config && config.valeurs && config.valeurs.validation && config.valeurs.validation.tables;
+    const r = t && table && t[table];
+    if (!r || !r.actif) return null;
+    return { echelons: r.echelons === "aca" ? "aca" : "dep_aca", verdict_dep: r.verdict_dep || "", verdict_aca: r.verdict_aca || "",
+      favorables: Array.isArray(r.favorables) ? r.favorables.map(String) : [], aca_vise_dep: r.aca_vise_dep !== false, colonne: r.colonne || COLONNE_STATUT };
+  }
+  const optionsStatutValidation = () => json({ choices: STATUTS_VALIDATION.map(s => s.nom),
+    choiceOptions: Object.fromEntries(STATUTS_VALIDATION.map(s => [s.nom, { fillColor: s.fond, textColor: s.texte }])) });
+  // Formule du statut d'après le réglage r et les colonnes résolues de la table (cols.Derniere_version)
+  function formuleStatutValidation(r, cols) {
+    const dv = cols && cols.Derniere_version, dep = r.echelons === "dep_aca" && r.verdict_dep;
+    return [
+      `${MARQUE_STATUT} — réglé dans l'onglet Validation de l'administration`,
+      ...(dv ? [`if not $${dv}:`, `  return None`] : []),
+      `FAVORABLES = ${JSON.stringify(r.favorables)}`,
+      `def avis(v):`,
+      `  v = " ".join(str(x) for x in v) if isinstance(v, (list, tuple)) else str(v or "")`,
+      `  v = v.strip()`,
+      `  if not v:`,
+      `    return None`,
+      `  return "ok" if v in FAVORABLES else "ko"`,
+      r.verdict_aca ? `aca = avis($${r.verdict_aca})` : `aca = None`,
+      dep ? `dep = avis($${r.verdict_dep})` : `dep = "ok"`,
+      `if aca == "ok":`, `  return ${JSON.stringify(STATUT.valide)}`,
+      `if aca == "ko" or dep == "ko":`, `  return ${JSON.stringify(STATUT.revoir)}`,
+      `if dep == "ok":`, `  return ${JSON.stringify(STATUT.aca)}`,
+      `return ${JSON.stringify(STATUT.dep)}`,
+    ].join("\n");
+  }
+  // Statut attendu calculé en JavaScript (mêmes règles que la formule) : pour les contrôles et les essais
+  function statutValidation(r, ligne) {
+    const avis = v => { const s = (Array.isArray(v) ? v.filter(x => x !== "L").join(" ") : String(v == null ? "" : v)).trim(); return !s ? null : r.favorables.includes(s) ? "ok" : "ko"; };
+    const aca = r.verdict_aca ? avis(ligne[r.verdict_aca]) : null, dep = r.echelons === "dep_aca" && r.verdict_dep ? avis(ligne[r.verdict_dep]) : "ok";
+    return aca === "ok" ? STATUT.valide : aca === "ko" || dep === "ko" ? STATUT.revoir : dep === "ok" ? STATUT.aca : STATUT.dep;
+  }
+  // Le viseur v ({ echelon, departements, academies }) peut-il viser cet établissement à cet échelon (« dep » | « aca ») ?
+  function viseurCouvre(v, echelonVisa, dep, aca, r) {
+    if (!v || !v.echelon) return false;
+    const dans = (liste, x) => !liste || !liste.length || liste.includes(String(x || ""));
+    if (echelonVisa === "aca") return v.echelon === "Académique" && dans(v.academies, aca);
+    if (v.echelon === "Départemental") return dans(v.departements, dep);
+    return v.echelon === "Académique" && (!r || r.aca_vise_dep) && dans(v.academies, aca);
+  }
+
+  /* ---------- Veille : vigilances météorologiques (onglet Veille, 2.43) ----------
+     Le relais n8n (veille/relais-vigilance-n8n.json, téléchargé préréglé depuis l'onglet Veille) lit la carte de vigilance
+     de Météo-France (API DonneesPubliquesVigilance, clé gardée dans n8n) et réécrit la table Vigilances : une ligne par
+     département, phénomène et échéance (aujourd'hui, demain) en jaune, orange ou rouge. Chaque changement est ajouté au
+     journal. Réglages (seuil, phénomènes suivis) : clé « veille » de Config. */
+  const PHENOMENES_VIGILANCE = { 1: "Vent violent", 2: "Pluie-inondation", 3: "Orages", 4: "Crues", 5: "Neige-verglas", 6: "Canicule", 7: "Grand froid", 8: "Avalanches", 9: "Vagues-submersion" };
+  const COULEURS_VIGILANCE = [
+    { niveau: 1, nom: "Vert", fond: "#31AA35", texte: "#FFFFFF" }, { niveau: 2, nom: "Jaune", fond: "#FFF600", texte: "#3A3A00" },
+    { niveau: 3, nom: "Orange", fond: "#FFB82B", texte: "#3A2400" }, { niveau: 4, nom: "Rouge", fond: "#CC0000", texte: "#FFFFFF" },
+  ];
+  const ECHEANCES_VIGILANCE = ["Aujourd'hui", "Demain"];
+  const optionsCouleurs = () => json({ choices: COULEURS_VIGILANCE.map(c => c.nom), choiceOptions: Object.fromEntries(COULEURS_VIGILANCE.map(c => [c.nom, { fillColor: c.fond, textColor: c.texte }])) });
+  const COLONNES_VIGILANCES = [
+    { id: "Departement_code", type: "Text" }, { id: "Departement", type: "Text" }, { id: "Phenomene", type: "Text" },
+    { id: "Couleur", type: "Choice", widgetOptions: optionsCouleurs() }, { id: "Niveau", type: "Int" },
+    { id: "Echeance", type: "Choice", widgetOptions: json({ choices: ECHEANCES_VIGILANCE }) },
+    { id: "Debut", type: "DateTime:Europe/Paris" }, { id: "Fin", type: "DateTime:Europe/Paris" }, { id: "Mise_a_jour", type: "DateTime:Europe/Paris" }, { id: "Littoral", type: "Bool" },
+  ];
+  const COLONNES_VIGILANCES_JOURNAL = [
+    { id: "Le", type: "DateTime:Europe/Paris" }, { id: "Departement_code", type: "Text" }, { id: "Departement", type: "Text" }, { id: "Phenomene", type: "Text" },
+    { id: "Echeance", type: "Choice", widgetOptions: json({ choices: ECHEANCES_VIGILANCE }) },
+    { id: "Avant", type: "Choice", widgetOptions: optionsCouleurs() }, { id: "Apres", type: "Choice", widgetOptions: optionsCouleurs() }, { id: "Niveau", type: "Int" },
+  ];
+  function reglagesVeille(config) {
+    const v = (config && config.valeurs && config.valeurs.veille) || {};
+    return { seuil: [2, 3, 4].includes(v.seuil) ? v.seuil : 3, phenomenes: Array.isArray(v.phenomenes) ? v.phenomenes : [] };
+  }
+  async function lireVigilances(g) {
+    let t; try { t = await grist.docApi.fetchTable((g && g.vigilances) || DEFAUTS_GENERAL.vigilances); } catch (_) { return null; }
+    const v = (k, i) => (t[k] || [])[i];
+    return (t.id || []).map((id, i) => ({ id, code: String(v("Departement_code", i) || ""), departement: String(v("Departement", i) || ""), phenomene: String(v("Phenomene", i) || ""),
+      niveau: Number(v("Niveau", i)) || 0, couleur: String(v("Couleur", i) || ""), echeance: String(v("Echeance", i) || ""), debut: v("Debut", i) || null, fin: v("Fin", i) || null,
+      maj: v("Mise_a_jour", i) || null, littoral: !!v("Littoral", i) }));
+  }
+
+  /* ---------- Campagnes de sollicitation des établissements (onglet Établissements) ----------
+     Clé « campagnes » de Config = { liste: [{ id, nom, referentiel, crit: { colonne: [valeurs] }, recherche, avecMail,
+     mode: "une" | "quotidienne", debut (secondes), fin (secondes | null), close, message: { objet, corps } }] }.
+     Un établissement visé a répondu s'il a enregistré un signalement (ou « Rien à signaler ») depuis le lancement
+     (mode « une »), ou ce jour-là (mode « quotidienne »). */
+  const MODES_CAMPAGNE = { une: "Une réponse attendue", quotidienne: "Une réponse attendue chaque jour" };
+  const campagnes = config => ((config && config.valeurs && config.valeurs.campagnes && config.valeurs.campagnes.liste) || []).filter(c => c && c.id);
+  const campagneEnCours = (c, t = Date.now() / 1000) => !!c && !c.close && (!c.debut || c.debut <= t) && (!c.fin || t <= c.fin);
+  const valeursCellule = v => (Array.isArray(v) ? (v[0] === "L" ? v.slice(1) : v) : [v]).map(x => (x == null ? "" : String(x).trim())).filter(Boolean);
+  // L'établissement (ligne du référentiel { colonne: valeur }) est-il visé par la campagne ? cols : { nom, uai, commune, mail }
+  function campagneVise(c, ligne, cols) {
+    if (!c || !ligne) return false;
+    for (const [col, vals] of Object.entries(c.crit || {})) if (Array.isArray(vals) && vals.length && !valeursCellule(ligne[col]).some(x => vals.includes(x))) return false;
+    if (c.avecMail && cols && cols.mail && !String(ligne[cols.mail] || "").trim()) return false;
+    const q = norm(c.recherche || "");
+    if (q && cols) { const txt = norm([cols.nom, cols.uai, cols.commune].filter(Boolean).map(k => ligne[k]).join(" ")); if (!txt.includes(q)) return false; }
+    return true;
+  }
+  // Jour civil à Paris (AAAA-MM-JJ) d'un instant en secondes
+  const fmtJour = new Intl.DateTimeFormat("fr-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" });
+  const jourParis = s => s == null || s === "" ? "" : fmtJour.format(new Date(Number(s) * 1000));
+  // Réponse attendue : saisie (en secondes) qui compte pour la campagne, le jour donné (AAAA-MM-JJ, mode quotidien)
+  function reponseCompte(c, saisie, jour) {
+    if (saisie == null || saisie === "" || (c.debut && saisie < c.debut)) return false;
+    return c.mode === "quotidienne" ? jourParis(saisie) === (jour || jourParis(Date.now() / 1000)) : true;
   }
   const COLONNES_CRENEAUX = [
     { id: "Date", type: "Date" }, { id: "Nom", type: "Text" },
@@ -785,6 +922,8 @@ return sorted(champs)`;
     ajouterTableTechnique(g.affectations, colonnesAffectations(g, config), "Planning : agents affectés à chaque créneau, avec leur fonction et leur périmètre.");
     ajouterTableTechnique(g.actions, colonnesActions(g, config), "Suivi des actions de la cellule : kanban des coordinateurs (onglet Actions).");
     ajouterTableTechnique(g.emargements, colonnesEmargements(g), "Émargement : prises et fins de service des agents (page de saisie, suivi dans Équipe › Planning).");
+    ajouterTableTechnique(g.vigilances, COLONNES_VIGILANCES, "Veille : vigilances météo en cours, écrites par le relais n8n (onglet Veille).");
+    ajouterTableTechnique(g.vigilances_journal, COLONNES_VIGILANCES_JOURNAL, "Veille : journal des changements de vigilance (alertes, retour d'expérience).");
     // Formules de la table Agents : après Affectations, qu'elles lisent
     const formules = colsAgents.filter(c => c.isFormula && !(meta[g.agents] && meta[g.agents].colonnes[c.id]));
     if (formules.length) etapes.push({ id: `formule-${g.agents}`, groupe: "Tables", coche: true, titre: `Ajouter ${formules.map(c => `${g.agents}.${c.id}`).join(", ")}`,
@@ -1013,5 +1152,9 @@ return sorted(champs)`;
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer, COLONNES_ETABLISSEMENT,
     instantaneSchema, majSchemaPublic, tableauxDeBord, valeurTableauxDeBord, INVITE, DUREES_INVITE, formuleAuteur, auteurAMettreAJour,
     REGIONS_ACADEMIQUES, regionDeAcademie, genreSection, rattachementSection, colonnesHistoriqueTableau, MOUVEMENTS_TABLEAU,
+    ECHELONS_VISA, COLONNES_VISEURS, STATUTS_VALIDATION, STATUT, COLONNE_STATUT, MARQUE_STATUT, estFavorable, reglagesValidation,
+    optionsStatutValidation, formuleStatutValidation, statutValidation, viseurCouvre,
+    PHENOMENES_VIGILANCE, COULEURS_VIGILANCE, ECHEANCES_VIGILANCE, COLONNES_VIGILANCES, COLONNES_VIGILANCES_JOURNAL, reglagesVeille, lireVigilances,
+    MODES_CAMPAGNE, campagnes, campagneEnCours, campagneVise, valeursCellule, jourParis, reponseCompte,
   };
 })();
