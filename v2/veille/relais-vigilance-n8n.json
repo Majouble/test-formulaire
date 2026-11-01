@@ -1,0 +1,76 @@
+{
+  "name": "Veille PRISME — vigilance météo (Météo-France → Grist)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "name": "Toutes les 30 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "name": "Essai manuel",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "/* Veille PRISME : carte de vigilance de Météo-France → table Vigilances du document Grist (et journal des changements).\n   Lancé toutes les 30 minutes par le déclencheur. Une ligne par département, phénomène et échéance (aujourd'hui, demain)\n   en jaune, orange ou rouge ; chaque changement de couleur est ajouté au journal ; une alerte Tchap (facultative) annonce\n   les passages au seuil (orange par défaut), avec le nombre d'établissements et d'élèves concernés.\n   Téléchargé préréglé depuis l'onglet Veille de l'administration : restent à saisir la clé Météo-France, la clé d'API Grist\n   et, si vous voulez l'alerte, le salon Tchap. */\n\n// ===== À RÉGLER =====\nconst CLE_METEOFRANCE = 'cle-api-meteofrance';                  // portail-api.meteofrance.fr › « Vigilance » › clé d'API (mode « API Key », pas le jeton qui expire en 1 h)\nconst API_GRIST = 'https://grist.numerique.gouv.fr/o/crise/api';   // serveur et organisation, suivis de /api\nconst DOC = 'identifiant-du-document';                          // dans l'adresse du document : …/o/crise/<identifiant>/…\nconst CLE_GRIST = 'cle-api-grist';                              // compte Grist propriétaire du document (Paramètres du compte › Clé d'API)\n// Alerte Tchap (facultative : laisser vide pour ne rien envoyer)\nconst TCHAP_SERVEUR = '';                                       // ex. https://matrix.agent.education.tchap.gouv.fr\nconst TCHAP_JETON = '';                                         // jeton d'accès du compte qui publie dans le salon\nconst TCHAP_SALON = '';                                         // identifiant du salon : !abcdef:agent.education.tchap.gouv.fr\nconst SEUIL_ALERTE = '3';                                       // 3 : orange et rouge ; 4 : rouge seulement\nconst LIEN_ADMIN = '';                                          // lien de la page d'administration, ajouté à l'alerte\n// Préréglé par l'onglet Veille\nconst TABLE = 'Vigilances';\nconst JOURNAL = 'Vigilances_journal';\nconst REFERENTIEL = 'Etablissements';\nconst COL_DEP = 'Departement';\nconst COL_EFFECTIF = 'Effectif';\nconst DEPARTEMENTS = '';                                        // codes suivis, séparés par des virgules ; vide = tous\nconst DEP_NOMS = {};\n// =====================\n\nconst URL_MF = 'https://public-api.meteofrance.fr/public/DPVigilance/v1/cartevigilance/encours';\nconst PHEN = { 1: 'Vent violent', 2: 'Pluie-inondation', 3: 'Orages', 4: 'Crues', 5: 'Neige-verglas', 6: 'Canicule', 7: 'Grand froid', 8: 'Avalanches', 9: 'Vagues-submersion' };\nconst COUL = ['', 'Vert', 'Jaune', 'Orange', 'Rouge'], PASTILLE = ['', '🟢', '🟡', '🟠', '🔴'];\nconst COLS = ['Departement_code', 'Departement', 'Phenomene', 'Couleur', 'Niveau', 'Echeance', 'Debut', 'Fin', 'Mise_a_jour', 'Littoral'];\nconst http = o => this.helpers.httpRequest(o);\nconst sec = v => v == null || v === '' ? null : typeof v === 'number' ? (v > 1e12 ? v / 1000 : v) : ((Date.parse(v) / 1000) || null);\nconst nf = n => Math.round(Number(n) || 0).toLocaleString('fr-FR');\nconst grist = async (chemin, o = {}) => {\n  try {\n    const r = await http({ url: `${API_GRIST}/docs/${DOC}${chemin}`, method: o.method || 'GET', body: o.body, json: true, timeout: 120000,\n      headers: { Authorization: `Bearer ${CLE_GRIST}` } });\n    return typeof r === 'string' ? JSON.parse(r) : r;\n  } catch (e) { throw new Error(`Grist ${chemin.split('?')[0]} : ${e.message} — vérifiez API_GRIST, DOC et CLE_GRIST`); }\n};\n\n// 1. Carte de vigilance en cours\nlet carte;\ntry { carte = await http({ url: URL_MF, headers: { apikey: CLE_METEOFRANCE, accept: 'application/json' }, json: true, timeout: 60000 }); }\ncatch (e) { throw new Error(`Météo-France : ${e.message} — vérifiez CLE_METEOFRANCE (clé d'API de l'API « Vigilance »)`); }\nif (typeof carte === 'string') carte = JSON.parse(carte);\nconst p = (carte && carte.product) || carte || {};\nif (!Array.isArray(p.periods) || !p.periods.length) throw new Error('Météo-France : carte de vigilance sans période (format inattendu)');\nconst maj = sec(p.update_time) || Date.now() / 1000;\nconst suivis = DEPARTEMENTS.split(',').map(x => x.trim().toUpperCase()).filter(Boolean);\nconst parCle = new Map();\nfor (const per of p.periods) {\n  const ech = per.echeance === 'J' ? \"Aujourd'hui\" : per.echeance === 'J1' ? 'Demain' : null;\n  if (!ech) continue;\n  const debut = sec(per.begin_validity_time), fin = sec(per.end_validity_time);\n  for (const d of ((per.timelaps || {}).domain_ids || [])) {\n    let code = String(d.domain_id || '').toUpperCase(), littoral = false;\n    if (!DEP_NOMS[code] && /^(\\d{2}|2A|2B)10$/.test(code)) { code = code.slice(0, -2); littoral = true; }   // littoral d'un département (vagues-submersion)\n    if (!DEP_NOMS[code] || (suivis.length && !suivis.includes(code))) continue;\n    for (const ph of (d.phenomenon_items || [])) {\n      const n = Number(ph.phenomenon_max_color_id);\n      if (!(n >= 2 && n <= 4)) continue;\n      const phen = PHEN[Number(ph.phenomenon_id)] || `Phénomène ${ph.phenomenon_id}`, k = `${code}|${phen}|${ech}`, prec = parCle.get(k);\n      if (prec && prec.Niveau >= n) continue;\n      parCle.set(k, { Departement_code: code, Departement: DEP_NOMS[code], Phenomene: phen, Couleur: COUL[n], Niveau: n, Echeance: ech, Debut: debut, Fin: fin, Mise_a_jour: maj, Littoral: littoral });\n    }\n  }\n}\nconst nouvelles = [...parCle.values()];\n\n// 2. Comparaison avec l'état enregistré\nconst avant = (await grist(`/tables/${TABLE}/records`)).records || [];\nconst cle = f => `${f.Departement_code}|${f.Phenomene}|${f.Echeance}`;\nconst ancien = new Map(avant.map(r => [cle(r.fields || {}), r.fields || {}]));\nconst changements = [];\nfor (const f of nouvelles) { const a = ancien.get(cle(f)); if (!a || Number(a.Niveau) !== f.Niveau) changements.push({ f, avant: a ? Number(a.Niveau) || 1 : 1 }); }\nfor (const [k, a] of ancien) if (!parCle.has(k)) changements.push({ f: { ...a, Niveau: 1, Couleur: 'Vert' }, avant: Number(a.Niveau) || 1 });\n\n// 3. Écriture : table réécrite seulement si quelque chose a changé ; sinon, heure de mise à jour\nconst actions = [];\nif (changements.length) {\n  if (avant.length) actions.push(['BulkRemoveRecord', TABLE, avant.map(r => r.id)]);\n  if (nouvelles.length) actions.push(['BulkAddRecord', TABLE, nouvelles.map(() => null), Object.fromEntries(COLS.map(c => [c, nouvelles.map(f => f[c])]))]);\n  const le = Date.now() / 1000, col = fn => changements.map(fn);\n  actions.push(['BulkAddRecord', JOURNAL, changements.map(() => null), { Le: col(() => le), Departement_code: col(c => c.f.Departement_code), Departement: col(c => c.f.Departement),\n    Phenomene: col(c => c.f.Phenomene), Echeance: col(c => c.f.Echeance), Avant: col(c => COUL[c.avant] || 'Vert'), Apres: col(c => COUL[c.f.Niveau] || 'Vert'), Niveau: col(c => c.f.Niveau) }]);\n} else if (avant.length && avant.some(r => (r.fields || {}).Mise_a_jour !== maj)) {\n  actions.push(['BulkUpdateRecord', TABLE, avant.map(r => r.id), { Mise_a_jour: avant.map(() => maj) }]);\n}\nif (actions.length) await grist('/apply', { method: 'POST', body: actions });\n\n// 4. Alerte Tchap : départements qui atteignent le seuil, avec établissements et élèves concernés\nconst seuil = Number(SEUIL_ALERTE) || 3;\nconst montees = changements.filter(c => c.f.Niveau >= seuil && c.avant < seuil);\nlet alerte = null;\nif (montees.length) {\n  const norme = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();\n  const parNom = new Map(Object.entries(DEP_NOMS).map(([c, n]) => [norme(n), c]));\n  const codeDe = v => { const s = String(v || '').trim().toUpperCase(), m = s.match(/^0?(2A|2B|97\\d|\\d{1,2})\\b/); if (m) { const c = m[1].length === 1 ? '0' + m[1] : m[1]; if (DEP_NOMS[c]) return c; } return parNom.get(norme(v)) || null; };\n  const parDep = {};\n  for (const avecEff of COL_EFFECTIF ? [true, false] : [false]) {\n    try {\n      const q = `SELECT \"${COL_DEP}\" AS d, COUNT(*) AS n${avecEff ? `, SUM(\"${COL_EFFECTIF}\") AS e` : ''} FROM \"${REFERENTIEL}\" GROUP BY \"${COL_DEP}\"`;\n      for (const x of (await grist(`/sql?q=${encodeURIComponent(q)}`)).records || []) {\n        const f = x.fields || x, c = codeDe(f.d); if (!c) continue;\n        parDep[c] = parDep[c] || { n: 0, e: 0, avecEff }; parDep[c].n += Number(f.n) || 0; parDep[c].e += Number(f.e) || 0;\n      }\n      break;\n    } catch (_) { /* colonne Effectif absente : nouvel essai sans elle */ }\n  }\n  const groupes = new Map();\n  for (const c of montees) { const k = `${c.f.Niveau}|${c.f.Phenomene}|${c.f.Echeance}`; if (!groupes.has(k)) groupes.set(k, []); groupes.get(k).push(c.f); }\n  const lignes = [...groupes.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([k, fs]) => {\n    const [n, phen, ech] = k.split('|'), deps = fs.map(f => f.Departement_code);\n    const tot = deps.reduce((s, c) => ({ n: s.n + ((parDep[c] || {}).n || 0), e: s.e + ((parDep[c] || {}).e || 0), eff: s.eff || !!(parDep[c] || {}).avecEff }), { n: 0, e: 0, eff: false });\n    const chiffres = tot.n ? ` — ${nf(tot.n)} établissement${tot.n > 1 ? 's' : ''}${tot.eff && tot.e ? `, ${nf(tot.e)} élèves` : ''}` : '';\n    return { texte: `${PASTILLE[n]} Vigilance ${COUL[n].toLowerCase()} ${phen.toLowerCase()} (${ech.toLowerCase()}) : ${fs.map(f => `${f.Departement} (${f.Departement_code})`).join(', ')}${chiffres}`,\n      html: `${PASTILLE[n]} <b>Vigilance ${COUL[n].toLowerCase()} ${phen.toLowerCase()}</b> (${ech.toLowerCase()}) : ${fs.map(f => `${f.Departement} (${f.Departement_code})`).join(', ')}${chiffres}` };\n  });\n  alerte = { texte: [`PRISME — veille météo`, ...lignes.map(l => l.texte), LIEN_ADMIN ? `Détail : ${LIEN_ADMIN}` : ''].filter(Boolean).join('\\n'),\n    html: [`<b>PRISME — veille météo</b>`, ...lignes.map(l => l.html), LIEN_ADMIN ? `<a href=\"${LIEN_ADMIN}\">Ouvrir l'onglet Veille</a>` : ''].filter(Boolean).join('<br>') };\n  if (TCHAP_SERVEUR && TCHAP_JETON && TCHAP_SALON) {\n    try {\n      await http({ url: `${TCHAP_SERVEUR.replace(/\\/$/, '')}/_matrix/client/v3/rooms/${encodeURIComponent(TCHAP_SALON)}/send/m.room.message/prisme-veille-${Date.now()}`, method: 'PUT', json: true, timeout: 30000,\n        headers: { Authorization: `Bearer ${TCHAP_JETON}` }, body: { msgtype: 'm.text', body: alerte.texte, format: 'org.matrix.custom.html', formatted_body: alerte.html } });\n      alerte.envoyee = true;\n    } catch (e) { alerte.erreur = `Tchap : ${e.message}`; }\n  }\n}\nreturn [{ json: { mise_a_jour: new Date(maj * 1000).toISOString(), vigilances: nouvelles.length, changements: changements.length, alerte } }];\n"
+      },
+      "name": "Vigilance vers Grist",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        80
+      ]
+    }
+  ],
+  "connections": {
+    "Toutes les 30 minutes": {
+      "main": [
+        [
+          {
+            "node": "Vigilance vers Grist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Essai manuel": {
+      "main": [
+        [
+          {
+            "node": "Vigilance vers Grist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all",
+    "saveManualExecutions": true,
+    "saveExecutionProgress": false
+  }
+}

@@ -179,8 +179,8 @@
   }
   function preparer(sel) {
     const d = new Date();
-    projet = { ...sel, nom: `Sollicitation du ${d.toLocaleDateString("fr-FR")}${general.situation ? ` — ${general.situation}` : ""}`, mode: "une", fin: "",
-      message: { ...RELANCE_DEFAUT } };
+    projet = { ...sel, nom: sel.nom || `Sollicitation du ${d.toLocaleDateString("fr-FR")}${general.situation ? ` — ${general.situation}` : ""}`,
+      mode: sel.mode || "une", fin: sel.fin || "", message: { ...RELANCE_DEFAUT } };
     dessiner().then(() => { const p = $("cp-projet"); if (p) p.scrollIntoView({ block: "start", behavior: "smooth" }); const n = $("cp-nom"); if (n) n.focus({ preventScroll: true }); });
   }
   async function lancer() {
@@ -234,5 +234,10 @@
     try { await charger(); await dessiner(); }
     catch (e) { racine.innerHTML = `<section class="carte"><h2>Campagnes</h2><p class="avert">Lecture impossible : ${esc(e.message || e)}</p></section>`; }
   }
-  window.OngletCampagnes = { afficher, preparer };
+  // Depuis un autre onglet (Veille) : ouvre l'onglet Établissements et prépare la campagne sur la sélection donnée
+  async function preparerDepuis(sel) {
+    const b = document.querySelector('nav button[data-onglet="liens"]'); if (b) b.click();
+    await afficher(); preparer(sel);
+  }
+  window.OngletCampagnes = { afficher, preparer, preparerDepuis };
 })();
