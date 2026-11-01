@@ -437,6 +437,8 @@
   .bandeau-visa .grand, .bandeau-campagne .grand { font-weight: 700; }
   .bandeau-campagne p { margin: 0; flex: 1 1 280px; }
   .pastille-statut { font-weight: 600; }
+  .bandeau-veille { border-radius: 8px; padding: 10px 16px; margin: 0 0 16px; background: var(--x-fef7ec); color: var(--x-716043); border-left: 4px solid var(--x-d68a00); font-size: .9rem; }
+  .bandeau-veille p { margin: 2px 0; }
   .badge-clos { font-size: .72rem; font-weight: 700; padding: 1px 8px; border-radius: 9px; background: var(--x-e5e5e5); color: var(--x-3a3a3a); text-transform: uppercase; letter-spacing: .03em; }
   .cartes .vide { color: var(--gris); padding: 6px 2px; }
   #plus-cartes { margin-top: 10px; }
@@ -621,6 +623,7 @@
   <!-- ===== Accueil : nouveau signalement ou liste des signalements ===== -->
   <section id="accueil" aria-labelledby="titre-accueil">
     <h1 id="titre-accueil" class="titre-accueil">Que voulez-vous faire ?</h1>
+    <div class="bandeau-veille" id="bandeau-veille" role="status" hidden></div>
     <div class="bandeau-campagne" id="bandeau-campagne" role="status" hidden></div>
     <div class="bandeau-visa" id="bandeau-visa" role="status" hidden></div>
     <div class="portes">
@@ -2104,6 +2107,7 @@ async function chargerConfigurationEtapes() {
 
   await Promise.all([pProfil, pReglages]);
   await chargerProfilViseur();
+  lireVeille().then(() => { if (vue === "accueil") majBandeauVeille(); });
   appliquerOptions(optionsParametres);
   appliquerBornes();
   // Conditions qui désignent une colonne introuvable : la question ne pourrait jamais s'afficher
@@ -6632,6 +6636,31 @@ function majBandeauVisa() {
     <button type="button" class="secondaire petit" id="btn-file-visa">${fileVisa ? "Afficher tous les signalements" : n ? "Afficher la file" : "Afficher la file (vide)"}</button>`;
   $("btn-file-visa").addEventListener("click", () => { fileVisa = !fileVisa; nbCartes = 30; afficherCartes(); });
 }
+/* Veille (onglet Veille de l'administration, 2.43) : vigilances météo au-dessus du seuil, rappelées aux agents sur l'accueil.
+   Les établissements n'y ont pas accès (table illisible par leur lien) : rien ne s'affiche pour eux. */
+let vigilancesPage = null, dernierVeille = 0;
+async function lireVeille() {
+  dernierVeille = Date.now();
+  try { vigilancesPage = await window.Socle.lireVigilances(socleGeneral); } catch (_) { vigilancesPage = null; }
+}
+function majBandeauVeille() {
+  const b = $("bandeau-veille"); if (!b) return;
+  if (Date.now() - dernierVeille > 600000) lireVeille().then(majBandeauVeille);   // relue toutes les 10 minutes
+  if (modeEtab || !vigilancesPage) { b.hidden = true; return; }
+  const V = window.Socle, r = V.reglagesVeille(socleConfig), groupes = new Map();
+  for (const v of vigilancesPage) {
+    if (v.niveau < r.seuil || (r.phenomenes.length && !r.phenomenes.includes(v.phenomene))) continue;
+    const k = `${v.niveau}|${v.echeance === "Demain" ? 1 : 0}|${v.phenomene}`;
+    if (!groupes.has(k)) groupes.set(k, { v, deps: [] });
+    if (!groupes.get(k).deps.includes(v.departement)) groupes.get(k).deps.push(v.departement);
+  }
+  if (!groupes.size) { b.hidden = true; return; }
+  const pastille = ["", "🟢", "🟡", "🟠", "🔴"];
+  b.hidden = false;
+  b.innerHTML = [...groupes.entries()].sort((x, y) => y[0].localeCompare(x[0])).slice(0, 4).map(([, g]) =>
+    `<p>${pastille[g.v.niveau] || ""} <strong>Vigilance ${esc(String(g.v.couleur).toLowerCase())} ${esc(g.v.phenomene.toLowerCase())}</strong> ${g.v.echeance === "Demain" ? "demain" : "aujourd'hui"} : ${esc(g.deps.slice(0, 8).join(", "))}${g.deps.length > 8 ? ` et ${g.deps.length - 8} autres` : ""}</p>`).join("")
+    + (groupes.size > 4 ? `<p>… et ${groupes.size - 4} autre(s) vigilance(s).</p>` : "");
+}
 /* Campagnes (onglet Établissements de l'administration) : la page d'un établissement ouverte par son lien affiche la
    campagne qui le vise et propose « Rien à signaler », qui enregistre un signalement en retour à la normale. */
 function campagnesDeLEtab() {
@@ -7238,7 +7267,7 @@ function afficherCartes() {
   $("titre-liste").textContent = modeEtab ? "Vos signalements" : "Signalements";
   $("porte-nouveau-texte").textContent = modeEtab ? "Un événement à signaler dans votre établissement." : "Un événement à signaler dans un établissement.";
   $("porte-retrouver-texte").textContent = modeEtab ? "Consulter ou actualiser vos signalements." : "Consulter ou actualiser un signalement existant.";
-  majBandeauVisa(); majBandeauCampagne();
+  majBandeauVisa(); majBandeauCampagne(); majBandeauVeille();
   const q = $("recherche-signalements").value.trim(), mots = sansAccent(q).split(/\s+/).filter(Boolean);
   const base0 = fileVisa ? indexRecherche.filter(x => aViserParMoi(x.l)) : indexRecherche;
   const base = filtreActif() ? base0.filter(x => passeFiltre(x.l)) : base0;

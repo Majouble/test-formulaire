@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.42.0 (01/11/2026)";
+  const VERSION = "2.43.0 (02/11/2026)";
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
@@ -33,6 +33,8 @@
     affectations: "Affectations",          // planning : agents affectés à chaque créneau
     emargements: "Emargements",            // émargement : prises et fins de service
     actions: "Actions",                    // suivi des actions (kanban des coordinateurs)
+    vigilances: "Vigilances",              // veille : vigilances météo en cours (relais n8n, onglet Veille)
+    vigilances_journal: "Vigilances_journal", // veille : changements de vigilance (alertes, retour d'expérience)
     retour_normale: ["RAS"],               // qualifications qui valent retour à la normale
   };
   const NATURES = ["Nouveau signalement", "Mise à jour"];
@@ -553,6 +555,41 @@ return sorted(champs)`;
     return v.echelon === "Académique" && (!r || r.aca_vise_dep) && dans(v.academies, aca);
   }
 
+  /* ---------- Veille : vigilances météorologiques (onglet Veille, 2.43) ----------
+     Le relais n8n (veille/relais-vigilance-n8n.json, téléchargé préréglé depuis l'onglet Veille) lit la carte de vigilance
+     de Météo-France (API DonneesPubliquesVigilance, clé gardée dans n8n) et réécrit la table Vigilances : une ligne par
+     département, phénomène et échéance (aujourd'hui, demain) en jaune, orange ou rouge. Chaque changement est ajouté au
+     journal. Réglages (seuil, phénomènes suivis) : clé « veille » de Config. */
+  const PHENOMENES_VIGILANCE = { 1: "Vent violent", 2: "Pluie-inondation", 3: "Orages", 4: "Crues", 5: "Neige-verglas", 6: "Canicule", 7: "Grand froid", 8: "Avalanches", 9: "Vagues-submersion" };
+  const COULEURS_VIGILANCE = [
+    { niveau: 1, nom: "Vert", fond: "#31AA35", texte: "#FFFFFF" }, { niveau: 2, nom: "Jaune", fond: "#FFF600", texte: "#3A3A00" },
+    { niveau: 3, nom: "Orange", fond: "#FFB82B", texte: "#3A2400" }, { niveau: 4, nom: "Rouge", fond: "#CC0000", texte: "#FFFFFF" },
+  ];
+  const ECHEANCES_VIGILANCE = ["Aujourd'hui", "Demain"];
+  const optionsCouleurs = () => json({ choices: COULEURS_VIGILANCE.map(c => c.nom), choiceOptions: Object.fromEntries(COULEURS_VIGILANCE.map(c => [c.nom, { fillColor: c.fond, textColor: c.texte }])) });
+  const COLONNES_VIGILANCES = [
+    { id: "Departement_code", type: "Text" }, { id: "Departement", type: "Text" }, { id: "Phenomene", type: "Text" },
+    { id: "Couleur", type: "Choice", widgetOptions: optionsCouleurs() }, { id: "Niveau", type: "Int" },
+    { id: "Echeance", type: "Choice", widgetOptions: json({ choices: ECHEANCES_VIGILANCE }) },
+    { id: "Debut", type: "DateTime:Europe/Paris" }, { id: "Fin", type: "DateTime:Europe/Paris" }, { id: "Mise_a_jour", type: "DateTime:Europe/Paris" }, { id: "Littoral", type: "Bool" },
+  ];
+  const COLONNES_VIGILANCES_JOURNAL = [
+    { id: "Le", type: "DateTime:Europe/Paris" }, { id: "Departement_code", type: "Text" }, { id: "Departement", type: "Text" }, { id: "Phenomene", type: "Text" },
+    { id: "Echeance", type: "Choice", widgetOptions: json({ choices: ECHEANCES_VIGILANCE }) },
+    { id: "Avant", type: "Choice", widgetOptions: optionsCouleurs() }, { id: "Apres", type: "Choice", widgetOptions: optionsCouleurs() }, { id: "Niveau", type: "Int" },
+  ];
+  function reglagesVeille(config) {
+    const v = (config && config.valeurs && config.valeurs.veille) || {};
+    return { seuil: [2, 3, 4].includes(v.seuil) ? v.seuil : 3, phenomenes: Array.isArray(v.phenomenes) ? v.phenomenes : [] };
+  }
+  async function lireVigilances(g) {
+    let t; try { t = await grist.docApi.fetchTable((g && g.vigilances) || DEFAUTS_GENERAL.vigilances); } catch (_) { return null; }
+    const v = (k, i) => (t[k] || [])[i];
+    return (t.id || []).map((id, i) => ({ id, code: String(v("Departement_code", i) || ""), departement: String(v("Departement", i) || ""), phenomene: String(v("Phenomene", i) || ""),
+      niveau: Number(v("Niveau", i)) || 0, couleur: String(v("Couleur", i) || ""), echeance: String(v("Echeance", i) || ""), debut: v("Debut", i) || null, fin: v("Fin", i) || null,
+      maj: v("Mise_a_jour", i) || null, littoral: !!v("Littoral", i) }));
+  }
+
   /* ---------- Campagnes de sollicitation des établissements (onglet Établissements) ----------
      Clé « campagnes » de Config = { liste: [{ id, nom, referentiel, crit: { colonne: [valeurs] }, recherche, avecMail,
      mode: "une" | "quotidienne", debut (secondes), fin (secondes | null), close, message: { objet, corps } }] }.
@@ -885,6 +922,8 @@ return sorted(champs)`;
     ajouterTableTechnique(g.affectations, colonnesAffectations(g, config), "Planning : agents affectés à chaque créneau, avec leur fonction et leur périmètre.");
     ajouterTableTechnique(g.actions, colonnesActions(g, config), "Suivi des actions de la cellule : kanban des coordinateurs (onglet Actions).");
     ajouterTableTechnique(g.emargements, colonnesEmargements(g), "Émargement : prises et fins de service des agents (page de saisie, suivi dans Équipe › Planning).");
+    ajouterTableTechnique(g.vigilances, COLONNES_VIGILANCES, "Veille : vigilances météo en cours, écrites par le relais n8n (onglet Veille).");
+    ajouterTableTechnique(g.vigilances_journal, COLONNES_VIGILANCES_JOURNAL, "Veille : journal des changements de vigilance (alertes, retour d'expérience).");
     // Formules de la table Agents : après Affectations, qu'elles lisent
     const formules = colsAgents.filter(c => c.isFormula && !(meta[g.agents] && meta[g.agents].colonnes[c.id]));
     if (formules.length) etapes.push({ id: `formule-${g.agents}`, groupe: "Tables", coche: true, titre: `Ajouter ${formules.map(c => `${g.agents}.${c.id}`).join(", ")}`,
@@ -1115,6 +1154,7 @@ return sorted(champs)`;
     REGIONS_ACADEMIQUES, regionDeAcademie, genreSection, rattachementSection, colonnesHistoriqueTableau, MOUVEMENTS_TABLEAU,
     ECHELONS_VISA, COLONNES_VISEURS, STATUTS_VALIDATION, STATUT, COLONNE_STATUT, MARQUE_STATUT, estFavorable, reglagesValidation,
     optionsStatutValidation, formuleStatutValidation, statutValidation, viseurCouvre,
+    PHENOMENES_VIGILANCE, COULEURS_VIGILANCE, ECHEANCES_VIGILANCE, COLONNES_VIGILANCES, COLONNES_VIGILANCES_JOURNAL, reglagesVeille, lireVigilances,
     MODES_CAMPAGNE, campagnes, campagneEnCours, campagneVise, valeursCellule, jourParis, reponseCompte,
   };
 })();
