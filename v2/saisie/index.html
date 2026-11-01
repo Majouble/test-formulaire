@@ -429,6 +429,14 @@
   .carte-meta { font-size: .82rem; color: var(--gris); }
   .carte-extrait { font-size: .82rem; color: var(--x-444444); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .carte-fleche { color: var(--gris); font-size: 1.3rem; line-height: 1; }
+  /* circuit de validation et campagnes (2.41) */
+  .bandeau-visa, .bandeau-campagne { border-radius: 8px; padding: 12px 16px; margin: 0 0 16px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+  .bandeau-visa { background: var(--x-e8edff); color: var(--x-000091); }
+  .bandeau-campagne { background: var(--x-fef7ec); color: var(--x-716043); border-left: 4px solid var(--x-d68a00); }
+  .bandeau-campagne.ok { background: var(--x-e8f5ec); color: var(--x-18753c); border-left-color: var(--x-18753c); }
+  .bandeau-visa .grand, .bandeau-campagne .grand { font-weight: 700; }
+  .bandeau-campagne p { margin: 0; flex: 1 1 280px; }
+  .pastille-statut { font-weight: 600; }
   .badge-clos { font-size: .72rem; font-weight: 700; padding: 1px 8px; border-radius: 9px; background: var(--x-e5e5e5); color: var(--x-3a3a3a); text-transform: uppercase; letter-spacing: .03em; }
   .cartes .vide { color: var(--gris); padding: 6px 2px; }
   #plus-cartes { margin-top: 10px; }
@@ -496,8 +504,8 @@
   .source.hors { background: var(--x-fff3cd); color: var(--x-8a4b00); }
 
   /* Thème clair / sombre (commun/theme.js) : couleurs des règles, valeurs sombres déduites des claires */
-  :root { --x-000091: #000091; --x-0f5a2c: #0f5a2c; --x-1212ff: #1212ff; --x-161616: #161616; --x-18753c: #18753c; --x-333333: #333333; --x-3a1c00: #3a1c00; --x-3a3a3a: #3a3a3a; --x-444444: #444444; --x-4a148c: #4a148c; --x-555555: #555555; --x-5a5a5a: #5a5a5a; --x-666666: #666666; --x-6a1b9a: #6a1b9a; --x-6a6a6a: #6a6a6a; --x-6b3100: #6b3100; --x-7f2d00: #7f2d00; --x-8a4b00: #8a4b00; --x-b0b0b0: #b0b0b0; --x-b34000: #b34000; --x-bbbbbb: #bbbbbb; --x-cccccc: #cccccc; --x-cfcff5: #cfcff5; --x-d8f0e0: #d8f0e0; --x-dddddd: #dddddd; --x-e3e3fd: #e3e3fd; --x-e5e5e5: #e5e5e5; --x-ecd9bd: #ecd9bd; --x-eeeeee: #eeeeee; --x-f0f0f0: #f0f0f0; --x-f1faf4: #f1faf4; --x-f3e5f5: #f3e5f5; --x-f3f3f3: #f3f3f3; --x-f3f3f6: #f3f3f6; --x-f6f6f6: #f6f6f6; --x-f8f8ff: #f8f8ff; --x-fafafa: #fafafa; --x-fff3a8: #fff3a8; --x-fff3cd: #fff3cd; --x-fff4e5: #fff4e5; --x-fff7f7: #fff7f7; --x-ffff00: #ffff00; --x-ffffff: #ffffff; }
-  :root[data-theme="dark"] { --x-000091: #8585f6; --x-0f5a2c: #b4edca; --x-1212ff: #303080; --x-161616: #cecece; --x-18753c: #27a658; --x-333333: #d1d1d1; --x-3a1c00: #fadcc0; --x-3a3a3a: #cdcdcd; --x-444444: #c8c8c8; --x-4a148c: #bd9ae9; --x-555555: #bebebe; --x-5a5a5a: #bcbcbc; --x-666666: #a5a5a5; --x-6a1b9a: #c593e4; --x-6a6a6a: #b3b3b3; --x-6b3100: #f8cca8; --x-7f2d00: #f7bd9d; --x-8a4b00: #f7cb98; --x-b0b0b0: #424242; --x-b34000: #fc8a4a; --x-bbbbbb: #3c3c3c; --x-cccccc: #333333; --x-cfcff5: #1b1b32; --x-d8f0e0: #1e2d23; --x-dddddd: #353535; --x-e3e3fd: #21213f; --x-e5e5e5: #252525; --x-ecd9bd: #3a3123; --x-eeeeee: #2c2c2c; --x-f0f0f0: #2a2a2a; --x-f1faf4: #16221a; --x-f3e5f5: #261a27; --x-f3f3f3: #1e1e1e; --x-f3f3f6: #1b1b1f; --x-f6f6f6: #161616; --x-f8f8ff: #0e0e24; --x-fafafa: #242424; --x-fff3a8: #443e1a; --x-fff3cd: #352d14; --x-fff4e5: #2c2011; --x-fff7f7: #240e0e; --x-ffff00: #878733; --x-ffffff: #1e1e1e; }
+  :root { --x-e8edff: #e8edff; --x-fef7ec: #fef7ec; --x-e8f5ec: #e8f5ec; --x-716043: #716043; --x-d68a00: #d68a00; --x-000091: #000091; --x-0f5a2c: #0f5a2c; --x-1212ff: #1212ff; --x-161616: #161616; --x-18753c: #18753c; --x-333333: #333333; --x-3a1c00: #3a1c00; --x-3a3a3a: #3a3a3a; --x-444444: #444444; --x-4a148c: #4a148c; --x-555555: #555555; --x-5a5a5a: #5a5a5a; --x-666666: #666666; --x-6a1b9a: #6a1b9a; --x-6a6a6a: #6a6a6a; --x-6b3100: #6b3100; --x-7f2d00: #7f2d00; --x-8a4b00: #8a4b00; --x-b0b0b0: #b0b0b0; --x-b34000: #b34000; --x-bbbbbb: #bbbbbb; --x-cccccc: #cccccc; --x-cfcff5: #cfcff5; --x-d8f0e0: #d8f0e0; --x-dddddd: #dddddd; --x-e3e3fd: #e3e3fd; --x-e5e5e5: #e5e5e5; --x-ecd9bd: #ecd9bd; --x-eeeeee: #eeeeee; --x-f0f0f0: #f0f0f0; --x-f1faf4: #f1faf4; --x-f3e5f5: #f3e5f5; --x-f3f3f3: #f3f3f3; --x-f3f3f6: #f3f3f6; --x-f6f6f6: #f6f6f6; --x-f8f8ff: #f8f8ff; --x-fafafa: #fafafa; --x-fff3a8: #fff3a8; --x-fff3cd: #fff3cd; --x-fff4e5: #fff4e5; --x-fff7f7: #fff7f7; --x-ffff00: #ffff00; --x-ffffff: #ffffff; }
+  :root[data-theme="dark"] { --x-e8edff: #1b1b35; --x-fef7ec: #281f11; --x-e8f5ec: #152218; --x-716043: #f5c783; --x-d68a00: #d68a00; --x-000091: #8585f6; --x-0f5a2c: #b4edca; --x-1212ff: #303080; --x-161616: #cecece; --x-18753c: #27a658; --x-333333: #d1d1d1; --x-3a1c00: #fadcc0; --x-3a3a3a: #cdcdcd; --x-444444: #c8c8c8; --x-4a148c: #bd9ae9; --x-555555: #bebebe; --x-5a5a5a: #bcbcbc; --x-666666: #a5a5a5; --x-6a1b9a: #c593e4; --x-6a6a6a: #b3b3b3; --x-6b3100: #f8cca8; --x-7f2d00: #f7bd9d; --x-8a4b00: #f7cb98; --x-b0b0b0: #424242; --x-b34000: #fc8a4a; --x-bbbbbb: #3c3c3c; --x-cccccc: #333333; --x-cfcff5: #1b1b32; --x-d8f0e0: #1e2d23; --x-dddddd: #353535; --x-e3e3fd: #21213f; --x-e5e5e5: #252525; --x-ecd9bd: #3a3123; --x-eeeeee: #2c2c2c; --x-f0f0f0: #2a2a2a; --x-f1faf4: #16221a; --x-f3e5f5: #261a27; --x-f3f3f3: #1e1e1e; --x-f3f3f6: #1b1b1f; --x-f6f6f6: #161616; --x-f8f8ff: #0e0e24; --x-fafafa: #242424; --x-fff3a8: #443e1a; --x-fff3cd: #352d14; --x-fff4e5: #2c2011; --x-fff7f7: #240e0e; --x-ffff00: #878733; --x-ffffff: #1e1e1e; }
   :root[data-theme="dark"] { --bleu: #8585f6; --bleu-clair: #21213f; --fond-suivi: #1b1b35; --fond-visa: #281f11; --brun: #f7cb98; --encre: #cecece; --gris: #a5a5a5; --trait: #353535; --fond: #1e1e1e; --fond-champ: #161616; --ok: #27a658; --erreur: #ff5655; --vigil: #fc8a4a; --vigil-bg: #2c2011; }
   :root[data-theme="dark"] /* ===== Parcours : accueil, :root[data-theme="dark"] saisie, :root[data-theme="dark"] bandeau de mode ===== */
   :root { --maj: #f6b18b; --maj-clair: #2a1a10; --maj-encre: #f8c3a6; }
@@ -613,6 +621,8 @@
   <!-- ===== Accueil : nouveau signalement ou liste des signalements ===== -->
   <section id="accueil" aria-labelledby="titre-accueil">
     <h1 id="titre-accueil" class="titre-accueil">Que voulez-vous faire ?</h1>
+    <div class="bandeau-campagne" id="bandeau-campagne" role="status" hidden></div>
+    <div class="bandeau-visa" id="bandeau-visa" role="status" hidden></div>
     <div class="portes">
       <button type="button" class="porte porte-nouveau" id="porte-nouveau">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 7v10M7 12h10"></path></svg>
@@ -2093,6 +2103,7 @@ async function chargerConfigurationEtapes() {
   activerVerdictRapide("va", defsAca, "statut-aca-rapide");
 
   await Promise.all([pProfil, pReglages]);
+  await chargerProfilViseur();
   appliquerOptions(optionsParametres);
   appliquerBornes();
   // Conditions qui désignent une colonne introuvable : la question ne pourrait jamais s'afficher
@@ -3502,6 +3513,13 @@ function afficherDossier() {
     p.className = "pastille"; p.textContent = q; p.title = "Qualification actuelle"; styleChoix(p, q);
     $("titre").appendChild(p);
   });
+  const stV = !modeEtab ? statutDe(derniere) : "";
+  if (stV) {
+    const sv = (window.Socle.STATUTS_VALIDATION || []).find(x => x.nom === stV) || {}, p = document.createElement("span");
+    p.className = "pastille pastille-statut"; p.textContent = stV; p.title = "Statut de validation (visas)";
+    if (sv.fond) { p.style.setProperty("--c-bg", sv.fond); p.style.setProperty("--c", sv.texte); }
+    $("titre").appendChild(p);
+  }
   const dInit = val(initiale, "Date");
   const d = secondes(dInit) != null ? `, créé le ${dateFr(dInit, metaDate)}` : "";
   const n = versions.length - 1;
@@ -6567,6 +6585,104 @@ async function chargerProfil() {
   } catch (e) { console.warn("Table Utilisateurs illisible", e); }
 }
 
+/* Viseur (onglet Validation de l'administration, 2.41) : l'agent de la page porte un échelon (Départemental, Académique)
+   et un périmètre de visa (départements, académies ; vide = tous) ; il prime sur l'ancienne table Utilisateurs.
+   reglageValidation : circuit de la table (null s'il n'est pas actif) ; la colonne de statut est une formule de Grist. */
+let monPerimetreVisa = null, reglageValidation = null, fileVisa = false;
+async function chargerProfilViseur() {
+  monPerimetreVisa = null;
+  try { reglageValidation = window.Socle.reglagesValidation(socleConfig, tableId); } catch (_) { reglageValidation = null; }
+  if (agentPage == null) return;
+  try {
+    const t = await grist.docApi.fetchTable(socleGeneral.agents || "Agents"), i = t.id.indexOf(agentPage);
+    if (i < 0 || !t.Echelon_visa) return;
+    const ech = String(t.Echelon_visa[i] || ""), niveau = ech === "Départemental" ? "departement" : ech === "Académique" ? "academie" : null;
+    if (!niveau) return;
+    monNiveau = niveau;
+    monProfil = { source: "agent", nom: String((t.Nom || [])[i] || "") };
+    monPerimetreVisa = { echelon: ech, departements: window.Socle.listeChoix((t.Visa_departements || [])[i]), academies: window.Socle.listeChoix((t.Visa_academies || [])[i]) };
+  } catch (_) { /* table Agents illisible : ancien fonctionnement */ }
+}
+// Département et académie de l'établissement d'une ligne (référentiel, à défaut colonnes recopiées de la table des réponses)
+function lieuDe(l) {
+  const e = (l && etabDeLigne(l)) || {}, d = l || {};
+  return { dep: String((E.departement && e[E.departement]) || d.Departement || ""), aca: String((E.academie && e[E.academie]) || d.Academie || "") };
+}
+const statutDe = l => reglageValidation && l ? String(l[reglageValidation.colonne] || "") : "";
+// Le viseur de la page peut-il viser ce dossier à cet échelon (« dep » | « aca ») ? Sans profil de viseur : les règles d'accès décident.
+function peutViser(echelonVisa, l = initiale) {
+  if (!monPerimetreVisa) return true;
+  const { dep, aca } = lieuDe(l);
+  return window.Socle.viseurCouvre(monPerimetreVisa, echelonVisa, dep, aca, reglageValidation || { aca_vise_dep: true });
+}
+// Dossier (ligne initiale) en attente du visa de ce viseur, dans son périmètre
+function aViserParMoi(l) {
+  if (!monPerimetreVisa || !reglageValidation) return false;
+  const s = statutDe(derniereDe(l)), V = window.Socle;
+  return (s === V.STATUT.dep && peutViser("dep", l)) || (s === V.STATUT.aca && peutViser("aca", l));
+}
+function majBandeauVisa() {
+  const b = $("bandeau-visa"); if (!b) return;
+  if (!monPerimetreVisa || !reglageValidation || modeEtab) { b.hidden = true; fileVisa = false; return; }
+  const n = (indexRecherche || []).filter(x => aViserParMoi(x.l)).length, p = monPerimetreVisa;
+  const zone = p.echelon === "Départemental" ? p.departements : p.academies;
+  b.hidden = false;
+  b.innerHTML = `<span class="grand">${n ? `${n} dossier${n > 1 ? "s" : ""} à viser` : "Aucun dossier à viser"}</span>
+    <span>visa ${p.echelon === "Départemental" ? "départemental" : "académique"} · ${esc(zone.length ? zone.join(", ") : "tout le document")}</span>
+    <button type="button" class="secondaire petit" id="btn-file-visa">${fileVisa ? "Afficher tous les signalements" : n ? "Afficher la file" : "Afficher la file (vide)"}</button>`;
+  $("btn-file-visa").addEventListener("click", () => { fileVisa = !fileVisa; nbCartes = 30; afficherCartes(); });
+}
+/* Campagnes (onglet Établissements de l'administration) : la page d'un établissement ouverte par son lien affiche la
+   campagne qui le vise et propose « Rien à signaler », qui enregistre un signalement en retour à la normale. */
+function campagnesDeLEtab() {
+  const V = window.Socle;
+  if (!modeEtab || !etabs || !etabs[0] || !socleConfig || !V.campagnes) return [];
+  const cols = { nom: E.nom, uai: E.uai, commune: E.commune, mail: E.mail };
+  return V.campagnes(socleConfig).filter(c => V.campagneEnCours(c) && (!c.referentiel || c.referentiel === ETAB.table) && V.campagneVise(c, etabs[0], cols));
+}
+function majBandeauCampagne() {
+  const b = $("bandeau-campagne"); if (!b) return;
+  const cs = campagnesDeLEtab();
+  if (!cs.length) { b.hidden = true; return; }
+  const V = window.Socle, saisies = enregistrements.map(l => secondes(val(l, "Date"))).filter(x => x != null);
+  const attente = cs.filter(c => !saisies.some(x => V.reponseCompte(c, x)));
+  b.hidden = false;
+  b.classList.toggle("ok", !attente.length);
+  if (!attente.length) {
+    b.innerHTML = `<p>✓ ${cs.length > 1 ? "Vos réponses sont enregistrées" : `Votre réponse à « ${esc(cs[0].nom)} » est enregistrée`}${cs.some(c => c.mode === "quotidienne") ? " pour aujourd'hui" : ""}. Merci.</p>`;
+    return;
+  }
+  const c = attente[0], jour = c.mode === "quotidienne";
+  b.innerHTML = `<p><span class="grand">Réponse attendue${jour ? " aujourd'hui" : ""} : « ${esc(c.nom)} ».</span>
+    Signalez tout événement concernant votre établissement ; s'il n'y a rien à signaler, répondez en un clic.</p>
+    <button type="button" class="primaire" id="btn-rien-a-signaler">Rien à signaler</button>`;
+  $("btn-rien-a-signaler").addEventListener("click", rienASignaler);
+}
+// Valeur de qualification « retour à la normale » proposée par le formulaire (RAS par défaut)
+function qualificationRetourNormale() {
+  const r = retourNormale(), trouve = (choix || []).find(x => r.has(String(x).trim().toUpperCase()));
+  return trouve || (choix && choix.length ? null : "RAS");
+}
+async function rienASignaler() {
+  const q = qualificationRetourNormale();
+  if (!q) { alert("Le formulaire ne propose pas de qualification « RAS » : utilisez « Nouveau signalement »."); return; }
+  if (!abandonAccepte()) return;
+  // un dossier de ce jour existe déjà (un dossier par jour) : il est mis à jour en retour à la normale ; sinon, nouveau dossier
+  const duJour = modeEtab && etabs && etabs[0] ? dossierDuJour(etabs[0].id, Date.now() / 1000) : null;
+  await enFile(async () => {
+    cacherConfirmation();
+    if (duJour) await ouvrirDossier(duJour.d, true); else await passerEnCreation();
+    montrerVue("saisie");
+  });
+  if (duJour && dossierId !== duJour.d) return;
+  await enFile(async () => {
+    cocherQualif(q);
+    $("description").value = "Rien à signaler."; descriptionManuelle = true; majEtatDescription();
+    modifie = true;
+    await enregistrerSignalement();
+  });
+}
+
 async function remplirVisas() {
   // Un bloc n'est affiché que si les règles d'accès laissent lire ses colonnes
   const visibles = (defs, prefix) => defs.filter(d => {
@@ -6579,8 +6695,13 @@ async function remplirVisas() {
   // Un profil identifié dans « Utilisateurs » décide du périmètre : département → son échelon
   // seulement ; académie et région académique → les deux échelons. Sans profil reconnu (ex. le
   // propriétaire du document), on retombe sur ce que les règles d'accès laissent lire.
-  const montrerDep = vd.length > 0;
-  const montrerAca = va.length > 0 && (!monNiveau || monNiveau !== "departement");
+  let montrerDep = vd.length > 0;
+  let montrerAca = va.length > 0 && (!monNiveau || monNiveau !== "departement");
+  // Viseur de l'onglet Validation : son échelon, sur les établissements de son périmètre seulement
+  if (monPerimetreVisa) {
+    montrerDep = montrerDep && (!reglageValidation || reglageValidation.echelons === "dep_aca") && peutViser("dep");
+    montrerAca = montrerAca && peutViser("aca");
+  }
   $("form-visa-dep").hidden = !montrerDep;
   $("form-visa-aca").hidden = !montrerAca;
   $("onglet-visas").hidden = !(montrerDep || montrerAca);
@@ -7095,7 +7216,7 @@ function ouvrirDepuisListe(id) {
     modifie = modifieVisa = false;
     try { await grist.setCursorPos({ rowId: id }); } catch (_) {}
     await ouvrirDossier(id, true);
-    if (dossierId === id) { montrerVue("saisie"); window.scrollTo(0, 0); }
+    if (dossierId === id) { montrerVue("saisie"); window.scrollTo(0, 0); if (fileVisa && !$("onglet-visas").hidden) afficherOnglet("visas"); }
   });
 }
 $("porte-nouveau").addEventListener("click", allerNouveau);
@@ -7117,14 +7238,17 @@ function afficherCartes() {
   $("titre-liste").textContent = modeEtab ? "Vos signalements" : "Signalements";
   $("porte-nouveau-texte").textContent = modeEtab ? "Un événement à signaler dans votre établissement." : "Un événement à signaler dans un établissement.";
   $("porte-retrouver-texte").textContent = modeEtab ? "Consulter ou actualiser vos signalements." : "Consulter ou actualiser un signalement existant.";
+  majBandeauVisa(); majBandeauCampagne();
   const q = $("recherche-signalements").value.trim(), mots = sansAccent(q).split(/\s+/).filter(Boolean);
-  const base = filtreActif() ? indexRecherche.filter(x => passeFiltre(x.l)) : indexRecherche;
+  const base0 = fileVisa ? indexRecherche.filter(x => aViserParMoi(x.l)) : indexRecherche;
+  const base = filtreActif() ? base0.filter(x => passeFiltre(x.l)) : base0;
   const trouves = mots.length ? base.filter(x => mots.every(m => x.cle.includes(m))) : base;
   const activite = x => secondes(val(x.der, "Date")) ?? jourDesFaits(x.der) ?? 0;
   const tries = [...trouves].sort((a, b) => (activite(b) - activite(a)) || (b.l.id - a.l.id));
   const cD = col("Dossier"), nb = new Map();
   for (const l of enregistrements) { const d = refId(cD && l[cD]) || l.id; nb.set(d, (nb.get(d) || 0) + 1); }
-  const total = indexRecherche.length;
+  const total = base0.length;
+  $("titre-liste").textContent = fileVisa ? "Dossiers à viser" : $("titre-liste").textContent;
   $("nb-liste").textContent = !total ? "" : (trouves.length === total ? `${total} signalement${total > 1 ? "s" : ""}` : `${trouves.length} sur ${total}`);
   const styleQ = v => { const c = (couleurs || {})[v] || {}; return c.fillColor ? ` style="--c:${c.textColor || "#161616"};--c-bg:${c.fillColor}"` : ""; };
   ul.innerHTML = tries.slice(0, nbCartes).map(x => {
@@ -7136,12 +7260,14 @@ function afficherCartes() {
     const meta = [!modeEtab && x.e[E.commune], `n° ${x.l.id}`, site && `site « ${site} »`, d ? `dernière saisie le ${d}` : jf && `faits du ${jf}`,
       n > 1 ? `${n - 1} mise${n > 2 ? "s" : ""} à jour` : "aucune mise à jour"].filter(v => v && typeof v !== "object");
     const extrait = String(val(x.der, "Description") || "").replace(/\*\*|==/g, "").replace(/\s+/g, " ").slice(0, 140);
-    const qualifs = listeQualif(val(x.der, "Qualification")).map(v => `<span class="pastille"${styleQ(v)}>${esc(v)}</span>`).join("");
+    const stC = !modeEtab ? statutDe(x.der) : "", svC = stC && (window.Socle.STATUTS_VALIDATION || []).find(y => y.nom === stC);
+    const qualifs = listeQualif(val(x.der, "Qualification")).map(v => `<span class="pastille"${styleQ(v)}>${esc(v)}</span>`).join("")
+      + (stC ? `<span class="pastille pastille-statut"${svC ? ` style="--c:${svC.texte};--c-bg:${svC.fond}"` : ""} title="Statut de validation">${esc(stC)}</span>` : "");
     return `<li><button type="button" class="carte-sig" data-id="${x.l.id}"${bandeCouleur(x.l)}>
       <span class="carte-corps"><span class="carte-titre"><strong>${surligneMots(titre, mots)}</strong>${qualifs}${clos ? '<span class="badge-clos">Clos</span>' : ""}</span>
       <span class="carte-meta">${esc(meta.join(" · "))}</span>${extrait ? `<span class="carte-extrait">${surligneMots(extrait, mots)}</span>` : ""}</span>
       <span class="carte-fleche" aria-hidden="true">›</span></button></li>`;
-  }).join("") || `<li class="vide">${total ? `Aucun signalement ne correspond${q ? ` à « ${esc(q)} »` : " au filtre"}.` : "Aucun signalement pour l'instant."}</li>`;
+  }).join("") || `<li class="vide">${total ? `Aucun signalement ne correspond${q ? ` à « ${esc(q)} »` : " au filtre"}.` : fileVisa ? "Aucun dossier à viser dans votre périmètre." : "Aucun signalement pour l'instant."}</li>`;
   $("plus-cartes").hidden = tries.length <= nbCartes;
 }
 $("cartes-signalements").addEventListener("click", ev => { const b = ev.target.closest(".carte-sig"); if (b) ouvrirDepuisListe(+b.dataset.id); });

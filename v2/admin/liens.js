@@ -225,6 +225,7 @@
       <div class="boutons">
         <button class="primaire" id="li-csv"${lignes.length ? "" : " disabled"}>Télécharger le fichier CSV (${lignes.length})</button>
         <button class="secondaire" id="li-csv-voir"${lignes.length ? "" : " disabled"}>Afficher pour copier</button>
+        ${window.OngletCampagnes ? `<button class="secondaire" id="li-campagne"${lignes.length ? "" : " disabled"} title="Solliciter ces établissements et suivre leurs réponses (carte « Campagnes » ci-dessous)">Lancer une campagne sur cette sélection (${lignes.length})…</button>` : ""}
         <span class="statut" id="li-statut" role="status"></span>
       </div>
       <textarea id="li-sortie" rows="6" readonly hidden></textarea>
@@ -365,6 +366,8 @@
     if ($("li-msg-enregistrer")) $("li-msg-enregistrer").addEventListener("click", enregistrerMessage);
     if ($("li-msg-defaut")) $("li-msg-defaut").addEventListener("click", () => { message = { ...MESSAGE_DEFAUT }; $("li-objet").value = message.objet; $("li-corps").value = message.corps; });
     if ($("li-csv")) $("li-csv").addEventListener("click", telecharger);
+    // Campagne (2.41) : la sélection du publipostage devient la cible d'une campagne suivie dans la carte « Campagnes »
+    if ($("li-campagne")) $("li-campagne").addEventListener("click", () => window.OngletCampagnes.preparer(selection()));
     if ($("li-csv-voir")) $("li-csv-voir").addEventListener("click", () => { const o = $("li-sortie"), { texte, n } = csv(); o.value = texte.replace(/^﻿/, ""); o.hidden = false; o.select(); dire("li-statut", `${n} ligne(s) : copiez le texte dans un fichier .csv.`); });
     racine.querySelectorAll("[data-copier]").forEach(b => b.addEventListener("click", async () => {
       const l = lienDe(Number(b.dataset.copier));
@@ -373,9 +376,16 @@
     racine.querySelectorAll("[data-revoquer]").forEach(b => b.addEventListener("click", () => revoquer(Number(b.dataset.revoquer))));
   }
 
+  // Sélection en cours du publipostage : critères et message, pour une campagne
+  function selection() {
+    const g = groupes[choix];
+    return { referentiel: g ? g.table : "", crit: Object.fromEntries(Object.entries(filtre.crit).filter(([, v]) => v && v.size).map(([c, v]) => [c, [...v]])),
+      libelles: Object.fromEntries(Object.keys(filtre.crit).map(c => [c, donnees && donnees.ref ? libelleColonne(c) : c])),
+      recherche: filtre.recherche || "", avecMail: !!filtre.avecMail, n: lignesFiltrees().length, message: { ...message } };
+  }
   async function recharger() { await charger(); dessiner(); }
   async function afficher() {
-    racine = $("liens");
+    racine = $("liens-contenu") || $("liens");
     racine.innerHTML = `<div class="bandeau info">Lecture du référentiel…</div>`;
     try { await charger(); } catch (e) { racine.innerHTML = `<div class="bandeau alerte">Lecture impossible : ${esc(e.message || e)}</div>`; return; }
     dessiner();
