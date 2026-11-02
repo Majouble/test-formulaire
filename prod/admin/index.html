@@ -6,6 +6,7 @@
 <title>Administration des signalements</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="../commun/theme.js"></script>
+<script src="../commun/marque.js"></script>
 <script src="../commun/socle.js"></script>
 <script>window.Socle.activerCacheLecture();
   // ce qui est fait directement dans Grist (page supprimée, colonne ajoutée…) n'est pas signalé au widget : la structure
@@ -584,7 +585,7 @@
 </head>
 <body>
 <header>
-  <h1>Administration des signalements<span class="version" id="version"></span><button type="button" id="theme-bouton" class="theme-bouton"></button></h1>
+  <h1><span class="prisme-logo"></span>Administration des signalements<span class="version" id="version"></span><button type="button" id="theme-bouton" class="theme-bouton"></button></h1>
   <nav role="tablist">
     <button role="tab" aria-selected="true" data-onglet="installation">Installation</button>
     <button role="tab" aria-selected="false" data-onglet="referentiel">Référentiel</button>

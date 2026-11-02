@@ -6,6 +6,7 @@
 <title>Point de situation</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="../commun/theme.js"></script>
+<script src="../commun/marque.js"></script>
 <script src="../commun/socle.js"></script>
 <script src="../commun/point-moteur.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pizzip@3.3.0/dist/pizzip.min.js"></script>
@@ -55,6 +56,7 @@
 </head>
 <body>
 <div class="barre" role="toolbar" aria-label="Paramètres du point de situation">
+  <span class="prisme-logo"></span>
   <label>Signalements depuis <input type="datetime-local" id="depuis"></label>
   <label title="Les signalements et les ajouts postérieurs à ce point sont mis en évidence">Dernier point <input type="datetime-local" id="dernierPoint"></label>
   <label>Surligner <select id="surlignage"><option value="point">ce qui a changé depuis le dernier point</option><option value="version">la dernière mise à jour de chaque dossier</option></select></label>

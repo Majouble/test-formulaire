@@ -6,6 +6,7 @@
 <title>Tableau des signalements</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="../commun/theme.js"></script>
+<script src="../commun/marque.js"></script>
 <script src="../commun/socle.js"></script>
 <script src="../commun/point-moteur.js"></script>
 <style>
@@ -29,6 +30,7 @@
 </head>
 <body>
 <div class="barre">
+  <span class="prisme-logo"></span>
   <label>Signalements <select id="champ"></select></label>
   <label>Période <select id="periode"><option value="jour">Dossiers du jour</option><option value="depuis">Depuis le…</option><option value="tout">Tous les dossiers</option></select></label>
   <label id="bloc-depuis" hidden>Depuis le <input type="datetime-local" id="depuis"></label>

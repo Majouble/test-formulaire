@@ -6,6 +6,7 @@
 <title>Tableau de bord</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="../commun/theme.js"></script>
+<script src="../commun/marque.js"></script>
 <script src="../commun/socle.js"></script>
 <script src="../commun/geo.js"></script>
 <link rel="stylesheet" href="tableau.css">
@@ -19,6 +20,7 @@
 <body>
 <p id="tdb-message" hidden></p>
 <div id="tableau-de-bord"></div>
+<script>window.SocleMarque.poser("#tableau-de-bord .tdb-header .bar");</script>
 <script src="tableau.js"></script>
 <script>
 /* Widget du tableau de bord (v2) : affiche la version publiée dans l'administration (clé tableau_de_bord de Config).

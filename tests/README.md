@@ -8,7 +8,7 @@ Scénarios Playwright qui ouvrent les widgets (`v2/…`) dans Chromium avec un *
 cd tests
 npm install
 npx playwright install chromium     # ou : CHROMIUM=/chemin/vers/chromium
-sh lancer.sh                        # suite actuelle (run63 à run114)
+sh lancer.sh                        # suite actuelle (run63 à run115)
 sh lancer.sh run74 run76            # quelques scénarios
 ```
 
@@ -51,6 +51,7 @@ Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pou
 | `run113` | 2.45 : widget « Extractions » — page créée depuis l'onglet Tableau de bord, réglages tirés des rôles du socle, filtres, modèle enregistré pour tout le document, export Excel |
 | `run112` | 2.44.5 : règles d'accès — référentiel des sites (visé par la sous-table des sites) et correspondances des sites modifiables par les agents mobilisés (compte ou lien d'invité), comme le référentiel des établissements |
 | `run114` | 2.45.1 : tableau de bord — barres horizontales empilées avec un nombre de valeurs distinctes (avant : forcées côte à côte) ; moyenne toujours côte à côte ; note du double compte seulement s'il a lieu (2.45.2) |
+| `run115` | 2.46 : logo PRISME (`commun/marque.js`) — un seul logo, en haut à gauche : tableau de bord publié (barre construite par `tableau.js`), saisie sur ordinateur et téléphone, administration (pas de second logo dans l'onglet Tableau de bord) |
 | `run109` | 2.42 : effectifs des établissements (carte Effectifs de l'onglet Référentiel) : jeux DEPP par UAI aux champs différents, second candidat pour la voie professionnelle, somme pour un lycée polyvalent, dernière rentrée, académies couvertes ; SIES par identifiant Paysage ; colonne Effectif recopiée dans les réponses |
 | `run108` | 2.41 : circuit de validation (onglet Validation, viseurs, statut, règles d'accès par échelon et périmètre, file « à viser » de la saisie) et campagnes (lancement depuis le publipostage, suivi quotidien, relance CSV, « Rien à signaler » sur la page d'un établissement) |
 | `run104` | Administration › Formulaires : renommer la table d'une question tableau (Grist, formulaires publiés et brouillons, profils d'atlas), nom déjà pris refusé, saisie dans la table renommée |

@@ -6,6 +6,7 @@
 <title>Signalements</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="../commun/theme.js"></script>
+<script src="../commun/marque.js"></script>
 <script src="../commun/socle.js"></script>
 <style>
   :root {
@@ -401,6 +402,7 @@
   :root { --maj: #a33a00; --maj-clair: #fff1e8; --maj-encre: #6e2700; }
   .barre-app { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
   .barre-app .marque-app { margin: 0; }
+  .barre-app-gauche { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 0; min-width: 0; }
   #btn-config.a-signaler::after { content: ""; display: inline-block; width: 8px; height: 8px; margin-left: 6px; border-radius: 50%; background: var(--vigil); vertical-align: 1px; }
   .titre-accueil { font-size: 1.4rem; margin: 0 0 12px; }
   .portes { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; margin-bottom: 22px; }
@@ -517,7 +519,10 @@
 <main>
   <!-- ===== Barre d'application (toujours visible) ===== -->
   <div class="barre-app">
-    <p class="marque-app" id="marque-app"></p>
+    <div class="barre-app-gauche">
+      <span class="prisme-logo"></span>
+      <p class="marque-app" id="marque-app"></p>
+    </div>
     <p class="bandeau-perimetre" id="bandeau-perimetre" hidden></p>
     <button type="button" class="secondaire petit" id="btn-config" title="Réglages du formulaire" hidden>⚙ Réglages</button>
   </div>
