@@ -639,7 +639,7 @@ async function lireDossier() {
     for (const nom of [...K.autres.keys()]) if (!vus.has(nom) && !nom.startsWith("import:")) K.autres.delete(nom);
     K.derniereLecture = Date.now(); K.dirErreur = "";
     K.fichiersDossier = candidats.sort((a, b) => b.mod - a.mod);
-    const b = K.base && K.base.info, plusRecent = b && candidats.find(c => (c.nom === b.fichier || (b.auto && NOM_BASE.test(c.nom))) && b.modifie && c.mod > b.modifie + 1000);
+    const b = K.base && K.base.info, plusRecent = b && candidats.find(c => (c.nom === b.fichier || NOM_BASE.test(c.nom)) && b.modifie && c.mod > b.modifie + 1000);
     K.nouvelleBase = plusRecent || null;
     const rebati = await majComplement(candidats);
     if (rebati) { emettreBientot(); if (nouvelles.length) integrerEntrees(nouvelles); }
@@ -683,7 +683,7 @@ async function majComplement(candidats) {
 async function copiesDuDossierAuDemarrage() {
   const c = K.fichiersDossier || [];
   const fb = c.find(x => NOM_BASE.test(x.nom));
-  if (fb && (!K.base || (K.base.info.auto && (!K.base.info.modifie || fb.mod > K.base.info.modifie + 1000)))) {
+  if (fb && (!K.base || ((K.base.info.auto || NOM_BASE.test(fb.nom)) && (!K.base.info.modifie || fb.mod > K.base.info.modifie + 1000)))) {
     try { const b = await chargerDepuisDossier(fb.nom); b.info.auto = true; K.base = b; await BD.ecrire("base", b, "courante"); trace(`Base chargée d'office : ${fb.nom}`); }
     catch (e) { trace(`Base illisible (${fb.nom}) : ${e.message}`); }
   }
@@ -1008,15 +1008,7 @@ const UI = {
         <label>Votre nom <input id="agent" value="${esc(K.agent)}" placeholder="Prénom Nom" autocomplete="off"></label>
         <p class="note">Noté comme auteur de chaque saisie. Poste n° ${K.posteNum} <button data-a="nouveau-poste" class="lien">changer</button></p></section>
       <section><h3>2. Dossier partagé</h3>${dossier}</section>
-      <section><h3>3. Copie du document</h3>
-        ${info ? `<p>Base : <b>${esc(info.fichier)}</b> (${info.source === "grist" ? "document Grist" : "fichier JSON"}, ${esc(dateHeure(info.modifie || info.charge_le))})${info.auto ? " — suit le dossier partagé" : ""}</p>
-          <p>Dossiers : ${K.complement ? `<b>${esc(K.complement.info.fichier)}</b> (${esc(dateHeure(K.complement.info.genere_le || K.complement.info.modifie))})${complementValable() ? "" : " — plus ancien que la base, non utilisé"}` : "ceux de la base"}</p>`
-          : `<p class="note">Aucune copie chargée. Dans Grist, menu du document › Télécharger › document (.grist), sans l'historique, puis déposez le fichier dans le dossier partagé.</p>`}
-        <p class="note">Copies automatiques : « instantane-base.json » (référentiel et configuration ; ou un .grist déposé à la main) et « instantane-dossiers.json » (réponses et sous-tables, écrites par le poste en mode veille) dans le dossier partagé ; les plus récentes sont prises d'office.</p>
-        ${K.dir && K.dirEtat === "ok" ? (fichiers.length ? `<div class="liste">${fichiers.map(f => `<div><span>${esc(f.nom)} <small>${esc(dateHeure(f.mod))} · ${(f.taille / 1048576).toFixed(1)} Mo</small></span><button data-a="charger-dossier" data-nom="${esc(f.nom)}" class="petit secondaire">Charger</button></div>`).join("")}</div>` : `<p class="note">Aucun fichier .grist ou .json dans le dossier partagé.</p>`) : ""}
-        <p><label class="bouton secondaire">Ouvrir un fichier (.grist ou .json)…<input type="file" id="fichier-base" accept=".grist,.json,.gz" hidden></label>
-        ${window.__KIT_DEMO__ ? `<button data-a="demo" class="secondaire">Document de démonstration</button>` : ""}</p>
-        <p class="etat-chargement" id="chargement"></p></section>
+      <section><h3>3. Copie du document</h3>${this.sectionCopie(info, fichiers)}</section>
       <section><h3>4. Page de saisie</h3>
         ${pages.length ? `<select id="page">${pages.map(p => `<option value="${esc(p.cle)}" ${K.page && K.page.cle === p.cle ? "selected" : ""}>${esc(p.titre)}</option>`).join("")}</select>
           <p class="note">Les pages des agents reprennent leur périmètre et leurs réglages. Les formulaires seuls s'affichent sans périmètre.</p>`
@@ -1038,6 +1030,23 @@ const UI = {
       <details><summary>Journal technique</summary><pre id="traces"></pre></details>
       <p class="note">Kit de secours ${esc(KIT_VERSION)} · widget ${esc(window.__KIT_WIDGET_VERSION__ || "?")}</p>`, !premier);
     this.majTraces();
+  },
+  // Copie du document : en temps normal, automatique (poste en mode veille → dossier partagé) ; à la main seulement sans relais
+  sectionCopie(info, fichiers) {
+    const auto = (K.fichiersDossier || []).find(f => NOM_BASE.test(f.nom));
+    const automatique = relaisRegle() || !!auto;
+    const etat = !info ? `<p class="note">${automatique ? "Pas encore de copie sur ce poste : choisissez le dossier partagé (étape 2) ; elle y est prise d'office." : "Aucune copie sur ce poste."}</p>`
+      : `<p>Référentiels et réglages : <b>${esc(dateHeure(info.modifie || info.charge_le))}</b>${info.auto || NOM_BASE.test(info.fichier || "") ? " — copie automatique" : ` — <span class="attention">copie chargée à la main (${esc(info.fichier)})</span>`}</p>
+         <p>Signalements : ${K.complement ? `<b>${esc(dateHeure(K.complement.info.genere_le || K.complement.info.modifie))}</b>${complementValable() ? "" : " (plus ancienne que la base : non utilisée)"}` : "ceux de la copie ci-dessus"}</p>`;
+    const revenir = info && !info.auto && auto ? `<p><button data-a="charger-dossier" data-nom="${esc(auto.nom)}">Utiliser la copie automatique du ${esc(dateHeure(auto.mod))}</button></p>` : "";
+    const liste = K.dir && K.dirEtat === "ok" && fichiers.length ? `<div class="liste">${fichiers.filter(f => !/precedent/.test(f.nom)).map(f => `<div><span>${esc(f.nom)} <small>${esc(dateHeure(f.mod))} · ${(f.taille / 1048576).toFixed(1)} Mo</small></span><button data-a="charger-dossier" data-nom="${esc(f.nom)}" class="petit secondaire">Charger</button></div>`).join("")}</div>` : "";
+    const main = `${liste}<p><label class="bouton secondaire">Ouvrir un fichier (.grist ou .json)…<input type="file" id="fichier-base" accept=".grist,.json,.gz" hidden></label>
+        ${window.__KIT_DEMO__ ? `<button data-a="demo" class="secondaire">Document de démonstration</button>` : ""}</p>
+        <p class="note">Sans relais n8n : dans Grist, menu du document › Télécharger › document (.grist), puis ouvrez le fichier ici.</p>`;
+    return automatique
+      ? `<p class="note">Rien à charger : le poste en mode veille dépose les copies dans le dossier partagé (référentiels et réglages une fois par jour, signalements toutes les heures) et chaque kit prend d'office la plus récente.</p>
+         ${etat}${revenir}<details><summary>Charger une copie à la main</summary>${main}</details><p class="etat-chargement" id="chargement"></p>`
+      : `${etat}${main}<p class="etat-chargement" id="chargement"></p>`;
   },
   ouvrirExports(rafraichir) {
     if (rafraichir && this.r.activeElement && /INPUT|SELECT/.test(this.r.activeElement.tagName)) return;
