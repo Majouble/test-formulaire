@@ -13,7 +13,7 @@ const KIT = 'file://' + __C.racine + '/v2/secours/kit-secours.html';
 const PARTAGE = path.join(__C.sorties, 'veille-partage'); fs.rmSync(PARTAGE, { recursive: true, force: true }); fs.mkdirSync(PARTAGE, { recursive: true });
 const pause = ms => new Promise(r => setTimeout(r, ms));
 const fichiers = () => fs.readdirSync(PARTAGE).sort().join(', ');
-const lignesCopie = () => { const j = JSON.parse(fs.readFileSync(path.join(PARTAGE, 'instantane-dossiers.json'))); return j.tables.Reponses.records.length; };
+const lignesCopie = () => { const j = JSON.parse(fs.readFileSync(path.join(PARTAGE, 'Copie Grist - signalements.json'))); return j.tables.Reponses.records.length; };
 const vieillir = (f, h) => { const t = (Date.now() - h * 3600e3) / 1000; fs.utimesSync(path.join(PARTAGE, f), t, t); };
 
 (async () => {
@@ -23,6 +23,8 @@ const vieillir = (f, h) => { const t = (Date.now() - h * 3600e3) / 1000; fs.utim
   let R = relaisLocal.creer({ port: 8811, reglages: { CLE_KIT: 'clek', API_GRIST: G.url, DOC: G.id, CLE_GRIST: G.cle } });
   const browser = await chromium.launch({ executablePath: __C.chromium });
 
+  // fichiers sous les anciens noms (avant la 2.44.4) : remplacés à la première copie
+  for (const n of ['instantane-dossiers.json', 'instantane-dossiers.precedent.json', 'instantane-base.empreinte.json']) fs.writeFileSync(path.join(PARTAGE, n), '{}');
   // ---- poste A : mise en route en mode veille, sans aucun fichier déposé à la main
   const ctxA = await browser.newContext({ viewport: { width: 1250, height: 1100 } }), A = await ctxA.newPage();
   A.on('pageerror', e => console.log('[A] PAGEERROR', e.message)); A.on('dialog', d => d.accept());
@@ -38,7 +40,7 @@ const vieillir = (f, h) => { const t = (Date.now() - h * 3600e3) / 1000; fs.utim
   await A.click('#kit-secours [data-a=relais-enregistrer]'); await A.waitForTimeout(200);
   await A.evaluate(() => window.__KIT__.connecter(window.__dossierSimule('partage'))); await A.waitForTimeout(400);
   await A.click('#kit-secours [data-a=veille-maintenant]'); await A.waitForTimeout(2500);
-  console.log('[A] dossier partagé après « Faire les copies maintenant » :', fichiers());
+  console.log('[A] dossier partagé après « Faire les copies maintenant » :', fichiers(), '| Technique :', fs.readdirSync(path.join(PARTAGE, 'Technique')).join(', '));
   console.log('[A] réglages, copie :', (await A.innerText('#kit-secours section:nth-of-type(3)')).replace(/\s+/g, ' ').slice(0, 200));
   console.log('[A] pages proposées :', (await A.$$eval('#kit-secours #page option', l => l.map(o => o.textContent))).join(' | '));
   await A.selectOption('#kit-secours #page', { index: 2 });
@@ -62,7 +64,7 @@ const vieillir = (f, h) => { const t = (Date.now() - h * 3600e3) / 1000; fs.utim
   console.log('[A] copie de 7 lignes : refus =', await A.evaluate(() => window.__KIT__.K.veille.refus && window.__KIT__.K.veille.refus.message), '| lignes en place :', lignesCopie());
   console.log('[A] bandeau :', await bandeau());
   await A.evaluate(() => document.querySelector('.kit-panneau').shadowRoot.querySelector('[data-a=ecrire-refus]').click()); await A.waitForTimeout(800);
-  console.log('[A] après « Écrire quand même » : lignes en place :', lignesCopie(), '| précédente :', JSON.parse(fs.readFileSync(path.join(PARTAGE, 'instantane-dossiers.precedent.json'))).tables.Reponses.records.length);
+  console.log('[A] après « Écrire quand même » : lignes en place :', lignesCopie(), '| précédente :', JSON.parse(fs.readFileSync(path.join(PARTAGE, 'Copie Grist - signalements (précédente).json'))).tables.Reponses.records.length);
   G.etat.reponsesEnPlus = 25;
 
   // ---- intervalle et plage horaire (copie non forcée)
@@ -70,11 +72,11 @@ const vieillir = (f, h) => { const t = (Date.now() - h * 3600e3) / 1000; fs.utim
   await A.evaluate(() => Object.assign(window.__KIT__.K.relais, { debut: 0, fin: 24, intervalle: 60 }));
   let n0 = appelsDossiers(); await A.evaluate(() => window.__KIT__.veilleTic()); await A.waitForTimeout(500);
   console.log('[A] copie récente, dans la plage : appel au relais ?', appelsDossiers() > n0);
-  vieillir('instantane-dossiers.json', 2);
+  vieillir('Copie Grist - signalements.json', 2);
   n0 = appelsDossiers(); await A.evaluate(() => window.__KIT__.veilleTic()); await A.waitForTimeout(800);
   console.log('[A] copie de 2 h, dans la plage : appel au relais ?', appelsDossiers() > n0, '| lignes :', lignesCopie());
   const h = new Date().getHours(), hors = h < 22 ? { debut: h + 1, fin: h + 2 } : { debut: 0, fin: 1 };
-  await A.evaluate(p => Object.assign(window.__KIT__.K.relais, p), hors); vieillir('instantane-dossiers.json', 2);
+  await A.evaluate(p => Object.assign(window.__KIT__.K.relais, p), hors); vieillir('Copie Grist - signalements.json', 2);
   n0 = appelsDossiers(); await A.evaluate(() => window.__KIT__.veilleTic()); await A.waitForTimeout(500);
   console.log(`[A] copie de 2 h, hors plage (${hors.debut} h – ${hors.fin} h) : appel au relais ?`, appelsDossiers() > n0, '| bandeau :', (await bandeau()).match(/Copies[^·]*·?[^·]*·? ?hors plage horaire|hors plage horaire/) ? 'hors plage signalé' : '?');
   await A.evaluate(() => Object.assign(window.__KIT__.K.relais, { debut: 0, fin: 24 }));
@@ -97,7 +99,7 @@ const vieillir = (f, h) => { const t = (Date.now() - h * 3600e3) / 1000; fs.utim
   console.log('[A] Grist en panne :', await bandeau());
   await R.fermer();
   await A.evaluate(() => window.__KIT__.veilleTic(true)); await A.waitForTimeout(600);
-  console.log('[A] relais coupé :', await A.evaluate(() => window.__KIT__.K.veille.erreur));
+  console.log('[A] relais coupé :', await A.evaluate(() => window.__KIT__.K.veille.erreur), '| événements :', await A.evaluate(() => window.__KIT__.K.veille.evenements.slice(0, 3).map(e => e.txt).join(' / ')));
   await A.evaluate(() => document.querySelector('.kit-panneau').shadowRoot.querySelector('[data-a=mode-secours]').click()); await A.waitForTimeout(1200);
   console.log('[A] après « Passer en mode secours » :', (await bandeau()).slice(0, 60), '| onglets :', await onglets());
   const S = A.frameLocator('iframe[data-vue=saisie]');

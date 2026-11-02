@@ -8,9 +8,9 @@
         depuis Grist, ou .json ;
      2. des saisies faites pendant la panne, tenues dans un journal par poste.
    La copie peut être en deux couches, déposées dans le dossier partagé (par n8n,
-   ou à la main) : une base (instantane-base.json, ou .grist déposé à la main : référentiel et
+   ou à la main) : une base (« Copie Grist - référentiels et réglages.json », ou .grist déposé à la main : référentiel et
    configuration, renouvelée une fois par jour) et un complément
-   (instantane-dossiers.json : tables des réponses et autres tables qui bougent,
+   (« Copie Grist - signalements.json » : tables des réponses et sous-tables,
    renouvelé toutes les heures par le mode veille). Les tables du complément remplacent celles
    de la base. Le kit prend d'office les plus récentes.
    Mode veille (Grist accessible) : un poste garde le kit ouvert ; il demande les copies au relais n8n
@@ -30,10 +30,15 @@
 
 const KIT_VERSION = "0.2.0 (27/10/2026)";
 const BASE_HORS_LIGNE = 1e12, PAR_POSTE = 1e6;
-const PREFIXE_JOURNAL = "secours-journal-";
+const PREFIXE_JOURNAL = "Saisies hors ligne - ", ANCIEN_PREFIXE_JOURNAL = "secours-journal-";
+const estJournal = nom => (nom.startsWith(PREFIXE_JOURNAL) || nom.startsWith(ANCIEN_PREFIXE_JOURNAL)) && nom.endsWith(".json");
 const DELAI_LECTURE = 20000;            // relecture du dossier partagé (ms)
-const NOM_BASE = /^instantane-base\.(grist|json)(\.gz)?$/i, NOM_COMPLEMENT = /^instantane-dossiers\.json(\.gz)?$/i;
-const F_DOSSIERS = "instantane-dossiers.json", F_PRECEDENT = "instantane-dossiers.precedent.json", F_BASE = "instantane-base.json", F_BASE_ANCIENNE = "instantane-base.grist", F_EMPREINTE = "instantane-base.empreinte.json";
+// noms des fichiers du dossier partagé (les anciens noms, avant la 2.44.4, restent lus et sont remplacés à la première copie)
+const NOM_BASE = /^(instantane-base\.(grist|json)(\.gz)?|Copie Grist - référentiels et réglages\.json)$/i, NOM_COMPLEMENT = /^(instantane-dossiers\.json(\.gz)?|Copie Grist - signalements\.json)$/i;
+const F_DOSSIERS = "Copie Grist - signalements.json", F_PRECEDENT = "Copie Grist - signalements (précédente).json", F_BASE = "Copie Grist - référentiels et réglages.json",
+  F_EMPREINTE = "Technique/empreinte de la base.json";
+const ANCIENS = { dossiers: "instantane-dossiers.json", precedent: "instantane-dossiers.precedent.json", base: ["instantane-base.json", "instantane-base.grist"], empreinte: "instantane-base.empreinte.json" };
+const estPrecedente = nom => /precedent|précédente/i.test(nom);
 const RELAIS_DEFAUT = { url: "", cle: "", debut: 7, fin: 20, intervalle: 60 };
 
 /* ---------- utilitaires ---------- */
@@ -585,7 +590,10 @@ function pagesTableau(tables) {
 
 /* ---------- dossier partagé ---------- */
 const FS_OK = typeof window.showDirectoryPicker === "function";
-const monFichier = () => `${PREFIXE_JOURNAL}${slug(K.agent)}-${K.posteNum}.json`;
+// « Saisies hors ligne - Alice Martin (poste 123456).json » : caractères interdits dans un nom de fichier Windows remplacés
+const nomPropre = s => String(s || "agent").replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 60) || "agent";
+const monFichier = () => `${PREFIXE_JOURNAL}${nomPropre(K.agent)} (poste ${K.posteNum}).json`;
+const monAncienFichier = () => `${ANCIEN_PREFIXE_JOURNAL}${slug(K.agent)}-${K.posteNum}.json`;
 async function verifierAcces(demander) {
   if (!K.dir) return false;
   let p = await K.dir.queryPermission({ mode: "readwrite" });
@@ -614,6 +622,7 @@ function ecrireJournalPartage() {
       await w.write(JSON.stringify({ format: "kit-secours-journal", version: 1, kit: KIT_VERSION, agent: K.agent, poste: K.posteNum, document: K.base && K.base.info, maj: new Date().toISOString(), entrees: K.journal }));
       await w.close();
       K.enAttente = 0; K.dirErreur = "";
+      try { await K.dir.removeEntry(monAncienFichier()); } catch (_) {}   // journal sous l'ancien nom : remplacé
     } catch (e) { K.dirEtat = "erreur"; K.dirErreur = e.message; trace(`Écriture sur le dossier partagé impossible : ${e.message}`); }
     UI.maj();
   });
@@ -625,8 +634,8 @@ async function lireDossier() {
   try {
     for await (const [nom, h] of K.dir.entries()) {
       if (h.kind !== "file") continue;
-      if (/\.(grist|json|json\.gz)$/i.test(nom) && !nom.startsWith(PREFIXE_JOURNAL)) { try { const f = await h.getFile(); candidats.push({ nom, mod: f.lastModified, taille: f.size }); } catch (_) {} continue; }
-      if (!nom.startsWith(PREFIXE_JOURNAL) || !nom.endsWith(".json") || nom === monFichier()) continue;
+      if (/\.(grist|json|json\.gz)$/i.test(nom) && !estJournal(nom)) { try { const f = await h.getFile(); candidats.push({ nom, mod: f.lastModified, taille: f.size }); } catch (_) {} continue; }
+      if (!estJournal(nom) || nom === monFichier() || nom === monAncienFichier()) continue;
       vus.add(nom);
       const f = await h.getFile(), avant = K.autres.get(nom);
       if (avant && avant.mod === f.lastModified) continue;
@@ -724,8 +733,10 @@ async function appelRelais(quoi, binaire) {
   if (!r.ok || j.erreur) throw Object.assign(new Error(j.erreur || `HTTP ${r.status}${j.message ? ` — n8n : ${j.message}` : ""}${r.status === 500 ? " (voir les exécutions du workflow dans n8n)" : ""}`), { statut: r.status });
   return j;
 }
-async function fichierDuDossier(nom) { try { return await (await K.dir.getFileHandle(nom)).getFile(); } catch (_) { return null; } }
-async function ecrireDansDossier(nom, contenu) { const fh = await K.dir.getFileHandle(nom, { create: true }), w = await fh.createWritable(); await w.write(contenu); await w.close(); }
+async function dossierDe(chemin, creer) { const p = chemin.split("/"), nom = p.pop(); let d = K.dir; for (const x of p) d = await d.getDirectoryHandle(x, { create: !!creer }); return { d, nom }; }
+async function fichierDuDossier(chemin) { try { const { d, nom } = await dossierDe(chemin); return await (await d.getFileHandle(nom)).getFile(); } catch (_) { return null; } }
+async function ecrireDansDossier(chemin, contenu) { const { d, nom } = await dossierDe(chemin, true), fh = await d.getFileHandle(nom, { create: true }), w = await fh.createWritable(); await w.write(contenu); await w.close(); }
+async function supprimerDuDossier(...noms) { for (const n of noms.flat()) { try { await K.dir.removeEntry(n); } catch (_) {} } }
 const nbLignes = t => (t && Array.isArray(t.records) ? t.records.length : t && Array.isArray(t.id) ? t.id.length : 0);
 const SEUIL_BAISSE = 0.5, MIN_CONTROLE = 20;   // une table d'au moins 20 lignes qui perd plus de la moitié : copie refusée
 
@@ -736,7 +747,7 @@ async function copierDossiers() {
   const rep = Array.isArray(j.reponses) ? j.reponses : [];
   if (!rep.length || rep.some(t => !j.tables[t])) throw new Error("copie refusée : table des réponses absente");
   j.ecrit_par = K.agent || `poste ${K.posteNum}`;
-  const actuel = await fichierDuDossier(F_DOSSIERS);
+  const actuel = (await fichierDuDossier(F_DOSSIERS)) || (await fichierDuDossier(ANCIENS.dossiers));
   let avant = null;
   if (actuel) { try { avant = JSON.parse(await actuel.text()); } catch (_) { avant = null; } }   // copie en place illisible : remplacée
   const baisses = avant && avant.tables ? Object.entries(avant.tables).map(([t, x]) => [t, nbLignes(x), nbLignes(j.tables[t])])
@@ -750,9 +761,10 @@ async function copierDossiers() {
   return true;
 }
 async function ecrireCopieDossiers(j, actuel) {
-  if (actuel === undefined) actuel = await fichierDuDossier(F_DOSSIERS);
+  if (actuel === undefined) actuel = (await fichierDuDossier(F_DOSSIERS)) || (await fichierDuDossier(ANCIENS.dossiers));
   if (actuel) await ecrireDansDossier(F_PRECEDENT, actuel);
   await ecrireDansDossier(F_DOSSIERS, JSON.stringify(j));
+  await supprimerDuDossier(ANCIENS.dossiers, ANCIENS.precedent);
   K.veille.refus = null;
   K.veille.copie = { t: Date.now(), compte: Object.fromEntries(Object.entries(j.tables).map(([t, x]) => [t, nbLignes(x)])), taille: null };
   evenement(`copie des dossiers écrite (${Object.entries(K.veille.copie.compte).map(([t, n]) => `${t} ${n}`).join(", ")})`);
@@ -765,9 +777,9 @@ async function baseVerifieeAujourdhui() {
 }
 async function verifierBase(forcer) {
   const e = await appelRelais("empreinte");
-  const fe = await fichierDuDossier(F_EMPREINTE); let avant = null;
+  const fe = (await fichierDuDossier(F_EMPREINTE)) || (await fichierDuDossier(ANCIENS.empreinte)); let avant = null;
   if (fe) { try { avant = JSON.parse(await fe.text()); } catch (_) {} }
-  const enPlace = await fichierDuDossier(F_BASE);
+  const enPlace = await fichierDuDossier(F_BASE);   // sous l'ancien nom : téléchargée de nouveau, sous le nouveau
   const maintenant = new Date().toISOString();
   if (!forcer && enPlace && avant && avant.empreinte === e.empreinte) {
     await ecrireDansDossier(F_EMPREINTE, JSON.stringify({ ...avant, verifie_le: maintenant }));
@@ -786,7 +798,7 @@ async function verifierBase(forcer) {
   if (!(T._grist_Tables.tableId || []).includes(g.reponses || "Reponses")) throw new Error("base refusée : la table des réponses n'est pas décrite");
   const texte = JSON.stringify(j);
   await ecrireDansDossier(F_BASE, texte);
-  try { await K.dir.removeEntry(F_BASE_ANCIENNE); } catch (_) {}   // ancienne base au format .grist : remplacée
+  await supprimerDuDossier(ANCIENS.base, ANCIENS.empreinte);   // anciens noms (et ancienne base .grist) : remplacés
   await ecrireDansDossier(F_EMPREINTE, JSON.stringify({ empreinte: e.empreinte, mesure: e.mesure, base_le: maintenant, verifie_le: maintenant, taille: texte.length, ecrit_par: K.agent || null }));
   K.veille.base = { t: Date.now(), statut: avant ? "mise à jour" : "téléchargée", taille: texte.length };
   evenement(`base ${avant ? "mise à jour" : "téléchargée"} (${(texte.length / 1048576).toFixed(1)} Mo${j.meta && j.meta !== "sql" ? ` ; ${j.meta}` : ""})`);
@@ -810,7 +822,7 @@ async function veilleTic(forcer) {
   let ecrit = false;
   try {
     if (forcer || !(await baseVerifieeAujourdhui())) ecrit = (await verifierBase()) || ecrit;
-    const f = await fichierDuDossier(F_DOSSIERS);
+    const f = (await fichierDuDossier(F_DOSSIERS)) || (await fichierDuDossier(ANCIENS.dossiers));
     const age = f ? Date.now() - f.lastModified : Infinity;
     if (forcer || age >= (K.relais.intervalle - 1) * 60000) ecrit = (await copierDossiers()) || ecrit;
     if (K.veille.echecs) evenement("le relais répond de nouveau", "ok");
@@ -831,12 +843,12 @@ async function passerEnMode(mode) {
 /* ---------- exports ---------- */
 const horodatageFichier = () => new Date().toISOString().slice(0, 16).replace(/[-:]/g, "").replace("T", "-");
 function exporterMonJournal() {
-  telecharger(`secours-journal-${slug(K.agent)}-${K.posteNum}-${horodatageFichier()}.json`, JSON.stringify({ format: "kit-secours-journal", version: 1, kit: KIT_VERSION, agent: K.agent, poste: K.posteNum, document: K.base.info, maj: new Date().toISOString(), entrees: K.journal }, null, 1));
+  telecharger(`Saisies hors ligne - ${nomPropre(K.agent).normalize("NFD").replace(/[\u0300-\u036f]/g, "")} (poste ${K.posteNum}) - ${horodatageFichier()}.json`, JSON.stringify({ format: "kit-secours-journal", version: 1, kit: KIT_VERSION, agent: K.agent, poste: K.posteNum, document: K.base.info, maj: new Date().toISOString(), entrees: K.journal }, null, 1));
 }
 function exporterConsolide() {
   const journaux = [{ agent: K.agent, poste: K.posteNum, fichier: monFichier(), entrees: K.journal }];
   for (const [f, d] of K.autres) journaux.push({ agent: d.agent, poste: d.poste, fichier: f, entrees: d.entrees });
-  telecharger(`secours-consolide-${slug(K.base.info.nom)}-${horodatageFichier()}.json`, JSON.stringify({ format: "kit-secours-consolide", version: 1, kit: KIT_VERSION, document: K.base.info, exporte_le: new Date().toISOString(), exporte_par: K.agent, journaux }, null, 1));
+  telecharger(`Saisies hors ligne - tous les postes - ${horodatageFichier()}.json`, JSON.stringify({ format: "kit-secours-consolide", version: 1, kit: KIT_VERSION, document: K.base.info, exporte_le: new Date().toISOString(), exporte_par: K.agent, journaux }, null, 1));
 }
 function valeurLisible(tid, c, v) {
   const d = (M.cols.get(tid) || new Map()).get(c), b = typeBase(d && d.type);
@@ -1000,7 +1012,7 @@ const UI = {
         <p>${K.dirEtat !== "ok" ? `<button data-a="reconnecter">Reconnecter</button>` : ""}<button data-a="choisir-dossier" class="secondaire">Choisir un autre dossier</button><button data-a="oublier-dossier" class="secondaire">Ne plus utiliser de dossier</button></p>
         ${K.autres.size ? `<p class="note">Autres postes : ${[...K.autres.values()].map(a => `${esc(a.agent)} (${a.entrees.length} saisie${a.entrees.length > 1 ? "s" : ""})`).join(", ")}</p>` : ""}`
       : `<p class="note">Choisissez le dossier réseau commun à l'équipe : chaque poste y écrit son journal et lit ceux des autres. Sans dossier, ce poste travaille seul.</p><p><button data-a="choisir-dossier">Choisir le dossier partagé</button></p>`;
-    const fichiers = (K.fichiersDossier || []).filter(f => f.nom !== F_EMPREINTE).slice(0, 8);
+    const fichiers = (K.fichiersDossier || []).filter(f => f.nom !== ANCIENS.empreinte).slice(0, 8);
     this.fenetre(`
       <h2>${premier ? "Mise en route du mode secours" : "Réglages du mode secours"}</h2>
       ${premier ? `<p class="note">Le formulaire fonctionne sans réseau à partir d'une copie du document Grist. Renseignez les quatre étapes, puis « Commencer la saisie ».</p>` : ""}
@@ -1039,7 +1051,7 @@ const UI = {
       : `<p>Référentiels et réglages : <b>${esc(dateHeure(info.modifie || info.charge_le))}</b>${info.auto || NOM_BASE.test(info.fichier || "") ? " — copie automatique" : ` — <span class="attention">copie chargée à la main (${esc(info.fichier)})</span>`}</p>
          <p>Signalements : ${K.complement ? `<b>${esc(dateHeure(K.complement.info.genere_le || K.complement.info.modifie))}</b>${complementValable() ? "" : " (plus ancienne que la base : non utilisée)"}` : "ceux de la copie ci-dessus"}</p>`;
     const revenir = info && !info.auto && auto ? `<p><button data-a="charger-dossier" data-nom="${esc(auto.nom)}">Utiliser la copie automatique du ${esc(dateHeure(auto.mod))}</button></p>` : "";
-    const liste = K.dir && K.dirEtat === "ok" && fichiers.length ? `<div class="liste">${fichiers.filter(f => !/precedent/.test(f.nom)).map(f => `<div><span>${esc(f.nom)} <small>${esc(dateHeure(f.mod))} · ${(f.taille / 1048576).toFixed(1)} Mo</small></span><button data-a="charger-dossier" data-nom="${esc(f.nom)}" class="petit secondaire">Charger</button></div>`).join("")}</div>` : "";
+    const liste = K.dir && K.dirEtat === "ok" && fichiers.length ? `<div class="liste">${fichiers.filter(f => !estPrecedente(f.nom)).map(f => `<div><span>${esc(f.nom)} <small>${esc(dateHeure(f.mod))} · ${(f.taille / 1048576).toFixed(1)} Mo</small></span><button data-a="charger-dossier" data-nom="${esc(f.nom)}" class="petit secondaire">Charger</button></div>`).join("")}</div>` : "";
     const main = `${liste}<p><label class="bouton secondaire">Ouvrir un fichier (.grist ou .json)…<input type="file" id="fichier-base" accept=".grist,.json,.gz" hidden></label>
         ${window.__KIT_DEMO__ ? `<button data-a="demo" class="secondaire">Document de démonstration</button>` : ""}</p>
         <p class="note">Sans relais n8n : dans Grist, menu du document › Télécharger › document (.grist), puis ouvrez le fichier ici.</p>`;
@@ -1173,7 +1185,7 @@ async function apresChoixDossier() {
 async function lireDossierAvantDemarrage() {
   try {
     const c = [];
-    for await (const [nom, h] of K.dir.entries()) if (h.kind === "file" && /\.(grist|json|json\.gz)$/i.test(nom) && !nom.startsWith(PREFIXE_JOURNAL)) { const f = await h.getFile(); c.push({ nom, mod: f.lastModified, taille: f.size }); }
+    for await (const [nom, h] of K.dir.entries()) if (h.kind === "file" && /\.(grist|json|json\.gz)$/i.test(nom) && !estJournal(nom)) { const f = await h.getFile(); c.push({ nom, mod: f.lastModified, taille: f.size }); }
     K.fichiersDossier = c.sort((a, b) => b.mod - a.mod);
   } catch (e) { trace(`Dossier illisible : ${e.message}`); }
 }

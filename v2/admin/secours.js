@@ -38,7 +38,7 @@
     try {
       const html = await lire("../secours/kit-secours.html"), k = infosKit(html);
       if (!k) throw new Error("le fichier reçu n'est pas le kit de secours");
-      const nom = `kit-secours-${numero(k.version)}.html`;
+      const nom = `Kit de secours ${numero(k.version)}.html`;
       telecharger(nom, html, "text/html;charset=utf-8");
       const ecart = numero(k.version) !== numero(S.VERSION);
       statut(`« ${nom} » téléchargé (${(html.length / 1048576).toFixed(1)} Mo, construit le ${k.construit}).${ecart ? ` Attention : le kit est en version ${numero(k.version)}, l'administration en ${numero(S.VERSION)} — il sera à jour à la prochaine publication.` : ""}`, ecart ? "err" : "ok");
