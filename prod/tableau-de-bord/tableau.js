@@ -809,6 +809,7 @@ function blockEditor(b, i) {
     <div class="row"><span class="lbl">Graphique</span>
       <select data-b="${i}" data-k="chart">${opt(CHART_TYPES, b.chart || "barh")}</select>
       ${b.chart === "map" ? mapEditor(b, i) : b.chart === "points" ? pointsEditor(b, i) : `${b.cols && b.cols.col && (b.chart || "barh") !== "pie" ? `<select data-b="${i}" data-k="stack">${opt(STACK_MODES, b.stack || "stack")}</select>` : ""}
+      ${b.cols && b.cols.col && (b.chart || "barh") !== "pie" ? `<select data-b="${i}" data-k="swap" title="Ce qui va en abscisse (ou en barres) et ce qui forme les séries (couleurs, courbes)">${opt([["", "abscisse : lignes du tableau, séries : colonnes"], ["1", "abscisse : colonnes du tableau, séries : lignes"]], b.swap ? "1" : "")}</select>` : ""}
       <select data-b="${i}" data-k="labels" title="Pourcentage d'une barre : part du total du bloc. Avec des séries : part de la barre.">${opt(LABEL_MODES, b.labels || "auto")}</select>
       <label>Dans Word <select data-b="${i}" data-k="wordChart">${opt([["native", "graphique Word modifiable"], ["image", "image"]], b.wordChart || "native")}</select></label>`}
     </div>`;
@@ -1079,6 +1080,22 @@ function chartSpec(b, d, shownRows) {
     return withLabels(b, { type, mode: "single", cats, series: [{ key: null, name: plain(measureText(b.measure)), color: "var(--s1)", values, colors }], unit, notes, total: scale(d.total) }, additive, values.reduce((a, v) => a + (v || 0), 0), unit);
   }
 
+  // case sans ligne : 0 pour un compte (nombre de lignes, valeurs distinctes, somme) — la courbe ne s'interrompt pas
+  const zeroVide = additive || agg === "distinct";
+  const val0 = (rk, ck) => { const v = d.val(rk, ck); return (v === null || v === undefined || isNaN(v)) && zeroVide ? 0 : v; };
+  // abscisse inversée : les colonnes du tableau en abscisse, ses lignes en séries (une courbe par région, par exemple)
+  if (d.cc && b.swap) {
+    const cats = d.colKeys.map(ck => ({ key: ck, label: keyLabel(d.cc, ck, d.cg) }));
+    const named = shownRows.slice(0, MAX_SERIES), others = shownRows.slice(MAX_SERIES);
+    const series = named.map((rk, j) => ({ key: rk, name: plain(keyLabel(d.rc, rk, d.rg)), color: `var(${SERIES[j]})`, values: d.colKeys.map(ck => scale(val0(rk, ck))) }));
+    if (others.length) {
+      if (additive) series.push({ key: "__autres", name: `Autres (${others.length})`, color: "var(--other)", values: d.colKeys.map(ck => scale(others.reduce((a, rk) => a + (val0(rk, ck) || 0), 0))) });
+      else notes.push(`${others.length} ligne(s) de plus sont dans le tableau : réduisez « Lignes affichées » ou ajoutez une condition.`);
+    }
+    series.forEach(x => x.raw = x.values.slice());
+    if (mode === "pct") { const sums = cats.map((_, j) => series.reduce((a, x) => a + (x.values[j] || 0), 0)); series.forEach(x => x.values = x.values.map((v, j) => sums[j] ? (v || 0) / sums[j] * 100 : 0)); }
+    return withLabels(b, { type, mode, cats, series, swap: true, unit: mode === "pct" ? " %" : unit, notes }, additive, scale(d.total), unit);
+  }
   const catKeys = shownRows;                                          // plus de plafond : le graphique suit « Lignes affichées »
   const cats = catKeys.map(k => ({ key: k, label: keyLabel(d.rc, k, d.rg) }));
   let series;
@@ -1086,7 +1103,7 @@ function chartSpec(b, d, shownRows) {
   else {
     const named = d.colKeys.filter(k => d.colorOf.get(k) !== "var(--other)");
     const others = d.colKeys.filter(k => d.colorOf.get(k) === "var(--other)");
-    series = named.map(ck => ({ key: ck, name: plain(keyLabel(d.cc, ck, d.cg)), color: d.colorOf.get(ck), values: catKeys.map(rk => scale(d.val(rk, ck))) }));
+    series = named.map(ck => ({ key: ck, name: plain(keyLabel(d.cc, ck, d.cg)), color: d.colorOf.get(ck), values: catKeys.map(rk => scale(val0(rk, ck))) }));
     if (others.length) {
       if (additive) series.push({ key: "__autres", name: `Autres (${others.length})`, color: "var(--other)", values: catKeys.map(rk => scale(others.reduce((a, ck) => a + (d.val(rk, ck) || 0), 0))) });
       else notes.push(`${others.length} série(s) de plus sont dans le tableau.`);
@@ -1406,7 +1423,7 @@ function svgBarH(spec, W) {
     if (nS === 1 || grouped) {
       spec.series.forEach((s, k) => {
         const yy = grouped ? y + k * (barH + 2) : y;
-        m += barPath(labelW, yy, x(s.values[j]), barH, s.color, tipAttr(`${c.label}${nS > 1 ? " · " + s.name : ""}`, fmtVal(spec, s.values[j])) + drillAttr(spec.bi, c.key, s.key));
+        m += barPath(labelW, yy, x(s.values[j]), barH, s.color, tipAttr(`${c.label}${nS > 1 ? " · " + s.name : ""}`, fmtVal(spec, s.values[j])) + drillPt(spec, c.key, s.key));
       });
       if (on) spec.series.forEach((s, k) => {
         const yy = grouped ? y + k * (barH + 2) : y, t = pointLabel(spec, j, k);
@@ -1418,7 +1435,7 @@ function svgBarH(spec, W) {
       let acc = 0;
       vis.forEach(([s, v, k], n) => {
         const x0 = labelW + x(acc), w = x(acc + v) - x(acc), last = n === vis.length - 1, w2 = Math.max(0, last ? w : w - 2);
-        const t = tipAttr(`${c.label} · ${s.name}`, fmtVal(spec, v)) + drillAttr(spec.bi, c.key, s.key);
+        const t = tipAttr(`${c.label} · ${s.name}`, fmtVal(spec, v)) + drillPt(spec, c.key, s.key);
         m += last ? barPath(x0, y, w2, barH, s.color, t) : `<rect x="${x0.toFixed(1)}" y="${y}" width="${w2.toFixed(1)}" height="${barH}" fill="${s.color}" ${t}></rect>`;
         if (on) { const lt = pointLabel(spec, j, k); if (lt && textW(lt, 6.2) + 6 <= w2) m += inLabel(x0 + w2 / 2, y + barH / 2 + 4, lt, s.color); }
         acc += v;
@@ -1473,7 +1490,7 @@ function svgBarV(spec, W) {
       const groupW = grouped ? nS * colW + (nS - 1) * 2 : colW;
       spec.series.forEach((s, k) => {
         const xx = x0 - groupW / 2 + (grouped ? k * (colW + 2) : 0), yy = ax.y(s.values[j]);
-        m += barPath(xx, yy, colW, top + plotH - yy, s.color, tipAttr(`${c.label}${nS > 1 ? " · " + s.name : ""}`, fmtVal(spec, s.values[j])) + drillAttr(spec.bi, c.key, s.key), "up");
+        m += barPath(xx, yy, colW, top + plotH - yy, s.color, tipAttr(`${c.label}${nS > 1 ? " · " + s.name : ""}`, fmtVal(spec, s.values[j])) + drillPt(spec, c.key, s.key), "up");
       });
       if (on) spec.series.forEach((s, k) => { const xx = x0 - groupW / 2 + (grouped ? k * (colW + 2) : 0); m += cap(xx + colW / 2, ax.y(s.values[j]), pointLabel(spec, j, k), grouped); });
       else if (nS === 1 && n <= 16 && spec.labels !== "none") m += `<text class="val" x="${x0.toFixed(1)}" y="${(ax.y(spec.series[0].values[j]) - 5).toFixed(1)}" text-anchor="middle">${esc(fmtVal(spec, spec.series[0].values[j]))}</text>`;
@@ -1482,7 +1499,7 @@ function svgBarV(spec, W) {
       let acc = 0;
       vis.forEach(([s, v, sk], k) => {
         const yTop = ax.y(acc + v), yBot = ax.y(acc), last = k === vis.length - 1, h = Math.max(0, last ? yBot - yTop : yBot - yTop - 2);
-        const t = tipAttr(`${c.label} · ${s.name}`, fmtVal(spec, v)) + drillAttr(spec.bi, c.key, s.key);
+        const t = tipAttr(`${c.label} · ${s.name}`, fmtVal(spec, v)) + drillPt(spec, c.key, s.key);
         m += last ? barPath(x0 - colW / 2, yTop, colW, h, s.color, t, "up") : `<rect x="${(x0 - colW / 2).toFixed(1)}" y="${(yTop + 2).toFixed(1)}" width="${colW.toFixed(1)}" height="${h.toFixed(1)}" fill="${s.color}" ${t}></rect>`;
         if (on) { const lt = pointLabel(spec, j, sk); if (lt && h >= 14 && textW(lt, 6.2) + 4 <= colW) m += inLabel(x0, (last ? yTop : yTop + 2) + h / 2 + 4, lt, s.color); }
         acc += v;
@@ -1513,7 +1530,7 @@ function svgLine(spec, W) {
   });
   spec.series.forEach(s => s.values.forEach((v, j) => {
     if (v === null || isNaN(v)) return;
-    const cx = X(j).toFixed(1), cy = ax.y(v).toFixed(1), t = tipAttr(`${spec.cats[j].label}${spec.series.length > 1 ? " · " + s.name : ""}`, fmtVal(spec, v)) + drillAttr(spec.bi, spec.cats[j].key, s.key);
+    const cx = X(j).toFixed(1), cy = ax.y(v).toFixed(1), t = tipAttr(`${spec.cats[j].label}${spec.series.length > 1 ? " · " + s.name : ""}`, fmtVal(spec, v)) + drillPt(spec, spec.cats[j].key, s.key);
     m += `<circle cx="${cx}" cy="${cy}" r="12" fill="transparent" ${t}></circle><circle cx="${cx}" cy="${cy}" r="4" fill="${s.color}" stroke="var(--surface)" stroke-width="2" ${t}></circle>`;
   }));
   if (on) spec.series.forEach((s, k) => s.values.forEach((v, j) => {   // une étiquette par point
@@ -2567,6 +2584,8 @@ RACINE.addEventListener("input", e => {
 // =============================================================================
 // Clic sur un chiffre, une barre, une part ou une case : détail des lignes
 // =============================================================================
+// point d'un graphique : (catégorie, série) = (ligne, colonne), ou l'inverse quand l'abscisse est inversée
+const drillPt = (spec, catKey, serKey) => spec.swap ? (serKey === "__autres" ? "" : drillAttr(spec.bi, serKey, catKey)) : drillAttr(spec.bi, catKey, serKey);
 const drillAttr = (i, rk, ck) => ` data-drill="${esc(JSON.stringify([i, rk ?? null, ck ?? null]))}"`;
 const drillCell = (i, rk, ck) => drillAttr(i, rk, ck) + ` tabindex="0" role="button" aria-label="Voir le détail"`;
 let drillState = null;     // { i, rk, ck, rows, sortCol, sortDir }
