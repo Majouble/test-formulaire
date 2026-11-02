@@ -167,6 +167,34 @@ function keysOf(col, v, grain) {
   if (Array.isArray(v)) { const a = v[0] === "L" ? v.slice(1) : v; return a.length ? a.map(x => tf ? geoT(tf, textOf(x)) : textOf(x) ?? EMPTY) : [EMPTY]; }
   const t = textOf(v); return [t === null ? EMPTY : tf ? geoT(tf, t) : t];
 }
+// Choix d'une colonne Choice / ChoiceList, dans l'ordre réglé dans Grist (table du bloc)
+function choixGrist(table, col) {
+  if (!docMeta || !table || !col) return [];
+  const { T, C } = docMeta, ref = T.id[T.tableId.indexOf(table)];
+  for (let i = 0; i < C.id.length; i++) if (C.parentId[i] === ref && C.colId[i] === col) {
+    try { const ch = JSON.parse(C.widgetOptions[i] || "{}").choices; return Array.isArray(ch) ? ch.map(String) : []; } catch (e) { return []; }
+  }
+  return [];
+}
+// Ordre des colonnes d'un tableau croisé : « manual » (ordre choisi, b.colOrder) ou « choices » (ordre des choix dans Grist) ;
+// les valeurs absentes de la liste suivent, par valeur décroissante ; « (vide) » toujours en dernier
+function rangColonne(b) {
+  const liste = b.colSort === "manual" ? valeursColonnes(b) : b.colSort === "choices" ? choixGrist(isMainSrc(b) ? mainTable : b.source, b.cols && b.cols.col) : null;
+  if (!liste) return null;
+  const pos = new Map(liste.map((k, j) => [k, j]));
+  return k => k === EMPTY ? 1e9 : pos.has(k) ? pos.get(k) : 1e6;
+}
+// Valeurs possibles des colonnes d'un bloc (pour régler leur ordre) : ordre déjà choisi, puis choix de Grist, puis valeurs des lignes
+function valeursColonnes(b) {
+  const cc = b.cols && b.cols.col; if (!cc) return [];
+  const vues = new Map();
+  records.forEach(r => keysOf(cc, r[cc], b.cols.grain).forEach(k => vues.set(k, (vues.get(k) || 0) + 1)));
+  const choix = choixGrist(isMainSrc(b) ? mainTable : b.source, cc);
+  const reste = [...vues.keys()].filter(k => !choix.includes(k)).sort((a, c) => (a === EMPTY) - (c === EMPTY) || vues.get(c) - vues.get(a) || a.localeCompare(c, "fr"));
+  const tout = [...choix, ...reste];
+  const ordre = (b.colOrder || []).filter(k => tout.includes(k));
+  return [...ordre, ...tout.filter(k => !ordre.includes(k))];
+}
 function keyLabel(col, key, grain) {
   if (isDate(col)) return dateLabel(key, grain || "jour");
   if (grain === "dep_uai" && DEP_NAMES[key]) return `${key} · ${DEP_NAMES[key]}`;
@@ -721,6 +749,19 @@ function renderGlobal() {
   $("globalBox").innerHTML = `${vue}<div class="edit-only card">${reglages}</div>`;
 }
 
+// Ordre personnalisé des colonnes d'un tableau croisé : flèches pour avancer ou reculer chaque colonne
+function ordreColonnesEditeur(b, i) {
+  const vals = valeursColonnes(b), n = vals.length;
+  if (!n) return `<div class="row"><span class="lbl">Ordre des colonnes</span><span class="hint">Aucune valeur pour l'instant.</span></div>`;
+  const lab = k => rich(keyLabel(b.cols.col, k, b.cols.grain));
+  return `<div class="row" style="align-items:flex-start"><span class="lbl">Ordre des colonnes</span><div style="flex:1">
+      <ol class="ordre-cols" style="margin:0;padding-left:22px">${vals.map((k, j) => `<li style="margin:2px 0">
+        <button class="ghost" data-act="colmove" data-b="${i}" data-j="${j}" data-d="-1" ${j ? "" : "disabled"} title="Avancer (plus à gauche)" aria-label="Avancer ${esc(k)}">↑</button>
+        <button class="ghost" data-act="colmove" data-b="${i}" data-j="${j}" data-d="1" ${j < n - 1 ? "" : "disabled"} title="Reculer (plus à droite)" aria-label="Reculer ${esc(k)}">↓</button>
+        ${lab(k)}</li>`).join("")}</ol>
+      <p class="hint">De haut en bas : de gauche à droite dans le tableau (et ordre des séries du graphique). Une valeur nouvelle se place à la fin.
+        ${(b.colOrder || []).length ? `<button class="ghost" data-act="colreset" data-b="${i}">Repartir de l'ordre par défaut</button>` : ""}</p></div></div>`;
+}
 function blockEditor(b, i) {
   const s = `b${i}`;
   const numFilter = c => true;
@@ -754,7 +795,9 @@ function blockEditor(b, i) {
     <div class="row"><span class="lbl">Lignes</span>${dim("rows", b.rows, "")}</div>
     ${b.rows.col && !isDate(b.rows.col) ? `<div class="row"><span class="lbl">Compléter avec</span>${refPick("rows.ref", b.rows.ref || {}, true)}</div>${refFilter("rows.ref", b.rows.ref || {})}` : ""}
     <div class="row"><span class="lbl">Colonnes</span>${dim("cols", b.cols, "Aucune (une seule colonne de résultat)")}
-      ${b.cols && b.cols.col && !isDate(b.cols.col) ? `<select data-b="${i}" data-k="colSort" title="Ordre des colonnes du tableau et des séries du graphique">${opt([["value", "colonnes : par valeur décroissante"], ["label", "colonnes : de A à Z"], ["labeldesc", "colonnes : de Z à A"]], b.colSort || "value")}</select>` : ""}</div>
+      ${b.cols && b.cols.col && !isDate(b.cols.col) ? `<select data-b="${i}" data-k="colSort" title="Ordre des colonnes du tableau et des séries du graphique">${opt([["value", "colonnes : par valeur décroissante"], ["label", "colonnes : de A à Z"], ["labeldesc", "colonnes : de Z à A"],
+        ...(choixGrist(isMainSrc(b) ? mainTable : b.source, b.cols.col).length ? [["choices", "colonnes : ordre des choix dans Grist"]] : []), ["manual", "colonnes : ordre personnalisé…"]], b.colSort || "value")}</select>` : ""}</div>
+    ${b.cols && b.cols.col && !isDate(b.cols.col) && b.colSort === "manual" ? ordreColonnesEditeur(b, i) : ""}
 `;
   const crossVue = b.type !== "cross" ? "" : `
     <div class="row"><span class="lbl">Affichage</span>
@@ -924,6 +967,7 @@ function crossData(b, base) {
   if (cc && isDate(cc)) colKeys.sort((a, c) => (a === EMPTY) - (c === EMPTY) || a.localeCompare(c));
   else if (b.colSort === "label") colKeys.sort((a, c) => (a === EMPTY) - (c === EMPTY) || keyLabel(cc, a, cg).localeCompare(keyLabel(cc, c, cg), "fr", { numeric: true }));
   else if (b.colSort === "labeldesc") colKeys.sort((a, c) => (a === EMPTY) - (c === EMPTY) || keyLabel(cc, c, cg).localeCompare(keyLabel(cc, a, cg), "fr", { numeric: true }));
+  else if (b.colSort === "manual" || b.colSort === "choices") { const rang = rangColonne(b) || (() => 0); colKeys.sort((a, c) => rang(a) - rang(c) || (colVal.get(c) || 0) - (colVal.get(a) || 0) || a.localeCompare(c, "fr")); }
   else colKeys.sort((a, c) => (colVal.get(c) || 0) - (colVal.get(a) || 0) || a.localeCompare(c, "fr"));
   const val = (rk, ck) => { const a = cells.get(rk + "\u0001" + ck); return a ? aggregate(a, m) : (ADDITIVE.has(m.agg || "count") ? 0 : NaN); };
   const keptRows = L.state === "ok" && b.rows.ref.only ? rows.filter(r => keysOf(rc, r[rc], rg).some(k => !outsideKeys.has(k))) : rows;
@@ -1617,6 +1661,13 @@ RACINE.addEventListener("click", e => {
   const act = t.dataset.act, i = Number(t.dataset.b);
   if (act === "clrdetail") { delete config.blocks[i].detailCols; commit(); return; }
   if (act === "autodesc") { delete config.blocks[i].desc; commit(); return; }
+  if (act === "colmove") {
+    const b = config.blocks[i], j = Number(t.dataset.j), d = Number(t.dataset.d);
+    const vals = inSrc(b, () => valeursColonnes(b));
+    if (j + d < 0 || j + d >= vals.length) return;
+    [vals[j], vals[j + d]] = [vals[j + d], vals[j]]; b.colOrder = vals; commit(); return;
+  }
+  if (act === "colreset") { delete config.blocks[i].colOrder; commit(); return; }
   if (act === "addqf") { const c = $("qfAddCol").value; if (c) { config.quickFilters = [...(config.quickFilters || []), c]; commit(); } return; }
   if (act === "delqf") { const c = (config.quickFilters || [])[Number(t.dataset.k)]; config.quickFilters.splice(Number(t.dataset.k), 1); delete quick[c]; commit(); return; }
   if (act === "addcond") { condsOf(t.dataset.scope).push({ col: inSrc(scopeBlock(t.dataset.scope), () => (columns[0] || {}).id || ""), op: "eq", val: "" }); commit(); }
