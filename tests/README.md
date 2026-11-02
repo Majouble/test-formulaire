@@ -8,7 +8,7 @@ Scénarios Playwright qui ouvrent les widgets (`v2/…`) dans Chromium avec un *
 cd tests
 npm install
 npx playwright install chromium     # ou : CHROMIUM=/chemin/vers/chromium
-sh lancer.sh                        # suite actuelle (run63 à run111)
+sh lancer.sh                        # suite actuelle (run63 à run112)
 sh lancer.sh run74 run76            # quelques scénarios
 ```
 
@@ -48,6 +48,7 @@ Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pou
 | `run107` | Atlas national appliqué au supérieur (85 établissements d'essai, `esr_essai.js`) : réglage « Tous risques », toutes les étiquettes gardées, pas d'abréviation scolaire devant les sigles, aucun point caché par un encart, tableau de 22 lignes |
 | `run110` | 2.43 : veille météo — onglet Veille (carte, synthèse, établissements et élèves, campagne pré-ciblée, réglages, relais préréglé), relais n8n exécuté avec Météo-France, Grist et Tchap simulés, bandeau de vigilance de la saisie |
 | `run111` | 2.44 : tableau de bord — ordre des colonnes d'un tableau croisé : par valeur, ordre des choix dans Grist, ordre personnalisé (flèches, enregistré dans le bloc, repris par les séries du graphique), retour à l'ordre par défaut |
+| `run112` | 2.44.5 : règles d'accès — référentiel des sites (visé par la sous-table des sites) et correspondances des sites modifiables par les agents mobilisés (compte ou lien d'invité), comme le référentiel des établissements |
 | `run109` | 2.42 : effectifs des établissements (carte Effectifs de l'onglet Référentiel) : jeux DEPP par UAI aux champs différents, second candidat pour la voie professionnelle, somme pour un lycée polyvalent, dernière rentrée, académies couvertes ; SIES par identifiant Paysage ; colonne Effectif recopiée dans les réponses |
 | `run108` | 2.41 : circuit de validation (onglet Validation, viseurs, statut, règles d'accès par échelon et périmètre, file « à viser » de la saisie) et campagnes (lancement depuis le publipostage, suivi quotidien, relance CSV, « Rien à signaler » sur la page d'un établissement) |
 | `run104` | Administration › Formulaires : renommer la table d'une question tableau (Grist, formulaires publiés et brouillons, profils d'atlas), nom déjà pris refusé, saisie dans la table renommée |

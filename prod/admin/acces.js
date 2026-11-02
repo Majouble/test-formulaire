@@ -76,6 +76,13 @@
       const cols = meta[f.table] ? Object.values(meta[f.table].colonnes) : [];
       cols.forEach(c => { const cible = S.cibleRef(c.type); if (cible && cible !== f.table && /etab|site|referentiel/i.test(`${c.colId} ${cible}`)) referentiels.add(cible); });
     }
+    // référentiels visés par les sous-tables (tableau des sites du formulaire ESR → référentiel des sites) : sans eux,
+    // un agent mobilisé ne pouvait pas ajouter un site (widget de géolocalisation), la table tombant sous la règle
+    // « équipe : lecture seule »
+    for (const t of [...saisie.keys()]) Object.values(meta[t].colonnes).forEach(c => { const cible = S.cibleRef(c.type) || (/^RefList:(.+)$/.exec(c.type) || [])[1];
+      if (cible && meta[cible] && !saisie.has(cible) && /etab|site|referentiel/i.test(`${c.colId} ${cible}`)) referentiels.add(cible); });
+    // correspondances libellé saisi → site (rapprochement des sites, widget de géolocalisation)
+    if (meta.Sites_correspondances) referentiels.add("Sites_correspondances");
     S.espaces(general).forEach(e => { if (meta[e.referentiel]) referentiels.add(e.referentiel); });
     (groupes || []).forEach(g => referentiels.add(g.table));
     [...saisie.keys()].forEach(t => referentiels.delete(t));
