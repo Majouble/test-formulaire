@@ -10,12 +10,14 @@
   const S = window.Socle;
   const $ = id => document.getElementById(id);
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  let td = {}, module = null, table = null, recharger = null, minuterie = null, pages = [], pagesCarte = [];
+  let td = {}, module = null, table = null, recharger = null, minuterie = null, pages = [], pagesCarte = [], pagesExtr = [];
   const URL_TDB = /\/tableau-de-bord\/?(index\.html)?(\?.*)?$/i;
   const URL_CARTE = /\/cartographie\/?(index\.html)?(\?.*)?$/i;
+  const URL_EXTR = /\/extractions\/?(index\.html)?(\?.*)?$/i;
   const MODULES = {
     tdb: { dossier: "tableau-de-bord", nom: "Tableau de bord", re: URL_TDB },
     carte: { dossier: "cartographie", nom: "Cartographie", re: URL_CARTE },
+    extr: { dossier: "extractions", nom: "Extractions", re: URL_EXTR },
   };
 
   /* ---------- Page dédiée : vue Grist affichant le widget du tableau de bord ---------- */
@@ -29,7 +31,7 @@
       const v = vues.id.indexOf(sec.parentId[i]);
       return { section: id, vue: sec.parentId[i], nom: v >= 0 ? vues.name[v] : "", tableau: (cv.widgetOptions || {}).tableau || null };
     }).filter(Boolean);
-    pages = lire(URL_TDB); pagesCarte = lire(URL_CARTE);
+    pages = lire(URL_TDB); pagesCarte = lire(URL_CARTE); pagesExtr = lire(URL_EXTR);
   }
   function dessinerPages() {
     const z = $("tdb-pages"), mes = pagesDe(pages, td);
@@ -38,16 +40,21 @@
          <button role="menuitem" id="tdb-page-autre">Créer une autre page pour ce tableau</button>`
       : `<div class="tdb-menu-info">Aucune page n'affiche encore ce tableau.</div><button role="menuitem" id="tdb-page-creer">Créer la page dédiée</button>`)
       + (pagesCarte.length ? `<div class="tdb-menu-info">Cartographie : ${pagesCarte.map(p => `« ${esc(p.nom)} »`).join(", ")}</div><button role="menuitem" id="carte-page-autre">Créer une autre page Cartographie</button>`
-        : `<button role="menuitem" id="carte-page-creer" title="Page Grist avec le widget de cartographie (carte et export GeoJSON, KML, GPX, CSV, Shapefile)">Créer la page Cartographie</button>`);
+        : `<button role="menuitem" id="carte-page-creer" title="Page Grist avec le widget de cartographie (carte et export GeoJSON, KML, GPX, CSV, Shapefile)">Créer la page Cartographie</button>`)
+      + (pagesExtr.length ? `<div class="tdb-menu-info">Extractions : ${pagesExtr.map(p => `« ${esc(p.nom)} »`).join(", ")}</div><button role="menuitem" id="extr-page-autre">Créer une autre page Extractions</button>`
+        : `<button role="menuitem" id="extr-page-creer" title="Page Grist avec le widget d'extraction : une ligne par établissement, filtres (jours de mobilisation, qualification, valeur d'une colonne), export Excel">Créer la page Extractions</button>`);
     const go = () => { fermerMenu(); creerPage("tdb"); }, goC = () => { fermerMenu(); creerPage("carte"); };
     if ($("tdb-page-creer")) $("tdb-page-creer").addEventListener("click", go);
     if ($("tdb-page-autre")) $("tdb-page-autre").addEventListener("click", go);
     if ($("carte-page-creer")) $("carte-page-creer").addEventListener("click", goC);
     if ($("carte-page-autre")) $("carte-page-autre").addEventListener("click", goC);
+    const goE = () => { fermerMenu(); creerPage("extr"); };
+    if ($("extr-page-creer")) $("extr-page-creer").addEventListener("click", goE);
+    if ($("extr-page-autre")) $("extr-page-autre").addEventListener("click", goE);
   }
   // Nom libre : « Tableau de bord », puis « Tableau de bord (2) »… (renommable ensuite dans Grist)
   async function creerPage(type = "tdb") {
-    const m = MODULES[type], existantes = type === "tdb" ? pagesDe(pages, td) : pagesCarte;
+    const m = MODULES[type], existantes = type === "tdb" ? pagesDe(pages, td) : type === "extr" ? pagesExtr : pagesCarte;
     const base = type === "tdb" ? td.nom || m.nom : m.nom;
     const nom = existantes.length ? `${base} (${existantes.length + 1})` : base;
     try {

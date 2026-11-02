@@ -1,0 +1,814 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>PRISME · Extractions</title>
+<!-- Widget « Extractions » du socle v2 (2.44) : une ligne par établissement, filtres, export Excel ; page créée depuis l'administration (onglet Tableau de bord). -->
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="../commun/theme.js"></script>
+<script src="../commun/socle.js"></script>
+<style>
+  :root {
+    --bleu: #000091; --bleu-clair: #e3e3fd; --gris: #666; --bord: #ddd;
+    --fond: #f6f6f6; --rouge: #c9191e; --vert: #18753c;
+  }
+  :root[data-theme="dark"] { --bleu: #8585f6; --bleu-clair: #21213f; --gris: #a5a5a5; --bord: #353535; --fond: #242424; }
+  :root[data-theme="dark"] body { background: #1e1e1e; color: #cecece; }
+  :root[data-theme="dark"] :is(select, input, textarea, .cases, .puce, button:not(.principal)) { background: #161616; color: #cecece; border-color: #3c3c3c; }
+  :root[data-theme="dark"] td { border-bottom-color: #2c2c2c; }
+  :root[data-theme="dark"] .message.erreur { background: #2a1010; } :root[data-theme="dark"] .message.info { background: #152218; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Marianne, Arial, sans-serif; color: #161616; background: #fff; }
+  header { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 2px solid var(--bleu); }
+  header h1 { font-size: 15px; margin: 0; color: var(--bleu); }
+  header .version { color: var(--gris); font-size: 11px; }
+  header .spacer { flex: 1; }
+  main { padding: 10px 12px; }
+  details { border: 1px solid var(--bord); border-radius: 6px; margin-bottom: 10px; background: var(--fond); }
+  details > summary { cursor: pointer; padding: 7px 10px; font-weight: 600; }
+  details[open] > summary { border-bottom: 1px solid var(--bord); }
+  .panel { padding: 10px; display: grid; gap: 10px 16px; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+  .panel .large { grid-column: 1 / -1; }
+  label.titre { display: block; font-weight: 600; font-size: 12px; margin-bottom: 3px; }
+  .aide { color: var(--gris); font-size: 11px; margin-top: 2px; }
+  select, input[type=text], input[type=number], input[type=date], textarea {
+    width: 100%; padding: 4px 6px; border: 1px solid #bbb; border-radius: 4px; font: inherit; background: #fff;
+  }
+  textarea { min-height: 90px; resize: vertical; }
+  .cases { max-height: 150px; overflow: auto; background: #fff; border: 1px solid #bbb; border-radius: 4px; padding: 4px 6px; }
+  .cases label { display: block; white-space: nowrap; }
+  .filtres { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: flex-end; padding: 10px; border: 1px solid var(--bord); border-radius: 6px; margin-bottom: 10px; }
+  .filtres .bloc { display: flex; flex-direction: column; gap: 3px; }
+  .filtres .ligne { display: flex; gap: 6px; align-items: center; }
+  .filtres input[type=number] { width: 70px; }
+  .filtres input[type=date] { width: 140px; }
+  .puces { display: flex; flex-wrap: wrap; gap: 4px; max-width: 520px; }
+  .puce { border: 1px solid #bbb; border-radius: 12px; padding: 2px 9px; cursor: pointer; user-select: none; background: #fff; font-size: 12px; }
+  .puce.on { outline: 2px solid var(--bleu); font-weight: 600; }
+  button { font: inherit; padding: 5px 11px; border-radius: 4px; border: 1px solid var(--bleu); background: #fff; color: var(--bleu); cursor: pointer; }
+  button.principal { background: var(--bleu); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .barre { display: flex; align-items: center; gap: 10px; margin: 6px 0 8px; flex-wrap: wrap; }
+  .barre .compte { font-weight: 600; }
+  .message { padding: 6px 10px; border-radius: 4px; margin-bottom: 8px; display: none; }
+  .message.erreur { display: block; background: #fee; color: var(--rouge); }
+  .message.info { display: block; background: #e8f5ec; color: var(--vert); }
+  .tableau { overflow: auto; max-height: calc(100vh - 120px); border: 1px solid var(--bord); border-radius: 6px; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border-bottom: 1px solid #eee; padding: 4px 7px; text-align: left; vertical-align: top; }
+  th { position: sticky; top: 0; background: var(--bleu-clair); cursor: pointer; white-space: nowrap; font-size: 12px; z-index: 1; }
+  th .fleche { color: var(--bleu); }
+  td { white-space: pre-wrap; max-width: 420px; }
+  td.num { text-align: right; white-space: nowrap; }
+  .qual { border-radius: 3px; padding: 0 5px; display: inline-block; }
+  .modeles { display: flex; gap: 6px; align-items: center; }
+  .modeles select { width: 220px; }
+  .modeles input { width: 200px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>PRISME · Extractions</h1>
+  <span class="version" id="version"></span>
+  <span class="spacer"></span>
+  <div class="modeles">
+    <select id="modele" title="Modèles d'extraction enregistrés"><option value="">— Modèle d'extraction —</option></select>
+    <button id="btnSupprModele" title="Supprimer le modèle sélectionné">Supprimer</button>
+    <input type="text" id="nomModele" placeholder="Nom du nouveau modèle">
+    <button id="btnEnregModele">Enregistrer</button>
+  </div>
+</header>
+<main>
+  <div id="message" class="message"></div>
+
+  <details id="detailsReglages">
+    <summary>Réglages de la source et du regroupement</summary>
+    <div class="panel">
+      <div>
+        <label class="titre" for="table">Table des réponses</label>
+        <select id="table"></select>
+        <div class="aide">Ex. table MEN ou MESRE.</div>
+      </div>
+      <div>
+        <label class="titre" for="cleCol">Regrouper par</label>
+        <select id="cleCol"></select>
+        <div class="aide">Une ligne par valeur de cette colonne (UAI, ou identifiant de site pour l'ESR).</div>
+      </div>
+      <div>
+        <label class="titre" for="dateCol">Date du dossier</label>
+        <select id="dateCol"></select>
+        <div class="aide">Sert à compter les jours (un dossier par jour).</div>
+      </div>
+      <div>
+        <label class="titre" for="qualCol">Qualification</label>
+        <select id="qualCol"></select>
+      </div>
+      <div>
+        <label class="titre" for="exclure">Ne pas compter les jours entièrement en</label>
+        <select id="exclure"></select>
+        <div class="aide">Un jour ne compte pas si toutes ses versions portent cette qualification.</div>
+      </div>
+      <div>
+        <label class="titre" for="gravite">Ordre de gravité (du moins au plus grave)</label>
+        <textarea id="gravite" placeholder="Une qualification par ligne"></textarea>
+        <div class="aide">Prérempli avec l'ordre des choix de la colonne.</div>
+      </div>
+      <div>
+        <label class="titre">Colonnes d'identification reprises</label>
+        <div class="cases" id="idCols"></div>
+        <div class="aide">Dernière valeur non vide (nom, commune, académie…).</div>
+      </div>
+      <div>
+        <label class="titre">Colonnes fusionnées</label>
+        <div class="cases" id="fusCols"></div>
+        <div class="aide">Valeurs de toutes les versions, dans l'ordre chronologique, sans doublons. Choix multiples : liste des éléments distincts.</div>
+        <label><input type="checkbox" id="prefixeDate"> Préfixer chaque valeur par sa date</label>
+      </div>
+      <div>
+        <label class="titre">Colonnes calculées</label>
+        <div class="cases" id="calcCols"></div>
+      </div>
+    </div>
+  </details>
+
+  <div class="filtres">
+    <div class="bloc">
+      <span class="titre"><b>Période</b></span>
+      <div class="ligne">du <input type="date" id="du"> au <input type="date" id="au"></div>
+    </div>
+    <div class="bloc">
+      <span class="titre"><b>Jours de mobilisation</b></span>
+      <div class="ligne">min <input type="number" min="0" id="joursMin"> max <input type="number" min="0" id="joursMax"></div>
+    </div>
+    <div class="bloc">
+      <span class="titre"><b>Qualification</b>
+        <select id="qualMode" style="width:auto">
+          <option value="une">au moins une fois</option>
+          <option value="max">la plus grave</option>
+          <option value="derniere">la dernière</option>
+        </select>
+      </span>
+      <div class="puces" id="qualPuces"></div>
+    </div>
+    <div class="bloc">
+      <span class="titre"><b>Valeur présente dans une colonne</b></span>
+      <div class="ligne">
+        <select id="chercheCol" style="width:180px"></select>
+        <input type="text" id="chercheTexte" placeholder="contient… (a ; b = l'un ou l'autre)" style="width:220px">
+      </div>
+    </div>
+    <div class="bloc">
+      <button id="btnReinit" title="Effacer les filtres">Effacer les filtres</button>
+    </div>
+  </div>
+
+  <div class="barre">
+    <span class="compte" id="compte">Chargement…</span>
+    <span class="spacer" style="flex:1"></span>
+    <button id="btnRafraichir">Rafraîchir les données</button>
+    <button id="btnExcel" class="principal">Télécharger Excel</button>
+  </div>
+
+  <div class="tableau"><table id="resultat"></table></div>
+</main>
+
+<script>
+"use strict";
+const VERSION = window.Socle ? `socle ${window.Socle.VERSION}` : "2.44";
+const LIMITE_APERCU = 500;
+const EXCELJS_URL = "https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js";
+const CALCULEES = [
+  { key: "nbJours",   label: "Nb jours de mobilisation", type: "int",  defaut: true },
+  { key: "premier",   label: "Premier jour",             type: "date", defaut: true },
+  { key: "dernier",   label: "Dernier jour",             type: "date", defaut: true },
+  { key: "jours",     label: "Jours",                    type: "text", defaut: false },
+  { key: "qualMax",   label: "Qualification la plus grave", type: "qual", defaut: true },
+  { key: "qualDer",   label: "Dernière qualification",   type: "qual", defaut: true },
+  { key: "qualHist",  label: "Évolution de la qualification", type: "text", defaut: false },
+  { key: "nbVersions",label: "Nb versions",              type: "int",  defaut: false },
+];
+
+const $ = id => document.getElementById(id);
+$("version").textContent = VERSION;
+
+// ---------- État ----------
+let meta = {};            // tableId -> { colId -> { label, type, choices, choiceOptions, refTable, visibleColId } }
+let tables = [];
+let lignes = [];          // lignes sources de la table courante
+let refCache = {};        // tableId -> { id -> valeur affichée }
+let config = configParDefaut();
+let filtres = filtresVides();
+let modeles = [];         // modèles affichés : ceux du document (Config, clé « extractions ») puis ceux de la page
+let modelesDoc = [], modelesPage = [], socleConfig = null, socleGeneral = null;
+let tri = { key: null, sens: -1 };
+let resultat = { colonnes: [], lignes: [], total: 0 };
+let optionsChargees = false;
+
+function configParDefaut() {
+  return { tableId: "", cleCol: "", dateCol: "", qualCol: "", exclure: "RAS", gravite: [],
+           idCols: [], fusCols: [], prefixeDate: true,
+           calc: Object.fromEntries(CALCULEES.map(c => [c.key, c.defaut])) };
+}
+function filtresVides() {
+  return { du: "", au: "", joursMin: "", joursMax: "", qualMode: "une", qualValeurs: [], chercheCol: "", chercheTexte: "" };
+}
+
+// ---------- Utilitaires ----------
+function message(texte, type = "erreur") {
+  const m = $("message");
+  m.className = "message " + (texte ? type : "");
+  m.textContent = texte || "";
+}
+function normaliser(s) {
+  return String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+const fmtParis = new Intl.DateTimeFormat("fr-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" });
+function jourISO(v, type) {
+  if (v === null || v === undefined || v === "") return "";
+  if (typeof v === "number") {
+    const d = new Date(v * 1000);
+    if (type === "Date" || (!type && v % 86400 === 0)) return d.toISOString().slice(0, 10);
+    return fmtParis.format(d);
+  }
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  return "";
+}
+const jourFr = iso => iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "";
+const jourCourt = iso => iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "";
+
+function texteCellule(tableId, colId, v) {
+  if (v === null || v === undefined) return "";
+  const c = (meta[tableId] || {})[colId] || {};
+  const t = c.type || "";
+  if (Array.isArray(v)) {
+    if (v[0] === "E") return "";                                  // erreur de formule
+    if (v[0] === "L") {
+      const items = v.slice(1);
+      if (t.startsWith("RefList:")) return items.map(id => refValeur(c, id)).filter(Boolean).join(", ");
+      return items.join(", ");
+    }
+    return v.join(", ");
+  }
+  if (t.startsWith("Ref:")) return v ? refValeur(c, v) : "";
+  if (t === "Date" || t.startsWith("DateTime")) return typeof v === "number" ? jourFr(jourISO(v, t)) : String(v);
+  if (t === "Bool" || typeof v === "boolean") return v ? "Oui" : "Non";
+  return String(v);
+}
+function elementsListe(tableId, colId, v) {
+  if (!Array.isArray(v) || v[0] !== "L") { const t = texteCellule(tableId, colId, v).trim(); return t ? [t] : []; }
+  const c = (meta[tableId] || {})[colId] || {};
+  const items = v.slice(1).map(x => (c.type || "").startsWith("RefList:") ? refValeur(c, x) : String(x));
+  return items.map(s => s.trim()).filter(Boolean);
+}
+function refValeur(c, id) {
+  const cache = refCache[c.refTable];
+  if (!cache) return String(id);
+  const val = cache[id];
+  return val === undefined || val === null ? "" : String(val);
+}
+
+// ---------- Grist : métadonnées et données ----------
+async function chargerMeta() {
+  meta = {};
+  try {
+    const t = await grist.docApi.fetchTable("_grist_Tables");
+    const c = await grist.docApi.fetchTable("_grist_Tables_column");
+    const tableParRef = {};
+    t.id.forEach((id, i) => { tableParRef[id] = t.tableId[i]; meta[t.tableId[i]] = {}; });
+    const colParRef = {};
+    c.id.forEach((id, i) => { colParRef[id] = c.colId[i]; });
+    c.id.forEach((id, i) => {
+      const tableId = tableParRef[c.parentId[i]];
+      const colId = c.colId[i];
+      if (!tableId || colId === "manualSort" || colId.startsWith("gristHelper_")) return;
+      let wo = {};
+      try { wo = JSON.parse(c.widgetOptions[i] || "{}"); } catch (e) {}
+      const type = c.type[i] || "";
+      meta[tableId][colId] = {
+        label: c.label[i] || colId, type,
+        choices: wo.choices || [], choiceOptions: wo.choiceOptions || {},
+        refTable: type.includes(":") && type.startsWith("Ref") ? type.split(":")[1] : null,
+        visibleColId: c.visibleCol[i] ? colParRef[c.visibleCol[i]] : null,
+      };
+    });
+  } catch (e) {
+    console.warn("Métadonnées indisponibles, mode dégradé", e);
+  }
+}
+
+async function chargerTables() {
+  let liste = [];
+  try { liste = await grist.docApi.listTables(); } catch (e) { liste = Object.keys(meta); }
+  const S = window.Socle, g = socleGeneral;
+  const techniques = g ? new Set([S.TABLE_CONFIG, S.TABLE_ADMIN, S.TABLE_CELLULE, g.formulaires, g.agents, g.creneaux, g.affectations, g.emargements, g.actions, g.vigilances, g.vigilances_journal]) : new Set();
+  const reponses = g ? S.espaces(g).map(e => e.reponses) : [];
+  tables = liste.filter(t => !t.startsWith("_grist") && !techniques.has(t))
+    .sort((a, b) => (reponses.includes(a) ? reponses.indexOf(a) : 99) - (reponses.includes(b) ? reponses.indexOf(b) : 99) || a.localeCompare(b));
+}
+// Colonnes du socle (rôles) pour une table de réponses : réglages proposés d'office
+async function rolesSocle(tableId) {
+  const S = window.Socle; if (!S || !socleGeneral) return null;
+  try {
+    const m = await S.lireMeta(), e = S.espaceDeTable(socleGeneral, tableId); if (!m[tableId] || !e) return null;
+    const assoc = tableId === socleGeneral.reponses ? ((socleConfig && socleConfig.valeurs.roles && socleConfig.valeurs.roles.reponses) || {}) : {};
+    const r = S.resoudreRoles("reponses", m[tableId], { reponses: tableId, referentiel: e.referentiel }, assoc, {});
+    return Object.fromEntries(Object.entries(r).filter(([, x]) => x.col).map(([k, x]) => [k, x.col]));
+  } catch (_) { return null; }
+}
+
+async function chargerLignes() {
+  const tableId = config.tableId;
+  lignes = [];
+  if (!tableId) return;
+  const d = await grist.docApi.fetchTable(tableId);
+  const cols = Object.keys(d).filter(k => k !== "manualSort" && !k.startsWith("gristHelper_"));
+  if (!meta[tableId] || !Object.keys(meta[tableId]).length) {
+    meta[tableId] = Object.fromEntries(cols.filter(k => k !== "id").map(k => [k, { label: k, type: "", choices: [], choiceOptions: {} }]));
+  }
+  lignes = d.id.map((id, i) => { const r = { id }; cols.forEach(k => r[k] = d[k][i]); return r; });
+  // Résolution des références (Ref / RefList) vers leur colonne affichée
+  const aResoudre = {};
+  Object.values(meta[tableId]).forEach(c => { if (c.refTable && c.visibleColId) aResoudre[c.refTable] = aResoudre[c.refTable] || new Set(); if (c.refTable && c.visibleColId) aResoudre[c.refTable].add(c.visibleColId); });
+  for (const [refTable, visCols] of Object.entries(aResoudre)) {
+    if (refCache[refTable]) continue;
+    try {
+      const r = await grist.docApi.fetchTable(refTable);
+      const vis = [...visCols][0];
+      refCache[refTable] = {};
+      r.id.forEach((id, i) => refCache[refTable][id] = r[vis] ? r[vis][i] : id);
+    } catch (e) { console.warn("Référence non résolue", refTable, e); }
+  }
+}
+
+// ---------- Interface : réglages ----------
+function colonnesTable() {
+  return Object.entries(meta[config.tableId] || {}).map(([id, c]) => ({ id, label: c.label || id, type: c.type }));
+}
+function remplirSelect(sel, options, valeur, vide = "— aucune —") {
+  sel.innerHTML = "";
+  if (vide !== null) sel.add(new Option(vide, ""));
+  options.forEach(o => sel.add(new Option(o.label, o.id)));
+  sel.value = options.some(o => o.id === valeur) ? valeur : "";
+}
+function remplirCases(div, cols, cochees, onChange) {
+  div.innerHTML = "";
+  cols.forEach(c => {
+    const l = document.createElement("label");
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.value = c.id; cb.checked = cochees.includes(c.id);
+    cb.addEventListener("change", onChange);
+    l.append(cb, " " + c.label);
+    div.append(l);
+  });
+}
+function valeursCochees(div) { return [...div.querySelectorAll("input:checked")].map(i => i.value); }
+
+function devinerColonne(cols, motifs) {
+  for (const m of motifs) {
+    const c = cols.find(c => m.test(c.id) || m.test(normaliser(c.label)));
+    if (c) return c.id;
+  }
+  return "";
+}
+
+function valeursQualification() {
+  const c = (meta[config.tableId] || {})[config.qualCol];
+  const vues = new Set();
+  lignes.forEach(r => { const v = texteCellule(config.tableId, config.qualCol, r[config.qualCol]); if (v) vues.add(v); });
+  const ordre = config.gravite.length ? config.gravite.slice() : (c && c.choices.length ? c.choices.slice() : []);
+  [...vues].sort().forEach(v => { if (!ordre.includes(v)) ordre.push(v); });
+  return ordre.filter(v => vues.has(v) || (c && c.choices.includes(v)) || config.gravite.includes(v));
+}
+
+function afficherReglages() {
+  remplirSelect($("table"), tables.map(t => ({ id: t, label: t })), config.tableId, null);
+  const cols = colonnesTable();
+  remplirSelect($("cleCol"), cols, config.cleCol);
+  remplirSelect($("dateCol"), cols, config.dateCol);
+  remplirSelect($("qualCol"), cols, config.qualCol);
+  remplirSelect($("chercheCol"), cols, filtres.chercheCol, "— colonne —");
+  const qv = config.qualCol ? valeursQualification() : [];
+  remplirSelect($("exclure"), qv.map(v => ({ id: v, label: v })), config.exclure, "— compter tous les jours —");
+  if (!config.gravite.length && config.qualCol) config.gravite = qv.slice();
+  $("gravite").value = config.gravite.join("\n");
+  remplirCases($("idCols"), cols, config.idCols, () => { config.idCols = valeursCochees($("idCols")); majResultat(); });
+  remplirCases($("fusCols"), cols, config.fusCols, () => { config.fusCols = valeursCochees($("fusCols")); majResultat(); });
+  remplirCases($("calcCols"), CALCULEES.map(c => ({ id: c.key, label: c.label })),
+    CALCULEES.filter(c => config.calc[c.key]).map(c => c.key),
+    () => { const on = valeursCochees($("calcCols")); CALCULEES.forEach(c => config.calc[c.key] = on.includes(c.key)); majResultat(); });
+  $("prefixeDate").checked = !!config.prefixeDate;
+}
+
+function afficherFiltres() {
+  $("du").value = filtres.du; $("au").value = filtres.au;
+  $("joursMin").value = filtres.joursMin; $("joursMax").value = filtres.joursMax;
+  $("qualMode").value = filtres.qualMode;
+  $("chercheCol").value = filtres.chercheCol; $("chercheTexte").value = filtres.chercheTexte;
+  const div = $("qualPuces"); div.innerHTML = "";
+  const qc = (meta[config.tableId] || {})[config.qualCol] || { choiceOptions: {} };
+  (config.qualCol ? valeursQualification() : []).forEach(v => {
+    const p = document.createElement("span");
+    p.className = "puce" + (filtres.qualValeurs.includes(v) ? " on" : "");
+    p.textContent = v;
+    const co = qc.choiceOptions[v] || {};
+    if (co.fillColor) p.style.background = co.fillColor;
+    if (co.textColor) p.style.color = co.textColor;
+    p.addEventListener("click", () => {
+      filtres.qualValeurs = filtres.qualValeurs.includes(v) ? filtres.qualValeurs.filter(x => x !== v) : [...filtres.qualValeurs, v];
+      afficherFiltres(); majResultat();
+    });
+    div.append(p);
+  });
+  if (!config.qualCol) div.innerHTML = '<span class="aide">Choisir la colonne de qualification dans les réglages.</span>';
+}
+
+function afficherModeles() {
+  modeles = [...modelesDoc.map(m => ({ ...m, doc: true })), ...modelesPage.map(m => ({ ...m, doc: false }))];
+  const sel = $("modele"), courant = sel.value;
+  sel.innerHTML = '<option value="">— Modèle d\'extraction —</option>';
+  modeles.forEach((m, i) => sel.add(new Option(m.doc ? `${m.nom} · document` : `${m.nom} · cette page`, String(i))));
+  sel.value = modeles[courant] ? courant : "";
+}
+
+// ---------- Calcul ----------
+function calculer() {
+  const T = config.tableId, cle = config.cleCol;
+  const typeDate = config.dateCol ? ((meta[T] || {})[config.dateCol] || {}).type : "";
+  const rang = v => config.gravite.indexOf(v);
+  const colonnes = [];
+  if (cle) colonnes.push({ key: "cle", label: libelle(cle), type: "text" });
+  config.idCols.filter(c => c !== cle).forEach(c => colonnes.push({ key: "id_" + c, label: libelle(c), type: "text" }));
+  CALCULEES.forEach(c => {
+    if (!config.calc[c.key]) return;
+    if (["nbJours", "premier", "dernier", "jours"].includes(c.key) && !config.dateCol) return;
+    if (["qualMax", "qualDer", "qualHist"].includes(c.key) && !config.qualCol) return;
+    colonnes.push({ key: c.key, label: c.key === "nbJours" && config.exclure && config.qualCol ? `Nb jours de mobilisation (hors jours ${config.exclure})` : c.label, type: c.type });
+  });
+  config.fusCols.forEach(c => colonnes.push({ key: "fus_" + c, label: libelle(c), type: "text" }));
+  if (!T || !cle) return { colonnes, lignes: [], total: 0, sources: 0 };
+
+  // 1. Filtre de période sur les lignes sources
+  const sources = lignes.filter(r => {
+    if (!filtres.du && !filtres.au) return true;
+    const j = jourISO(r[config.dateCol], typeDate);
+    if (!j) return false;
+    return (!filtres.du || j >= filtres.du) && (!filtres.au || j <= filtres.au);
+  });
+
+  // 2. Regroupement
+  const groupes = new Map();
+  sources.forEach(r => {
+    const k = texteCellule(T, cle, r[cle]).trim();
+    if (!k) return;
+    if (!groupes.has(k)) groupes.set(k, []);
+    groupes.get(k).push(r);
+  });
+
+  // 3. Agrégation
+  const recherche = filtres.chercheCol && filtres.chercheTexte.trim()
+    ? filtres.chercheTexte.split(";").map(s => normaliser(s.trim())).filter(Boolean) : null;
+  const sortie = [];
+  for (const [k, rs] of groupes) {
+    const avecJour = rs.map(r => ({ r, j: config.dateCol ? jourISO(r[config.dateCol], typeDate) : "" }))
+      .sort((a, b) => (a.j || "").localeCompare(b.j || "") || a.r.id - b.r.id);
+    const o = { cle: k, _rs: avecJour };
+    config.idCols.forEach(c => {
+      let v = "";
+      avecJour.forEach(({ r }) => { const t = texteCellule(T, c, r[c]).trim(); if (t) v = t; });
+      o["id_" + c] = v;
+    });
+    if (config.dateCol) {
+      const tousJours = [...new Set(avecJour.map(x => x.j).filter(Boolean))].sort();
+      let joursMob = tousJours;
+      if (config.qualCol && config.exclure) {
+        joursMob = tousJours.filter(j => avecJour.some(x => x.j === j && texteCellule(T, config.qualCol, x.r[config.qualCol]) !== config.exclure));
+      }
+      o.nbJours = joursMob.length;
+      o.premier = tousJours[0] || "";
+      o.dernier = tousJours[tousJours.length - 1] || "";
+      o.jours = tousJours.map(jourCourt).join(", ");
+    }
+    if (config.qualCol) {
+      const qs = avecJour.map(x => texteCellule(T, config.qualCol, x.r[config.qualCol])).filter(Boolean);
+      o._quals = qs;
+      o.qualDer = qs[qs.length - 1] || "";
+      o.qualMax = qs.reduce((m, q) => (m === "" || rang(q) > rang(m)) ? q : m, "");
+      o.qualHist = qs.filter((q, i) => i === 0 || q !== qs[i - 1]).join(" → ");
+    }
+    o.nbVersions = rs.length;
+    config.fusCols.forEach(c => {
+      const vus = new Set(), morceaux = [];
+      const estListe = avecJour.some(({ r }) => Array.isArray(r[c]) && r[c][0] === "L");
+      if (estListe) {   // choix multiples : liste des éléments distincts, sans date
+        avecJour.forEach(({ r }) => elementsListe(T, c, r[c]).forEach(t => { if (!vus.has(t)) { vus.add(t); morceaux.push(t); } }));
+        o["fus_" + c] = morceaux.join(", ");
+        return;
+      }
+      avecJour.forEach(({ r, j }) => {
+        const t = texteCellule(T, c, r[c]).trim();
+        if (!t || vus.has(t)) return;
+        vus.add(t);
+        morceaux.push(config.prefixeDate && j ? `${jourCourt(j)} : ${t}` : t);
+      });
+      o["fus_" + c] = morceaux.join("\n");
+    });
+
+    // 4. Filtres sur les établissements regroupés
+    if (filtres.joursMin !== "" && config.dateCol && o.nbJours < Number(filtres.joursMin)) continue;
+    if (filtres.joursMax !== "" && config.dateCol && o.nbJours > Number(filtres.joursMax)) continue;
+    if (filtres.qualValeurs.length && config.qualCol) {
+      const ok = filtres.qualMode === "max" ? filtres.qualValeurs.includes(o.qualMax)
+        : filtres.qualMode === "derniere" ? filtres.qualValeurs.includes(o.qualDer)
+        : o._quals.some(q => filtres.qualValeurs.includes(q));
+      if (!ok) continue;
+    }
+    if (recherche) {
+      const ok = avecJour.some(({ r }) => {
+        const t = normaliser(texteCellule(T, filtres.chercheCol, r[filtres.chercheCol]));
+        return recherche.some(s => t.includes(s));
+      });
+      if (!ok) continue;
+    }
+    sortie.push(o);
+  }
+
+  // 5. Tri
+  const col = colonnes.find(c => c.key === tri.key);
+  if (col) {
+    sortie.sort((a, b) => tri.sens * comparer(a[col.key], b[col.key], col.type));
+  } else {
+    sortie.sort((a, b) => (rang(b.qualMax) - rang(a.qualMax)) || ((b.nbJours || 0) - (a.nbJours || 0)) || a.cle.localeCompare(b.cle, "fr"));
+  }
+  return { colonnes, lignes: sortie, total: groupes.size, sources: sources.length };
+
+  function comparer(x, y, type) {
+    if (type === "int") return (x || 0) - (y || 0);
+    if (type === "qual") return rang(x) - rang(y);
+    return String(x || "").localeCompare(String(y || ""), "fr", { numeric: true });
+  }
+}
+function libelle(colId) { return ((meta[config.tableId] || {})[colId] || {}).label || colId; }
+
+// ---------- Rendu ----------
+function majResultat() {
+  resultat = calculer();
+  const tab = $("resultat");
+  const qc = (meta[config.tableId] || {})[config.qualCol] || { choiceOptions: {} };
+  if (!config.tableId || !config.cleCol) {
+    $("compte").textContent = "Choisir la table et la colonne de regroupement dans les réglages.";
+    tab.innerHTML = ""; $("detailsReglages").open = true; return;
+  }
+  $("compte").textContent = `${resultat.lignes.length} établissement(s) retenu(s) sur ${resultat.total} · ${resultat.sources} ligne(s) source(s)`
+    + (resultat.lignes.length > LIMITE_APERCU ? ` · aperçu limité aux ${LIMITE_APERCU} premiers (l'export contient tout)` : "");
+  const thead = "<thead><tr>" + resultat.colonnes.map(c =>
+    `<th data-key="${c.key}">${echapper(c.label)} <span class="fleche">${tri.key === c.key ? (tri.sens > 0 ? "▲" : "▼") : ""}</span></th>`).join("") + "</tr></thead>";
+  const corps = resultat.lignes.slice(0, LIMITE_APERCU).map(o => "<tr>" + resultat.colonnes.map(c => {
+    const v = o[c.key];
+    if (c.type === "int") return `<td class="num">${v ?? ""}</td>`;
+    if (c.type === "date") return `<td class="num">${jourFr(v)}</td>`;
+    if (c.type === "qual" && v) {
+      const co = qc.choiceOptions[v] || {};
+      return `<td><span class="qual" style="background:${co.fillColor || "transparent"};color:${co.textColor || "inherit"}">${echapper(v)}</span></td>`;
+    }
+    return `<td>${echapper(v ?? "")}</td>`;
+  }).join("") + "</tr>").join("");
+  tab.innerHTML = thead + "<tbody>" + corps + "</tbody>";
+  tab.querySelectorAll("th").forEach(th => th.addEventListener("click", () => {
+    const k = th.dataset.key;
+    tri = tri.key === k ? { key: k, sens: -tri.sens } : { key: k, sens: 1 };
+    majResultat();
+  }));
+}
+function echapper(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+
+// ---------- Export Excel ----------
+function chargerScript(url) {
+  return new Promise((ok, ko) => { const s = document.createElement("script"); s.src = url; s.onload = ok; s.onerror = () => ko(new Error("Impossible de charger " + url)); document.head.append(s); });
+}
+async function exporterExcel() {
+  const btn = $("btnExcel"); btn.disabled = true; message("");
+  try {
+    if (!window.ExcelJS) await chargerScript(EXCELJS_URL);
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "PRISME";
+    const ws = wb.addWorksheet("Extraction", { views: [{ state: "frozen", ySplit: 1 }] });
+    const cols = resultat.colonnes;
+    ws.columns = cols.map(c => ({ header: c.label, key: c.key }));
+    const qc = (meta[config.tableId] || {})[config.qualCol] || { choiceOptions: {} };
+    resultat.lignes.forEach(o => {
+      const ligne = {};
+      cols.forEach(c => {
+        let v = o[c.key];
+        if (c.type === "date") v = v ? new Date(v + "T00:00:00Z") : null;
+        else if (typeof v === "string" && v.length > 32000) v = v.slice(0, 32000) + "…";
+        ligne[c.key] = v ?? null;
+      });
+      const row = ws.addRow(ligne);
+      cols.forEach((c, i) => {
+        const cell = row.getCell(i + 1);
+        if (c.type === "date") cell.numFmt = "dd/mm/yyyy";
+        if (c.type === "text") cell.alignment = { wrapText: true, vertical: "top" };
+        else cell.alignment = { vertical: "top" };
+        if (c.type === "qual" && o[c.key]) {
+          const co = qc.choiceOptions[o[c.key]] || {};
+          if (co.fillColor) cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: argb(co.fillColor) } };
+          if (co.textColor) cell.font = { color: { argb: argb(co.textColor) } };
+        }
+      });
+    });
+    const entete = ws.getRow(1);
+    entete.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    entete.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF000091" } };
+    entete.alignment = { vertical: "middle", wrapText: true };
+    ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: Math.max(cols.length, 1) } };
+    cols.forEach((c, i) => {
+      let max = c.label.length;
+      resultat.lignes.slice(0, 300).forEach(o => {
+        const v = c.type === "date" ? "00/00/0000" : String(o[c.key] ?? "");
+        v.split("\n").forEach(l => { if (l.length > max) max = l.length; });
+      });
+      ws.getColumn(i + 1).width = Math.min(Math.max(max + 2, 10), 60);
+    });
+
+    const wp = wb.addWorksheet("Paramètres");
+    wp.columns = [{ header: "Paramètre", key: "p", width: 34 }, { header: "Valeur", key: "v", width: 70 }];
+    wp.getRow(1).font = { bold: true };
+    resumeParametres().forEach(([p, v]) => wp.addRow({ p, v }));
+
+    const buf = await wb.xlsx.writeBuffer();
+    const nom = `extraction_${config.tableId}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    telecharger(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), nom);
+    message(`${resultat.lignes.length} ligne(s) exportée(s) dans ${nom}.`, "info");
+  } catch (e) {
+    console.error(e);
+    message("Export Excel impossible (" + e.message + "). Export CSV proposé à la place.");
+    exporterCSV();
+  } finally { btn.disabled = false; }
+}
+function argb(hex) { const h = hex.replace("#", ""); return "FF" + (h.length === 3 ? h.split("").map(c => c + c).join("") : h).toUpperCase(); }
+function resumeParametres() {
+  const p = [["Extraction réalisée le", new Date().toLocaleString("fr-FR")], ["Table", config.tableId], ["Regroupement par", libelle(config.cleCol)]];
+  if (filtres.du || filtres.au) p.push(["Période", `${filtres.du ? jourFr(filtres.du) : "…"} → ${filtres.au ? jourFr(filtres.au) : "…"}`]);
+  if (filtres.joursMin !== "" || filtres.joursMax !== "") p.push(["Jours de mobilisation", `min ${filtres.joursMin || "–"} / max ${filtres.joursMax || "–"}`]);
+  if (config.exclure && config.qualCol) p.push(["Jours non comptés", `jours entièrement en « ${config.exclure} »`]);
+  if (filtres.qualValeurs.length) p.push([`Qualification (${$("qualMode").selectedOptions[0].text})`, filtres.qualValeurs.join(", ")]);
+  if (filtres.chercheCol && filtres.chercheTexte) p.push([`« ${libelle(filtres.chercheCol)} » contient`, filtres.chercheTexte]);
+  p.push(["Établissements retenus", `${resultat.lignes.length} sur ${resultat.total}`]);
+  return p;
+}
+function exporterCSV() {
+  const cols = resultat.colonnes;
+  const esc = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const lignesCsv = [cols.map(c => esc(c.label)).join(";")].concat(resultat.lignes.map(o => cols.map(c => esc(c.type === "date" ? jourFr(o[c.key]) : o[c.key])).join(";")));
+  telecharger(new Blob(["﻿" + lignesCsv.join("\r\n")], { type: "text/csv;charset=utf-8" }), `extraction_${config.tableId}.csv`);
+}
+function telecharger(blob, nom) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = nom;
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+// ---------- Sauvegarde (options du widget) ----------
+let minuteur = null;
+function sauvegarder() {
+  clearTimeout(minuteur);
+  minuteur = setTimeout(() => {
+    const opts = { config, filtres, modeles: modelesPage };
+    try { grist.setOptions(opts); } catch (e) {}
+    try { localStorage.setItem("prisme-extractions", JSON.stringify(opts)); } catch (e) {}
+  }, 600);
+}
+
+// ---------- Événements ----------
+async function changerTable(tableId) {
+  const garde = { calc: config.calc, prefixeDate: config.prefixeDate };
+  config = Object.assign(configParDefaut(), garde, { tableId });
+  filtres = filtresVides();
+  await chargerEtAfficher(true);
+}
+async function chargerEtAfficher(deviner = false) {
+  try {
+    await chargerLignes();
+  } catch (e) { message("Lecture de la table impossible : " + e.message); }
+  if (deviner) {
+    const cols = colonnesTable(), ids = cols.map(c => c.id), roles = await rolesSocle(config.tableId);
+    if (roles) {   // table de réponses du socle : établissement (UAI), date des faits, qualification, colonnes de l'établissement
+      config.cleCol = config.cleCol || (ids.includes("UAI") ? "UAI" : roles.Etablissement || "");
+      config.dateCol = config.dateCol || roles.Date_faits || roles.Cree_le || "";
+      config.qualCol = config.qualCol || roles.Qualification || "";
+      if (!config.idCols.length) config.idCols = ["Nom_etablissement", "Commune", "Departement", "Academie", "Effectif"].filter(c => ids.includes(c) && c !== config.cleCol);
+      // ordre de gravité : dans le socle, les choix de Qualification vont du plus grave au moins grave (le widget attend l'inverse)
+      const qm = (meta[config.tableId] || {})[config.qualCol];
+      if (qm && qm.choices && qm.choices.length && !config.gravite.length) config.gravite = qm.choices.slice().reverse();
+      const retour = ((socleGeneral && socleGeneral.retour_normale) || ["RAS"]);
+      if (config.qualCol) { const q = valeursQualification(); config.exclure = q.find(v => retour.some(r => r.toUpperCase() === v.toUpperCase())) || ""; }
+    }
+    config.cleCol = config.cleCol || devinerColonne(cols, [/^uai$/i, /uai/i, /etablissement/i]);
+    config.dateCol = config.dateCol || devinerColonne(cols, [/^date_?dossier$/i, /^date$/i, /date/i]);
+    config.qualCol = config.qualCol || devinerColonne(cols, [/qualif/i]);
+    config.idCols = config.idCols.length ? config.idCols : cols.filter(c => /^(nom|libelle|commune|departement|academie)/i.test(normaliser(c.id))).map(c => c.id).slice(0, 4);
+    if (config.qualCol && !valeursQualification().includes(config.exclure)) config.exclure = "";
+  }
+  afficherReglages(); afficherFiltres(); majResultat(); sauvegarder();
+}
+
+$("table").addEventListener("change", e => changerTable(e.target.value));
+["cleCol", "dateCol"].forEach(id => $(id).addEventListener("change", e => { config[id] = e.target.value; majResultat(); sauvegarder(); }));
+$("qualCol").addEventListener("change", e => {
+  config.qualCol = e.target.value; config.gravite = []; filtres.qualValeurs = [];
+  afficherReglages(); afficherFiltres(); majResultat(); sauvegarder();
+});
+$("exclure").addEventListener("change", e => { config.exclure = e.target.value; majResultat(); sauvegarder(); });
+$("gravite").addEventListener("change", e => {
+  config.gravite = e.target.value.split("\n").map(s => s.trim()).filter(Boolean);
+  afficherFiltres(); majResultat(); sauvegarder();
+});
+$("prefixeDate").addEventListener("change", e => { config.prefixeDate = e.target.checked; majResultat(); sauvegarder(); });
+["idCols", "fusCols", "calcCols"].forEach(id => $(id).addEventListener("change", sauvegarder));
+[["du", "change"], ["au", "change"], ["joursMin", "input"], ["joursMax", "input"], ["qualMode", "change"], ["chercheCol", "change"], ["chercheTexte", "input"]]
+  .forEach(([id, ev]) => $(id).addEventListener(ev, e => { filtres[id] = e.target.value; majResultat(); sauvegarder(); }));
+$("qualPuces").addEventListener("click", sauvegarder);
+$("btnReinit").addEventListener("click", () => { filtres = filtresVides(); afficherFiltres(); majResultat(); sauvegarder(); });
+$("btnRafraichir").addEventListener("click", async () => { refCache = {}; await chargerMeta(); await chargerEtAfficher(); message("Données rafraîchies.", "info"); });
+$("btnExcel").addEventListener("click", exporterExcel);
+
+// Modèles : enregistrés pour tout le document (clé « extractions » de Config, propriétaires) ; à défaut de droit
+// d'écriture sur Config, pour cette page seulement (options du widget)
+const upsert = (liste, m) => [...liste.filter(x => x.nom !== m.nom), m].sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
+async function ecrireModelesDoc(liste) {
+  const v = (socleConfig && socleConfig.valeurs.extractions) || {};
+  await window.Socle.ecrireConfig("extractions", { ...v, modeles: liste });
+  socleConfig = await window.Socle.lireConfig(); modelesDoc = liste;
+}
+$("btnEnregModele").addEventListener("click", async () => {
+  const choisi = $("modele").value !== "" ? modeles[$("modele").value] : null;
+  const nom = $("nomModele").value.trim() || (choisi ? choisi.nom : "");
+  if (!nom) { message("Donner un nom au modèle."); return; }
+  const m = { nom, config: JSON.parse(JSON.stringify(config)), filtres: JSON.parse(JSON.stringify(filtres)) };
+  let doc = false;
+  if (window.Socle && socleConfig && !(choisi && choisi.nom === nom && !choisi.doc)) {
+    try { await ecrireModelesDoc(upsert(modelesDoc, m)); doc = true; } catch (_) { doc = false; }
+  }
+  if (!doc) { modelesPage = upsert(modelesPage, m); sauvegarder(); }
+  $("nomModele").value = "";
+  afficherModeles(); $("modele").value = String(modeles.findIndex(x => x.nom === nom && x.doc === doc));
+  message(doc ? `Modèle « ${nom} » enregistré pour tout le document.` : `Modèle « ${nom} » enregistré pour cette page (seuls les propriétaires partagent un modèle avec tout le document).`, "info");
+});
+$("btnSupprModele").addEventListener("click", async () => {
+  const i = $("modele").value; if (i === "") return;
+  const m = modeles[i];
+  try {
+    if (m.doc) await ecrireModelesDoc(modelesDoc.filter(x => x.nom !== m.nom));
+    else { modelesPage = modelesPage.filter(x => x.nom !== m.nom); sauvegarder(); }
+    afficherModeles(); message(`Modèle « ${m.nom} » supprimé.`, "info");
+  } catch (e) { message(`Suppression impossible : ${e.message || e} (modèle du document : réservé aux propriétaires).`); }
+});
+$("modele").addEventListener("change", async e => {
+  const m = modeles[e.target.value]; if (!m) return;
+  const tableChange = m.config.tableId !== config.tableId;
+  config = Object.assign(configParDefaut(), JSON.parse(JSON.stringify(m.config)));
+  filtres = Object.assign(filtresVides(), JSON.parse(JSON.stringify(m.filtres)));
+  tri = { key: null, sens: -1 };
+  if (tableChange) await chargerEtAfficher(false);
+  else { afficherReglages(); afficherFiltres(); majResultat(); sauvegarder(); }
+  message(`Modèle « ${m.nom} » appliqué.`, "info");
+});
+
+// ---------- Démarrage ----------
+async function demarrer(options) {
+  if (optionsChargees) return;
+  optionsChargees = true;
+  let opts = options && options.config ? options : null;
+  if (!opts) { try { opts = JSON.parse(localStorage.getItem("prisme-extractions") || "null"); } catch (e) {} }
+  if (opts) {
+    config = Object.assign(configParDefaut(), opts.config || {});
+    filtres = Object.assign(filtresVides(), opts.filtres || {});
+    modelesPage = opts.modeles || [];
+  }
+  if (window.Socle) {
+    try { socleConfig = await window.Socle.lireConfig(); socleGeneral = window.Socle.general(socleConfig); } catch (_) { socleConfig = null; socleGeneral = null; }
+    modelesDoc = (socleConfig && socleConfig.valeurs.extractions && socleConfig.valeurs.extractions.modeles) || [];
+  }
+  await chargerMeta();
+  await chargerTables();
+  if (!config.tableId || !tables.includes(config.tableId)) {
+    config.tableId = (socleGeneral && tables.includes(socleGeneral.reponses) && socleGeneral.reponses) || tables.find(t => /reponse|signalement/i.test(t)) || tables[0] || "";
+    await chargerEtAfficher(true);
+  } else {
+    await chargerEtAfficher(false);
+  }
+  afficherModeles();
+}
+
+grist.ready({ requiredAccess: "full" });
+grist.onOptions(opts => demarrer(opts));
+setTimeout(() => demarrer(null), 1500);   // si aucune option n'est envoyée
+</script>
+</body>
+</html>
