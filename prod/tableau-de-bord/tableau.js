@@ -1054,7 +1054,10 @@ function chartSpec(b, d, shownRows) {
   const type = b.chart || "barh";
   let mode = d.cc ? (b.stack || "stack") : "single";
   const notes = [];
-  if (d.cc && !additive && mode !== "group") { mode = "group"; notes.push("Séries affichées côte à côte : une moyenne, un minimum, un maximum ou un nombre de valeurs distinctes ne s'additionnent pas."); }
+  // un nombre de valeurs distinctes s'empile (chaque morceau est un compte juste) ; une moyenne, un minimum ou un maximum, non
+  if (d.cc && !additive && agg !== "distinct" && mode !== "group") { mode = "group"; notes.push("Séries affichées côte à côte : une moyenne, un minimum ou un maximum ne s'additionnent pas."); }
+  if (d.cc && agg === "distinct" && mode !== "group")
+    notes.push(`Barres empilées : une même valeur de « ${plain(labelOf(b.measure.col || "?"))} » présente dans plusieurs colonnes compte dans chacune ; le bout d'une barre peut alors dépasser le nombre de valeurs distinctes de sa ligne (colonne Total du tableau).`);
   const pctTotal = b.percent && additive && d.total ? d.total : null;
   const scale = v => (v === null || v === undefined || isNaN(v)) ? null : pctTotal ? v / pctTotal * 100 : v;
   const unit = pctTotal ? " %" : "";
