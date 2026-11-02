@@ -1,6 +1,6 @@
 // Relais local pour les essais : exécute le code du nœud « Lecture de Grist » de v2/secours/relais-n8n.json
-// comme le ferait n8n (même $input, même this.helpers.httpRequest, mêmes réponses), sans installer n8n.
-const http = require("http"), fs = require("fs"), path = require("path");
+// comme le ferait n8n (même $input, même this.helpers.httpRequest, mêmes réponses, compression gzip des fichiers), sans installer n8n.
+const http = require("http"), fs = require("fs"), path = require("path"), zlib = require("zlib");
 
 function codeDuWorkflow(reglages) {
   const w = JSON.parse(fs.readFileSync(path.join(__dirname, "../v2/secours/relais-n8n.json"), "utf8"));
@@ -30,7 +30,8 @@ function creer({ port = 8811, reglages }) {
     const cors = { "Access-Control-Allow-Origin": "*", "Cache-Control": "no-store" };
     try {
       const [item] = await executer.call({ helpers: { httpRequest } }, { first: () => ({ json: { query } }) }, Buffer);
-      if (item.json.binaire) { r.writeHead(200, { ...cors, "Content-Type": "application/octet-stream" }); return r.end(Buffer.from(item.binary.data.data, "base64")); }
+      // nœud « Compression » (gzip) puis « Envoi du document »
+      if (item.json.binaire) { r.writeHead(200, { ...cors, "Content-Type": "application/gzip" }); return r.end(zlib.gzipSync(Buffer.from(item.binary.data.data, "base64"))); }
       r.writeHead(item.json.statut, { ...cors, "Content-Type": "application/json; charset=utf-8" }); r.end(JSON.stringify(item.json.corps));
     } catch (e) { r.writeHead(500); r.end(String(e)); }   // comme n8n quand le workflow s'arrête : pas d'en-tête CORS
   }).listen(port);

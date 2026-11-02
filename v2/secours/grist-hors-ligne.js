@@ -706,13 +706,19 @@ const relaisRegle = () => !!(K.relais.url && K.relais.cle);
 async function appelRelais(quoi, binaire) {
   let u; try { u = new URL(K.relais.url); } catch (_) { throw new Error("adresse du relais non valable"); }
   u.searchParams.set("cle", K.relais.cle); u.searchParams.set("quoi", quoi); u.searchParams.set("_", Date.now());
-  const arret = new AbortController(), minuteur = setTimeout(() => arret.abort(), binaire ? 300000 : 120000);
+  const arret = new AbortController(), minuteur = setTimeout(() => arret.abort(), binaire || quoi === "base" ? 300000 : 120000);   // base : lecture de tout le document
   let r;
   try { r = await fetch(u, { cache: "no-store", signal: arret.signal }); }
   catch (e) { throw Object.assign(new Error(e.name === "AbortError" ? "le relais ne répond pas (délai dépassé)" : "relais injoignable (réseau coupé, ou réponse bloquée par le navigateur)"), { reseau: true }); }
   finally { clearTimeout(minuteur); }
-  if (binaire && r.ok && !/json/.test(r.headers.get("content-type") || "")) return new Uint8Array(await r.arrayBuffer());
-  const txt = await r.text(); let j;
+  // réponse compressée (gzip) : dossiers et base, envoyés en fichier par le relais
+  let octets = new Uint8Array(await r.arrayBuffer());
+  if (octets[0] === 0x1f && octets[1] === 0x8b) {
+    try { octets = new Uint8Array(await new Response(new Blob([octets]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer()); }
+    catch (e) { throw new Error(`réponse compressée illisible (${e.message})`); }
+  }
+  if (binaire && r.ok && !(octets[0] === 0x7b)) return octets;   // ancien relais : document .grist
+  const txt = new TextDecoder().decode(octets); let j;
   try { j = JSON.parse(txt); } catch (_) { throw new Error(`réponse illisible du relais (HTTP ${r.status})`); }
   // erreur renvoyée par le relais ({ erreur }), sinon par n8n lui-même (workflow arrêté : { message })
   if (!r.ok || j.erreur) throw Object.assign(new Error(j.erreur || `HTTP ${r.status}${j.message ? ` — n8n : ${j.message}` : ""}${r.status === 500 ? " (voir les exécutions du workflow dans n8n)" : ""}`), { statut: r.status });
