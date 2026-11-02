@@ -124,6 +124,12 @@ const vieillir = (f, h) => { const t = (Date.now() - h * 3600e3) / 1000; fs.utim
   await B.evaluate(() => window.__KIT__.connecter(window.__dossierSimule('partage'))); await B.waitForTimeout(800);
   console.log('[B] bandeau :', (await B.textContent('#kit-secours .barre')).replace(/\s+/g, ' ').trim().slice(0, 200));
   console.log('[B] état :', JSON.stringify(await B.evaluate(() => { const K = window.__KIT__.K; return { reponses: K.doc.Reponses.id.length, saisiesDuPosteA: K.doc.Reponses.Description.filter(d => d === 'Saisie pendant la panne').length, reintegrees: [...K.reintegrees], mode: K.mode, ecritPar: K.complement && K.complement.info.ecrit_par }; })));
+  // contenu de la base envoyée par le relais : JSON sans les tables des réponses ; sans API SQL, colonnes seulement
+  const base = async () => (await fetch(`${R.url}?cle=clek&quoi=base`)).json();
+  let jb = await base();
+  console.log('[relais] base :', JSON.stringify({ meta: jb.meta, reponses: 'Reponses' in jb.tables, sousTable: 'Sites_signales' in jb.tables, pages: (jb.tables._grist_Views_section || { id: [] }).id.length, etablissements: jb.compte.Etablissements, Mo: +(jb.taille / 1048576).toFixed(2) }));
+  G.etat.sqlRefuse = true; jb = await base(); G.etat.sqlRefuse = false;
+  console.log('[relais] base sans SQL :', JSON.stringify({ meta: jb.meta.slice(0, 40), colonnes: jb.tables._grist_Tables_column.id.length, pages: !!jb.tables._grist_Views_section }));
   await A.screenshot({ path: path.join(__C.sorties, 'veille-A.png') });
   await browser.close(); await R.fermer(); await G.fermer();
 })();

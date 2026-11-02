@@ -8,7 +8,7 @@
         depuis Grist, ou .json ;
      2. des saisies faites pendant la panne, tenues dans un journal par poste.
    La copie peut être en deux couches, déposées dans le dossier partagé (par n8n,
-   ou à la main) : une base (instantane-base.grist ou .json : référentiel et
+   ou à la main) : une base (instantane-base.json, ou .grist déposé à la main : référentiel et
    configuration, renouvelée une fois par jour) et un complément
    (instantane-dossiers.json : tables des réponses et autres tables qui bougent,
    renouvelé toutes les heures par le mode veille). Les tables du complément remplacent celles
@@ -33,7 +33,7 @@ const BASE_HORS_LIGNE = 1e12, PAR_POSTE = 1e6;
 const PREFIXE_JOURNAL = "secours-journal-";
 const DELAI_LECTURE = 20000;            // relecture du dossier partagé (ms)
 const NOM_BASE = /^instantane-base\.(grist|json)(\.gz)?$/i, NOM_COMPLEMENT = /^instantane-dossiers\.json(\.gz)?$/i;
-const F_DOSSIERS = "instantane-dossiers.json", F_PRECEDENT = "instantane-dossiers.precedent.json", F_BASE = "instantane-base.grist", F_EMPREINTE = "instantane-base.empreinte.json";
+const F_DOSSIERS = "instantane-dossiers.json", F_PRECEDENT = "instantane-dossiers.precedent.json", F_BASE = "instantane-base.json", F_BASE_ANCIENNE = "instantane-base.grist", F_EMPREINTE = "instantane-base.empreinte.json";
 const RELAIS_DEFAUT = { url: "", cle: "", debut: 7, fin: 20, intervalle: 60 };
 
 /* ---------- utilitaires ---------- */
@@ -309,6 +309,8 @@ function lireReintegrees() {
 }
 function reconstruireDoc() {
   K.doc = copie(K.base.tables);
+  // tables des dossiers absentes de la base (base envoyée par le relais sans les tables des réponses) : toujours reprises
+  if (K.complement && !complementValable()) for (const [n, t] of Object.entries(K.complement.tables)) if (!n.startsWith("_grist") && !K.doc[n]) K.doc[n] = copie(t);
   if (complementValable()) {
     for (const [n, t] of Object.entries(K.complement.tables)) if (!n.startsWith("_grist")) K.doc[n] = copie(t);
     // la copie des dossiers porte aussi la clé « secours » de Config (saisies déjà réintégrées)
@@ -319,6 +321,10 @@ function reconstruireDoc() {
       else { C.id.push(Math.max(0, ...C.id) + 1); for (const c of Object.keys(C)) if (c !== "id") C[c].push(c === "Cle" ? "secours" : c === "Valeur" ? txt : null); }
     }
   }
+  // tables décrites mais sans données (pas encore de copie des dossiers) : vides, avec leurs colonnes
+  { const T = K.doc._grist_Tables, C = K.doc._grist_Tables_column;
+    if (T && C) T.id.forEach((ref, i) => { const tid = T.tableId[i]; if (!tid || K.doc[tid]) return;
+      const t = { id: [] }; C.id.forEach((_, k) => { if (C.parentId[k] === ref && C.colId[k] !== "id") t[C.colId[k]] = []; }); K.doc[tid] = t; }); }
   indexerMeta(); lireReintegrees(); K.appliquees = new Set(); K.dernierT = "";
   const vues = new Set();
   for (const e of toutesEntrees().sort(ordre)) {
@@ -535,6 +541,8 @@ async function lireCopie(fichier) {
 }
 
 /* ---------- pages de saisie du document ---------- */
+// table présente dans la copie, ou seulement décrite (base envoyée par le relais sans les tables des réponses)
+const tableConnue = (tables, tid) => !!(tables[tid] || (tables._grist_Tables && (tables._grist_Tables.tableId || []).includes(tid)));
 function vueCustom(opt) { try { const o = JSON.parse(opt || "{}") || {}; return typeof o.customView === "string" ? JSON.parse(o.customView || "{}") : (o.customView || {}); } catch (_) { return {}; } }
 function pagesDeSaisie(tables) {
   const res = [], T = tables._grist_Tables, S = tables._grist_Views_section, V = tables._grist_Views;
@@ -551,7 +559,7 @@ function pagesDeSaisie(tables) {
     if (!F.Publie || !F.Publie[i]) return;
     res.push({ cle: `formulaire:${F.Nom[i]}`, titre: `Formulaire « ${F.Nom[i]} » (sans page d'agent)`, tableId: (F.Table && F.Table[i]) || "Reponses", widgetOptions: { formulaire: F.Nom[i] }, mapping: null });
   });
-  return res.filter(p => tables[p.tableId]);
+  return res.filter(p => tableConnue(tables, p.tableId));
 }
 
 function pagesTableau(tables) {
@@ -572,7 +580,7 @@ function pagesTableau(tables) {
     if (!t || !t.publie || res.some(p => (p.widgetOptions.tableau || "") === (t.id || "") || (k === 0 && !p.widgetOptions.tableau))) return;
     res.push({ cle: `tableau:${t.id || k}`, titre: t.nom || "Tableau de bord", tableId: t.table || g.reponses || "Reponses", widgetOptions: t.id ? { tableau: t.id } : {}, mapping: null });
   });
-  return res.filter(p => tables[p.tableId]);
+  return res.filter(p => tableConnue(tables, p.tableId));
 }
 
 /* ---------- dossier partagé ---------- */
@@ -706,7 +714,8 @@ async function appelRelais(quoi, binaire) {
   if (binaire && r.ok && !/json/.test(r.headers.get("content-type") || "")) return new Uint8Array(await r.arrayBuffer());
   const txt = await r.text(); let j;
   try { j = JSON.parse(txt); } catch (_) { throw new Error(`réponse illisible du relais (HTTP ${r.status})`); }
-  if (!r.ok || j.erreur) throw Object.assign(new Error(j.erreur || `HTTP ${r.status}`), { statut: r.status });
+  // erreur renvoyée par le relais ({ erreur }), sinon par n8n lui-même (workflow arrêté : { message })
+  if (!r.ok || j.erreur) throw Object.assign(new Error(j.erreur || `HTTP ${r.status}${j.message ? ` — n8n : ${j.message}` : ""}${r.status === 500 ? " (voir les exécutions du workflow dans n8n)" : ""}`), { statut: r.status });
   return j;
 }
 async function fichierDuDossier(nom) { try { return await (await K.dir.getFileHandle(nom)).getFile(); } catch (_) { return null; } }
@@ -760,16 +769,21 @@ async function verifierBase(forcer) {
     evenement("base vérifiée : inchangée");
     return false;
   }
-  const octets = await appelRelais("base", true);
-  let tables;
-  try { tables = await lireFichierGrist(octets); } catch (err) { throw new Error(`base refusée : fichier illisible (${err.message})`); }
-  const C = tables.Config, iG = C && C.Cle ? C.Cle.indexOf("general") : -1;
+  // base envoyée en JSON par le relais : métadonnées et tables du document, sans les tables des réponses (copie des dossiers)
+  const j = await appelRelais("base");
+  const T = j.tables || {}, C = T.Config, iG = C && C.Cle ? C.Cle.indexOf("general") : -1;
+  if (j.format !== "kit-secours-instantane" || !j.base || !T._grist_Tables || !T._grist_Tables_column) throw new Error("base refusée : format inattendu");
   let g = {}; try { g = iG >= 0 ? JSON.parse(C.Valeur[iG] || "{}") || {} : {}; } catch (_) {}
-  if (!tables[g.reponses || "Reponses"]) throw new Error("base refusée : la table des réponses n'y figure pas");
-  await ecrireDansDossier(F_BASE, new Blob([octets]));
-  await ecrireDansDossier(F_EMPREINTE, JSON.stringify({ empreinte: e.empreinte, mesure: e.mesure, base_le: maintenant, verifie_le: maintenant, taille: octets.length, ecrit_par: K.agent || null }));
-  K.veille.base = { t: Date.now(), statut: avant ? "mise à jour" : "téléchargée", taille: octets.length };
-  evenement(`base ${avant ? "mise à jour" : "téléchargée"} (${(octets.length / 1048576).toFixed(1)} Mo)`);
+  const ref = g.referentiel || "Etablissements";
+  if (!C) throw new Error("base refusée : la table Config n'y figure pas");
+  if (!T[ref]) throw new Error(`base refusée : le référentiel ${ref} n'y figure pas`);
+  if (!(T._grist_Tables.tableId || []).includes(g.reponses || "Reponses")) throw new Error("base refusée : la table des réponses n'est pas décrite");
+  const texte = JSON.stringify(j);
+  await ecrireDansDossier(F_BASE, texte);
+  try { await K.dir.removeEntry(F_BASE_ANCIENNE); } catch (_) {}   // ancienne base au format .grist : remplacée
+  await ecrireDansDossier(F_EMPREINTE, JSON.stringify({ empreinte: e.empreinte, mesure: e.mesure, base_le: maintenant, verifie_le: maintenant, taille: texte.length, ecrit_par: K.agent || null }));
+  K.veille.base = { t: Date.now(), statut: avant ? "mise à jour" : "téléchargée", taille: texte.length };
+  evenement(`base ${avant ? "mise à jour" : "téléchargée"} (${(texte.length / 1048576).toFixed(1)} Mo${j.meta && j.meta !== "sql" ? ` ; ${j.meta}` : ""})`);
   return true;
 }
 const minutes = d => d.getHours() * 60 + d.getMinutes();
@@ -992,7 +1006,7 @@ const UI = {
         ${info ? `<p>Base : <b>${esc(info.fichier)}</b> (${info.source === "grist" ? "document Grist" : "fichier JSON"}, ${esc(dateHeure(info.modifie || info.charge_le))})${info.auto ? " — suit le dossier partagé" : ""}</p>
           <p>Dossiers : ${K.complement ? `<b>${esc(K.complement.info.fichier)}</b> (${esc(dateHeure(K.complement.info.genere_le || K.complement.info.modifie))})${complementValable() ? "" : " — plus ancien que la base, non utilisé"}` : "ceux de la base"}</p>`
           : `<p class="note">Aucune copie chargée. Dans Grist, menu du document › Télécharger › document (.grist), sans l'historique, puis déposez le fichier dans le dossier partagé.</p>`}
-        <p class="note">Copies automatiques : « instantane-base.grist » (référentiel et configuration) et « instantane-dossiers.json » (réponses et sous-tables, écrites par le poste en mode veille) dans le dossier partagé ; les plus récentes sont prises d'office.</p>
+        <p class="note">Copies automatiques : « instantane-base.json » (référentiel et configuration ; ou un .grist déposé à la main) et « instantane-dossiers.json » (réponses et sous-tables, écrites par le poste en mode veille) dans le dossier partagé ; les plus récentes sont prises d'office.</p>
         ${K.dir && K.dirEtat === "ok" ? (fichiers.length ? `<div class="liste">${fichiers.map(f => `<div><span>${esc(f.nom)} <small>${esc(dateHeure(f.mod))} · ${(f.taille / 1048576).toFixed(1)} Mo</small></span><button data-a="charger-dossier" data-nom="${esc(f.nom)}" class="petit secondaire">Charger</button></div>`).join("")}</div>` : `<p class="note">Aucun fichier .grist ou .json dans le dossier partagé.</p>`) : ""}
         <p><label class="bouton secondaire">Ouvrir un fichier (.grist ou .json)…<input type="file" id="fichier-base" accept=".grist,.json,.gz" hidden></label>
         ${window.__KIT_DEMO__ ? `<button data-a="demo" class="secondaire">Document de démonstration</button>` : ""}</p>

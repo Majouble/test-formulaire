@@ -20,7 +20,7 @@ async function documentGrist(tables) {
 }
 
 function creer({ doc, org = "crise", id = "docdemo", cle = "cleg", port = 8801 }) {
-  const etat = { panne: false, reponsesEnPlus: 0, etabsEnPlus: 0 }, appels = {};
+  const etat = { panne: false, reponsesEnPlus: 0, etabsEnPlus: 0, sqlRefuse: false }, appels = {};
   const tablesDoc = () => {
     const t = {}; for (const [k, v] of Object.entries(doc)) if (k.startsWith("_grist_")) t[k] = v;
     Object.assign(t, JSON.parse(JSON.stringify(doc.__data || doc.tables || {})));
@@ -31,7 +31,8 @@ function creer({ doc, org = "crise", id = "docdemo", cle = "cleg", port = 8801 }
     return t;
   };
   const colonnes = (t, n) => { const T = t._grist_Tables, C = t._grist_Tables_column, ref = T.id[T.tableId.indexOf(n)];
-    return C.id.map((_, i) => i).filter(i => C.parentId[i] === ref).map(i => ({ id: C.colId[i], fields: { type: C.type[i], isFormula: !!(C.isFormula && C.isFormula[i]) } })); };
+    return C.id.map((_, i) => i).filter(i => C.parentId[i] === ref).map(i => ({ id: C.colId[i], fields: { colRef: C.id[i], parentId: ref, type: C.type[i], label: C.label ? C.label[i] : C.colId[i],
+      isFormula: !!(C.isFormula && C.isFormula[i]), formula: C.formula ? C.formula[i] || "" : "", widgetOptions: C.widgetOptions ? C.widgetOptions[i] || "" : "", visibleCol: 0 } })); };
   const serveur = http.createServer(async (q, r) => {
     if (etat.panne) return q.socket.destroy();
     const u = new URL(q.url, "http://x"), base = `/o/${org}/api/docs/${id}`;
@@ -49,6 +50,7 @@ function creer({ doc, org = "crise", id = "docdemo", cle = "cleg", port = 8801 }
         const T = t[n], cs = Object.keys(T).filter(c => c !== "id" && c !== "manualSort");
         return j({ records: T.id.map((rid, i) => ({ id: rid, fields: Object.fromEntries(cs.map(c => [c, T[c][i] === undefined ? null : T[c][i]])) })) }); }
       if (p === "/sql" && q.method === "POST") {
+        if (etat.sqlRefuse) return j({ error: "SQL refusé" }, 403);
         let corps = ""; for await (const x of q) corps += x;
         const { octets, S } = await documentGrist(t), db = new S.Database(octets);
         try { const res = db.exec(JSON.parse(corps).sql)[0] || { columns: [], values: [] }; return j({ records: res.values.map(v => ({ fields: Object.fromEntries(res.columns.map((c, k) => [c, v[k]])) })) }); }
