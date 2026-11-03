@@ -907,7 +907,7 @@ const UI = {
     document.body.insertBefore(this.hote, document.body.firstChild);
     this.zone = document.createElement("div"); this.zone.id = "kit-vues"; document.body.appendChild(this.zone);
     this.r = this.hote.attachShadow({ mode: "open" });
-    this.r.innerHTML = `<style>${CSS}</style><div class="barre" part="barre"></div><div class="voile" hidden><div class="fenetre" role="dialog" aria-modal="true"></div></div>`;
+    this.r.innerHTML = `<style>${CSS}${window.SocleMarque ? SocleMarque.css() : ""}</style><div class="barre" part="barre"></div><div class="voile" hidden><div class="fenetre" role="dialog" aria-modal="true"></div></div>`;
     this.r.addEventListener("click", ev => this.clic(ev));
     this.r.addEventListener("change", ev => this.changement(ev));
     this.pret = true; this.maj();
@@ -1000,6 +1000,7 @@ const UI = {
   fenetre(html, fermable = true) {
     const v = this.r.querySelector(".voile"), f = v.querySelector(".fenetre");
     const garde = f.scrollTop; f.innerHTML = (fermable ? `<button class="fermer" data-a="fermer" aria-label="Fermer">×</button>` : "") + html; f.scrollTop = garde; v.hidden = false;
+    if (window.SocleMarque) SocleMarque.remplir(f);   // logo PRISME centré de la mise en route
   },
   fermer() { this.panneau = null; this.r.querySelector(".voile").hidden = true; },
   ouvrirReglages(rafraichir) {
@@ -1014,6 +1015,7 @@ const UI = {
       : `<p class="note">Choisissez le dossier réseau commun à l'équipe : chaque poste y écrit son journal et lit ceux des autres. Sans dossier, ce poste travaille seul.</p><p><button data-a="choisir-dossier">Choisir le dossier partagé</button></p>`;
     const fichiers = (K.fichiersDossier || []).filter(f => f.nom !== ANCIENS.empreinte).slice(0, 8);
     this.fenetre(`
+      ${premier ? `<span class="prisme-logo" data-variante="centre"></span>` : ""}
       <h2>${premier ? "Mise en route du mode secours" : "Réglages du mode secours"}</h2>
       ${premier ? `<p class="note">Le formulaire fonctionne sans réseau à partir d'une copie du document Grist. Renseignez les quatre étapes, puis « Commencer la saisie ».</p>` : ""}
       <section><h3>1. Agent</h3>
@@ -1203,6 +1205,8 @@ const CSS_VEILLE = `
 .evenements li.ko { color: #c0362c; } .evenements li.attention { color: #b45f06; } .evenements li.ok { color: #18794e; }
 `;
 const CSS = `
+.fenetre > .prisme-logo[data-variante="centre"] { --prisme-logo-h: 64px; margin: 6px auto 18px; }
+.fenetre > .prisme-logo + h2 { text-align: center; }
 :host { all: initial; display: block; font: 13px/1.4 system-ui, "Segoe UI", Marianne, Arial, sans-serif; color: #1e2430; }
 * { box-sizing: border-box; }
 .barre { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 12px; background: #fff7e6; border-bottom: 2px solid #c0362c; }
