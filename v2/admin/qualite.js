@@ -57,6 +57,7 @@
       <p class="aide">Contrôle des signalements enregistrés : sections ou composantes choisies au lieu de l'établissement, doublons, établissements mal identifiés, champs manquants.
         Corrigez avec l'action proposée, ou marquez « vérifié » ce qui est correct : l'anomalie ne revient pas tant que les dossiers en cause ne changent pas.
         Une saisie incorrecte se modifie ou se supprime ici : « Modifier ou supprimer une saisie… » sous chaque dossier (une mise à jour, ou le dossier entier avec ses lignes liées).
+        Deux dossiers pour la même affaire (blocage le matin, occupation l'après-midi) : « Rattacher le dossier … au dossier … » en fait un seul.
         Pour placer un établissement, modifier sa fiche ou rattacher un dossier à un autre établissement : widget « Référentiel des sites », vue « À vérifier » (mêmes anomalies, mêmes statuts).</p>
       <div class="qa-outils">
         ${etat.espaces.length > 1 ? `<label>Champ <select id="qa-espace"><option value="">tous</option>${etat.espaces.map(x => `<option value="${esc(x.espace.reponses)}"${filtre.espace === x.espace.reponses ? " selected" : ""}>${esc(x.espace.libelle || x.espace.champ)}</option>`).join("")}</select></label>` : ""}
@@ -85,11 +86,35 @@
       <div class="qa-tete"><span class="pastille qa-${g[0]}">${g[1]}</span> <strong>${esc(a.titre)}</strong></div>
       ${a.detail ? `<div class="qa-detail">${esc(a.detail)}</div>` : ""}
       <ul class="qa-fiches">${fiches}</ul>
+      ${!st && a.fiches.length > 1 ? fusionHtml(a) : ""}
       <div class="qa-actions">
         ${st ? `<span class="pastille ok">${st.s === "corrige" ? "corrigé" : "vérifié"} le ${new Date(st.le * 1000).toLocaleDateString("fr-FR")}</span>${st.note ? ` <span class="aide">${esc(st.note)}</span>` : ""} <button type="button" class="lien-btn" data-rouvrir>Rouvrir</button>`
           : `${a.action ? `<button type="button" class="primaire petit" data-corriger>${esc(a.action.libelle)}</button>` : ""}
              <button type="button" class="secondaire petit" data-verifie>${a.type === "doublon" || a.type === "voisin" ? "Faits distincts : vérifié" : "Vérifié, c'est correct"}</button>`}
       </div></li>`;
+  }
+  // rattacher un dossier à un autre : par défaut, le plus ancien au plus récent (blocage le matin → occupation l'après-midi)
+  const heureDe = f => typeof f.initiale.cree === "number" ? new Date(f.initiale.cree * 1000).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "";
+  const libDossier = f => `n° ${f.id}${f.derniere.qualif ? ` · ${f.derniere.qualif}` : ""}${heureDe(f) ? ` · ${heureDe(f)}` : ""}${f.lignes.length > 1 ? ` · ${f.lignes.length} saisies` : ""}`;
+  const parDate = a => a.fiches.slice().sort((x, y) => (x.initiale.cree || 0) - (y.initiale.cree || 0) || x.id - y.id);
+  function fusionHtml(a) {
+    const l = parDate(a), opts = choisi => l.map(f => `<option value="${f.id}"${f === choisi ? " selected" : ""}>${esc(libDossier(f))}</option>`).join("");
+    return `<div class="qa-fusion"><span>Même affaire ? Rattacher le dossier</span> <select data-fus-src aria-label="Dossier à rattacher">${opts(l[0])}</select>
+      <span>au dossier</span> <select data-fus-cible aria-label="Dossier qui le reçoit">${opts(l[l.length - 1])}</select>
+      <button type="button" class="secondaire petit" data-fusionner>Rattacher</button>
+      <span class="aide">Ses saisies deviennent des versions de l'autre dossier, rangées par date.</span></div>`;
+  }
+  async function fusionner(a, li) {
+    const esp = espaceDe(a), src = a.fiches.find(f => f.id === +li.querySelector("[data-fus-src]").value), cib = a.fiches.find(f => f.id === +li.querySelector("[data-fus-cible]").value);
+    if (!esp || !src || !cib) return;
+    if (src === cib) { dire("Choisissez deux dossiers différents.", true); return; }
+    if (!confirm(`Rattacher le dossier ${libDossier(src)} au dossier ${libDossier(cib)} ?\n\nSes ${src.lignes.length} saisie(s) deviennent des versions du dossier n° ${cib.id}, rangées par date de saisie : la plus récente reste la dernière version, la plus ancienne devient le signalement initial (« Nouveau signalement »). Le dossier n° ${src.id} disparaît de la liste des signalements ; ses sites et lignes liées suivent.`)) return;
+    try {
+      const r = await Q.fusionner(esp, src, cib);
+      await Q.marquer([a], "corrige", `dossier n° ${src.id} rattaché au n° ${cib.id}`).catch(() => {});
+      if (S.viderCacheLecture) S.viderCacheLecture();
+      await relancer(`Dossier n° ${src.id} rattaché au dossier n° ${cib.id} (${r.versions} saisie(s)${r.liees.length ? `, ${r.liees.join(", ")}` : ""}).`);
+    } catch (e) { dire(`Rattachement refusé par Grist (${e.message || e}).`, true); }
   }
   function lier() {
     const sel = (id, k) => { if ($(id)) $(id).addEventListener("change", e => { filtre[k] = e.target.value; memoriser(); dessiner(); }); };
@@ -106,6 +131,7 @@
       b("[data-verifie]", () => marquer([a], "ok"));
       b("[data-rouvrir]", () => marquer([a], null));
       b("[data-corriger]", () => corriger([a]));
+      b("[data-fusionner]", () => fusionner(a, li));
       // saisies du dossier : modifier sur place, supprimer une saisie ou le dossier
       const esp = espaceDe(a);
       if (window.QualiteEdition && esp) li.querySelectorAll(".qe-details").forEach(d => {

@@ -6,7 +6,8 @@
    absent, sans coordonnées ou hors périmètre, qualification manquante, saisie d'essai), statuts (clé « qualite » de
    Config : vérifié / corrigé) et corrections (rattachement d'un dossier à un autre établissement).
    API : QualiteMoteur.analyser() → { espaces, le, config } ; TYPES ; GRAVITES ; statuts(config) ; marquer(liste, s, note) ;
-         rattacher(etat, liste, versId?) ; supprimer(esp, fiche, versionId?) ; dateFr(iso) ; genreSection(...).
+         rattacher(etat, liste, versId?) ; fusionner(esp, ficheSource, ficheCible) ; supprimer(esp, fiche, versionId?) ;
+         dateFr(iso) ; genreSection(...).
    ===================================================================== */
 (function () {
   "use strict";
@@ -240,5 +241,49 @@
     await grist.docApi.applyUserActions(acts);
     return { versions: ids.size, liees, entier };
   }
-  window.QualiteMoteur = { analyser, TYPES, GRAVITES, statuts, marquer, rattacher, supprimer, dateFr, genreSection };
+  /* Rattachement d'un dossier à un autre (doublon, même affaire saisie deux fois : blocage le matin, occupation l'après-midi) :
+     toutes les saisies du dossier « source » deviennent des versions du dossier « cible », qui garde son numéro. Les versions
+     se rangent par date de saisie (la plus récente reste la dernière version) ; la nature est remise d'aplomb — « Nouveau
+     signalement » pour la plus ancienne saisie, « Mise à jour » pour les autres —, pour que le dossier compte une fois ;
+     l'établissement de la cible s'applique aux saisies de la source s'il diffère. Les lignes liées qui désignent le dossier
+     (colonne Dossier des sous-tables : sites…) le suivent ; celles qui désignent une saisie précise (Version, visas…) restent
+     sur leur saisie, qui appartient désormais à la cible. Une seule action Grist. Renvoie { versions, liees, natures }. */
+  async function fusionner(esp, src, cib) {
+    if (!src || !cib || src.id === cib.id) throw new Error("choisissez deux dossiers différents");
+    const rep = esp.espace.reponses, C = esp.colonnes, rr = C.rr || {}, col = r => rr[r] && rr[r].col, meta = await S.lireMeta(), tm = meta[rep];
+    const colDos = col("Dossier"); if (!colDos) throw new Error("colonne Dossier introuvable dans la table des réponses");
+    const champs = new Map(), poser = (id, f) => champs.set(id, { ...(champs.get(id) || {}), ...f });
+    src.lignes.forEach(l => poser(l.id, { [colDos]: cib.id }));
+    // établissement de la cible (et colonnes recopiées du référentiel), si la source porte sur un autre
+    if (C.etab && cib.etab != null && src.lignes.some(l => l.etab !== cib.etab)) {
+      const y = esp.info(cib.etab) || {}, copies = {};
+      for (const [role, cle] of [["Nom", "nom"], ["UAI", "uai"], ["Type", "type"], ["Commune", "commune"]]) {
+        const c = col(role), m = c && tm.colonnes[c];
+        if (m && !m.isFormula && /^(Text|Choice)$/.test(m.type) && c !== C.etab) copies[c] = y[cle];
+      }
+      src.lignes.forEach(l => poser(l.id, { [C.etab]: cib.etab, ...copies }));
+    }
+    // nature : une seule saisie « Nouveau signalement » (la plus ancienne) ; valeurs hors de la liste du socle laissées telles quelles
+    let natures = 0;
+    const colNat = col("Nature");
+    if (colNat && tm.colonnes[colNat] && !tm.colonnes[colNat].isFormula) {
+      const t = await grist.docApi.fetchTable(rep), idx = new Map(t.id.map((id, i) => [id, i]));
+      const toutes = [...src.lignes, ...cib.lignes].sort((a, b) => (a.cree || 0) - (b.cree || 0) || a.id - b.id);
+      toutes.forEach((l, k) => { const v = texte((t[colNat] || [])[idx.get(l.id)]), voulu = S.NATURES[k ? 1 : 0];
+        if (S.NATURES.includes(v) && v !== voulu) { poser(l.id, { [colNat]: voulu }); natures++; } });
+    }
+    const acts = [...champs].map(([id, f]) => ["UpdateRecord", rep, id, f]), liees = [];
+    // lignes liées qui désignent le dossier : colonne « Dossier » (ou équivalente) des autres tables
+    for (const [t, m] of Object.entries(meta)) {
+      if (t === rep || t.startsWith("_grist")) continue;
+      const refs = Object.values(m.colonnes).filter(c => c.type === `Ref:${rep}` && !c.isFormula && c.colId !== "Version" && /dossier/i.test(c.colId)); if (!refs.length) continue;
+      let data; try { data = await grist.docApi.fetchTable(t); } catch (_) { continue; }
+      let n = 0;
+      data.id.forEach((id, i) => { const f = {}; refs.forEach(c => { if (refId(data[c.colId][i]) === src.id) f[c.colId] = cib.id; }); if (Object.keys(f).length) { acts.push(["UpdateRecord", t, id, f]); n++; } });
+      if (n) liees.push(`${n} ligne(s) de « ${t} »`);
+    }
+    await grist.docApi.applyUserActions(acts);
+    return { versions: src.lignes.length, liees, natures };
+  }
+  window.QualiteMoteur = { analyser, TYPES, GRAVITES, statuts, marquer, rattacher, fusionner, supprimer, dateFr, genreSection };
 })();

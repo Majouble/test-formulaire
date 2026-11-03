@@ -8,7 +8,7 @@ Scénarios Playwright qui ouvrent les widgets (`v2/…`) dans Chromium avec un *
 cd tests
 npm install
 npx playwright install chromium     # ou : CHROMIUM=/chemin/vers/chromium
-sh lancer.sh                        # suite actuelle (run63 à run116)
+sh lancer.sh                        # suite actuelle (run63 à run117)
 sh lancer.sh run74 run76            # quelques scénarios
 ```
 
@@ -91,6 +91,7 @@ Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pou
 | `run10` | — |
 | `run11` | — |
 | `run116` | 2.46.1 : tableau de bord — abscisse et séries inversées (une courbe par ligne du tableau), comptes sans ligne à 0 (courbes continues), détail de la bonne case au clic sur un point |
+| `run117` | 2.47 : « À vérifier » — rattacher un dossier à un autre (blocage le matin, occupation l'après-midi) : saisies devenues versions de la cible, une seule « Nouveau signalement », sites déplacés, doublon résolu |
 | `run12` | — |
 | `run13` | — |
 | `run14` | — |
