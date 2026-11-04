@@ -437,13 +437,26 @@ function afficherModeles() {
 }
 
 // ---------- Calcul ----------
+/* Nature d'une colonne reprise telle quelle (regroupement, identification) : « num » (Entier, Numérique, ou formule
+   sans type dont toutes les valeurs sont des nombres), « date » (Date, Date et heure), sinon « text ». Les nombres et les
+   dates restent des nombres et des dates dans l'export Excel (2.51 : ils sortaient en texte). */
+function natureColonne(T, c) {
+  const t = ((meta[T] || {})[c] || {}).type || "";
+  if (t === "Int" || t === "Numeric") return "num";
+  if (t === "Date" || t.startsWith("DateTime")) return "date";
+  if (t && t !== "Any") return "text";
+  let vu = false;
+  for (const r of lignes) { const v = r[c]; if (v === null || v === undefined || v === "") continue; if (typeof v !== "number") return "text"; vu = true; }
+  return vu ? "num" : "text";
+}
 function calculer() {
   const T = config.tableId, cle = config.cleCol;
+  const nature = {}; [cle, ...config.idCols].filter(Boolean).forEach(c => { nature[c] = natureColonne(T, c); });
   const typeDate = config.dateCol ? ((meta[T] || {})[config.dateCol] || {}).type : "";
   const rang = v => config.gravite.indexOf(v);
   const colonnes = [];
-  if (cle) colonnes.push({ key: "cle", label: libelle(cle), type: "text" });
-  config.idCols.filter(c => c !== cle).forEach(c => colonnes.push({ key: "id_" + c, label: libelle(c), type: "text" }));
+  if (cle) colonnes.push({ key: "cle", label: libelle(cle), type: nature[cle] === "num" ? "num" : "text" });
+  config.idCols.filter(c => c !== cle).forEach(c => colonnes.push({ key: "id_" + c, label: libelle(c), type: nature[c] }));
   CALCULEES.forEach(c => {
     if (!config.calc[c.key]) return;
     if (["nbJours", "premier", "dernier", "jours"].includes(c.key) && !config.dateCol) return;
@@ -480,7 +493,9 @@ function calculer() {
     const o = { cle: k, _rs: avecJour };
     config.idCols.forEach(c => {
       let v = "";
-      avecJour.forEach(({ r }) => { const t = texteCellule(T, c, r[c]).trim(); if (t) v = t; });
+      if (nature[c] === "num") { v = null; avecJour.forEach(({ r }) => { if (typeof r[c] === "number") v = r[c]; }); }
+      else if (nature[c] === "date") avecJour.forEach(({ r }) => { const j = jourISO(r[c], ((meta[T] || {})[c] || {}).type); if (j) v = j; });
+      else avecJour.forEach(({ r }) => { const t = texteCellule(T, c, r[c]).trim(); if (t) v = t; });
       o["id_" + c] = v;
     });
     if (config.dateCol) {
@@ -549,9 +564,17 @@ function calculer() {
 
   function comparer(x, y, type) {
     if (type === "int") return (x || 0) - (y || 0);
+    if (type === "num") return (enNombre(x) ?? -Infinity) - (enNombre(y) ?? -Infinity);
     if (type === "qual") return rang(x) - rang(y);
     return String(x || "").localeCompare(String(y || ""), "fr", { numeric: true });
   }
+}
+// nombre d'une cellule « num » (la clé de regroupement est gardée en texte) ; null si vide ou illisible
+function enNombre(v) {
+  if (typeof v === "number") return v;
+  if (v === null || v === undefined || String(v).trim() === "") return null;
+  const n = Number(String(v).trim().replace(/\s/g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : null;
 }
 function libelle(colId) { return ((meta[config.tableId] || {})[colId] || {}).label || colId; }
 
@@ -571,6 +594,7 @@ function majResultat() {
   const corps = resultat.lignes.slice(0, LIMITE_APERCU).map(o => "<tr>" + resultat.colonnes.map(c => {
     const v = o[c.key];
     if (c.type === "int") return `<td class="num">${v ?? ""}</td>`;
+    if (c.type === "num") { const n = enNombre(v); return `<td class="num">${n === null ? echapper(v ?? "") : n.toLocaleString("fr-FR")}</td>`; }
     if (c.type === "date") return `<td class="num">${jourFr(v)}</td>`;
     if (c.type === "qual" && v) {
       const co = qc.choiceOptions[v] || {};
@@ -606,6 +630,7 @@ async function exporterExcel() {
       cols.forEach(c => {
         let v = o[c.key];
         if (c.type === "date") v = v ? new Date(v + "T00:00:00Z") : null;
+        else if (c.type === "num") { const n = enNombre(v); v = n === null ? (v === "" ? null : v) : n; }
         else if (typeof v === "string" && v.length > 32000) v = v.slice(0, 32000) + "…";
         ligne[c.key] = v ?? null;
       });
@@ -665,7 +690,7 @@ function resumeParametres() {
 function exporterCSV() {
   const cols = resultat.colonnes;
   const esc = v => `"${String(v ?? "").replace(/"/g, '""')}"`;
-  const lignesCsv = [cols.map(c => esc(c.label)).join(";")].concat(resultat.lignes.map(o => cols.map(c => esc(c.type === "date" ? jourFr(o[c.key]) : o[c.key])).join(";")));
+  const lignesCsv = [cols.map(c => esc(c.label)).join(";")].concat(resultat.lignes.map(o => cols.map(c => esc(c.type === "date" ? jourFr(o[c.key]) : c.type === "num" && enNombre(o[c.key]) !== null ? String(enNombre(o[c.key])).replace(".", ",") : o[c.key])).join(";")));
   telecharger(new Blob(["﻿" + lignesCsv.join("\r\n")], { type: "text/csv;charset=utf-8" }), `extraction_${config.tableId}.csv`);
 }
 function telecharger(blob, nom) {
