@@ -1,10 +1,10 @@
 // Formulaire par site : sites repris dans un nouveau signalement laissés de côté (pas d'information nouvelle), remis,
-// non enregistrés dans le signalement du jour, de nouveau proposés ensuite à leur dernier état
+// non enregistrés dans le signalement du jour ; depuis la 2.50, plus proposés ensuite (seuls les sites du dernier dossier le sont)
 const __C = require('./chemins');
 const { chromium } = require('playwright'); const fs = require('fs');
 const { docSites } = require('./run78');
 (async () => {
-  let doc = docSites();
+  let doc = docSites({ dernierComplet: true });
   const browser = await chromium.launch({ executablePath: __C.chromium });
   const ouvrir = async () => {
     const page = await browser.newPage({ viewport: { width: 1100, height: 1400 } });
@@ -34,7 +34,7 @@ const { docSites } = require('./run78');
   console.log('ENREGISTRÉ (dossier', n + ') :', JSON.parse(R.Detail_des_sites[R.id.length - 1] || '[]').map(o => `${o.Site}/${o.Qualification}`).join(' ; '));
   const S = doc.__data.Sites_signales; console.log('SOUS-TABLE du dossier :', S.id.map((id, i) => i).filter(i => (S.Dossier[i] && S.Dossier[i][2] || S.Dossier[i]) === n).map(i => `${S.Site[i]}/${S.Qualification[i]}`).join(' ; '));
   await page.close();
-  // signalement suivant : les sites laissés de côté sont de nouveau proposés, à leur dernier état
+  // signalement suivant (2.50) : seuls les sites du dossier enregistré ci-dessus sont repris, plus ceux laissés de côté
   page = await ouvrir();
   console.log('SIGNALEMENT SUIVANT, REPRIS :', await page.$$eval('.ligne-rep', l => l.map(x => `${x.querySelector('.site-txt').value} [${((x.querySelector('.repris') || {}).textContent || '').replace(/\s+/g, ' ').trim()}]`).join(' | ')));
   await browser.close();

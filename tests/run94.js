@@ -4,8 +4,8 @@ const __C = require('./chemins');
 const { chromium } = require('playwright'); const fs = require('fs');
 const { docSites } = require('./run78');
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6XqXcEAAAAASUVORK5CYII=', 'base64');
-function docRef() {
-  const doc = docSites(), T = doc._grist_Tables, C = doc._grist_Tables_column, D = doc.__data;
+function docRef(o = {}) {
+  const doc = docSites(o), T = doc._grist_Tables, C = doc._grist_Tables_column, D = doc.__data;
   const tid = Math.max(...T.id) + 1; for (const k of Object.keys(T)) T[k].push(k === 'id' ? tid : k === 'tableId' ? 'Sites' : (typeof T[k][0] === 'number' ? 0 : ''));
   for (const [c, ty, lab] of [['Dossier', 'Ref:Reponses', 'Dossier'], ['Nom_du_site', 'Ref:Referentiel_sites', 'Nom du site'], ['Qualification', 'Choice', 'Qualification']]) { const n = Math.max(...C.id) + 1; for (const k of Object.keys(C)) C[k].push(k === 'id' ? n : k === 'parentId' ? tid : k === 'colId' ? c : k === 'label' ? lab : k === 'type' ? ty : k === 'isFormula' ? false : (typeof C[k][0] === 'number' ? 0 : typeof C[k][0] === 'boolean' ? false : '')); }
   // anciens noms gardés en texte par Grist (référence non résolue) ; ligne 1 déjà rattachée

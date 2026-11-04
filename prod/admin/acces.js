@@ -72,7 +72,7 @@
     for (const f of formulaires) {
       const ch = champDe(f);
       ajouter(f.table, ch, f);
-      (f.blocsTableaux || f.conf.blocs || []).forEach(b => { const st = b && b.reglages && b.reglages.tableau && b.reglages.tableau.table; if (st) ajouter(st, ch, f); });
+      (f.blocsTableaux || f.conf.blocs || []).forEach(b => { const st = b && b.reglages && b.reglages.tableau && b.reglages.tableau.table; if (st) { ajouter(st, ch, f); if (saisie.has(st)) saisie.get(st).sousTable = true; } });
       const cols = meta[f.table] ? Object.values(meta[f.table].colonnes) : [];
       cols.forEach(c => { const cible = S.cibleRef(c.type); if (cible && cible !== f.table && /etab|site|referentiel/i.test(`${c.colId} ${cible}`)) referentiels.add(cible); });
     }
@@ -117,6 +117,13 @@
     ], lignes: ["Propriétaires seulement : la page d'administration, liée à cette table, n'apparaît pas aux agents, aux invités ni aux établissements."] });
     for (const [t, x] of saisie) {
       const ch = [...x.champs].sort().join(" ou ");
+      // lignes des tableaux (sous-tables) : suppression permise (site supprimé d'un dossier, 2.50 ; réécriture des lignes d'une version)
+      if (x.sousTable) { out.push({ tableId: t, colIds: "*", titre: `${t} — lignes des tableaux ${ch} (${[...x.formulaires].join(", ")})`, regles: [
+        { aclFormula: PROPRIETAIRE, permissionsText: "+CRUD", memo: `${MEMO} — propriétaires : tous les droits` },
+        { aclFormula: condChamps(x.champs), permissionsText: "+CRUD", memo: `${MEMO} — saisie : agents mobilisés ${ch} au planning (7 jours avant ou après), lignes des tableaux` },
+        { aclFormula: membre(), permissionsText: "+R-CUD", memo: `${MEMO} — saisie réservée aux agents mobilisés ${ch} au planning ; lecture pour le reste de l'équipe` },
+      ], lignes: [`Agents mobilisés ${ch} au planning (7 jours avant ou après) : lecture, ajout, modification et suppression des lignes (site saisi à tort).`,
+        "Autres agents actifs de l'équipe : lecture seule.", "Autres personnes : aucun accès."] }); continue; }
       out.push({ tableId: t, colIds: "*", titre: `${t} — signalements ${ch} (${[...x.formulaires].join(", ")})`, regles: [
         { aclFormula: PROPRIETAIRE, permissionsText: "+CRUD", memo: `${MEMO} — propriétaires : tous les droits` },
         { aclFormula: condChamps(x.champs), permissionsText: "+CRU-D", memo: `${MEMO} — saisie : agents mobilisés ${ch} au planning (7 jours avant ou après)` },
@@ -221,10 +228,10 @@
     const lecture = new Set([S.TABLE_CONFIG, general.formulaires]);
     for (const g of groupes) {
       const E = condEtab(g), qui = `établissement (lien ${g.attribut}_)`;
-      const signalements = (t, col) => [
+      const signalements = (t, col, supprimer = false) => [
         { aclFormula: `${E} and rec.${col} != user.${g.attribut}.id`, permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : signalements des autres établissements invisibles` },
         { aclFormula: `${E} and newRec.${col} != user.${g.attribut}.id`, permissionsText: "-CU", memo: `${MEMO} — ${qui} : saisie pour son seul établissement` },
-        { aclFormula: E, permissionsText: "+CRU-D", memo: `${MEMO} — ${qui} : ses signalements, ajout et mise à jour` },
+        { aclFormula: E, permissionsText: supprimer ? "+CRUD" : "+CRU-D", memo: `${MEMO} — ${qui} : ses signalements, ajout et mise à jour${supprimer ? " (et suppression des lignes de tableau)" : ""}` },
       ];
       for (const f of g.formulaires) {
         ajouterEn(f.table, "*", `${f.table} — signalements`, signalements(f.table, f.colEtab),
@@ -242,8 +249,8 @@
         if (auteur) ajouterEn(f.table, auteur, `${f.table} — auteur (${auteur})`,
           [{ aclFormula: E, permissionsText: "-R", memo: `${MEMO} — ${qui} : adresse de l'auteur illisible` }],
           ["Établissement ouvert par son lien : adresse de l'auteur illisible."]);
-        for (const st of sousTables(f)) ajouterEn(st.table, "*", `${st.table} — lignes des tableaux du formulaire`, signalements(st.table, COL_ACCES),
-          [`Établissement ouvert par son lien : les lignes de ses signalements (colonne ${COL_ACCES}${st.acces ? "" : ", ajoutée à l'application"}).`]).sousTable = { ...st, formule: `$${st.parent}.${f.colEtab}`, type: `Ref:${g.table}` };
+        for (const st of sousTables(f)) ajouterEn(st.table, "*", `${st.table} — lignes des tableaux du formulaire`, signalements(st.table, COL_ACCES, true),
+          [`Établissement ouvert par son lien : les lignes de ses signalements, suppression comprise (colonne ${COL_ACCES}${st.acces ? "" : ", ajoutée à l'application"}).`]).sousTable = { ...st, formule: `$${st.parent}.${f.colEtab}`, type: `Ref:${g.table}` };
         // tables visées par les questions (listes de choix) : lecture
         Object.values(meta[f.table].colonnes).forEach(c => { const x = S.cibleRef(c.type) || (/^RefList:(.+)$/.exec(c.type) || [])[1]; if (x && x !== f.table && x !== g.table && meta[x] && x !== general.agents) lecture.add(x); });
       }

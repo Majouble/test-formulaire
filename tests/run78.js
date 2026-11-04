@@ -1,7 +1,7 @@
-// Formulaire par site (ESR) : reprise du dernier état connu de chaque site, qualification déduite en bas, contrôle de cohérence
+// Formulaire par site (ESR) : reprise des sites du dernier dossier (2.50 : dernière étape qui fait le point sur tous les sites), qualification déduite en bas, contrôle de cohérence
 const __C = require('./chemins');
 const { chromium } = require('playwright'); const fs = require('fs');
-function docSites() {
+function docSites(o = {}) {
   const doc = JSON.parse(fs.readFileSync(__C.donnees + '/doc_saisie2.json'));
   const T = doc._grist_Tables, C = doc._grist_Tables_column, D = doc.__data;
   const table = (nom, cols, data) => { const tid = Math.max(...T.id) + 1; for (const k of Object.keys(T)) T[k].push(k === 'id' ? tid : k === 'tableId' ? nom : (typeof T[k][0] === 'number' ? 0 : ''));
@@ -31,6 +31,10 @@ function docSites() {
   // 22/10 : site 3 encore, puis retiré dans une mise à jour du même dossier
   const d3 = ajR(null, 22, 9, 'Rassemblement', [{ _id: 'e', Site: 3, Qualification: 'Rassemblement' }]);
   ajR(d3, 22, 16, 'RAS', [{ _id: 'f', Site: 4, Qualification: 'RAS' }]);
+  // dernierComplet : dernière étape du 22/10 qui fait le point sur tous les sites (depuis la 2.50, la reprise ne lit que
+  // les sites de la dernière version du dossier le plus récent)
+  if (o.dernierComplet) ajR(d3, 22, 18.5, 'Blocage total', [{ _id: 'h', Site: 2, Qualification: 'Blocage total' }, { _id: 'i', Site_libre: 'Annexe Rue Dupont', Qualification: 'Rassemblement' },
+    { _id: 'j', Site: 1, Qualification: 'RAS' }, { _id: 'k', Site: 3, Qualification: 'RAS' }, { _id: 'f', Site: 4, Qualification: 'RAS' }]);
   const F = D.Formulaires, i = F.Nom.indexOf('Signalements'), conf = JSON.parse(F.Publie[i]);
   conf.blocs = [{ id: 'b1', section: 'q', genre: 'question', colonne: 'Detail_des_sites', reglages: { libelle: 'Sites concernés',
     tableau: { table: 'Sites_signales', sites: { site: 'Site', libre: 'Site_libre', qualif: 'Qualification', reprise: 'auto', historique: [{ colonne: 'Ancien_detail', libre: 'Nom_du_site', qualif: 'Qualification' }] } } } }];
@@ -40,7 +44,7 @@ function docSites() {
 }
 module.exports = { docSites };
 if (require.main === module) (async () => {
-  let doc = docSites();
+  let doc = docSites({ dernierComplet: true });
   const browser = await chromium.launch({ executablePath: __C.chromium }); const page = await browser.newPage({ viewport: { width: 1100, height: 1400 } });
   page.on('pageerror', e => console.log('PAGEERROR', e.message)); page.on('dialog', d => { console.log('DIALOG :', d.message().replace(/\n+/g, ' | ')); d.dismiss(); });
   const opts = { formulaire: 'Signalements', libelle: 'Alice', perimetre: { Academie: ['Versailles'] } };

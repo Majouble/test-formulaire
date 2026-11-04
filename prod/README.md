@@ -1,4 +1,4 @@
-# Signalements Grist — production (2.49.0 (03/11/2026))
+# Signalements Grist — production (2.50.0 (04/11/2026))
 
 Copie figée de `v2/`, produite par `outils/publier-prod.sh`. Ne pas modifier ce dossier à la main :
 les changements se font dans `v2/`, puis on republie.

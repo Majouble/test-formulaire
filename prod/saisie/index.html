@@ -4738,7 +4738,7 @@ class Tableau {
       return { _id: id, valeurs: { ...valeurs, ...(conf.get(id) || {}) }, ...(this.sites && dossier ? { _fixe: true } : {}) };
     });
     this.lignes.forEach(l => this.initAuto(l));
-    this.montrerErreurs = false; this.confModifie = false; this.dernierN = undefined;
+    this.montrerErreurs = false; this.confModifie = false; this.dernierN = undefined; this.supprimes = [];
     this.dessiner();
   }
   async lireConfidentiels(dossier) {
@@ -4866,9 +4866,12 @@ class Tableau {
       ? `<button type="button" class="icone" data-action="corriger-site" title="Corriger le site de cette ligne (erreur de saisie)" aria-label="Corriger le site de la ligne ${k + 1}">✎</button>` : "";
     // site repris dans un nouveau signalement : peut être laissé de côté (pas d'information nouvelle), son dernier état reste connu
     const retirer = fixe && l._repris && !dossierId
-      ? `<button type="button" class="icone" data-action="retirer-repris" title="Ne pas faire figurer ce site dans ce signalement (pas d'information nouvelle) : son dernier état reste connu et sera de nouveau proposé" aria-label="Retirer le site de la ligne ${k + 1} de ce signalement">✕</button>` : "";
+      ? `<button type="button" class="icone" data-action="retirer-repris" title="Ne pas faire figurer ce site dans ce signalement : il ne sera plus proposé ensuite (seuls les sites du dernier dossier sont repris)" aria-label="Retirer le site de la ligne ${k + 1} de ce signalement">✕</button>` : "";
+    // site d'un dossier saisi à tort : supprimé de toutes les versions du dossier à l'enregistrement (2.50)
+    const supprimer = fixe && dossierId && !l._repris
+      ? `<button type="button" class="icone" data-action="supprimer-site" title="Supprimer ce site du dossier (saisi à tort) : il disparaît de toutes les étapes du dossier" aria-label="Supprimer le site de la ligne ${k + 1} du dossier">🗑</button>` : "";
     return `<span class="actions-ligne"><button type="button" class="icone" data-action="dupliquer" title="Dupliquer cette ligne" aria-label="Dupliquer la ligne ${k + 1}">⧉</button>${corriger}${fixe
-      ? `<button type="button" class="icone icone-texte" data-action="ras-site" title="Site revenu à la normale : il reste dans le dossier, en ${esc(this.valeurRas() || "RAS")}" aria-label="Passer le site de la ligne ${k + 1} en ${esc(this.valeurRas() || "RAS")}">${esc(this.valeurRas() || "RAS")}</button>${retirer}`
+      ? `<button type="button" class="icone icone-texte" data-action="ras-site" title="Site revenu à la normale : il reste dans le dossier, en ${esc(this.valeurRas() || "RAS")}" aria-label="Passer le site de la ligne ${k + 1} en ${esc(this.valeurRas() || "RAS")}">${esc(this.valeurRas() || "RAS")}</button>${retirer}${supprimer}`
       : `<button type="button" class="icone" data-action="supprimer" title="Supprimer cette ligne" aria-label="Supprimer la ligne ${k + 1}">✕</button>`}</span>`;
   }
   valeurRas() {
@@ -4902,9 +4905,10 @@ class Tableau {
     if (!this.sousDefs.length) { this.el.innerHTML = `<p class="bandeau">La table « ${esc(this.table)} » n'a aucune colonne à saisir (colonnes non formules autres que Dossier, Ligne_id et Ordre).</p>`; return; }
     this.el.innerHTML = (this.avertissement && !modeEtab ? `<p class="bandeau">${esc(this.avertissement)}</p>` : "") +
       (this.noteAuto && this.lignes.some(l => l._repris) ? `<p class="note">${esc(this.noteAuto)}</p>` : "") +
-      (this.retires && this.retires.length ? `<p class="note retires">${this.retires.length} site${this.retires.length > 1 ? "s" : ""} laissé${this.retires.length > 1 ? "s" : ""} de côté pour ce signalement (${this.retires.map(x => esc(this.nomLigne(x.l))).join(", ")}) : ${this.retires.length > 1 ? "leur" : "son"} dernier état reste connu. <button type="button" class="lien-texte" data-action="remettre-retires">Remettre</button></p>` : "") +
+      (this.retires && this.retires.length ? `<p class="note retires">${this.retires.length} site${this.retires.length > 1 ? "s" : ""} laissé${this.retires.length > 1 ? "s" : ""} de côté pour ce signalement (${this.retires.map(x => esc(this.nomLigne(x.l))).join(", ")})  : ${this.retires.length > 1 ? "ils ne seront plus proposés" : "il ne sera plus proposé"} ensuite. <button type="button" class="lien-texte" data-action="remettre-retires">Remettre</button></p>` : "") +
+      (this.supprimes && this.supprimes.length ? `<p class="note retires supprimes">${this.supprimes.length > 1 ? `${this.supprimes.length} sites seront supprimés` : "1 site sera supprimé"} du dossier à l'enregistrement, dans toutes ses étapes (${this.supprimes.map(x => esc(this.nomLigne(x.l))).join(", ")}). <button type="button" class="lien-texte" data-action="annuler-supprimes">Annuler la suppression</button></p>` : "") +
       (this.offreReprise && etabCourant && this.offreReprise.etab === etabCourant.id && !this.lignes.some(l => l._repris)
-        ? `<p class="note offre-reprise">${this.offreReprise.n} site${this.offreReprise.n > 1 ? "s" : ""} déjà signalé${this.offreReprise.n > 1 ? "s" : ""} pour cet établissement. <button type="button" class="secondaire petit" data-action="reprendre-sites">Reprendre leur dernier état</button></p>` : "") +
+        ? `<p class="note offre-reprise">${this.offreReprise.n} site${this.offreReprise.n > 1 ? "s" : ""} dans le dernier signalement de cet établissement. <button type="button" class="secondaire petit" data-action="reprendre-sites">Reprendre leur dernier état</button></p>` : "") +
       `<div class="lignes-rep">${this.lignes.map((l, k) => this.ligneHtml(l, k)).join("") || `<p class="vide-tableau">Aucune ligne pour l'instant.</p>`}</div>
       <div class="pied-tableau"><span class="ajout-lignes"><button type="button" class="secondaire petit" data-action="ajouter">+ Ajouter</button>
         <input type="number" class="qte" min="1" max="50" value="1" aria-label="Nombre de lignes à ajouter"><span class="note-qte">ligne(s)</span></span>
@@ -5057,6 +5061,13 @@ class Tableau {
     if (libre) l.valeurs[libre] = id ? null : (txt || null);
     const et = sc.querySelector(".site-etat"); if (et) et.textContent = txt && !id ? (libre ? "hors référentiel" : "absent du référentiel : choisissez un site dans la liste") : "";
   }
+  // ligne d'une question d'un formulaire précédent (historique), vue avec les colonnes du tableau actuel
+  vueHistorique(h, o) {
+    const s = this.sites, v = {};
+    for (const [k, x] of Object.entries(o)) if (k !== "_id" && this.sousDefs.some(d => d.colId === k)) v[k] = x;
+    if (h.libre && s.libre) v[s.libre] = o[h.libre]; if (h.site && s.site) v[s.site] = o[h.site]; if (h.qualif && s.qualif) v[s.qualif] = o[h.qualif];
+    return v;
+  }
   // clé d'un site : son identifiant au référentiel, sinon le libellé saisi (rattaché par les correspondances validées)
   cleSite(etab, v) {
     const s = this.sites, id = s.site ? refId(v[s.site]) || (typeof v[s.site] === "number" ? v[s.site] : 0) : 0;
@@ -5085,7 +5096,7 @@ class Tableau {
         const n = reprendreEtatSites(this, e), cles = new Set(this.lignes.map(l => this.cleSite(e, l.valeurs)).filter(Boolean));
         this.lignes.push(...deja.filter(l => { const k = this.cleSite(e, l.valeurs); return !k || !cles.has(k); }));
         this.offreReprise = null;
-        this.noteAuto = n ? `${n} site${n > 1 ? "s" : ""} connu${n > 1 ? "s" : ""} de cet établissement, au dernier état signalé : confirmez ou modifiez ceux qui ne sont pas revenus à la normale, ajoutez les nouveaux.` : "";
+        this.noteAuto = n ? `${n} site${n > 1 ? "s" : ""} du dernier signalement de cet établissement, dans leur dernier état : confirmez ou modifiez ceux qui ne sont pas revenus à la normale, ajoutez les nouveaux.` : "";
         this.dessiner(); this.signaler(); qualifTouchee = false; majQualifDeduite(); modifie = true;
         return;
       }
@@ -5097,11 +5108,23 @@ class Tableau {
         if (premiere) { const c = premiere.querySelector("input, select, textarea, summary"); if (c) c.focus(); }
         return;
       }
+      if (action === "annuler-supprimes") {
+        for (const x of (this.supprimes || []).sort((a, b) => a.k - b.k)) this.lignes.splice(Math.min(x.k, this.lignes.length), 0, x.l);
+        this.supprimes = []; this.dessiner(); this.signaler(); return;
+      }
       if (action === "remettre-retires") {   // sites laissés de côté : remis à leur place d'origine
         for (const x of (this.retires || []).sort((a, b) => a.k - b.k)) this.lignes.splice(Math.min(x.k, this.lignes.length), 0, x.l);
         this.retires = []; this.dessiner(); this.signaler(); return;
       }
       const k = +b.closest(".ligne-rep").dataset.k, l = this.lignes[k];
+      if (action === "supprimer-site") {
+        const nom = this.nomLigne(l);
+        if (!confirm(`Supprimer « ${nom} » de ce dossier ?\n\nÀ réserver à un site saisi à tort : à l'enregistrement, ses réponses sont effacées de toutes les étapes du dossier et il ne sera plus proposé. Un site revenu à la normale se passe en RAS.`)) return;
+        const etab = etabCourant ? etabCourant.id : 0;
+        (this.supprimes = this.supprimes || []).push({ k, l, _id: l._id, cle: this.cleSite(etab, l.valeurs) });
+        this.lignes.splice(k, 1);
+        this.dessiner(); this.signaler(); return;
+      }
       if (action === "retirer-repris") {
         (this.retires = this.retires || []).push({ k, l }); this.lignes.splice(k, 1);
         this.dessiner(); this.signaler(); return;
@@ -5292,6 +5315,45 @@ async function synchroniserTableaux(dossier, complet, version = null) {
   for (const c of controleursTableau("q")) {
     try { await c.synchroniser(dossier, complet, null, null, true, version); }
     catch (e) { erreurs.push(`table « ${c.table} » : ${e.message || e}`); }
+  }
+  return erreurs;
+}
+/* Sites supprimés du dossier (saisis à tort, 2.50) : après l'enregistrement, leurs lignes sont retirées de toutes les
+   versions du dossier (colonne de la question et questions des formulaires précédents) et de la table dédiée (lignes
+   de toutes les versions, retraits compris). Une ligne est visée par son identifiant (même corrigée entre-temps) ou par
+   la clé de son site. */
+async function purgerSitesSupprimes(dossier) {
+  const erreurs = [];
+  for (const c of controleursTableau("q")) {
+    const sup = c.supprimes || [];
+    if (!sup.length || !c.sites) continue;
+    const etab = refId(val(initiale, "Etablissement")) || (etabCourant && etabCourant.id) || 0;
+    // un site encore présent dans le tableau (ressaisi sur une autre ligne) n'est visé que par l'identifiant de la ligne supprimée
+    const gardees = new Set(c.lignesValides().map(l => c.cleSite(etab, l.valeurs)).filter(Boolean));
+    const ids = new Set(sup.map(x => x._id).filter(Boolean)), cles = new Set(sup.map(x => x.cle).filter(k => k && !gardees.has(k)));
+    const vise = (o, v) => (o._id && ids.has(o._id)) || cles.has(c.cleSite(etab, v || o));
+    const cD = col("Dossier"), maj = [];
+    for (const l of enregistrements.filter(r => (refId(cD && r[cD]) || r.id) === dossier)) {
+      const f = {}, filtrer = (colonne, vue) => {
+        const a = lireTableauJson(l[colonne]), b = a.filter(o => !vise(o, vue ? vue(o) : null));
+        if (b.length !== a.length) f[colonne] = b.length ? JSON.stringify(b) : "";
+      };
+      filtrer(c.def.colId);
+      for (const h of c.sites.historique || []) filtrer(h.colonne, o => c.vueHistorique(h, o));
+      if (Object.keys(f).length) maj.push({ id: l.id, fields: f });
+    }
+    try { if (maj.length) await grist.getTable().update(maj); }
+    catch (e) { erreurs.push(`suppression des sites dans les étapes du dossier : ${e.message || e}`); }
+    if (c.pret && c.colDossier) try {
+      const t = await grist.docApi.fetchTable(c.table), suppr = [];
+      t.id.forEach((id, i) => {
+        if (refId(t[c.colDossier][i]) !== dossier && t[c.colDossier][i] !== dossier) return;
+        const v = {}; for (const d of c.sousDefs) if (t[d.colId]) v[d.colId] = t[d.colId][i];
+        if ((c.colLigne && ids.has(t[c.colLigne][i])) || cles.has(c.cleSite(etab, v))) suppr.push(id);
+      });
+      if (suppr.length) await grist.getTable(c.table).destroy(suppr);
+    } catch (e) { erreurs.push(`table « ${c.table} » (sites supprimés) : ${e.message || e}`); }
+    c.supprimes = []; c.dessiner();
   }
   return erreurs;
 }
@@ -6115,11 +6177,11 @@ $("rep-ok").addEventListener("click", () => enFile(async () => {
 
 /* ---------- Formulaire par site (enseignement supérieur) ----------
    Tableau des sites (réglage « sites » d'une question tableau) : chaque ligne est un site, avec sa qualification.
-   - Reprise : « le dernier état connu de chaque site » parcourt toutes les versions précédentes de l'établissement
-     (tous dossiers, jours antérieurs), garde l'état le plus récent de chaque site (identifiant du référentiel, sinon
-     libellé rattaché par les correspondances) et préremplit les sites qui ne sont pas revenus à la normale (RAS…).
+   - Reprise (2.50) : les sites du dossier de l'établissement mis à jour le plus récemment (jours antérieurs), dans sa
+     dernière version, et eux seuls ; ceux revenus à la normale sont repris pour mémoire (sauf réglage contraire).
      Un site ne se retire pas d'un dossier : il passe en RAS (bouton « RAS » à la place de la suppression, pour les sites
-     du dossier et les sites repris). Données antérieures où un site a disparu d'un dossier : il compte comme revenu à la normale.
+     du dossier et les sites repris). Site saisi à tort : bouton « Supprimer » (🗑), qui l'efface de toutes les étapes
+     du dossier à l'enregistrement (purgerSitesSupprimes).
    - Qualification de l'établissement : en bas du formulaire, déduite du site le plus grave (ordre des choix de la
      colonne Qualification, du plus grave au moins grave) ; contrôle de cohérence avant l'enregistrement. */
 const sitesCtrl = () => controleursTableau("q").find(c => c.sites && c.pret) || null;
@@ -6136,7 +6198,10 @@ function rangGravite(q) {
 }
 const plusGrave = liste => [...liste].filter(Boolean).sort((a, b) => rangGravite(a) - rangGravite(b))[0] || null;
 const texteQualifSite = v => listeQualif(v).join(", ");
-function dernierEtatSites(c, etabId, avecRas) {
+/* Sites à reprendre pour un nouveau signalement (2.50) : ceux du dossier de l'établissement mis à jour le plus récemment,
+   dans sa dernière version, et eux seuls (un site absent de ce dossier, signalé plus tôt dans un autre, n'est plus repris).
+   dossierChoisi : signalement précis choisi par l'agent (« Reprendre » dans la proposition). */
+function dernierEtatSites(c, etabId, avecRas, dossierChoisi = null) {
   const s = c.sites, cD = col("Dossier"), jour = jourDuFormulaire(), limite = col("Date_faits") && lireDateFaits() != null ? lireDateFaits() : Date.now() / 1000;
   const versions = enregistrements.filter(l => refId(val(l, "Etablissement")) === etabId && jourDeLaVersion(l) !== jour
     && (secondes(col("Date_faits") ? val(l, "Date_faits") : val(l, "Date")) ?? 0) < limite + 86400);
@@ -6145,39 +6210,30 @@ function dernierEtatSites(c, etabId, avecRas) {
   // lignes d'une version : la question elle-même, puis les questions des formulaires précédents (historique)
   const lignesDe = l => {
     const res = lireTableauJson(l[c.def.colId]).map(o => { const { _id, ...v } = o; return v; });
-    for (const h of s.historique) for (const o of lireTableauJson(l[h.colonne])) {
-      const v = {}; for (const [k, x] of Object.entries(o)) if (k !== "_id" && c.sousDefs.some(d => d.colId === k)) v[k] = x;
-      if (h.libre && s.libre) v[s.libre] = o[h.libre]; if (h.site && s.site) v[s.site] = o[h.site]; if (h.qualif && s.qualif) v[s.qualif] = o[h.qualif];
-      res.push(v);
-    }
+    for (const h of s.historique) for (const o of lireTableauJson(l[h.colonne])) res.push(c.vueHistorique(h, o));
     return res;
   };
   const quandDe = l => secondes(val(l, "Date")) ?? secondes(col("Date_faits") ? val(l, "Date_faits") : null);
-  const etats = [];   // { cle, valeurs, qualif, quand, retire }
-  // site retiré d'un dossier (anciennes versions) : compté comme revenu à la normale
-  const dq = s.qualif && c.sousDefs.find(d => d.colId === s.qualif), retour0 = retourNormale();
-  const ras = ((dq && dq.opts && dq.opts.choices) || []).find(x => retour0.has(String(x).trim().toUpperCase())) || [...retour0][0] || "RAS";
-  for (const ls of parDossier.values()) {
-    ls.sort(comparerVersions);
-    const der = ls[ls.length - 1], vues = new Map();
-    for (const l of ls) for (const v of lignesDe(l)) { const k = c.cleSite(etabId, v); if (k) vues.set(k, { l, v }); }
-    const finales = new Set(lignesDe(der).map(v => c.cleSite(etabId, v)).filter(Boolean));
-    for (const [k, x] of vues) etats.push(finales.has(k)
-      ? { cle: k, valeurs: x.v, qualif: s.qualif ? texteQualifSite(x.v[s.qualif]) : "", quand: quandDe(der), ordre: der }
-      : { cle: k, retire: true, valeurs: s.qualif ? { ...x.v, [s.qualif]: dq && typeBase(dq.type) === "ChoiceList" ? ["L", ras] : ras } : x.v, qualif: ras, quand: quandDe(der), ordre: der });
+  // dossier le plus récemment mis à jour (date de saisie de sa version la plus récente), puis sa dernière version
+  let choisi = null;
+  for (const [d, ls] of parDossier) {
+    if (dossierChoisi && d !== dossierChoisi) continue;   // signalement choisi dans la proposition de reprise
+    const maj = Math.max(...ls.map(l => quandDe(l) ?? 0)), der = [...ls].sort(comparerVersions).pop(), id = Math.max(...ls.map(l => l.id));
+    if (!choisi || maj > choisi.maj || (maj === choisi.maj && id > choisi.id)) choisi = { maj, der, id };
   }
-  etats.sort((a, b) => comparerVersions(a.ordre, b.ordre));
-  const dernier = new Map(); etats.forEach(e => dernier.set(e.cle, e));   // le plus récent l'emporte
+  if (!choisi) return [];
+  const der = choisi.der, quand = quandDe(der), dernier = new Map();
+  for (const v of lignesDe(der)) { const k = c.cleSite(etabId, v); if (k) dernier.set(k, { cle: k, valeurs: v, qualif: s.qualif ? texteQualifSite(v[s.qualif]) : "", quand }); }
   const retour = retourNormale();
   const normal = e => !!e.qualif && listeQualif(e.qualif).every(q => retour.has(String(q).trim().toUpperCase()));
   // site désactivé depuis au référentiel (fermé, fusionné) : plus repris s'il est revenu à la normale
   const dSite = s.site && c.sousDefs.find(d => d.colId === s.site), inactif = e => !!(dSite && dSite._inactifs && e.cle.startsWith("s") && dSite._inactifs.has(+e.cle.slice(1)));
-  return [...dernier.values()].filter(e => (avecRas ? true : !e.retire && !normal(e)) && !(inactif(e) && (e.retire || normal(e)))).map(e => ({ ...e, normal: e.retire || normal(e) }));
+  return [...dernier.values()].filter(e => (avecRas || !normal(e)) && !(inactif(e) && normal(e))).map(e => ({ ...e, normal: normal(e) }));
 }
 // préremplit le tableau des sites ; renvoie le nombre de sites repris
-function reprendreEtatSites(c, etabId, avecRas = c.sites.avecRas !== false) {
-  const etats = dernierEtatSites(c, etabId, avecRas), s = c.sites;
-  c.retires = [];
+function reprendreEtatSites(c, etabId, avecRas = c.sites.avecRas !== false, dossier = null) {
+  const etats = dernierEtatSites(c, etabId, avecRas, dossier), s = c.sites;
+  c.retires = []; c.supprimes = [];
   c.lignes = etats.map(e => {
     const v = {}; for (const d of c.sousDefs) if (!d.confidentiel && !videSous(e.valeurs[d.colId])) v[d.colId] = Array.isArray(e.valeurs[d.colId]) ? [...e.valeurs[d.colId]] : e.valeurs[d.colId];
     if (s.site && e.cle.startsWith("s") && !refId(v[s.site])) { v[s.site] = +e.cle.slice(1); if (s.libre) delete v[s.libre]; }   // libellé rattaché au référentiel
@@ -6208,7 +6264,7 @@ function reprendreSitesAuto() {
     c.dessiner(); return;
   }
   const n = reprendreEtatSites(c, e);
-  c.noteAuto = n ? `${n} site${n > 1 ? "s" : ""} connu${n > 1 ? "s" : ""} de cet établissement, au dernier état signalé : confirmez ou modifiez ceux qui ne sont pas revenus à la normale, ajoutez les nouveaux.` : "";
+  c.noteAuto = n ? `${n} site${n > 1 ? "s" : ""} du dernier signalement de cet établissement, dans leur dernier état : confirmez ou modifiez ceux qui ne sont pas revenus à la normale, ajoutez les nouveaux.` : "";
   c.dessiner();
   qualifTouchee = false; majQualifDeduite();
 }
@@ -6260,11 +6316,11 @@ async function reprendreReponses(d) {
   if (col("Site") && val(der, "Site")) $("site").value = val(der, "Site");
   // pièces jointes : propres à chaque jour, jamais reprises d'un signalement précédent
   await remplirChamps("q", defsQuestions, def => typeBase(def.type) === "Attachments" ? null : der[def.colId]);
-  // formulaire par site : le tableau des sites reprend le dernier état connu de chaque site (tous les jours précédents),
+  // formulaire par site : le tableau des sites reprend les sites du signalement choisi, dans leur dernier état,
   // sauf reprise désactivée (réglage du tableau des sites) : il part vide
   let cs = sitesCtrl(), nbSites = null;
-  if (cs && cs.sites.reprise === "non") { cs.lignes = []; cs.retires = []; cs.dessiner(); cs = null; }
-  else if (cs) nbSites = reprendreEtatSites(cs, refId(val(der, "Etablissement")));
+  if (cs && cs.sites.reprise === "non") { cs.lignes = []; cs.retires = []; cs.supprimes = []; cs.dessiner(); cs = null; }
+  else if (cs) nbSites = reprendreEtatSites(cs, refId(val(der, "Etablissement")), undefined, d);
   if (cs) { qualifTouchee = false; majQualifDeduite(); }
   appliquerConditions("q", defsQuestions);
   descriptionManuelle = false;
@@ -6454,7 +6510,7 @@ async function enregistrerSignalement(correction = false) {
       await etape("Correction de la dernière version", tableId || "réponses", () => table.update({ id: derniere.id, fields }));
       Object.assign(derniere, fields);
       modifie = false;
-      const errT = await synchroniserTableaux(dossierId, true, derniere.id);
+      const errT = [...await synchroniserTableaux(dossierId, true, derniere.id), ...await purgerSitesSupprimes(dossierId)];
       statut("statut-signalement", "Dernière étape corrigée (aucune nouvelle étape créée)." + texteErreursTableaux(errT), errT.length ? "err" : "ok");
       confirmer("Dernière étape corrigée", `La dernière étape du dossier n° ${dossierId} a été corrigée ; aucune nouvelle étape n'a été créée (pas de nouveau message Tchap).` + texteErreursTableaux(errT));
     } else if (dossierId && initiale) {
@@ -6491,7 +6547,7 @@ async function enregistrerSignalement(correction = false) {
       const serie = id && jours.length ? await reprendreSurJours(refId(val(initiale, "Etablissement")), valeurs, jours, faitsNouveaux) : null;
       modifie = false;
       $("commentaire").value = "";
-      const errT = id ? await synchroniserTableaux(dossierId, devientDerniere, id) : []; finConfidentiels();
+      const errT = id ? [...await synchroniserTableaux(dossierId, devientDerniere, id), ...await purgerSitesSupprimes(dossierId)] : []; finConfidentiels();
       statut("statut-signalement", "Mise à jour enregistrée : une nouvelle étape a été ajoutée." + texteSerie(serie) + texteErreursTableaux(errT), errT.length ? "err" : "ok");
       confirmer("Mise à jour enregistrée", `Étape ${versions.length + 1} du dossier n° ${dossierId}${etabCourant ? " (" + etabCourant[E.nom] + ")" : ""}.` + texteSerie(serie) + texteErreursTableaux(errT));
       if (id) { try { await grist.setCursorPos({ rowId: id }); } catch (_) {} }
@@ -7463,9 +7519,9 @@ function majProposition() {
       <button type="button" class="maj-contour petit" data-autre-evenement="1">Non, c'est un autre événement</button>`
     : `<p class="prop-titre">${avant.length > 1 ? `${avant.length} signalements récents` : "Un signalement récent"} pour cet établissement</p>
       <ul>${avant.slice(0, 3).map(x => `<li><span>${esc(ligne(x))}</span>
-        <button type="button" class="maj-plein petit" data-reprendre="${x.d}">${formulaireParSite() ? "Reprendre le dernier état de chaque site" : "Reprendre ses réponses"}</button></li>`).join("")}</ul>
+        <button type="button" class="maj-plein petit" data-reprendre="${x.d}">${formulaireParSite() ? "Reprendre ses sites" : "Reprendre ses réponses"}</button></li>`).join("")}</ul>
       <p class="note">Un signalement par jour : celui du ${esc(jour)} sera un nouveau dossier. ${formulaireParSite()
-        ? "Si la situation continue, reprenez le dernier état connu de chaque site (tous les jours précédents), puis confirmez ou modifiez chaque site."
+        ? "Si la situation continue, reprenez les sites du signalement choisi dans leur dernier état, puis confirmez ou modifiez chaque site."
         : "Si la situation continue, reprenez les réponses du précédent, puis modifiez ce qui a changé."}</p>
       <button type="button" class="maj-contour petit" data-autre-evenement="1">Partir d'un formulaire vide</button>`;
 }

@@ -5,7 +5,7 @@ const { docSites } = require('./run78');
 (async () => {
   const browser = await chromium.launch({ executablePath: __C.chromium });
   // 1. administration : case « reprendre automatiquement », décochée → réglage reprise = false
-  let doc = docSites();
+  let doc = docSites({ dernierComplet: true });
   { const F = doc.__data.Formulaires, i = F.Nom.indexOf('Signalements'); if (F.Brouillon) F.Brouillon[i] = F.Publie[i]; }
   const pa = await browser.newPage({ viewport: { width: 1300, height: 1400 } });
   pa.on('pageerror', e => console.log('PAGEERROR', e.message)); pa.on('dialog', d => d.accept());
