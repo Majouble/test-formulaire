@@ -96,6 +96,8 @@ const vieillir = (f, h) => { const t = (Date.now() - h * 3600e3) / 1000; fs.utim
   // ---- panne de Grist (le relais répond 502), puis du relais : passage en mode secours
   G.etat.panne = true;
   for (let k = 0; k < 2; k++) { await A.evaluate(() => window.__KIT__.veilleTic(true)); await A.waitForTimeout(600); }
+  // après deux échecs, le kit propose le mode secours : attendre que le bandeau l'affiche (sinon le relevé dépend de la vitesse de la machine)
+  for (let k = 0; k < 50 && !/passer en mode secours/.test(await bandeau()); k++) await A.waitForTimeout(100);
   console.log('[A] Grist en panne :', await bandeau());
   await R.fermer();
   await A.evaluate(() => window.__KIT__.veilleTic(true)); await A.waitForTimeout(600);

@@ -1,0 +1,6 @@
+réponses 16 | établissement de la réponse 1 : 1
+LIEU : Chaque ligne est placée sur l'établissement qu'elle cite (colonne « Etablissement » (référence au référentiel)) : point et étiquette propres, comptés dans les pages, les encarts et le placement des étiquettes. Une ligne sur l'établissement de la réponse, ou sans établissement, donne un losange accolé à son point.
+MODÈLE : Modèle « ancien_modele.qgs » enregistré pour le profil « Par défaut ».
+
+CONSOLE Failed to load resource: net::ERR_FAILED
+CONSOLE Failed to load resource: net::ERR_FAILED

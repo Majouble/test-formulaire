@@ -1,0 +1,9 @@
+HOMONYMES : 3 × « Campus  Centre »
+SÉLECTION : Campus  Centre | campus centre | Campus centre
+MOTS : 3 site(s) modifié(s).
+RADIOS : ○Campus Centre S3 · sans coordonnées | ○campus centre S4 · sans coordonnées | ●Campus centre S1 · sans coordonnées
+CONFIRMATION : Fusionner 2 site(s) dans « Campus centre » (S1) ? | 3 référence(s) (signalements, tableaux de sites, correspondances) seront reportées sur lui ; les noms des autres deviendront ses mots-clés ; les autres seront désactivés (statut « Fusionné »).
+FUSION : 2 site(s) fusionné(s) dans « Campus centre » ; 3 référence(s) reportée(s).
+SITES : 1:Campus centre|Proposé|actif=undefined|bât. A, Présidence  2:Campus Beaulieu|undefined|actif=undefined|  3:Campus  Centre|Fusionné|actif=false|bât. A, Présidence  4:campus centre|Fusionné|actif=false|bât. A, Présidence  5:Campus Ivry|undefined|actif=undefined|
+RÉFÉRENCES : Sites_signales 1,1,2,1 | correspondances 1
+APRÈS LOT : 1:Ancien site|actif=false  2:Campus Beaulieu|actif=undefined  3:Ancien site|actif=false  4:Ancien site|actif=false  5:Campus Ivry|actif=undefined

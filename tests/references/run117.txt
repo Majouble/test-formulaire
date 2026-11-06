@@ -1,0 +1,7 @@
+ANOMALIES : Haute 2 dossiers pour Collège Jean Moulin (0781234A) — Versailles le mer. 21 oct. | Moyenne Collège Jean Moulin (0781234A) — Versailles : mar. 20 oct. et mer. 21 oct. | Moyenne Collège Jean Moulin (0781234A) — Versailles : mer. 21 oct. et jeu. 22 oct.
+PROPOSITION : n° 4 · Rassemblement · 21 oct., <HEURE> · 2 saisies → n° 8 · Rassemblement · 21 oct., <HEURE>
+CONFIRMATION : Rattacher le dossier n° 4 · Rassemblement · 21 oct., <HEURE> · 2 saisies au dossier n° 8 · Rassemblement · 21 oct., <HEURE> ? | Ses 2 saisie(s) deviennent des versions du dossier n° 8, rangées par date de saisie : la plus récente reste la dernière version, la plus ancienne devient le signalement initial (« Nouveau signalement »). Le
+MESSAGE : Dossier n° 4 rattaché au dossier n° 8 (2 saisie(s), 2 ligne(s) de « Sites_signales »).
+SAISIES : n° 4 : dossier 8, Nouveau signalement ; n° 5 : dossier 8, Mise à jour ; n° 8 : dossier 8, Mise à jour
+SITES : ligne 1 : dossier 8, version 4 ; ligne 2 : dossier 8, version 5 ; ligne 3 : dossier 8, version 8
+APRÈS : Moyenne Collège Jean Moulin (0781234A) — Versailles : mar. 20 oct. et mer. 21 oct. | Moyenne Collège Jean Moulin (0781234A) — Versailles : mer. 21 oct. et jeu. 22 oct.

@@ -1,0 +1,18 @@
+BADGE : 5
+LISTE :
+   Ecole Jules Ferry (0942222C) — Vitry [Corriger / Vérifié, c'est correct]
+   Ecole Jules Ferry (0942222C) — Vitry [Corriger / Vérifié, c'est correct]
+   Collège Jean Moulin (0781234A) — Versailles : mar. 20 oct. et mer. 21 oct. [Corriger / Faits distincts : vérifié]
+   Collège Jean Moulin (0781234A) — Versailles : mer. 21 oct. et jeu. 22 oct. [Corriger / Faits distincts : vérifié]
+   Ecole Jules Ferry (0942222C) — Vitry [Corriger / Vérifié, c'est correct]
+VUE : true | bandeau : Ecole Jules Ferry (0942222C) — Vitry — Latitude ou longitude manquante dans le référentiel.Cliquez sur « Placer l'établissement d'un clic su | fiche : Ecole Jules Ferry
+PLACÉ : Position de « Ecole Jules Ferry » enregistrée (placé sur la carte). | 47.487397, 2.39502
+RETOUR LISTE : true | badge 4
+ESSAIS : Ecole Jules Ferry (0942222C) — Vitry [Corriger / Vérifié, c'est correct]
+ÉDITION : ← Retour à la liste Ecole Jules Ferry (0942222C) — VitryDescription : « test » Dossier n° 8 · Ecole Jules Ferry (Vitry) SaisieQualificationDescription Première saisie n° 823/10/2026 <HEURE> · dernière version —test Modifier Supprimer Supprimer le dossier n° 8 Su
+APRÈS ENREGISTREMENT : Dossier n° 8 : dernière version enregistrée. Anomalie résolue : « Ecole Jules Ferry (0942222C) — Vitry » n'apparaît plus.← Retour à la liste
+RÉPONSE : Rassemblement | Rassemblement de 40 étudiants devant le bâtiment principal
+RATTACHEMENT : Dossier n° 3 rattaché à « Lycée Romain Rolland » (1 version(s)). Anomalie résolue : « Collège Jean Moulin (0781234A) — Versailles : mar. 20 oct. et mer. 21 oct. » n'apparaît plus. | 2
+BADGE MIS À JOUR : 1 → 2
+LISTE MISE À JOUR : 1 → 2
+STATUTS (Config) : corrige (corrigé dans le widget des sites)

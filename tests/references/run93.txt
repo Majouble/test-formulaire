@@ -1,0 +1,9 @@
+RÉGLAGE AVANT : auto
+NOTE (désactivée) : Nouveau dossier : le tableau des sites part vide, l'agent saisit les sites concernés ce jour-là (la  | case RAS : masquée
+RÉGLAGE : "bouton"
+NOTE : Nouveau dossier : le tableau des sites part vide ; si l'établissement a déjà des sites signalés, un bouton « Reprendre l
+SANS REPRISE AUTO : (aucune) | OFFRE : 5 sites dans le dernier signalement de cet établissement. Reprendre leur dernier état
+APRÈS « Reprendre » : Campus Beaulieu (repris) | Annexe Rue Dupont (repris) | Campus centre (repris) | Site Villejean (repris) | Site Lorient (repris) | Gymnase du Moulin | OFFRE : retirée
+PAR DÉFAUT : (aucune) | bouton : aucun | encadré des signalements récents : masqué
+APRÈS « Reprendre » : bouton de reprise absent
+ANCIEN RÉGLAGE AUTOMATIQUE : Campus Beaulieu (repris) | Annexe Rue Dupont (repris) | Campus centre (repris) | Site Villejean (repris) | Site Lorient (repris)

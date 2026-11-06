@@ -1,0 +1,13 @@
+ADMIN, APERÇU : Photos et documents Photos de la situation, courriers… 📎 Ajouter des photos ou des fichiers Photos de la galerie ou de
+ADMIN, TYPE DE QUESTION : Pièces jointes
+ADMIN, PANNEAU (colonne simple) : Les liens d'établissement ne peuvent pas joindre de fichier à cette question (Grist : « cannot access attachment »).
+ADMIN, ADAPTÉE : Question « Photos et documents » adaptée aux liens d'établissement (colonne Photos_et_documents_envoi ajoutée, 1 réponse(s) reprise(s)). Les formulaires déjà ouverts doivent être rechargés. | Photos formule ? true | envoi : [null,null,"7:cccccccccccccccccccccccccccccccccccccccc"]
+ADMIN, FORMULE ÉCRITE = FORMULE ESSAYÉE DANS LE MOTEUR DE GRIST : true
+ADMIN, COPIE POUR LES LIENS RAFRAÎCHIE : Photos formule ? true | colonne d'envoi : true
+ADMIN, PANNEAU (adaptée) : Utilisable par tous, liens d'établissement compris : le formulaire écrit dans la colonne « Photos_et_documents
+CHAMP : Photos et documents Photos de la situation, courriers… 📎 Ajouter des photos ou des fichiers | accepte : image/*,application/pdf,.pdf… | multiple : true
+ENVOIS : 41:IMG_0042.jpg (1397 Ko) | 42:compte rendu.pdf (0 Ko) | photo d'origine : 5590 Ko
+VIGNETTES : IMG_0042.jpg [vignette] | compte rendu.pdf | état :
+APRÈS RETRAIT : IMG_0042.jpg [vignette] | IMG_0043.jpg [vignette] | Pièce retirée de ce signalement.
+ENREGISTRÉ : 8 | colonne Photos (formule, non écrite) : undefined | colonne d'envoi : 41:<sha1 ok> 43:<sha1 ok>
+MISE À JOUR, PIÈCES : IMG_0042.jpg [vignette] | IMG_0043.jpg [vignette]

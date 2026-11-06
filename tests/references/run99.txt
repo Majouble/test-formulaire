@@ -1,0 +1,27 @@
+[A] test, mauvaise clé : ✗ clé refusée
+[A] test, bonne clé : ✓ Le relais répond et lit le document « Document d'essai » (<N> ms côté Grist).
+[A] dossier partagé après « Faire les copies maintenant » : Copie Grist - référentiels et réglages.json, Copie Grist - signalements (précédente).json, Copie Grist - signalements.json, Technique | Technique : empreinte de la base.json
+[A] réglages, copie : 3. Copie du document Rien à charger : le poste en mode veille dépose les copies dans le dossier partagé (référentiels et réglages une fois par jour, signalements toutes les heures) et chaque kit prend
+[A] pages proposées : Formulaire Alice (Versailles – Public) | Formulaire Bob (Créteil) | Formulaire « Signalements » (sans page d'agent)
+[A] bandeau : Mode veille Veille cellule · Formulaire « Signalements » (sans page d'agent) · copie du <DATE> <HEURE> · dossiers de <HEURE> · 1 saisie(s) déjà réintégrée(s) Dossier partagé « partage » · 1 poste(s) · lu à <HEURE> Veille active VeilleTableau des signalements ExporterRéglages
+[A] onglets : Veille* | Tableau des signalements
+[A] onglet Veille : Veille : copies automatiques du document Grist est accessible : la saisie se fait dans Grist. Ce poste demande les copies au relais et les dépose dans le dossier partagé, de 7 h à 20 h, toutes les 60 minutes (un seul poste suffit ; les autres lisent les copies du dossier). Laissez cet onglet ouvert. Relais pas encore interrogé Dossier partagé ✓ partage Copie des dossiers copie du dossier : <DATE> <HEURE> (par Veill
+[A] 2e copie : Copie Grist - référentiels et réglages.json, Copie Grist - signalements (précédente).json, Copie Grist - signalements.json, Technique | événement : copie des dossiers écrite (Reponses 32, Sites_signales 0) / base vérifiée : inchangée / copie des dossiers écrite (Reponses 32, Sites_signales 0)
+[A] copie de 7 lignes : refus = Reponses : 7 ligne(s) au lieu de 32 | lignes en place : 32
+[A] bandeau : Mode veille Veille cellule · Formulaire « Signalements » (sans page d'agent) · copie du <DATE> <HEURE> · dossiers de <HEURE> · 1 saisie(s) déjà réintégrée(s) Dossier partagé « partage » · 1 poste(s) · lu à <HEURE> Copie refusée : voir l'onglet Veille VeilleTableau des signalements ExporterRéglages
+[A] après « Écrire quand même » : lignes en place : 7 | précédente : 32
+[A] copie récente, dans la plage : appel au relais ? false
+[A] copie de 2 h, dans la plage : appel au relais ? true | lignes : 32
+[A] copie de 2 h, hors plage (19 h – 20 h) : appel au relais ? false | bandeau : hors plage signalé
+[A] base : copie des dossiers écrite (Reponses 32, Sites_signales 0) / base mise à jour (0.0 Mo) / copie des dossiers écrite (Reponses 32, Sites_signales 0)
+[A] établissements : 3 → 5 | sans rechargement de la page, dossier : ok | nouvelle base Copie Grist - référentiels et réglages.json prise en compte
+[A] tableau des signalements après la nouvelle base : 30 dossier(s), triés par nom d'établissement.
+[A] Grist en panne : Mode veille Veille cellule · Formulaire « Signalements » (sans page d'agent) · copie du <DATE> <HEURE> · dossiers de <HEURE> · 1 saisie(s) déjà réintégrée(s) Dossier partagé « partage » · 1 poste(s) · lu à <HEURE> Relais : lecture de Grist impossible : /tables : fetch failed — passer en mode secours ? VeilleTableau des signalements ExporterRéglages
+[A] relais coupé : relais injoignable (réseau coupé, ou réponse bloquée par le navigateur) | événements : relais injoignable (réseau coupé, ou réponse bloquée par le navigateur) / lecture de Grist impossible : /tables : fetch failed / lecture de Grist impossible : /tables : fetch failed
+[A] après « Passer en mode secours » : Mode secours Veille cellule · Formulaire « Signalements » (s | onglets : Veille | Saisie* | Tableau des signalements
+[A] saisie en mode secours : Signalement enregistré Dossier n° <N13> créé pour Collège Jean | statut :  | journal : 3
+[A] retour du réseau : Mode secours Veille cellule · Formulaire « Signalements » (sans page d'agent) · copie du <DATE> <HEURE> · dossiers de <HEURE> · 1 saisie(s) déjà réintégrée(s) Dossier partagé « partage » · 1 poste(s) · lu à <HEURE> Grist répond de nouveau (<HEURE>) : réintégrez les saisies VeilleSaisieTableau des signalements ExporterRéglages
+[B] bandeau : Mode secours Agent B · Formulaire « Signalements » (sans page d'agent) · copie du <DATE> <HEURE> · dossiers de <HEURE> · 1 saisie(s) déjà réintégrée(s) Dossier partagé « partage » · 2 poste(s) · lu
+[B] état : {"reponses":33,"saisiesDuPosteA":1,"reintegrees":["deja-reintegree"],"mode":"secours","ecritPar":"Veille cellule"}
+[relais] base : {"meta":"sql","reponses":false,"sousTable":false,"pages":2,"etablissements":5,"Mo":0}
+[relais] base sans SQL : {"meta":"colonnes seulement, sans les pages (/sql","colonnes":51,"pages":false}

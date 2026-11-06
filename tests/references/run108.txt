@@ -1,0 +1,83 @@
+VALIDATION (ouverture) :
+Chaque signalement suit le circuit : visa départemental, puis visa académique, puis remontée au niveau national. Le niveau national voit tous les dossiers, avec leur statut.
+Circuit de validation — Éducation nationale (table Reponses)
+inactif
+Activer le circuit de validation pour cette table
+Échelons
+Département, puis académie
+Académie seulement
+Avis départemental
+Avis départemental
+Question à choix de la partie « Visa départemental ».
+Avis académique
+Avis académique
+Question à choix de la partie « Visa académique ».
+Réponses qui valident
+Favorable
+À revoir
+Toute autre réponse renvoie le dossier en « À revoir ».
+Un viseur académique peut aussi poser l'avis départemental (département sans viseur, absence…)
+Enregistrer
+Viseurs
+Les viseurs sont des agents de l'équipe (compte Grist, ou lien d'invité pour les services départementaux et académiques sans compte) avec un échelon et un périmètre
+COLONNES DES VISEURS :
+PROPOSITION : echelons=dep_aca | verdict_dep=Avis_dep | verdict_aca=Avis_aca | valident : Favorable ✓, À revoir
+ENREGISTREMENT : Circuit enregistré, colonne Statut_validation à jour. Réappliquez les règles d'accès (onglet Accès).
+CONFIG validation : {"tables":{"Reponses":{"actif":true,"echelons":"dep_aca","verdict_dep":"Avis_dep","verdict_aca":"Avis_aca","favorables":["Favorable"],"aca_vise_dep":true,"colonne":"Statut_validation"}}}
+COLONNE DE STATUT : Choice, formule : # Statut de validation (socle v2.41) — réglé dans l'onglet Validation de l'administration / if not $Derniere_version: /   return None …
+VALEUR HORS RÉFÉRENTIEL : « Lyon » n'est pas dans le référentiel.
+VISEURS : Alice Martin : Départemental ["L","Yvelines"] null | Bruno Petit : Académique null ["L","Créteil"] | Chloé Durand : — null null
+SUIVI :
+Circuit de validation — Éducation nationale (table Reponses)
+actif colonne Statut_validation à jour
+Activer le circuit de validation pour cette table
+Échelons
+Département, puis académie
+Académie seulement
+Avis départemental
+Avis départemental
+Question à choix de la partie « Visa départemental ».
+Avis académique
+Avis académique
+Question à choix de la partie « Visa académique ».
+Réponses qui valident
+Favorable
+À revoir
+Toute autre réponse renvoie le dossier en « À revoir ».
+Un viseur académique peut aussi poser l'avis départemental (département sans viseur, absence…)
+Enregistrer et mettre à jour la colonne de statut
+SUIVI DES DOSSIERS (DERNIÈRE VERSION DE CHACUN)
+Académie À viser (département) À viser (académie) À revoir Validé
+Créteil 1 · · ·
+Versailles 1 1 1 ·
+Total 2 1 1 ·
+Sans viseur :
+Académie Versailles : 1 dossier(s) à viser, aucun viseur académique
+ACCÈS, avis : Reponses — avis départemental (Avis_dep, Obs_dep) || Reponses — avis académique (Avis_aca)
+ACCÈS, formules : (((user.Agent.Actif and user.Agent.Echelon_visa == "Départemental" and (not user.Agent.Visa_departements or rec.Departement in user.Agent.Visa_departements)) or (user.Agent.Actif and user.Agent.Echelon_visa == "Académique" and (not user.Agent.Visa_academies or rec.Academie in user.Agent.Visa_academies)))) or (user.LinkKey.Invite and ((user.Invite.Actif and user.Invite.Echelon_visa == "Départemental" and (not user.Invite.Visa_departements or rec.Departement in user.Invite.Visa_departements)) or (user.Invite.Actif and user.Invite.Echelon_visa == "Académique" and (not user.Invite.Visa_academies or rec.Academie in user.Invite.Visa_academies))))
+   ((user.Agent.Actif and user.Agent.Echelon_visa == "Académique" and (not user.Agent.Visa_academies or rec.Academie in user.Agent.Visa_academies))) or (user.LinkKey.Invite and (user.Invite.Actif and user.Invite.Echelon_visa == "Académique" and (not user.Invite.Visa_academies or rec.Academie in user.Invite.Visa_academies)))
+PROJET : Nouvelle campagne
+3 établissement(s) de Etablissements : Académie : Versailles · avec une adresse.
+Nom de la campagne
+Réponse attendue
+Une réponse attendue
+Une réponse attendue chaque jour
+« Chaque jour » : le suivi repa
+CAMPAGNE : {"nom":"Tempête Ciaran — situation des établissements","mode":"quotidienne","crit":{"Academie":["Versailles"]},"avecMail":true}
+SUIVI (lancement) : Tempête Ciaran — situation des établissements | en cours | Une réponse attendue chaque jour | lancée le <DATE> <HEURE> | Etablissements : Académie : Versailles · avec une adresse. | Jour suivi | <DATE> (aujourd'hui) | 0 réponse(s) sur 3 établissement(s) visé(s) — 0 % le <DATE>. | Académie par département Visés Répondu Sans réponse Taux
+SUIVI (2 réponses) : lancée le <DATE> <HEURE> | Etablissements : Académie : Versailles · avec une adresse. | Jour suivi | <DATE> (aujourd'hui) | 2 réponse(s) sur 3 établissement(s) visé(s) — 67 % le <DATE>. | Académie par département Visés Répondu Sans réponse Taux | Versailles 3 2 1  |  67 % | Sans réponse (1)
+RELANCE : relance-tempete_ciaran_situation_des_etablisseme-2026-11-06.csv
+﻿UAI;Nom;Commune;Mail;Lien;Objet;Message
+0781111A;Collège Albert Camus;Versailles;ce.0781111a@ac-versailles.fr;https://grist/p/9?Etab_=k1;Relance — Tempête Ciaran — situation des établissements : Collège Albert Camus;"Bonjour,
+
+Sauf erreur de notre part, nous n'avons pas encore reçu la réponse de Col
+SAISIE, BANDEAU : 2 dossiers à viser
+visa départemental · Yvelines
+Afficher la file
+SAISIE, CARTES (toutes) : Collège Paul Éluard RAS À viser (département) | Lycée Hoche Fermé À viser (département) | Collège Albert Camus Perturbé À viser (département) | École Jules Ferry Perturbé À viser (département) | Collège Paul Éluard Perturbé À revoir | Lycée Hoche Fermé À viser (académie)
+SAISIE, FILE : Dossiers à viser → Lycée Hoche Fermé À viser (département) | Collège Albert Camus Perturbé À viser (département)
+SAISIE, DOSSIER OUVERT : Lycée Hoche FerméÀ viser (département) | onglet Visas visible : true | visa départemental : true | visa académique : false
+ÉTABLISSEMENT, BANDEAU : Réponse attendue aujourd'hui : « Tempête Ciaran — situation des établissements ». Signalez tout événement concernant votre établissement ; s'il n'y a rien à signaler, répondez en un clic.
+Rien à signaler | statut visible sur les cartes : 0
+ÉTABLISSEMENT, RÉPONSE ENREGISTRÉE : n° 3 : RAS / « Rien à signaler. » / Mise à jour | Mise à jour enregistrée : une nouvelle étape a été ajoutée.
+ÉTABLISSEMENT, BANDEAU APRÈS : ✓ Votre réponse à « Tempête Ciaran — situation des établissements » est enregistrée pour aujourd'hui. Merci.

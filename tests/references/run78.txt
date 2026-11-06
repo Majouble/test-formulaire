@@ -1,0 +1,29 @@
+ORDRE : qualification après les sites ? true
+REPRISE AUTOMATIQUE : Dernier état : Blocage total (<JJ/MM> <HEURE>) · Confirmer cet état || Dernier état : Rassemblement (<JJ/MM> <HEURE>) · Confirmer cet état || Dernier état : RAS (<JJ/MM> <HEURE>) · revenu à la normale || Dernier état : RAS (<JJ/MM> <HEURE>) · revenu à la normale || Dernier état : RAS (<JJ/MM> <HEURE>) · revenu à la normale
+PROPOSITION : 3 signalements récents pour cet établissement Dossier n° 6 · Blocage total · du <DATE> · 2 mises à jour Reprendre ses sitesDossier n° 4 · Rassemblement · du <DATE> · 1 mise à jour Reprendre ses sitesDossier n° 3 · Blocage total · du <DATE> · aucune
+STATUT : Dernier état connu repris : 5 sites (autres réponses : dossier n° 6, <JOUR> <JJ/MM>). Confirmez ou modifiez chaque site, puis enregistrez ce nouveau signalement.
+SITES REPRIS : Dernier état : Blocage total (<JJ/MM> <HEURE>) · Confirmer cet état | Campus Beaulieu | Blocage total
+   Dernier état : Rassemblement (<JJ/MM> <HEURE>) · Confirmer cet état | Annexe Rue Dupont / Annexe Rue Dupont | Rassemblement
+   Dernier état : RAS (<JJ/MM> <HEURE>) · revenu à la normale | Campus centre | RAS
+   Dernier état : RAS (<JJ/MM> <HEURE>) · revenu à la normale | Site Villejean | RAS
+   Dernier état : RAS (<JJ/MM> <HEURE>) · revenu à la normale | Site Lorient | RAS
+SITES PROPOSÉS (champ vide) : Campus BeaulieuAussi : Campus Beaulieu bat 12 | Campus centre | Site Lorient | Site Villejean
+« bat 12 » : Campus BeaulieuAussi : Campus Beaulieu bat 12 | « bat 12 »site hors référentiel
+CHOISI : {"Site":2,"Site_libre":null}
+« Gymnase municipal » : « Gymnase municipal »site hors référentiel | état : hors référentiel
+VALEURS : {"Site":null,"Site_libre":"Gymnase municipal"}
+QUALIF : Blocage total | Qualification la plus grave des sites : Blocage total (reprise automatiquement)
+APRÈS CHOIX MANUEL : Qualification la plus grave des sites : Blocage total — différente de celle choisie (Rassemblement) : vérifiez avant d'enregistrer. Reprendre Blocage total
+DIALOG : La qualification de l'établissement (Rassemblement) ne correspond pas à celle du site le plus grave (Blocage total). | 2 sites repris du dernier état connu n'ont été ni confirmés ni modifiés. | Enregistrer quand même ?
+ENREGISTRÉ (refusé) ? lignes Reponses = 8
+BOUTONS ligne reprise : dupliquer:⧉ ras-site:RAS retirer-repris:✕ | site verrouillé ? true
+APRÈS RAS : lignes 6 | qualif ligne 2 : RAS
+MENTIONS : Dernier état : Blocage total (<JJ/MM> <HEURE>) · confirmé || Dernier état : Rassemblement (<JJ/MM> <HEURE>) · modifié || Dernier état : RAS (<JJ/MM> <HEURE>) · revenu à la normale || Dernier état : RAS (<JJ/MM> <HEURE>) · revenu à la normale || Dernier état : RAS (<JJ/MM> <HEURE>) · revenu à la normale
+QUALIF : Blocage total | Qualification la plus grave des sites : Blocage total (reprise automatiquement)
+STATUT :
+SOUS-TABLE : 1:v9/site 2//Blocage total/Ajout  2:v9/site 0/Annexe Rue Dupont/Blocage partiel/Ajout  3:v9/site 1//RAS/Ajout  4:v9/site 3//RAS/Ajout  5:v9/site 4//RAS/Ajout  6:v9/site 0/Gymnase municipal/null/Ajout
+RÉPONSE : Blocage total | [{"_id":"<ID>","Site":2,"Qualification":"Blocage total"},{"_id":"<ID>","Site_libre":"Annexe Rue Dupont","Qualification":"Blocage partiel"},{"_id":"<ID>","Site":1,"Qualification":"RAS"},{"_id":"<ID>","Site":3,"Qualification":"RAS"},{"_id":"<ID>","Site":4,"Qualification":"RAS"},{"_id":"<ID>","Site_libre":"Gymnase municipal"}]
+MISE À JOUR, actions par ligne : dupliquer+corriger-site+ras-site+supprimer-site | dupliquer+ras-site+supprimer-site | dupliquer+corriger-site+ras-site+supprimer-site | dupliquer+corriger-site+ras-site+supprimer-site | dupliquer+corriger-site+ras-site+supprimer-site | dupliquer+ras-site+supprimer-site | dupliquer+supprimer
+SITES (mise à jour) : Campus Beaulieu (verrouillé) | Annexe Rue Dupont | Campus centre (verrouillé) | Site Villejean (verrouillé) | Site Lorient (verrouillé) | Gymnase municipal | ∅
+DIALOG (accepté) : Corriger le site de cette ligne ? | À réserver à une erreur de saisie : un site revenu à la normale reste dans le dossier, passez-le en RAS.
+APRÈS « Corriger le site » : Campus Beaulieu | Annexe Rue Dupont | Campus centre (verrouillé) | Site Villejean (verrouillé) | Site Lorient (verrouillé) | Gymnase municipal | ∅

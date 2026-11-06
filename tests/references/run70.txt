@@ -1,0 +1,3 @@
+ÉTAPES : []
+Etat_plus_grave Text formule=true
+Nb_jours_mobilisation Int formule=true

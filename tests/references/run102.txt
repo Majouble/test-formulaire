@@ -1,0 +1,31 @@
+PAR DÉFAUT : — 4 établissements sur 4, 4 académies | couleurs selon Categorie
+   ☑ École → « Écoles » #f2c12e circle
+   ☑ Collège → « Collèges » #d1336a circle
+   ☑ Lycée → « Lycées » #5f59c6 circle
+   ☑ Autre → « Autres » #4cbf62 circle
+   ☑ autres valeurs → « Autres » #4cbf62 circle
+SUP. SITES : — 5 sites sur 5, 2 académies | Un point par site cité dans « Sites_signales », placé selon les coordonnées de « Referentiel_sites » (à défaut, sur son établissement) ; couleur et classement selon la qualification du site (« Qualification »). Académie et département : ceux du lieu du site.
+COULEURS : Qualification_principale
+   ☑ Blocage total → « Blocage total » #000091 circle
+   ☑ Rassemblement → « Rassemblement » #e1000f circle
+   ☑ autres valeurs → « Autres » #999999 circle
+APRÈS RÉGLAGE : — 4 sites sur 5, 2 académies
+POINTS :
+   Campus Beaulieu (UJM) | Rennes / Bretagne | Blocage total | Blocage total | signal. 1 | jours 1 | page Bretagne | rang 1
+   Site Villejean (UJM) | Rennes / Bretagne | Rassemblement | Rassemblement | signal. 1 | jours 1 | page Bretagne | rang 2
+   Campus centre (UJM) | Versailles / Île-de-France | Rassemblement | Rassemblement | signal. 1 | jours 1 | page Île-de-France | rang 1
+   Gymnase du Moulin (UJM) | Versailles / Île-de-France | Rassemblement | Rassemblement | signal. 1 | jours 1 | page Île-de-France | rang 2
+PAGES : Bretagne (region, |Rennes|, 2 pts, MultiPolygon) ; Île-de-France (region, |Créteil|Paris|Versailles|, 2 pts, MultiPolygon)
+CATÉGORIES QGIS : Blocage total#0, Rassemblement#1 | formes :  | couleurs :
+LÉGENDE : Sites signalés, Départements, Académie | compte : sites signalés | académies de la page : 2
+LISEZMOI : - Couleurs et formes : selon « Qualification_principale » (champ Categorie = libellé de la légende) : Blocage total (cercle, #000091) ; Rassemblement (triangle, #e1000f) ; écartées : autres valeurs.
+   - Points retenus : 4 sur 5.
+   - Points : un par site (sous-table « Sites_signales », coordonnées de « Referentiel_sites », à défaut celles de l'établissement), une page par jour (date en haut à droite).
+   - Pages : 2 (0 départementales) ; découpage par région académique.
+TOUS RISQUES : — 4 établissements sur 4, 4 académies | pages : france
+PAGES : France entière (france, 30 académies, 4 pts)
+MODÈLE : encarts outre-mer 5
+POINTS : UJM [Rassemblement] sites 4 (Campus Beaulieu, Campus centre, Gymnase du Moulin, Site Villejean) ; LRR [Autres] sites 0 () ; UR [Rassemblement] sites 0 () ; UA [Rassemblement] sites 0 ()
+RÉFÉRENTIEL : ☑ Privé → « Privé » #000091 circle
+   ☑ Public → « Public » #e1000f circle
+   ☑ autres valeurs → « Autres » #999999 circle

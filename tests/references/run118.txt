@@ -1,0 +1,24 @@
+REPRISE (avant suppression) : Site Lorient [Blocage total] | Campus Beaulieu [Blocage partiel]
+NOTE : 2 sites du dernier signalement de cet établissement, dans leur dernier état : confirmez ou modifiez ceux qui ne sont pas revenus à la normale, ajoutez les nouveaux.
+PROPOSITION : Reprendre ses sites #6 | Reprendre ses sites #4 | Reprendre ses sites #3
+REPRISE DU DOSSIER CHOISI (4, <JJ/MM>) : Campus centre [RAS] | Site Villejean [Rassemblement]
+DOSSIER OUVERT : Site Lorient [] | Campus Beaulieu []
+BOUTONS (ligne 1) : dupliquer, corriger-site, ras-site, supprimer-site
+DIALOG : Supprimer « Site Lorient » de ce dossier ? | À réserver à un site saisi à tort : à l'enregistrement, ses réponses sont effacées de toutes les étapes du dossier et il ne sera plus proposé. Un site reve
+APRÈS 🗑 : Campus Beaulieu [] | note : 1 site sera supprimé du dossier à l'enregistrement, dans toutes ses étapes (Site Lorient). Annuler la suppression
+APRÈS ANNULATION : Site Lorient [] | Campus Beaulieu []
+DIALOG : Supprimer « Site Lorient » de ce dossier ? | À réserver à un site saisi à tort : à l'enregistrement, ses réponses sont effacées de toutes les étapes du dossier et il ne sera plus proposé. Un site reve
+DIALOG : La qualification de l'établissement (RAS) ne correspond pas à celle du site le plus grave (Blocage partiel). | Enregistrer quand même ?
+STATUT : Mise à jour enregistrée : une nouvelle étape a été ajoutée.
+ÉTAPES DU DOSSIER :
+  6: [{"_id":"<ID>","Site":3,"Qualification":"Rassemblement"},{"_id":"<ID>","Site":2,"Qualification":"Blocage partiel"}]
+  7: [{"_id":"<ID>","Site":2,"Qualification":"Blocage partiel"}]
+  8: [{"_id":"<ID>","Site":2,"Qualification":"Blocage partiel"}]
+TABLE DÉDIÉE :
+  v6 e site 3 Ajout
+  v6 g site 2 Ajout
+  v7 e site 3 Retrait
+  v7 g site 2 Inchangée
+  v8 g site 2 Inchangée
+LORIENT ENCORE PRÉSENT ? false
+REPRISE (lendemain) : Campus Beaulieu [Blocage partiel]

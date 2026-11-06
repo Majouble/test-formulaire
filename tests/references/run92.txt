@@ -1,0 +1,5 @@
+REPRIS : Bât. Z ancien nom [ancien nom, absent du référentiel : choisissez le site dans la liste]
+DIALOG : 1 site repris du dernier état connu n'a été ni confirmé ni modifié. | Enregistrer quand même ?
+ERREURS DE LIGNE : aucune
+STATUT :
+SOUS-TABLE : 1:site 0//Rassemblement  2:site 0/Gymnase du Moulin/Rassemblement

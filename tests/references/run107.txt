@@ -1,0 +1,4 @@
+ATLAS : — 85 établissements sur 85, 30 académies | pages : france | lignes : 22 | toutes les étiquettes : true
+POINTS : 85 | étiquettes à abréviation scolaire : aucune | sans étiquette (Lh/Eh) : 0 | exemples : INSA Lyon, UTT, UTC, ENS de Lyon, UCPP
+ENCARTS : n° 1 (13 points, zoom ×15.4) | points cachés : aucun
+LISEZMOI : - Étiquettes : 5 pt (variable atlas_etiquette) ; placées par le widget (champs Lx/Ly sur la carte, Ex/Ey dans les encarts, traits de rappel), toutes gardées, même sans place libre (chevauchements possibles).

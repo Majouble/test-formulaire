@@ -8,11 +8,19 @@ Scénarios Playwright qui ouvrent les widgets (`v2/…`) dans Chromium avec un *
 cd tests
 npm install
 npx playwright install chromium     # ou : CHROMIUM=/chemin/vers/chromium
-sh lancer.sh                        # suite actuelle (run63 à run120)
-sh lancer.sh run74 run76            # quelques scénarios
+node verifier.js                    # toute la suite, comparée aux journaux de référence
+node verifier.js run74 run76        # quelques scénarios
 ```
 
-`lancer.sh` écrit la sortie de chaque scénario dans `sorties/journaux/` et signale un échec en cas d'erreur de page ou d'exception. `run68` dépend du jour : il vise les créneaux du jour dans le planning d'essai (semaine du 19/10/2026) et échoue un jour sans créneau. Les scénarios n'ont pas d'assertions : comparez les journaux avec la description de la version dans `v2/README.md`.
+## Non-régression : `verifier.js`
+
+Chaque scénario affiche ce qu'il observe : textes affichés, comptes, contenus écrits dans le document. `verifier.js` lance la suite, retire de ces journaux ce qui change d'une exécution à l'autre (heures, dates, horodatages, identifiants aléatoires, durées) et les compare aux journaux de référence de `references/`. Un scénario est en **échec** s'il produit une erreur de page ou s'arrête, en **écart** si ce qu'il observe diffère de la référence : c'est un changement de comportement, voulu ou non.
+
+Quand un changement est voulu, on vérifie l'écart puis on enregistre la nouvelle référence : `node verifier.js --maj run74`. Le commit montre alors, dans `references/`, exactement ce qui a changé à l'écran ou dans le document.
+
+Les scénarios qui ouvrent un serveur local (ports 87xx) passent l'un après l'autre ; les autres en parallèle (`PARALLELE=4` par défaut). Les scénarios du planning (`run68`, `run71`, `run72`) figent la date au 21/10/2026, semaine du planning d'essai.
+
+`lancer.sh` reste disponible : il lance la suite sans comparaison et ne signale que les erreurs de page.
 
 Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pour vérifier le rendu QGIS : `QT_QPA_PLATFORM=offscreen python3.12 qgis/rendu.py <dossier>/atlas.qgs page.png Versailles` (PyQGIS 3.34). `qgis/poids_pdf.py` mesure le poids du PDF selon la résolution ; `PYTHON=python3.12 sh qgis/refaire_modele.sh` reconstruit le modèle QGIS intégré (python3.12 : l'interpréteur qui a PyQGIS).
 

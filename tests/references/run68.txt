@@ -1,0 +1,11 @@
+agents : 51
+CIBLES : Toute la journée | Matin | Après-midi
+GROUPES : Récemment opérateur | Fonction habituelle : opérateur | Autres agents | cases 51 | prises
+FILTRE dupo : 5
+FILTRE « so lau » : sophie_laurent,sophie_laurent_19,sophie_laurent_29,sophie_laurent_39 alice,bob,anne_durand
+BOUTON : Mobiliser la sélection (5)
+APRÈS changement de cible, sélection gardée : Mobiliser la sélection (5)
+LIGNES : Matin 8 h–13 h · 5 agents → Marc Moreau, Paul Dupont, Sophie Laurent, Sophie Laurent 19, Sophie Laurent 29 || Après-midi 13 h–19 h · 0 agent →
+PUCES visibles (replié) : 0
+PUCES après « modifier » : 6
+ENREGISTRÉ : Opérateur, mercredi 21 octobre : enregistré. | affectations 9 → 14

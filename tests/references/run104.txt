@@ -1,0 +1,21 @@
+CHAMP : Sites_signales
+NOM PRIS : La table « Reponses » existe déjà dans le document : choisissez un autre nom.
+CONFIRMATION : Renommer la table « Sites_signales » en « Sites_concernes_ESR » ? | Dans Grist : lignes, références et formules suivent. | Formulaires mis à jour (brouillon et version publiée) : Signalements. | Les widgets ouverts ailleurs (saisie, cartographie) sont à recharger.
+TABLES : Table1,Config,Formulaires,Etablissements,Reponses,Referentiel_sites,Sites_correspondances,Sites_concernes_ESR
+PUBLIÉ : Sites_concernes_ESR | BROUILLON : Sites_concernes_ESR | données suivies
+ATLAS : {
+  "actif": "P",
+  "profils": {
+    "P": {
+      "marques": {
+        "table": "Sites_concernes_ESR",
+        "colonne": "Qualification"
+      },
+      "sites": {
+        "table": "Sites_concernes_ESR"
+      }
+    }
+  }
+}
+PANNEAU : Sites_concernes_ESR | CHAMPS DE CHAQUE LIGNE (TABLE SITES_CONCERNES_ESR) | Table renommée « Sites_concernes_ESR » ; formulaire(s) mis à jour : Signalements. Rechargez les widgets ouverts ailleurs.
+SAISIE :  | lignes dans la table renommée : 4/RAS ; Gymnase du Moulin/Rassemblement

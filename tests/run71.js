@@ -8,6 +8,8 @@ const { chromium } = require('playwright'); const fs = require('fs');
   const browser = await chromium.launch({ executablePath: __C.chromium }); const page = await browser.newPage({ viewport: { width: 1400, height: 1100 } });
   page.on('pageerror', e => console.log('PAGEERROR', e.message)); page.on('dialog', d => { console.log('DIALOG', d.message()); d.accept(); });
   await page.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__DOC__=${JSON.stringify(doc)};` + fs.readFileSync('mock.js') + fs.readFileSync('fakeapi.js') + `;grist.onRecords=()=>{};grist.getOption=async()=>null;` }));
+  // planning d'essai : semaine du 19/10/2026 — date figée pour que le scénario ne dépende pas du jour
+  await page.clock.setFixedTime(new Date('2026-10-21T10:00:00+02:00'));
   await page.goto('file://' + __C.racine + '/v2/admin/index.html'); await page.waitForTimeout(800);
   await page.click('nav button[data-onglet=onglet-equipe]'); await page.waitForTimeout(800);
   await page.click('#eq-sous [data-sous=planning]'); await page.waitForTimeout(1200);

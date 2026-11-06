@@ -1,0 +1,8 @@
+PAR DÉFAUT (valeur décroissante) : RAS | Rassemblement | Blocage partiel | Blocage total
+CHOIX PROPOSÉS : colonnes : par valeur décroissante ; colonnes : de A à Z ; colonnes : de Z à A ; colonnes : ordre des choix dans Grist ; colonnes : ordre personnalisé…
+ORDRE DES CHOIX DANS GRIST : Blocage total | Blocage partiel | Rassemblement | RAS
+ORDRE PERSONNALISÉ, LISTE : Blocage total › Blocage partiel › Rassemblement › RAS | tableau : Blocage total | Blocage partiel | Rassemblement | RAS
+APRÈS DÉPLACEMENTS : Rassemblement › Blocage partiel › Blocage total › RAS | tableau : Rassemblement | Blocage partiel | Blocage total | RAS
+CONFIGURATION : manual ["Rassemblement","Blocage partiel","Blocage total","RAS"]
+SÉRIES DU GRAPHIQUE : Rassemblement | Blocage partiel | Blocage total | RAS
+RÉINITIALISÉ : Blocage total › Blocage partiel › Rassemblement › RAS

@@ -1,0 +1,19 @@
+VEILLE : Carte de vigilance de Météo-France du <JOUR> <JJ/MM> <HEURE>. | Aujourd'hui · 3 dép. | Demain · 1 dép. | Vigilances aujourd'hui — orange et plus | Paris et petite couronne | La Réunion | Guyane | Guadeloupe | Martinique | Mayotte | 3 | département(s) | 3 | établissement(s)
+CARTE : départements colorés 13,78,91
+DEMAIN : Vigilances demain — orange et plus | Paris et petite couronne | La Réunion | Guyane | Guadeloupe | Martinique | Mayotte | 1 | département(s)
+ONGLET : Établissements | PROJET : Nouvelle campagne | 1 établissement(s) de Etablissements : Département : Val-de-Marne. | nom : Vigilance rouge crues — <DATE> | mode : quotidienne | fin : 2026-11-08
+RÉGLAGES : { "seuil": 2, "phenomenes": [] } | Vigilances demain — jaune et plus
+RELAIS : relais-vigilance-AbCdEfGh.json | const API_GRIST = 'https://grist.test/o/crise/api' ; const DOC = 'AbCdEfGh1234' ; const REFERENTIEL = 'Etablissements' ; const COL_DEP = 'Departement' ; const COL_EFFECTIF = 'Effectif' ; const DEPARTEMENTS = '78,91,94' ; const SEUIL_ALERTE = '2' | DEP_NOMS : 101 départements
+RELAIS EXÉCUTÉ :
+   GET /public/DPVigilance/v1/cartevigilance/encours [apikey CLE-MF]
+   GET /o/crise/api/docs/AbCdEfGh1234/tables/Vigilances/records
+   POST /o/crise/api/docs/AbCdEfGh1234/apply
+      actions : BulkRemoveRecord Vigilances (2), BulkAddRecord Vigilances (5), BulkAddRecord Vigilances_journal (5)
+   GET /o/crise/api/docs/AbCdEfGh1234/sql?q=SELECT%20%22Departement%22%20AS%20d%2C%20COUNT(*)%20AS%20n%2C%20SUM(%22Effectif%22)%20AS%20e%20FROM%20%22Etablissements%22%20GROUP%20BY%20%22Departement%22
+   PUT /_matrix/client/v3/rooms/!salon%3Atchap.test/send/m.room.message/prisme-veille-<N13>
+      tchap : PRISME — veille météo | 🔴 Vigilance rouge crues (demain) : Val-de-Marne (94) — 1 établissement, 210 élèves | 🟠 Vigilance orange vent violent (aujourd'hui) : Essonne (91) — 1 établissement, 420 élèves | 🟠 Vigilance orange vagues-submersion (aujourd'hui) : Charente-Maritime (17)
+SORTIE : {"mise_a_jour":"<ISO>","vigilances":5,"changements":5,"alerte":{"envoyee":true}}
+SECOND PASSAGE (rien de nouveau, départements du référentiel) : GET /public/DPVigilance/v1/cartevigilance/encours [apikey CLE-MF] {"mise_a_jour":"<ISO>","vigilances":3,"changements":0,"alerte":null}
+SAISIE, BANDEAU : 🔴 Vigilance rouge crues demain : Val-de-Marne
+🟠 Vigilance orange vent violent aujourd'hui : Yvelines, Essonne
+🟠 Vigilance orange canicule aujourd'hui : Bouches-du-Rhône

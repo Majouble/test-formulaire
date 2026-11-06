@@ -1,0 +1,23 @@
+CONTEXTE : Établissements : Etablissements (3) · sites : Referentiel_sites (5)
+RECHERCHE : La Rochelle Université Collège · La Rochelle · 4 sites
+SITES : Campus des Minimes [S1 · sans coordonnées : cliquez « Placer », puis sur la carte] | Pôle Communication [S2 · sans coordonnées : cliquez « Placer », puis sur la carte] | Site Lorient [S4 · sans coordonnées : cliquez « Placer », puis sur la carte] | Site Villejean [S3 · sans coordonnées : cliquez « Placer », puis sur la carte]
+IGN : Faculté de droit, science politique et management probable IGN · enseignement supérieur · La Rochelle · à 1.9 km Voir Ajouter Déplacer l'établissement ici || Campus des Minimes probable IGN · enseignement supérieur · La Rochelle · à 44 m Déjà au référentiel : Campus des Minimes Voir Ajouter quand même Mot-clé du site existant Déplacer l'établissement ici
+STATUT : Site « Faculté de droit, science politique et management » ajouté (SITE-M0001).
+PLACÉ : Position de « Campus des Minimes » enregistrée.
+OSM : Maison de la Réussite probable OpenStreetMap · university · La Rochelle Université · à 313 m Voir Ajouter Déplacer l'établissement ici || Lycée Valin BTS OpenStreetMap · college · à 2.4 km Voir Ajouter Déplacer l'établissement ici || Campus des Minimes OpenStreetMap · university · à 38 m Déjà au référentiel : Campus des Minimes Voir Ajouter quand même Mot-clé du site existant Déplacer l'établissement ici
+TABLE : 1:S1|Campus des Minimes|e1|46.15789,-1.146483|undefined|undefined|undefined||actif=undefined
+   2:S2|Pôle Communication|e1|undefined,undefined|undefined|undefined|undefined|PCM, Pôle Communication Multimédia Réseaux|actif=undefined
+   3:S3|Site Villejean|e1|undefined,undefined|undefined|undefined|undefined||actif=undefined
+   4:S4|Site Lorient|e1|undefined,undefined|undefined|undefined|undefined||actif=false
+   5:S5|Campus Ivry|e2|undefined,undefined|undefined|undefined|undefined||actif=undefined
+   6:SITE-M0001|Faculté de droit, science politique et management|e1|46.1598,-1.1395|La Rochelle|IGN|Validé||actif=true
+   7:SITE-M0002|Pôle Sciences et Technologie|e1|46.1489,-1.1601|La Rochelle|Adresse|Validé||actif=true
+   8:SITE-M0003|Résidence Antinéa|e1|46.161548,-1.144638|La Rochelle|Carte|Validé||actif=true
+APPELS : search poi La Rochelle Université ; overpass ; search address 23 avenue Albert Einstein La Rochelle
+FICHE : Nom | Type | Statut_public_prive | Academie | Region_academique | Departement | Commune | UAI | Mail | Latitude | Longitude
+FICHE MODIFIÉE : Commune enregistré. | La Rochelle (17) | fiche du haut : Collège · La Rochelle (17)
+AJOUT : Information « Tutelle » ajoutée (colonne Tutelle). | champ : true
+BOUTONS CANDIDAT : Voir / Ajouter quand même / Mot-clé du site existant / Déplacer l'établissement ici
+ÉTABLISSEMENT (IGN) : Position de « La Rochelle Université » enregistrée (IGN : Campus des Minimes). | 46.1452, -1.1535 | La Rochelle (17)
+ÉTABLISSEMENT (site) : Position de « La Rochelle Université » enregistrée (site « Résidence Antinéa »). | 46.161548, -1.144638 | La Rochelle (17)
+REPÈRE É déplaçable : true

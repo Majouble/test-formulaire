@@ -1,0 +1,20 @@
+SOURCES : Sites_signales › Site (référence aux sites) | Sites_signales › Site_libre | Sites › Nom du site
+AIDE : Colonne lue : Sites.Nom_du_site (Text). Sites n'a pas encore de colonne vers le référentiel des sites : elle sera créée (« Site du référentiel ») au premier rattachement.
+LIBELLÉS :
+   Campus Beaulieu bat 12 2 lignes Variantes : Campus Beaulieu bat 12 ; campus beaulieu, bât. 12 <DATE> · Blocage total — Mouvement 1 autre signalement Proposé : « Campus Beaulieu »
+   Annexe Rue Dupont 2 lignes Variantes : Annexe Rue Dupont ; Annexe rue Dupont <DATE> · RAS · Mise à jour — Mouvement 1 autre signalement Aucun site proposé
+   Villejean 1 ligne <DATE> · Rassemblement — Mouvement Proposé : « Site Villejean »
+SITE PROPOSÉ : Campus Beaulieu | Rattacher les 2 lignes au site
+CONFIRMATION : La colonne « Nom_du_site » de la table « Sites » est de type Text ; la table n'a pas de colonne vers le référentiel des sites « Referentiel_sites ».
+
+Créer la colonne « Site du référentiel » ? (Annuler : rien n'est modifié)
+STATUT : 2 ligne(s) rattachée(s) à « Campus Beaulieu », texte remplacé ; correspondance(s) validée(s) pour les prochaines saisies.
+STATUT : 2 ligne(s) rattachée(s) à « Annexe Dupont », texte remplacé ; correspondance(s) validée(s) pour les prochaines saisies.
+LIBELLÉS :
+   Villejean 1 ligne <DATE> · Rassemblement — Mouvement Proposé : « Site Villejean »
+   Campus Beaulieu 2 lignes <DATE> · Blocage total — Mouvement 1 autre signalement Rattaché à « Campus Beaulieu »
+   Annexe Dupont 2 lignes <DATE> · RAS · Mise à jour — Mouvement 1 autre signalement Rattaché à « Annexe Dupont »
+TABLE Sites : 1:Campus Beaulieu→2  2:Annexe Dupont→6  3:Campus Beaulieu→2  4:Villejean→undefined  5:Bâtiment Ivry→undefined  6:Annexe Dupont→6
+COLONNES Sites : Dossier:Ref:Reponses, Nom_du_site:Text, Qualification:Choice, Site_referentiel:Ref:Referentiel_sites
+RÉFÉRENTIEL : 6:Annexe Dupont|e1
+CORRESPONDANCES : 1|Campus Beaulieu bat 12→2(Validé)  1|campus beaulieu, bât. 12→2(Validé)  1|Annexe Rue Dupont→6(Validé)
