@@ -1,6 +1,15 @@
 /* PRISME — widget de saisie, module 21/34 : Questions « tableau », fin : écriture dans la table dédiée, versions, reconstruction.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : controleursTableau, synchroniserTableaux, purgerSitesSupprimes, reconstruireTableaux,
+     texteErreursTableaux, confidentielsModifies, finConfidentiels.
+   Utilise :
+     03 variantes : refId, statut.
+     05 etat : colonneDe, etatSaisie, valeurLigne.
+     06 grist : enFile.
+     19 tableaux : Tableau, lireTableauJson, nouvelIdLigne, tableaux, videSous.
+     24 filtres-navigation : derniereDe. */
 /* Méthodes de la classe Tableau qui écrivent les lignes dans la table dédiée, puis les fonctions appelées après
    l'enregistrement d'un signalement. */
 Object.assign(Tableau.prototype, {

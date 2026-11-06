@@ -1,6 +1,21 @@
 /* PRISME — widget de saisie, module 27/34 : Nouveau signalement : reprise des réponses d'un jour précédent.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : reprendreReponses.
+   Utilise :
+     03 variantes : refId, statut.
+     05 etat : colonneDe, etatSaisie, valeurLigne.
+     09 dossier : cocherQualif, comparerVersions, jourDesFaits.
+     10 champs : remplirChamps, typeBase.
+     13 coherence : appliquerConditions.
+     15 onglets : focusPremiereQuestion.
+     16 description : majDescriptionAuto.
+     23 couleurs : majCouleur.
+     25 plusieurs-jours : jourCourt, versionsDe.
+     26 sites-esr : majQualifDeduite, reprendreEtatSites, sitesCtrl.
+     34 parcours : majProposition.
+   Modifie etatSaisie : descriptionManuelle, modifie, propositionMasquee, qualifTouchee. */
 /* ---------- nouveau signalement : reprendre les réponses du signalement d'un jour précédent ---------- */
 async function reprendreReponses(dossierId) {
   const der = [...versionsDe(dossierId)].sort(comparerVersions).pop();

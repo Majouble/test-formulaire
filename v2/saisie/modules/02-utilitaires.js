@@ -1,6 +1,13 @@
 /* PRISME — widget de saisie, module 02/34 : Outils de base : accès aux colonnes, valeurs Grist, dates au format des colonnes.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : colonnesEtab, COLONNES_ETAB_DEFAUT, RECONNAISSANCE_ETAB, normColonne, reconnaitreColonnesEtab.
+   Utilise :
+     01 configuration : ETAB.
+     05 etat : etatSaisie.
+     06 grist : metaColonnes.
+   Modifie etatSaisie : colonnesParContenu, colonnesReconnues. */
 /* =========================================================
    Outils
    ========================================================= */
@@ -54,7 +61,9 @@ async function reconnaitreColonnesEtab(donneesTable) {
   let meta = null;
   try {
     meta = await metaColonnes(ETAB.table);
-  } catch (_) {}
+  } catch (_) {
+    // structure illisible (lien d'établissement, règles d'accès) : on continue sans
+  }
   const colonnes = Object.keys(donneesTable).filter(
     (colonne) => colonne !== "id" && colonne !== "manualSort" && !colonne.startsWith("gristHelper"),
   );

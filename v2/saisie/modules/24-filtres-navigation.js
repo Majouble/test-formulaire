@@ -1,6 +1,28 @@
 /* PRISME — widget de saisie, module 24/34 : Filtre des signalements et navigation d'une fiche à l'autre.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : VIDE_FILTRE, RENSEIGNE_FILTRE, CHAMPS_ETAB_FILTRE, MAX_VALEURS_FILTRE, derniereDe, champsFiltrables,
+     typeChamp, valeursDossier, champDe, filtreEffectif, filtreActif, passeUn, passeFiltre, dossiersFiltres,
+     resumeFiltre, sauverFiltre, restaurerFiltre, valeursDisponibles, majFiltre, appliquerFiltre,
+     remplirPanneauFiltre, ouvrirPanneauFiltre, fermerPanneauFiltre, voisins, majNavigation, allerA,
+     afficherOptionsDossiers, menuOuvert, fermerMenuDossiers, optionsMenu, focusOption, ouvrirMenuDossiers,
+     choisirOption.
+   Utilise :
+     02 utilitaires : colonnesEtab.
+     03 variantes : refId.
+     04 date-faits : secondes, valeurLocale.
+     05 etat : colonneDe, etabDeLigne, etatSaisie.
+     06 grist : enFile.
+     09 dossier : comparerVersions, ouvrirDossier.
+     10 champs : typeBase.
+     12 conditions-formules : normaliser.
+     15 onglets : passerEnCreation.
+     18 liste-dossiers : afficherResultatsRecherche, fermerRecherche, libelleDossier, majListeDossiers.
+     23 couleurs : bandeCouleur, textesValeur.
+     31 autocompletion : sansAccent.
+     34 parcours : cacherConfirmation.
+   Modifie etatSaisie : cacheDernieres, filtreOuvert, filtres, listeChampsFiltre, minuterieContient, posNav. */
 /* ---------- Filtre des signalements et navigation d'une fiche à l'autre ----------
    Plusieurs filtres possibles (combinés par ET ; plusieurs valeurs d'un même filtre combinées par OU).
    Chaque filtre porte sur l'état actuel de chaque dossier (sa dernière version) ou sur son établissement.
@@ -160,7 +182,9 @@ function restaurerFiltre() {
           libelles: filtreMemorise.libelles || {},
           contient: filtreMemorise.contient || "",
         }));
-  } catch (_) {}
+  } catch (_) {
+    // filtres mémorisés illisibles : aucun filtre
+  }
 }
 // Valeurs d'un filtre avec leur nombre de signalements, compté en tenant compte des AUTRES filtres
 function valeursDisponibles(filtre) {
@@ -457,7 +481,9 @@ function allerA(sens) {
   enFile(async () => {
     try {
       await grist.setCursorPos({ rowId: cible.id });
-    } catch (_) {}
+    } catch (_) {
+      // placer le curseur de Grist est un confort : sans effet si Grist le refuse
+    }
     await ouvrirDossier(cible.id, true);
   });
 }
@@ -545,7 +571,9 @@ function choisirOption(optionListe) {
     }
     try {
       await grist.setCursorPos({ rowId: id });
-    } catch (_) {}
+    } catch (_) {
+      // placer le curseur de Grist est un confort : sans effet si Grist le refuse
+    }
     await ouvrirDossier(id, true);
   });
 }

@@ -1,6 +1,22 @@
 /* PRISME — widget de saisie, module 14/34 : Établissement : identification, mail et lien d'accès.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : infoSection, alerterSection, colRattachement, rattachementDe, versEtablissement, nomEtabId,
+     alerterRattachement, afficherEtablissement, extraireUrl, nettoieMail, carteHtml, majBoutonEnvoi, etabParUai,
+     etablissementPourCreation.
+   Utilise :
+     01 configuration : ETAB, MESSAGE, ORIGINE.
+     02 utilitaires : colonnesEtab.
+     03 variantes : CHAMPS_NOUVEL_ETAB, etape, idDe, libelleChampFiche, lisible, refId, reglagesSaisie, statut,
+       valeurChampFiche.
+     05 etat : colonneDe, etabDe, etatSaisie.
+     08 referentiel-local : chargerEtabs, completerLienEtab.
+     16 description : majDescriptionAuto, verifierDoublons.
+     26 sites-esr : reprendreSitesAuto.
+     33 correction-etablissement : majBoutonsCorrection.
+     34 parcours : majProposition, majResumeEtab.
+   Modifie etatSaisie : composanteChoisie, etabCourant, ligneAnnuaire, modifie, sectionCalculee, sectionGardee. */
 /* =========================================================
    Établissement : identification, mail et lien
    ========================================================= */

@@ -1,6 +1,19 @@
 /* PRISME — widget de saisie, module 03/34 : Spécificités du formulaire : établissements scolaires ou enseignement supérieur.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : FICHE_DEFAUT, PRESETS, confSaisie, versionSaisie, reglagesSaisie, appliquerVersion,
+     appliquerColonnesForcees, ROLES_FICHE, colonneChampFiche, valeurChampFiche, libelleChampFiche, valeursEtab,
+     appliquerModele, identiteExemple, remplirVersionConfig, REGIONS_ACADEMIQUES, cleAcademie, REGION_PAR_ACADEMIE,
+     colonneRegion, regionAcademique, CHAMPS_NOUVEL_ETAB, statut, lisible, refId, idDe, etape.
+   Utilise :
+     01 configuration : ETAB, SOURCES, TABLE_ETAB_DEFAUT.
+     02 utilitaires : colonnesEtab.
+     05 etat : colonneDe, etatSaisie.
+     06 grist : enFile.
+     07 formulaires : chargerConfiguration.
+     09 dossier : rafraichir.
+   Modifie etatSaisie : versionPage. */
 /* =========================================================
    Spécificités du formulaire (version établissements scolaires / enseignement supérieur)
    ---------------------------------------------------------

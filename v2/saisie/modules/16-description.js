@@ -1,6 +1,30 @@
 /* PRISME — widget de saisie, module 16/34 : Description automatique, résumé des modifications, jour de mobilisation, doublons.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : PARAMETRES, OPTIONS_DEFAUT, SEPARATEURS, joindre, memeReponse, mettreEnForme, element,
+     modificationsSaisies, texteAutomatique, commentaireComplet, FAMILLES, famille, formatPour,
+     questionsDescription, elementsDescription, MOTIF_MOBILISATION, ordinal, jourCalendaire, preparerRefSite,
+     sitesDeLEtablissement, etablissementDuFormulaire, dateParGrist, jourFaits, jourDuFormulaire, jourDeLaVersion,
+     cleSite, memeSite, doublonsDuJour, cleDoublon, extraitDescription, lieuDoublon, verifierDoublons,
+     jourDeMobilisation, mentionMobilisation, qualificationRas, signalementEnCoursRas, ajouterMobilisation,
+     identiteDuFormulaire, enTeteDescription, elementsTableau, descriptionGeneree, majEtatDescription,
+     majDescriptionAuto, evaluerDescriptionManuelle, majApercuAuto.
+   Utilise :
+     01 configuration : ETAB.
+     03 variantes : appliquerModele, refId, reglagesSaisie, statut, valeursEtab.
+     04 date-faits : formateur, lireDateFaits, secondes.
+     05 etat : colonneDe, etatSaisie, valeurLigne.
+     06 grist : enFile, metaColonnes.
+     07 formulaires : lireTableReference.
+     09 dossier : comparerVersions, lireQualificationInitiale, listeQualif, ouvrirDossier.
+     10 champs : egal, estVide, lireChamps, norm, typeBase.
+     12 conditions-formules : formuleConnue, majFormulesEnDirect, normaliser, questionVisible,
+       valeurFormuleEnDirect.
+     13 coherence : appliquerConditions, formatValeur.
+     19 tableaux : estQualifSous, lignesPrecedentes, lireTableauJson, texteTableauDescription, versionDuJour.
+     23 couleurs : majCouleur.
+   Modifie etatSaisie : descriptionManuelle, doublonConfirme, optionsAuto. */
 // Mise à jour : résumé automatique des réponses modifiées, ajouté au commentaire à l'enregistrement.
 // Il est affiché en aperçu au-dessus du commentaire, sans être mélangé au texte saisi : on peut ainsi
 // choisir n'importe quel format (valeur seule, sur une seule ligne…) sans risque de confusion.
@@ -451,7 +475,9 @@ $("alerte-doublon").addEventListener("click", (evenement) => {
     enFile(async () => {
       try {
         await grist.setCursorPos({ rowId: id });
-      } catch (_) {}
+      } catch (_) {
+        // placer le curseur de Grist est un confort : sans effet si Grist le refuse
+      }
       await ouvrirDossier(id, true);
       verifierDoublons();
     });

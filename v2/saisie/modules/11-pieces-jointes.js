@@ -1,6 +1,12 @@
 /* PRISME — widget de saisie, module 11/34 : Pièces jointes : photos et documents envoyés au document Grist.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : piecesJointes.
+   Utilise :
+     02 utilitaires : colonnesEtab.
+     05 etat : etatSaisie.
+     13 coherence : appliquerConditions. */
 /* ---------- Pièces jointes (colonne Grist de type Pièces jointes) ----------
    Photos (galerie ou appareil photo du téléphone) et documents, envoyés dès qu'ils sont choisis dans les pièces jointes du
    document Grist (API /attachments, jeton du widget) ; la cellule reçoit la liste de leurs numéros à l'enregistrement.

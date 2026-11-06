@@ -1,6 +1,20 @@
 /* PRISME — widget de saisie, module 31/34 : Recherche d'établissement (autocomplétion).
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : champNom, liste, sansAccent, odsq, clauses, appeler, interroger, sourcesActives, rechercheLocale,
+     libelleEtabDeRepli, rechercher, afficherResultats, etat, ouvrir, fermer, surligner, choisir.
+   Utilise :
+     01 configuration : COLONNES_RECHERCHE_EN_PLUS, MIN_CARACTERES, MIN_CARACTERES_ANNUAIRE, NB_RESULTATS,
+       NB_RESULTATS_ANNUAIRE, SOURCES.
+     02 utilitaires : colonnesEtab.
+     03 variantes : CHAMPS_NOUVEL_ETAB, reglagesSaisie.
+     05 etat : dansPerimetre, etabDe, etatSaisie, perimetre, perimetreActif.
+     14 etablissement : afficherEtablissement, etabParUai, rattachementDe, versEtablissement.
+     15 onglets : focusPremiereQuestion.
+     33 correction-etablissement : proposerRattachement.
+   Modifie etatSaisie : composanteChoisie, etabCourant, index, ligneAnnuaire, minuterie, modifie, requete,
+     resultats. */
 /* =========================================================
    Autocomplétion (agents, création)
    ========================================================= */
@@ -25,7 +39,9 @@ async function appeler(src, where) {
     let detail = "";
     try {
       detail = (await reponse.json()).message || "";
-    } catch (_) {}
+    } catch (_) {
+      // réponse sans message lisible : message générique
+    }
     throw new Error(`${src.etiquette} : HTTP ${reponse.status} ${detail}`);
   }
   return reponse.json();

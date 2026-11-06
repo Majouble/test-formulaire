@@ -1,6 +1,26 @@
 /* PRISME — widget de saisie, module 25/34 : Faits sur plusieurs jours, report sur d'autres jours.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : UN_JOUR, MAX_JOURS, LIMITE_FUTUR_JOURS, jourCle, jourCourt, aideFaitsDefaut, plusieursJoursActif,
+     estWeekEnd, joursEntre, joursSuivants, erreurJours, erreurPlusieursJours, versionsDe, dossierDuJour,
+     majAideJours, reinitialiserJours, valeursSaisies, reprendreSurJours, pluriel, texteSerie, joursReport,
+     erreurReport, majAideReport, ouvrirReport.
+   Utilise :
+     01 configuration : NATURE.
+     03 variantes : etape, refId, reglagesSaisie, statut.
+     04 date-faits : faitsAvecHeure, lireDateFaits, valeurLocale.
+     05 etat : colonneDe, etatSaisie, valeurLigne.
+     06 grist : enFile, idsCreesIci.
+     09 dossier : comparerVersions, jourDesFaits, lireQualificationInitiale.
+     10 champs : lireChamps.
+     13 coherence : seulementModifies.
+     15 onglets : avertirFaitsAnterieurs.
+     16 description : MOTIF_MOBILISATION, ajouterMobilisation, dateParGrist, etablissementDuFormulaire,
+       jourDeLaVersion, jourDeMobilisation, jourFaits, memeSite.
+     21 tableaux-enregistrement : synchroniserTableaux, texteErreursTableaux.
+     34 parcours : confirmer.
+   Modifie etatSaisie : modifie. */
 /* =========================================================
    Faits sur plusieurs jours (fermeture d'un campus du lundi au vendredi…) — un dossier par jour
    ---------------------------------------------------------

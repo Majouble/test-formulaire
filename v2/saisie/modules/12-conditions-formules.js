@@ -1,6 +1,18 @@
 /* PRISME — widget de saisie, module 12/34 : Questions conditionnelles et formules calculées en direct.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : normaliser, resoudreColonne, FORMULE_SIMPLE, formuleCalculable, formuleEtab, valeurFormuleEnDirect,
+     formuleConnue, majFormulesEnDirect, questionVisible, nombreDe, calculerFormule, valeurColonneEnDirect,
+     valeurPourCondition, conditionRemplie, evaluerCondition, afficherDiagnostic.
+   Utilise :
+     01 configuration : ETAB.
+     05 etat : colonneDe, etabDe, etatSaisie.
+     09 dossier : lireQualificationInitiale.
+     10 champs : lireUnChamp, typeBase.
+     13 coherence : formatValeur.
+     16 description : etablissementDuFormulaire.
+     19 tableaux : lireTableauJson, tableaux. */
 /* ---------- Questions conditionnelles ---------- */
 // Valeur courante d'une colonne dont dépend une condition (questions, mais aussi description
 // et qualification du formulaire principal).

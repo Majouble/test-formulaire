@@ -1,6 +1,12 @@
 /* PRISME — widget de saisie, module 01/34 : Configuration : référentiel des établissements, identifiants de colonnes, constantes.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : ETAB, UTILISATEURS, MESSAGE, ORIGINE, NATURE, afficherCommentaire, CLE_TABLE_ETAB, TABLE_ETAB_DEFAUT,
+     COLONNES_RECHERCHE_EN_PLUS, MIN_CARACTERES, NB_RESULTATS, NB_RESULTATS_ANNUAIRE, MIN_CARACTERES_ANNUAIRE,
+     SOURCES.
+   Utilise :
+     03 variantes : reglagesSaisie. */
 /* =========================================================
    CONFIGURATION
    ========================================================= */

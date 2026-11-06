@@ -1,6 +1,25 @@
 /* PRISME — widget de saisie, module 17/34 : Réglages du formulaire (table Parametres) : bornes des nombres, options, panneau ⚙.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : questionsNumeriques, nombreOuNul, bornesDe, appliquerBornes, remplirBornesConfig, lireBornesConfig,
+     CLES_DESCRIPTION, descriptionDuFormulaire, garderDescriptionCommune, appliquerOptions, chargerReglages,
+     remplirChoixTable, ouvrirConfig, lireConfig, dateCourteExemple, majExempleConfig.
+   Utilise :
+     01 configuration : CLE_TABLE_ETAB, ETAB, TABLE_ETAB_DEFAUT.
+     02 utilitaires : colonnesEtab.
+     03 variantes : identiteExemple, remplirVersionConfig, statut.
+     05 etat : colonneDe, etatSaisie.
+     06 grist : enFile.
+     07 formulaires : chargerConfiguration, determinerTableEtab, lireSocleSaisie, rafraichirEtabs,
+       reglagesDansConfig, remplirDiagnostic.
+     09 dossier : rafraichir.
+     10 champs : typeBase.
+     16 description : FAMILLES, OPTIONS_DEFAUT, PARAMETRES, descriptionGeneree, famille, majApercuAuto,
+       majDescriptionAuto, questionsDescription.
+     19 tableaux : decomptable, lignesExemple, modeSous, texteTableauDescription.
+     22 choix-formulaire : remplirChoixFormulaire.
+   Modifie etatSaisie : colsParametres, etabCourant, ligneParametres, optionsAuto, optionsParametres. */
 /* ---------- Réglages : lus et enregistrés dans la table Parametres ---------- */
 /* ---------- Limites des nombres : description de la colonne > réglage de la question > réglage général ---------- */
 const questionsNumeriques = () =>
@@ -120,7 +139,9 @@ async function chargerReglages() {
   if (!etatSaisie.socleConfig) {
     try {
       await lireSocleSaisie();
-    } catch (_) {}
+    } catch (erreur) {
+      console.warn("PRISME saisie : configuration du document illisible, réglages par défaut", erreur);
+    }
   }
   if (reglagesDansConfig()) {
     const reglageResume = etatSaisie.socleConfig.valeurs.resume_auto;
@@ -157,7 +178,9 @@ async function remplirChoixTable() {
   let tables = [];
   try {
     tables = (await grist.docApi.listTables()).filter((nomTable) => !nomTable.startsWith("_grist"));
-  } catch (_) {}
+  } catch (_) {
+    // liste des tables indisponible : liste vide
+  }
   const choisie = etatSaisie.optionsAuto[CLE_TABLE_ETAB] || "";
   menuTable.innerHTML =
     `<option value="">Automatique (table visée par la colonne Établissement)</option>` +
@@ -381,7 +404,9 @@ $("cfg-enregistrer").addEventListener("click", async () => {
   let anciens = {};
   try {
     anciens = JSON.parse((etatSaisie.ligneParametres && etatSaisie.ligneParametres[PARAMETRES.colonne]) || "{}") || {};
-  } catch (_) {}
+  } catch (_) {
+    // anciens réglages illisibles : ils sont remplacés
+  }
   const options = garderDescriptionCommune({ ...anciens, ...lireConfig() });
   if (!options[CLE_TABLE_ETAB]) delete options[CLE_TABLE_ETAB];
   const tableAvant = ETAB.table;

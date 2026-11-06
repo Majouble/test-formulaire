@@ -1,6 +1,20 @@
 /* PRISME — widget de saisie, module 09/34 : Données du dossier et qualification initiale.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : jourDesFaits, comparerVersions, calculerVersions, rafraichir, ouvrirDossier, styleChoix, listeQualif,
+     estiloPastille, afficherChoix, lireChoix, lireChoixMulti, lireQualificationInitiale, cocherQualif.
+   Utilise :
+     03 variantes : refId, statut.
+     04 date-faits : secondes.
+     05 etat : colonneDe, etabDeLigne, etatSaisie, valeurLigne.
+     07 formulaires : rafraichirEtabs, verifierFormulairePublie.
+     15 onglets : afficherDossier, passerEnCreation.
+     18 liste-dossiers : majListeDossiers.
+     28 enregistrement : remplirFormulaire.
+     30 visas : remplirVisas.
+   Modifie etatSaisie : demandeAffichage, derniere, dossierId, etabCourant, initiale, modifie, modifieVisa,
+     selectionAttendue, versions. */
 /* =========================================================
    Données du dossier (à partir des lignes déjà reçues)
    ========================================================= */

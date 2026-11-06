@@ -1,6 +1,21 @@
 /* PRISME — widget de saisie, module 19/34 : Questions « tableau » : plusieurs lignes dans une même question ; structure, lecture et contrôle.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : tableaux, RESERVES_TABLEAU, nouvelIdLigne, videSous, lireTableauJson, colonnesDeTable,
+     evaluerConditionLigne, zoneSousChamp, pastillesPossibles, texteSousValeur, syntheseTableau, TYPES_DECOMPTE,
+     decomptable, modeSous, estQualifSous, valeursLigneTableau, texteAutoLigne, texteTableauDescription,
+     versionDuJour, lignesPrecedentes, lignesExemple, Tableau.
+   Utilise :
+     02 utilitaires : normColonne.
+     03 variantes : refId, reglagesSaisie.
+     04 date-faits : dateFr, secondes.
+     05 etat : etatSaisie, valeurLigne.
+     06 grist : avecRegles, lireMeta, metaColonnes.
+     10 champs : horsBornes, lireUnChamp, optionsReference, typeBase.
+     12 conditions-formules : evaluerCondition, normaliser, resoudreColonne.
+     16 description : famille, preparerRefSite.
+     26 sites-esr : reprendreSitesAuto. */
 /* =========================================================
    Questions « tableau » : plusieurs lignes dans une même question (ex. une ligne par blessé)
    ---------------------------------------------------------
@@ -43,7 +58,9 @@ async function colonnesDeTable(tid) {
     let options = {};
     try {
       options = JSON.parse(metaColonnesBrutes.widgetOptions[i] || "{}");
-    } catch (_) {}
+    } catch (_) {
+      // options illisibles : valeurs par défaut
+    }
     const visible = metaColonnesBrutes.visibleCol ? metaColonnesBrutes.visibleCol[i] : 0;
     colonnes.push({
       colId: metaColonnesBrutes.colId[i],
@@ -412,7 +429,9 @@ class Tableau {
     let colonnesTable = null;
     try {
       colonnesTable = await colonnesDeTable(tid);
-    } catch (_) {}
+    } catch (erreur) {
+      console.warn("PRISME saisie : table de la question « tableau » illisible", erreur);
+    }
     if (!colonnesTable) {
       this.erreur = `Table « ${tid} » introuvable : vérifiez le repère [tableau ${tid}] dans la description de la colonne « ${this.def.libelle} ».`;
       this.dessiner();

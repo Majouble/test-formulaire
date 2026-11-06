@@ -1,6 +1,21 @@
 /* PRISME — widget de saisie, module 18/34 : Menu et recherche des signalements.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : libelleDossier, majListeDossiers, construireIndexRecherche, surligneMots, afficherResultatsRecherche,
+     fermerRecherche, ouvrirResultat.
+   Utilise :
+     02 utilitaires : colonnesEtab.
+     03 variantes : refId.
+     04 date-faits : dateFr, secondes.
+     05 etat : afficherBandeauPerimetre, colonneDe, dansPerimetre, etabDeLigne, etatSaisie, nomEtabLigne,
+       perimetreActif, texteEtabBrut, valeurLigne.
+     06 grist : enFile.
+     09 dossier : comparerVersions, listeQualif, ouvrirDossier.
+     24 filtres-navigation : afficherOptionsDossiers, dossiersFiltres, fermerPanneauFiltre, filtreActif, majFiltre.
+     31 autocompletion : sansAccent.
+     34 parcours : afficherCartes, ouvrirDepuisListe.
+   Modifie etatSaisie : cacheDernieres, dossiersInit, indexRecherche, nbCartes. */
 function libelleDossier(ligne) {
   const dateSignalement =
     secondes(valeurLigne(ligne, "Date")) != null
@@ -108,7 +123,9 @@ function ouvrirResultat(itemResultat) {
   enFile(async () => {
     try {
       await grist.setCursorPos({ rowId: id });
-    } catch (_) {}
+    } catch (_) {
+      // placer le curseur de Grist est un confort : sans effet si Grist le refuse
+    }
     await ouvrirDossier(id, true);
   });
 }

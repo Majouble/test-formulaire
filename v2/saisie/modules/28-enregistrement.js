@@ -1,6 +1,31 @@
 /* PRISME — widget de saisie, module 28/34 : Signalement : création, puis mise à jour par nouvelle version.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : remplirFormulaire, signalerChampsManquants, enregistrerSignalement, controlerAvantEnregistrement,
+     enregistrerCorrection, enregistrerMiseAJour, enregistrerCreation, conseilEchecEnregistrement.
+   Utilise :
+     01 configuration : ETAB, NATURE, afficherCommentaire.
+     02 utilitaires : colonnesEtab.
+     03 variantes : etape, idDe, refId, reglagesSaisie, statut.
+     04 date-faits : dateFaitsFuture, initialiserDateFaits, lireDateFaits, secondes.
+     05 etat : colonneDe, etatSaisie, valeurLigne.
+     06 grist : enFile, idsCreesIci.
+     09 dossier : cocherQualif, jourDesFaits, lireQualificationInitiale, listeQualif.
+     10 champs : boolRepondu, egal, estVide, horsBornes, lireChamps, lireUnChamp, remplirChamps, typeBase.
+     13 coherence : appliquerConditions, auteurDe, fusionnerAvecVersionRecente, seulementModifies.
+     14 etablissement : afficherEtablissement, etablissementPourCreation.
+     16 description : cleDoublon, commentaireComplet, dateParGrist, doublonsDuJour, evaluerDescriptionManuelle,
+       majApercuAuto, majDescriptionAuto, verifierDoublons.
+     19 tableaux : tableaux.
+     21 tableaux-enregistrement : confidentielsModifies, finConfidentiels, purgerSitesSupprimes,
+       synchroniserTableaux, texteErreursTableaux.
+     23 couleurs : majCouleur.
+     25 plusieurs-jours : LIMITE_FUTUR_JOURS, UN_JOUR, aideFaitsDefaut, erreurPlusieursJours, joursSuivants,
+       majAideJours, reinitialiserJours, reprendreSurJours, texteSerie.
+     26 sites-esr : controleSites, majQualifDeduite, plusGrave, qualifDesSites, sitesCtrl.
+     34 parcours : confirmer.
+   Modifie etatSaisie : modifie, qualifTouchee, selectionAttendue, versionAffichee. */
 /* =========================================================
    Signalement : création, puis mise à jour par nouvelle version
    ========================================================= */
@@ -424,7 +449,9 @@ async function enregistrerMiseAJour(table, valeurs, jours) {
   if (id) {
     try {
       await grist.setCursorPos({ rowId: id });
-    } catch (_) {}
+    } catch (_) {
+      // placer le curseur de Grist est un confort : sans effet si Grist le refuse
+    }
   }
 }
 
@@ -467,7 +494,9 @@ async function enregistrerCreation(table, valeurs, jours) {
   );
   try {
     await grist.setCursorPos({ rowId: id });
-  } catch (_) {}
+  } catch (_) {
+    // placer le curseur de Grist est un confort : sans effet si Grist le refuse
+  }
   afficherEtablissement();
 }
 

@@ -1,6 +1,20 @@
 /* PRISME — widget de saisie, module 06/34 : Liaison avec Grist (colonnes, réception des lignes) et lecture de la configuration.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : COLONNES, enFile, OPTIONS, idsCreesIci, ACTIVITE, traiterEnvoi, lireMeta, metaDeSecours, idColonne,
+     colonneEnvoiPj, completerPjCopie, metaColonnes, sansGuillemets, lireCondition, lireBorne, lireRepereTableau,
+     avecRegles, defsDe, brancherGrist.
+   Utilise :
+     03 variantes : refId, statut.
+     05 etat : colonneDe, etatSaisie.
+     07 formulaires : chargerConfiguration, signalerErreurChargement.
+     09 dossier : ouvrirDossier, rafraichir.
+     10 champs : typeBase.
+     15 onglets : passerEnCreation.
+     34 parcours : cacherConfirmation, montrerVue.
+   Modifie etatSaisie : curseurInitialVu, dernierCurseur, enregistrements, envoiEnAttente, file, idsNouveaux,
+     idsPrecedents, mappings, metaCopie, promesseMeta, signatureMappings. */
 /* =========================================================
    Grist
    ========================================================= */
@@ -98,7 +112,9 @@ const ACTIVITE = {
         ACTIVITE.dureeLongues += entree.duration;
       }
     }).observe({ type: "longtask", buffered: true });
-  } catch (_) {}
+  } catch (_) {
+    // mesure des tâches longues indisponible dans ce navigateur
+  }
 })();
 async function traiterEnvoi(recs, associations) {
   etatSaisie.mappings = associations;
@@ -246,7 +262,9 @@ async function metaColonnes(tid) {
     let options = {};
     try {
       options = JSON.parse(colonnesGrist.widgetOptions[i] || "{}");
-    } catch (_) {}
+    } catch (_) {
+      // options illisibles : valeurs par défaut
+    }
     const visible = colonnesGrist.visibleCol ? colonnesGrist.visibleCol[i] : 0;
     resultat[colonnesGrist.colId[i]] = {
       colId: colonnesGrist.colId[i],

@@ -1,6 +1,33 @@
 /* PRISME — widget de saisie, module 15/34 : Onglets, affichage du dossier, en-tête.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : afficherOnglet, passerEnCreation, afficherDossier, focusPremiereQuestion, avertirFaitsAnterieurs.
+   Utilise :
+     01 configuration : afficherCommentaire.
+     02 utilitaires : colonnesEtab.
+     03 variantes : CHAMPS_NOUVEL_ETAB, statut.
+     04 date-faits : dateFaitsFuture, dateFr, initialiserDateFaits, lireDateFaits, secondes.
+     05 etat : colonneDe, etatSaisie, valeurLigne.
+     06 grist : enFile.
+     07 formulaires : rafraichirEtabs.
+     09 dossier : cocherQualif, jourDesFaits, listeQualif, styleChoix.
+     10 champs : remplirChamps.
+     13 coherence : appliquerConditions.
+     14 etablissement : afficherEtablissement.
+     16 description : jourFaits, majDescriptionAuto, verifierDoublons.
+     18 liste-dossiers : majListeDossiers.
+     23 couleurs : majCouleur.
+     25 plusieurs-jours : UN_JOUR, aideFaitsDefaut, jourCle, jourCourt, joursSuivants, majAideJours,
+       reinitialiserJours.
+     26 sites-esr : majQualifDeduite.
+     28 enregistrement : remplirFormulaire.
+     29 historique : afficherHistorique.
+     30 visas : statutDe.
+     31 autocompletion : fermer.
+     34 parcours : allerNouveau, majModeSaisie, majProposition.
+   Modifie etatSaisie : dateFaitsTouchee, derniere, descriptionManuelle, dossierId, doublonConfirme, etabCourant,
+     initiale, ligneAnnuaire, modifie, modifieVisa, qualifTouchee, sitesAutoPour, versions. */
 /* =========================================================
    Onglets, modes et en-tête
    ========================================================= */

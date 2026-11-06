@@ -1,6 +1,12 @@
 /* PRISME — widget de saisie, module 04/34 : Date des faits : champ, lecture, contrôle.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : valeurLocale, faitsAvecHeure, initialiserDateFaits, lireDateFaits, dateFaitsFuture, secondes,
+     cacheFormateurs, formateur, formaterMoment, dateFr.
+   Utilise :
+     05 etat : etatSaisie.
+   Modifie etatSaisie : dateFaitsTouchee. */
 /* ---------- Date des faits ---------- */
 function valeurLocale(date, avecHeure) {
   // Date -> valeur d'un champ date / datetime-local, à l'heure de Paris

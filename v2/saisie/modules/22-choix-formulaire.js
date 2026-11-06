@@ -1,12 +1,22 @@
 /* PRISME — widget de saisie, module 22/34 : Choix du formulaire de la page.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : remplirChoixFormulaire.
+   Utilise :
+     03 variantes : statut.
+     05 etat : etatSaisie.
+     06 grist : enFile.
+     07 formulaires : chargerConfiguration, lireFormulaires.
+     09 dossier : rafraichir. */
 async function remplirChoixFormulaire() {
   const selecteurFormulaire = $("cfg-formulaire");
   let voulu = null;
   try {
     voulu = grist.getOption ? await grist.getOption("formulaire") : null;
-  } catch (_) {}
+  } catch (_) {
+    // option absente ou page ouverte hors de Grist : formulaire par défaut
+  }
   const liste = (await lireFormulaires()).filter((formulaire) => formulaire.table === etatSaisie.tableId);
   selecteurFormulaire.innerHTML =
     `<option value="">Automatique (premier formulaire publié pour la table ${esc(etatSaisie.tableId || "")})</option>` +

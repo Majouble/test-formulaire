@@ -1,6 +1,22 @@
 /* PRISME — widget de saisie, module 33/34 : Corriger l'établissement d'un signalement.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : majBoutonsCorrection, quitterReaffectation, proposerRattachement, creerEtabDepuisSuggestion.
+   Utilise :
+     01 configuration : ETAB, ORIGINE.
+     02 utilitaires : colonnesEtab.
+     03 variantes : colonneChampFiche, idDe, libelleChampFiche, reglagesSaisie, statut.
+     05 etat : colonneDe, etabDe, etatSaisie.
+     06 grist : enFile, metaColonnes.
+     08 referentiel-local : chargerEtabs.
+     10 champs : typeBase.
+     14 etablissement : afficherEtablissement, etabParUai.
+     15 onglets : afficherDossier.
+     16 description : majDescriptionAuto.
+     31 autocompletion : fermer.
+     34 parcours : majResumeEtab.
+   Modifie etatSaisie : champsFiche, dossierCorrection, etabCourant, etabPropose, reaffectation. */
 /* =========================================================
    Corriger l'établissement d'un signalement (agents)
    ---------------------------------------------------------
@@ -148,7 +164,9 @@ $("btn-corriger-fiche").addEventListener("click", async () => {
   let meta = {};
   try {
     meta = (await metaColonnes(ETAB.table)) || {};
-  } catch (_) {}
+  } catch (_) {
+    // structure illisible (lien d'établissement, règles d'accès) : on continue sans
+  }
   const vus = new Set();
   etatSaisie.champsFiche = [
     ["@nom", "Nom"],

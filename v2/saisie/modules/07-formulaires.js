@@ -1,6 +1,42 @@
 /* PRISME — widget de saisie, module 07/34 : Formulaires construits dans l'administration : socle, rôles des colonnes, questions.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : lireSocleSaisie, reglagesDansConfig, lireFormulaires, choisirFormulaire, reperesDepuisReglages,
+     defDepuisBloc, PARTIES_DEFAUT, partiesDe, NOMS_VISA, appliquerNomsParties, defsDepuisFormulaire, decorHtml,
+     verifierFormulairePublie, ROLES_SIGNALEMENT, celluleRemplie, reconnaitreColonnesSignalement, VERSION_WIDGET,
+     remplirActivite, remplirDiagnostic, signalerErreurChargement, chargerConfiguration, chargerConfigurationEtapes,
+     determinerTableEtab, alerteLiensEtab, majAlertePageEtab, finaliserReferentiel, apresChargementEtabs,
+     cacheTables, lireTableSQL, lireTableRapide, lireTableReference, tableDepuisEnregistrements, libellesTable,
+     resoudreRefsEtab, rafraichirEtabs.
+   Utilise :
+     01 configuration : CLE_TABLE_ETAB, ETAB, TABLE_ETAB_DEFAUT, afficherCommentaire.
+     02 utilitaires : colonnesEtab, normColonne.
+     03 variantes : appliquerVersion, colonneChampFiche, colonneRegion, refId, reglagesSaisie.
+     04 date-faits : faitsAvecHeure.
+     05 etat : colonneDe, etabDeLigne, etatSaisie, majCreneau, texteEtabBrut, trouverColNomReponses, valeurLigne.
+     06 grist : ACTIVITE, avecRegles, completerPjCopie, defsDe, enFile, lireMeta, metaColonnes.
+     08 referentiel-local : DUREE_CACHE_REFERENTIEL, chargerEtabs, oublierCacheReferentiel.
+     09 dossier : afficherChoix, rafraichir.
+     10 champs : rendreChamps, typeBase.
+     12 conditions-formules : normaliser, resoudreColonne.
+     13 coherence : appliquerConditions.
+     14 etablissement : afficherEtablissement.
+     15 onglets : afficherDossier, passerEnCreation.
+     16 description : PARAMETRES, dateParGrist.
+     17 reglages : appliquerBornes, appliquerOptions, chargerReglages.
+     18 liste-dossiers : majListeDossiers.
+     23 couleurs : construireReglesCouleur, majCouleur.
+     24 filtres-navigation : restaurerFiltre.
+     25 plusieurs-jours : aideFaitsDefaut.
+     26 sites-esr : formulaireParSite, placerQualification.
+     28 enregistrement : remplirFormulaire.
+     30 visas : activerVerdictRapide, chargerProfil, chargerProfilViseur, lireVeille, majBandeauVeille.
+   Modifie etatSaisie : TABLE_FORMULAIRES, agentPage, alerteHorloge, alerteTableRef, champsVersion, choix,
+     colsParDefaut, couleurs, decorsQ, defsAca, defsDep, defsQuestions, dernierControleFormulaire, etabCourant,
+     formulaireActif, formulairesDispo, indexRecherche, jetonSQL, libellePage, metaDate, metaFaits, metaSig,
+     modifie, modifieVisa, pageEtab, perimetreBrut, perimetreFiche, promesseMeta, qualifMultiple, referentielLu,
+     rolesAdmin, signatureFormulaire, socleConfig, socleGeneral, sqlRefuse, tableId, versionPage. */
 /* =========================================================
    Formulaires construits dans le widget d'administration (table « Formulaires »)
    ---------------------------------------------------------
@@ -43,7 +79,9 @@ async function choisirFormulaire() {
   let voulu = null;
   try {
     voulu = grist.getOption ? await grist.getOption("formulaire") : null;
-  } catch (_) {}
+  } catch (_) {
+    // option absente ou page ouverte hors de Grist : formulaire par défaut
+  }
   try {
     etatSaisie.versionPage = grist.getOption ? await grist.getOption("version") : null;
   } catch (_) {
@@ -253,7 +291,9 @@ async function verifierFormulairePublie() {
   let voulu = null;
   try {
     voulu = grist.getOption ? await grist.getOption("formulaire") : null;
-  } catch (_) {}
+  } catch (_) {
+    // option absente ou page ouverte hors de Grist : formulaire par défaut
+  }
   const publies = liste.filter((formulaire) => typeof formulaire.publie === "string" && formulaire.publie.trim());
   const formulaireRetenu = (voulu && publies.find((formulaire) => formulaire.nom === voulu)) || publies[0] || null;
   const sig = formulaireRetenu ? `${formulaireRetenu.nom}|${formulaireRetenu.publie}` : "";
@@ -1040,7 +1080,9 @@ async function resoudreRefsEtab() {
   let meta = null;
   try {
     meta = await metaColonnes(ETAB.table);
-  } catch (_) {}
+  } catch (_) {
+    // structure illisible (lien d'établissement, règles d'accès) : on continue sans
+  }
   if (!meta) return;
   const colsPerimetre =
     etatSaisie.perimetreBrut && !Array.isArray(etatSaisie.perimetreBrut) ? Object.keys(etatSaisie.perimetreBrut) : [];

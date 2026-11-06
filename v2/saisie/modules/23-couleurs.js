@@ -1,6 +1,21 @@
 /* PRISME — widget de saisie, module 23/34 : Couleur du formulaire selon une réponse.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : COULEURS_NOMMEES, hexVersRvb, versHex, teinteClaire, couleurNommee, nombreRegle, lireRegleCouleur,
+     construireReglesCouleur, cacheLibelles, libellesDemandes, libelleRef, textesValeur, valeursEnCours, couleurDe,
+     valeurLisible, couleurLigne, bandeCouleur, majCouleur.
+   Utilise :
+     03 variantes : lisible.
+     04 date-faits : dateFr, lireDateFaits, secondes.
+     05 etat : colonneDe, etatSaisie.
+     06 grist : enFile, sansGuillemets.
+     09 dossier : lireQualificationInitiale, listeQualif.
+     10 champs : lireUnChamp, optionsReference, typeBase.
+     12 conditions-formules : normaliser.
+     18 liste-dossiers : majListeDossiers.
+     24 filtres-navigation : derniereDe.
+   Modifie etatSaisie : reglesCouleur. */
 /* ---------- Couleur du formulaire selon une réponse ----------
    Repère [couleur] dans la description d'une colonne (qualification, question, ou toute autre colonne) :
    le formulaire prend la couleur du choix sélectionné, telle que définie dans Grist (couleur de fond du choix).

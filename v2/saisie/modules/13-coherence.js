@@ -1,6 +1,21 @@
 /* PRISME — widget de saisie, module 13/34 : Cohérence des dossiers.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : lignesIncoherentes, afficherCoherence, appliquerConditions, fusionnerAvecVersionRecente, auteurDe,
+     seulementModifies, formatValeur.
+   Utilise :
+     01 configuration : NATURE.
+     02 utilitaires : colonnesEtab.
+     03 variantes : refId, statut.
+     04 date-faits : dateFr.
+     05 etat : colonneDe, etabDe, etatSaisie, valeurLigne.
+     06 grist : enFile.
+     10 champs : egal, estVide, norm, typeBase.
+     11 pieces-jointes : piecesJointes.
+     12 conditions-formules : afficherDiagnostic, conditionRemplie.
+     19 tableaux : lireTableauJson, syntheseTableau.
+     21 tableaux-enregistrement : controleursTableau. */
 /* ---------- Cohérence des dossiers ---------- */
 function lignesIncoherentes() {
   const colonneDossier = colonneDe("Dossier"),

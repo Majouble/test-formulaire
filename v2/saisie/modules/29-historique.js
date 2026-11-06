@@ -1,6 +1,16 @@
 /* PRISME — widget de saisie, module 29/34 : Historique des versions.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : afficherHistorique.
+   Utilise :
+     03 variantes : lisible.
+     04 date-faits : dateFr, secondes.
+     05 etat : colonneDe, etatSaisie, valeurLigne.
+     09 dossier : estiloPastille, listeQualif, styleChoix.
+     10 champs : cheminsRef, egal, norm.
+     13 coherence : formatValeur.
+   Modifie etatSaisie : modifie. */
 /* =========================================================
    Historique
    ========================================================= */

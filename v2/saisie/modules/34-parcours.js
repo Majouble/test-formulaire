@@ -1,6 +1,31 @@
 /* PRISME — widget de saisie, module 34/34 : Parcours : accueil, vue de saisie, bandeaux, démarrage du widget.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : JOURS_EN_COURS, montrerVue, abandonAccepte, allerNouveau, ouvrirDepuisListe, afficherCartes,
+     dossierClos, majModeSaisie, fermerMenuActions, basculerClos, planifierMarques, majMarquesModif, resumeEtabHtml,
+     majResumeEtab, dossiersEnCours, majProposition, confirmer, cacherConfirmation.
+   Utilise :
+     02 utilitaires : colonnesEtab.
+     03 variantes : CHAMPS_NOUVEL_ETAB, refId, reglagesSaisie, statut.
+     04 date-faits : dateFr, faitsAvecHeure, secondes.
+     05 etat : colonneDe, etatSaisie, texteEtabBrut, valeurLigne.
+     06 grist : brancherGrist, enFile.
+     09 dossier : comparerVersions, jourDesFaits, lireQualificationInitiale, listeQualif, ouvrirDossier.
+     10 champs : lireUnChamp.
+     15 onglets : afficherDossier, afficherOnglet, focusPremiereQuestion, passerEnCreation.
+     16 description : MOTIF_MOBILISATION, cleDoublon, jourDeLaVersion, jourDuFormulaire, jourFaits, memeReponse,
+       verifierDoublons.
+     18 liste-dossiers : construireIndexRecherche, surligneMots.
+     23 couleurs : bandeCouleur.
+     24 filtres-navigation : filtreActif, passeFiltre.
+     25 plusieurs-jours : ouvrirReport, versionsDe.
+     26 sites-esr : formulaireParSite, modeRepriseSites.
+     27 reprise : reprendreReponses.
+     30 visas : aViserParMoi, majBandeauCampagne, majBandeauVeille, majBandeauVisa, statutDe.
+     31 autocompletion : fermer, sansAccent.
+   Modifie etatSaisie : creerEtabOuvert, doublonConfirme, ficheDepliee, ficheEtabId, indexRecherche,
+     minuterieMarques, modifie, modifieVisa, nbCartes, propositionMasquee, vue. */
 /* =========================================================
    Parcours : accueil (nouveau / retrouver), vue de saisie, bandeau de mode,
    étapes, marques « modifié », proposition du signalement en cours, confirmation
@@ -46,7 +71,9 @@ function ouvrirDepuisListe(id) {
     etatSaisie.modifie = etatSaisie.modifieVisa = false;
     try {
       await grist.setCursorPos({ rowId: id });
-    } catch (_) {}
+    } catch (_) {
+      // placer le curseur de Grist est un confort : sans effet si Grist le refuse
+    }
     await ouvrirDossier(id, true);
     if (etatSaisie.dossierId === id) {
       montrerVue("saisie");

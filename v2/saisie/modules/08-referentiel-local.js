@@ -1,6 +1,20 @@
 /* PRISME — widget de saisie, module 08/34 : Référentiel des établissements conservé dans le navigateur.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : DUREE_CACHE_REFERENTIEL, ouvrirBaseCache, cleCacheReferentiel, lireCacheReferentiel,
+     ecrireCacheReferentiel, copieEncoreValable, oublierCacheReferentiel, liensDemandes, completerLienEtab,
+     chargerEtabs, lireEtabs.
+   Utilise :
+     01 configuration : ETAB.
+     02 utilitaires : colonnesEtab, reconnaitreColonnesEtab.
+     03 variantes : appliquerColonnesForcees, lisible.
+     05 etat : etatSaisie.
+     06 grist : metaColonnes.
+     07 formulaires : cacheTables, lireTableRapide, lireTableReference, resoudreRefsEtab.
+     14 etablissement : afficherEtablissement.
+   Modifie etatSaisie : alerteStructure, colsEtab, dernierChargementEtabs, etabs, etabsCharges, idEtabMax,
+     indexEtabs, modeEtab, promesseEtabs, referentielDuCache. */
 /* ---------- Référentiel conservé dans le navigateur ----------
    La lecture complète du référentiel peut prendre plusieurs secondes au serveur : chaque navigateur le garde
    24 heures (IndexedDB) et ne le relit qu'ensuite, ou quand un établissement inconnu apparaît (créé par un
@@ -22,11 +36,15 @@ async function cleCacheReferentiel() {
   try {
     if (grist.docApi.getAccessToken)
       doc = ((await grist.docApi.getAccessToken({ readOnly: true })).baseUrl || "").replace(/^https?:\/\//, "");
-  } catch (_) {}
+  } catch (_) {
+    // adresse du document indisponible (mode secours) : on essaie son nom
+  }
   if (!doc)
     try {
       doc = await grist.docApi.getDocName();
-    } catch (_) {}
+    } catch (_) {
+      // nom du document indisponible : pas de copie locale du référentiel
+    }
   return doc ? `${doc}|${ETAB.table}` : null;
 }
 async function lireCacheReferentiel() {
@@ -89,7 +107,9 @@ async function oublierCacheReferentiel() {
     const base = await ouvrirBaseCache();
     base.transaction("referentiels", "readwrite").objectStore("referentiels").delete(cle);
     base.close();
-  } catch (_) {}
+  } catch (_) {
+    // base déjà fermée
+  }
 }
 // Clé et lien d'accès de l'établissement affiché, quand le référentiel vient du navigateur (non conservés)
 const liensDemandes = new Set();
@@ -116,7 +136,9 @@ async function completerLienEtab(etablissement) {
     let rec = null;
     try {
       rec = await lire({ id: [etablissement.id] });
-    } catch (_) {}
+    } catch (_) {
+      // ligne illisible (règles d'accès) : établissement non trouvé
+    }
     if (!rec && colonnesEtab.uai && etablissement[colonnesEtab.uai])
       rec = await lire({ [colonnesEtab.uai]: [etablissement[colonnesEtab.uai]] });
     const champsLus = (rec && rec.fields) || {};

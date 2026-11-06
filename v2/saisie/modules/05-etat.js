@@ -1,6 +1,16 @@
 /* PRISME — widget de saisie, module 05/34 : État du widget et périmètre de la page (agent, académies, départements).
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : etatSaisie, colonneDe, valeurLigne, champWidget, majCreneau, lireEmargementAgent, htmlEmargement,
+     basculerService, heureCourte, texteCreneau, perimetre, perimetreActif, dansPerimetre, resumePerimetre,
+     afficherBandeauPerimetre, etabDe, cleTexteEtab, etabParTexte, trouverColNomReponses, texteEtabBrut,
+     etabDeLigne, nomEtabLigne.
+   Utilise :
+     02 utilitaires : colonnesEtab, normColonne.
+     03 variantes : refId, reglagesSaisie.
+     18 liste-dossiers : majListeDossiers.
+     31 autocompletion : sansAccent. */
 /* =========================================================
    État du widget
    ---------------------------------------------------------

@@ -1,6 +1,19 @@
 /* PRISME — widget de saisie, module 26/34 : Formulaire par site (enseignement supérieur).
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : sitesCtrl, formulaireParSite, modeRepriseSites, retourNormale, rangGravite, plusGrave, texteQualifSite,
+     dernierEtatSites, reprendreEtatSites, reprendreSitesAuto, placerQualification, qualifDesSites,
+     majQualifDeduite, controleSites.
+   Utilise :
+     03 variantes : refId, reglagesSaisie.
+     04 date-faits : lireDateFaits, secondes.
+     05 etat : colonneDe, etatSaisie, valeurLigne.
+     09 dossier : cocherQualif, comparerVersions, lireQualificationInitiale, listeQualif.
+     16 description : jourDeLaVersion, jourDuFormulaire.
+     19 tableaux : lireTableauJson, nouvelIdLigne, videSous.
+     21 tableaux-enregistrement : controleursTableau.
+   Modifie etatSaisie : modifie, qualifTouchee, sitesAutoPour. */
 /* ---------- Formulaire par site (enseignement supérieur) ----------
    Tableau des sites (réglage « sites » d'une question tableau) : chaque ligne est un site, avec sa qualification.
    - Reprise (2.50) : les sites du dossier de l'établissement mis à jour le plus récemment (jours antérieurs), dans sa

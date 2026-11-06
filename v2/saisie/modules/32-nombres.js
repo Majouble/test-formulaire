@@ -1,6 +1,9 @@
 /* PRISME — widget de saisie, module 32/34 : Nombres saisis avec séparateur de milliers.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : ESPACE_MILLIERS, PROTO_VALEUR, formaterSaisieNombre, nombreBrut, champNombreFr, incrementerNombre,
+     CIBLE_NOMBRE, convertirNombres. */
 /* =========================================================
    Nombres saisis avec séparateur de milliers (« 12 500 »)
    ---------------------------------------------------------

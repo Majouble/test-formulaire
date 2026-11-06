@@ -1,6 +1,21 @@
 /* PRISME — widget de saisie, module 10/34 : Moteur de champs : affichage et lecture des réponses.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : typeBase, cheminsRef, estVide, egal, norm, optionsReference, rendreChamps, remplirChamps, boolRepondu,
+     carteOuiNon, horsBornes, lireUnChamp, lireChamps.
+   Utilise :
+     03 variantes : lisible.
+     04 date-faits : secondes.
+     05 etat : colonneDe, etatSaisie.
+     07 formulaires : decorHtml, lireTableReference.
+     09 dossier : styleChoix.
+     11 pieces-jointes : piecesJointes.
+     12 conditions-formules : normaliser, resoudreColonne.
+     13 coherence : appliquerConditions, formatValeur.
+     17 reglages : bornesDe.
+     19 tableaux : Tableau, lireTableauJson, tableaux.
+     23 couleurs : hexVersRvb, lireRegleCouleur. */
 /* =========================================================
    Moteur de champs (questions, visas)
    ========================================================= */

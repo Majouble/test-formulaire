@@ -1,6 +1,20 @@
 /* PRISME — widget de saisie, module 20/34 : Questions « tableau », suite : affichage des lignes, saisie, sites proposés, écoute des événements.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Utilise :
+     03 variantes : refId.
+     04 date-faits : secondes, valeurLocale.
+     05 etat : etatSaisie.
+     10 champs : typeBase.
+     12 conditions-formules : normaliser.
+     13 coherence : appliquerConditions.
+     14 etablissement : nomEtabId.
+     16 description : etablissementDuFormulaire, majApercuAuto, majDescriptionAuto, sitesDeLEtablissement.
+     19 tableaux : Tableau, nouvelIdLigne, pastillesPossibles, syntheseTableau, texteAutoLigne, videSous,
+       zoneSousChamp.
+     26 sites-esr : majQualifDeduite, reprendreEtatSites, retourNormale.
+   Modifie etatSaisie : modifie, qualifTouchee. */
 /* Méthodes de la classe Tableau (module précédent) qui dessinent les lignes et réagissent à la saisie. */
 Object.assign(Tableau.prototype, {
   // ----- rendu

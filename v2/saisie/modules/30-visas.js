@@ -1,6 +1,30 @@
 /* PRISME — widget de saisie, module 30/34 : Visas départementaux et académiques.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
+/* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
+   Définit : sansAccentBas, classerNiveau, chargerProfil, chargerProfilViseur, lieuDe, statutDe, peutViser,
+     aViserParMoi, majBandeauVisa, lireVeille, majBandeauVeille, campagnesDeLEtab, majBandeauCampagne,
+     qualificationRetourNormale, rienASignaler, remplirVisas, champVerdict, activerVerdictRapide,
+     enregistrerVerdict, enregistrerVisa.
+   Utilise :
+     01 configuration : ETAB, UTILISATEURS.
+     02 utilitaires : colonnesEtab.
+     03 variantes : lisible, statut.
+     04 date-faits : dateFr, secondes.
+     05 etat : etabDeLigne, etatSaisie, valeurLigne.
+     06 grist : enFile.
+     09 dossier : cocherQualif, lireChoix, ouvrirDossier.
+     10 champs : egal, lireChamps, norm, remplirChamps, typeBase.
+     13 coherence : seulementModifies.
+     15 onglets : afficherOnglet, passerEnCreation.
+     16 description : majEtatDescription.
+     24 filtres-navigation : derniereDe.
+     25 plusieurs-jours : dossierDuJour.
+     26 sites-esr : retourNormale.
+     28 enregistrement : enregistrerSignalement.
+     34 parcours : abandonAccepte, afficherCartes, cacherConfirmation, montrerVue.
+   Modifie etatSaisie : dernierVeille, descriptionManuelle, fileVisa, modifie, modifieVisa, monNiveau,
+     monPerimetreVisa, nbCartes, reglageValidation, vigilancesPage. */
 /* =========================================================
    Visas : portent sur la dernière version, jamais recopiés dans les suivis
    ========================================================= */
