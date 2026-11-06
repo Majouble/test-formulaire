@@ -42,7 +42,7 @@
   }
   async function referentiel(table) {
     if (cacheRef.has(table)) return cacheRef.get(table);
-    const t = await grist.docApi.fetchTable(table);
+    const t = await Donnees.lire(table);
     const ref = await R.lireReferentiel({ ...general, referentiel: table }, config).catch(() => ({ roles: {} }));
     const roles = (ref && ref.roles) || {},
       c = (role, d) => roles[role] || (t[d] ? d : null);
@@ -72,7 +72,7 @@
       lues.add(f.table);
       let t;
       try {
-        t = await grist.docApi.fetchTable(f.table);
+        t = await Donnees.lire(f.table);
       } catch (_) {
         continue;
       }

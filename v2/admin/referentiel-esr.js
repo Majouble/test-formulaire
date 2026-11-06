@@ -197,7 +197,7 @@
         dire(`Aucune colonne de rattachement (référence vers ${table}) : rien à séparer.`, true);
         return;
       }
-      const t = await grist.docApi.fetchTable(table),
+      const t = await Donnees.lire(table),
         pos = new Map(t.id.map((id, i) => [id, i])),
         v = (c, i) => (c && t[c] ? t[c][i] : null),
         nom = (id) => String(v(cNom, pos.get(id)) ?? "");
@@ -221,7 +221,7 @@
       const cE = (vers.find((c) => c.colId === "Etablissement") || vers.find((c) => !/compos/i.test(c.colId)) || {})
           .colId,
         cC = (vers.find((c) => /compos/i.test(c.colId)) || {}).colId;
-      const ts = tS && cE && cC ? await grist.docApi.fetchTable(tS) : null;
+      const ts = tS && cE && cC ? await Donnees.lire(tS) : null;
       const sitesA = ts ? ts.id.filter((_, i) => separees.has(refId(ts[cC][i]))) : [];
       if (!separees.size) {
         dire("Aucune école d'ingénieurs rattachée à un groupe ou à une université : rien à faire.", false);
@@ -236,7 +236,7 @@
         return;
       dire("Application…");
       if (!tm.colonnes.Groupe)
-        await grist.docApi.applyUserActions([
+        await Donnees.ecrire([
           [
             "AddColumn",
             table,
@@ -257,7 +257,7 @@
           const i = ts.id.indexOf(sid);
           acts.push(["UpdateRecord", tS, sid, { [cE]: refId(ts[cC][i]), [cC]: 0 }]);
         });
-      for (let k = 0; k < acts.length; k += LOT) await grist.docApi.applyUserActions(acts.slice(k, k + LOT));
+      for (let k = 0; k < acts.length; k += LOT) await Donnees.ecrire(acts.slice(k, k + LOT));
       if (cNiv) {
         const m = (await S.lireMeta())[table].colonnes[cNiv];
         if (/^Choice/.test(m.type)) {
@@ -268,7 +268,7 @@
             o = {};
           }
           if (!(o.choices || []).includes("Établissement"))
-            await grist.docApi.applyUserActions([
+            await Donnees.ecrire([
               [
                 "ModifyColumn",
                 table,
@@ -278,7 +278,7 @@
             ]);
         }
       }
-      if (S.viderCacheLecture) S.viderCacheLecture();
+      Donnees.viderCache();
       dire(
         `${separees.size} école(s) devenue(s) établissement(s), ${campus.length} campus et ${sitesA.length} site(s) rattachés à leur école.`,
       );
@@ -534,7 +534,7 @@
       const cible = S.cibleRef(m.type);
       if (!cible) return null;
       if (!caches[cible]) {
-        const t = await grist.docApi.fetchTable(cible),
+        const t = await Donnees.lire(cible),
           index = new Map();
         for (const [c, vals] of Object.entries(t))
           if (c !== "id" && Array.isArray(vals))
@@ -593,7 +593,7 @@
       table === ctx.g.referentiel ? (ctx.config.valeurs.roles || {}).referentiel || {} : {},
       {},
     );
-    const existant = await grist.docApi.fetchTable(table);
+    const existant = await Donnees.lire(table);
 
     // colonnes : identifiant détecté sur le contenu si son nom diffère
     const colIdEx = colonneIdentifiants(existant, "ETAB");
@@ -795,7 +795,7 @@
             !(t === table && lRatt && c.colId === lRatt.col),
         );
         if (!cols.length) continue;
-        const d = await grist.docApi.fetchTable(t);
+        const d = await Donnees.lire(t);
         for (const c of cols)
           (d[c.colId] || []).forEach((v, i) => {
             const ids = c.type.startsWith("RefList")
@@ -813,7 +813,7 @@
     if (sitesL.length) {
       const tS = tableSitesDe(ctx, table),
         tmS = tS ? ctx.meta[tS] : null;
-      const exS = tS ? await grist.docApi.fetchTable(tS) : { id: [] };
+      const exS = tS ? await Donnees.lire(tS) : { id: [] };
       const colIdS = colonneIdentifiants(exS, "SITE");
       const pS = plan(
         tmS,
@@ -914,7 +914,7 @@
     // correspondances (sites saisis dans la base d'octobre)
     let alias = null;
     if (fA && sites) {
-      const exA = ctx.meta[TABLE_ALIAS] ? await grist.docApi.fetchTable(TABLE_ALIAS) : null,
+      const exA = ctx.meta[TABLE_ALIAS] ? await Donnees.lire(TABLE_ALIAS) : null,
         idxA = new Map();
       if (exA)
         exA.id.forEach((rid, i) =>
@@ -1149,7 +1149,7 @@
   };
 
   /* ---------- Import ---------- */
-  const actions = (acts) => grist.docApi.applyUserActions(acts);
+  const actions = (acts) => Donnees.ecrire(acts);
   async function parLots(acts, quoi) {
     for (let k = 0; k < acts.length; k += LOT) {
       dire(`${quoi} : ${nf(Math.min(k + LOT, acts.length))} / ${nf(acts.length)}…`);
@@ -1224,7 +1224,7 @@
         "Établissements ajoutés",
       );
       const colCle = a.lCle && a.lCle.col;
-      const t2 = await grist.docApi.fetchTable(table),
+      const t2 = await Donnees.lire(table),
         rowDe = new Map();
       if (colCle && t2[colCle])
         t2.id.forEach((rid, i) => {
@@ -1349,7 +1349,7 @@
         }
         await parLots(acts, "Sites mis à jour");
         nSitesM = acts.length;
-        const tS = await grist.docApi.fetchTable(s.table),
+        const tS = await Donnees.lire(s.table),
           kS = (s.plan.lignes.find((l) => l.cleRef) || {}).col;
         if (kS && tS[kS])
           tS.id.forEach((rid, i) => {
@@ -1430,7 +1430,7 @@
           acces = ` Règles d'accès non appliquées (${e.message || e}).`;
         }
       }
-      if (S.viderCacheLecture) S.viderCacheLecture();
+      Donnees.viderCache();
       const bilan =
         `Import terminé : ${nf(a.ajouts.length)} établissement(s) ajouté(s), ${nf(champs.size)} mis à jour${reportees ? `, ${nf(reportees)} référence(s) reportée(s)` : ""}` +
         (a.sites ? `, ${nf(nSitesA)} site(s) ajouté(s), ${nf(nSitesM)} mis à jour` : "") +

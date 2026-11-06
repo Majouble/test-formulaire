@@ -16,7 +16,6 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle;
   const { esc, $ } = Outils;
 
   const Q = window.QualiteMoteur,
@@ -202,7 +201,7 @@
     try {
       const r = await Q.fusionner(esp, src, cib);
       await Q.marquer([a], "corrige", `dossier n° ${src.id} rattaché au n° ${cib.id}`).catch(() => {});
-      if (S.viderCacheLecture) S.viderCacheLecture();
+      Donnees.viderCache();
       await relancer(
         `Dossier n° ${src.id} rattaché au dossier n° ${cib.id} (${r.versions} saisie(s)${r.liees.length ? `, ${r.liees.join(", ")}` : ""}).`,
       );
@@ -223,7 +222,7 @@
     sel("qa-type", "type");
     sel("qa-statut", "statut");
     $("qa-relancer").addEventListener("click", () => {
-      if (S.viderCacheLecture) S.viderCacheLecture();
+      Donnees.viderCache();
       relancer();
     });
     if ($("qa-tout-rattacher"))
@@ -252,7 +251,7 @@
           window.QualiteEdition.lier(d, esp, f, {
             dire,
             apres: (message) => {
-              if (S.viderCacheLecture) S.viderCacheLecture();
+              Donnees.viderCache();
               relancer(message);
             },
           });
@@ -310,7 +309,7 @@
     racine = $("qualite");
     etat = null;
     dessiner();
-    if (S.viderCacheLecture) S.viderCacheLecture(); // corrections faites ailleurs (widget des sites, formulaires) : relues
+    Donnees.viderCache(); // corrections faites ailleurs (widget des sites, formulaires) : relues
     while (enCours) await new Promise((r) => setTimeout(r, 200)); // analyse d'arrière-plan en cours : on l'attend
     await relancer();
   }

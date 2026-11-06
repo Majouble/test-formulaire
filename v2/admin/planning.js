@@ -1734,7 +1734,7 @@
   };
   const maintenant = () => Date.now() / 1000;
   async function actions(acts) {
-    if (acts.length) return grist.docApi.applyUserActions(acts);
+    if (acts.length) return Donnees.ecrire(acts);
   }
   async function recharger() {
     planning = await S.lirePlanning(general);

@@ -149,10 +149,7 @@
 
   async function lirePagesReint() {
     try {
-      const [sec, vues] = await Promise.all([
-        grist.docApi.fetchTable("_grist_Views_section"),
-        grist.docApi.fetchTable("_grist_Views"),
-      ]);
+      const [sec, vues] = await Promise.all([Donnees.lire("_grist_Views_section"), Donnees.lire("_grist_Views")]);
       pagesReint = sec.id
         .map((id, i) => {
           if (sec.parentKey[i] !== "custom") return null;
@@ -174,13 +171,13 @@
   }
   async function creerPageReint() {
     const g = S.general(await S.lireConfig());
-    const T = await grist.docApi.fetchTable("_grist_Tables"),
+    const T = await Donnees.lire("_grist_Tables"),
       ref = T.id[T.tableId.indexOf(g.reponses)];
     if (ref == null) throw new Error(`table ${g.reponses} introuvable`);
-    const res = await grist.docApi.applyUserActions([["CreateViewSection", ref, 0, "custom", null, null]]);
+    const res = await Donnees.ecrire([["CreateViewSection", ref, 0, "custom", null, null]]);
     const rv = (res && res.retValues && res.retValues[0]) || {};
     if (!rv.sectionRef) throw new Error("Grist n'a pas indiqué la vue créée");
-    const sec = await grist.docApi.fetchTable("_grist_Views_section"),
+    const sec = await Donnees.lire("_grist_Views_section"),
       i = sec.id.indexOf(rv.sectionRef);
     let op = {};
     try {
@@ -192,7 +189,7 @@
     if (!/^https?:/.test(url)) url = "https://majouble.github.io/test-formulaire/v2/reintegration/";
     op.customView = JSON.stringify({ mode: "url", url, access: "full", widgetOptions: {} });
     const nom = "Réintégration du mode secours";
-    await grist.docApi.applyUserActions([
+    await Donnees.ecrire([
       ["UpdateRecord", "_grist_Views_section", rv.sectionRef, { options: JSON.stringify(op), title: "" }],
       ...(rv.viewRef ? [["UpdateRecord", "_grist_Views", rv.viewRef, { name: nom }]] : []),
     ]);

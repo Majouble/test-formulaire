@@ -6,16 +6,17 @@
     <title>Administration des signalements</title>
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
     <script src="../commun/outils.js"></script>
+    <script src="../commun/donnees.js"></script>
     <script src="../commun/theme.js"></script>
     <script src="../commun/marque.js"></script>
     <script src="../commun/socle.js"></script>
     <script>
-      window.Socle.activerCacheLecture();
+      Donnees.activerCache();
       // ce qui est fait directement dans Grist (page supprimée, colonne ajoutée…) n'est pas signalé au widget : la structure
       // du document est relue quand on revient dans l'administration ou qu'on change d'onglet
-      window.addEventListener("focus", () => window.Socle.oublierStructure());
+      window.addEventListener("focus", () => Donnees.oublierStructure());
       document.addEventListener("visibilitychange", () => {
-        if (!document.hidden) window.Socle.oublierStructure();
+        if (!document.hidden) Donnees.oublierStructure();
       });
     </script>
     <script src="../commun/geo-fond.js"></script>
@@ -4042,7 +4043,7 @@
       // Onglets
       document.querySelectorAll("nav button[data-onglet]").forEach((b) =>
         b.addEventListener("click", () => {
-          window.Socle.oublierStructure();
+          Donnees.oublierStructure();
           document
             .querySelectorAll("nav button[data-onglet]")
             .forEach((x) => x.setAttribute("aria-selected", String(x === b)));

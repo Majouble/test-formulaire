@@ -262,7 +262,7 @@
     const tables = new Map();
     for (const x of ctx.sources) {
       try {
-        if (!tables.has(x.table)) tables.set(x.table, await grist.docApi.fetchTable(x.table));
+        if (!tables.has(x.table)) tables.set(x.table, await Donnees.lire(x.table));
         x.nb = (tables.get(x.table)[x.col] || []).filter((v) =>
           x.estRef ? typeof v !== "number" && texteDe(v).trim() : String(v ?? "").trim(),
         ).length;
@@ -296,10 +296,10 @@
     const fe = tEtab && !opts.compact ? await chargerFiche(tEtab) : null;
     if (!source || !ref) return { ctx, source, ref, groupes: [], mc, fe };
     const [ts, trep, tref, talias] = await Promise.all([
-      grist.docApi.fetchTable(source.table),
-      grist.docApi.fetchTable(source.rep),
-      grist.docApi.fetchTable(ref.table),
-      meta[TABLE_ALIAS] ? grist.docApi.fetchTable(TABLE_ALIAS) : null,
+      Donnees.lire(source.table),
+      Donnees.lire(source.rep),
+      Donnees.lire(ref.table),
+      meta[TABLE_ALIAS] ? Donnees.lire(TABLE_ALIAS) : null,
     ]);
     const idxRep = new Map(trep.id.map((id, i) => [id, i])),
       etabRep = (id) => {
@@ -309,7 +309,7 @@
     // établissements : nom lisible
     let nomsEtab = new Map();
     try {
-      const te = await grist.docApi.fetchTable(source.etab.table),
+      const te = await Donnees.lire(source.etab.table),
         cn =
           Object.keys(te).find((k) => /^(nom|etablissement|libelle|denomination)$/i.test(k)) ||
           Object.keys(te).find((k) => k !== "id" && (te[k] || []).some((x) => typeof x === "string"));
@@ -415,10 +415,7 @@
           ) || {}
         ).colId || null;
     const tEtab = S.cibleRef(tm.colonnes[ref.etabCol].type);
-    const [t, te] = await Promise.all([
-      grist.docApi.fetchTable(ref.table),
-      tEtab ? grist.docApi.fetchTable(tEtab).catch(() => null) : null,
-    ]);
+    const [t, te] = await Promise.all([Donnees.lire(ref.table), tEtab ? Donnees.lire(tEtab).catch(() => null) : null]);
     let noms = new Map();
     if (te) {
       const cn =
@@ -571,7 +568,7 @@
       c.addEventListener("click", async () => {
         c.disabled = true;
         try {
-          await grist.docApi.applyUserActions([
+          await Donnees.ecrire([
             [
               "AddColumn",
               etat.mc.table,
@@ -594,9 +591,7 @@
             .filter(Boolean)
             .join(", ");
         try {
-          await grist.docApi.applyUserActions([
-            ["UpdateRecord", etat.mc.table, +inp.dataset.id, { [etat.mc.colMots]: v || null }],
-          ]);
+          await Donnees.ecrire([["UpdateRecord", etat.mc.table, +inp.dataset.id, { [etat.mc.colMots]: v || null }]]);
           inp.value = v;
           const x = etat.mc.sites.find((y) => y.id === +inp.dataset.id);
           if (x) x.mots = v;
@@ -763,7 +758,7 @@
   async function tableAlias() {
     if (meta[TABLE_ALIAS]) return;
     const etab = etat.source.etab.table;
-    await grist.docApi.applyUserActions([
+    await Donnees.ecrire([
       [
         "AddTable",
         TABLE_ALIAS,
@@ -776,7 +771,7 @@
         ].map(([id, type]) => ({ id, type, isFormula: false })),
       ],
     ]);
-    await grist.docApi.applyUserActions([
+    await Donnees.ecrire([
       [
         "ModifyColumn",
         TABLE_ALIAS,
@@ -812,7 +807,7 @@
       cActif = (cols.find((x) => /^actif$/i.test(x.colId) && x.type === "Bool") || {}).colId;
     const f = { [r.nomCol]: nom, [r.etabCol]: etab };
     if (cId) {
-      const t = await grist.docApi.fetchTable(r.table),
+      const t = await Donnees.lire(r.table),
         n = (t[cId] || [])
           .map((v) => (/^SITE-M(\d+)$/.exec(String(v || "")) || [])[1])
           .filter(Boolean)
@@ -842,8 +837,8 @@
       }
     }
     if (cActif) f[cActif] = true;
-    if (acts.length) await grist.docApi.applyUserActions(acts);
-    const res = await grist.docApi.applyUserActions([["AddRecord", r.table, null, f]]);
+    if (acts.length) await Donnees.ecrire(acts);
+    const res = await Donnees.ecrire([["AddRecord", r.table, null, f]]);
     const id = res && res.retValues ? res.retValues[0] : null;
     deja.set(k, id);
     return id;
@@ -880,7 +875,7 @@
         };
         acts.push(gp.alias ? ["UpdateRecord", TABLE_ALIAS, gp.alias.id, f] : ["AddRecord", TABLE_ALIAS, null, f]);
       }
-      for (let k = 0; k < acts.length; k += 400) await grist.docApi.applyUserActions(acts.slice(k, k + 400));
+      for (let k = 0; k < acts.length; k += 400) await Donnees.ecrire(acts.slice(k, k + 400));
       // correspondances validées : les lignes qui portent ces libellés renvoient aussitôt vers leur site
       // (tableaux de sites ; colonne référence aux sites : l'ancien nom est remplacé par le site)
       const nCompletees = statut === "Validé" ? await completer(true) : 0;
@@ -898,7 +893,7 @@
     try {
       const cfg = await S.lireConfig(),
         g = S.general(cfg),
-        tf = await grist.docApi.fetchTable(g.formulaires || "Formulaires");
+        tf = await Donnees.lire(g.formulaires || "Formulaires");
       const reglages = [];
       tf.id.forEach((_, i) => {
         let c = null;
@@ -925,14 +920,14 @@
         if (!silencieux) dire("Aucune correspondance validée pour l'instant.", true);
         return 0;
       }
-      const talias = await grist.docApi.fetchTable(TABLE_ALIAS),
+      const talias = await Donnees.lire(TABLE_ALIAS),
         alias = new Map();
       // correspondances vers un site désactivé du référentiel : ignorées
       const inactifs = new Set();
       if (tSitesAlias && meta[tSitesAlias]) {
         const ca = Object.values(meta[tSitesAlias].colonnes).find((c) => /^actif$/i.test(c.colId) && c.type === "Bool");
         if (ca) {
-          const tsit = await grist.docApi.fetchTable(tSitesAlias);
+          const tsit = await Donnees.lire(tSitesAlias);
           tsit.id.forEach((id, i) => {
             if (tsit[ca.colId][i] === false) inactifs.add(id);
           });
@@ -948,8 +943,8 @@
       });
       let n = 0;
       for (const r of reglages) {
-        const ts = await grist.docApi.fetchTable(r.table),
-          trep = await grist.docApi.fetchTable(r.rep),
+        const ts = await Donnees.lire(r.table),
+          trep = await Donnees.lire(r.rep),
           idx = new Map(trep.id.map((id, i) => [id, i]));
         const cD = Object.values(meta[r.table].colonnes).find((c) => c.colId === "Dossier") ? "Dossier" : null;
         if (!cD || !trep.Etablissement) continue;
@@ -963,12 +958,12 @@
           const s = alias.get(`${e || 0}|${norm(lib)}`);
           if (s) acts.push(["UpdateRecord", r.table, id, { [r.sites.site]: s }]);
         });
-        for (let k = 0; k < acts.length; k += 400) await grist.docApi.applyUserActions(acts.slice(k, k + 400));
+        for (let k = 0; k < acts.length; k += 400) await Donnees.ecrire(acts.slice(k, k + 400));
         n += acts.length;
       }
       for (const src of sourcesRef) {
-        const ts = await grist.docApi.fetchTable(src.table),
-          trep = src.viaDossier ? await grist.docApi.fetchTable(src.rep) : ts,
+        const ts = await Donnees.lire(src.table),
+          trep = src.viaDossier ? await Donnees.lire(src.rep) : ts,
           idx = new Map(trep.id.map((id, i) => [id, i]));
         const acts = [];
         ts.id.forEach((id, i) => {
@@ -981,7 +976,7 @@
           const s = alias.get(`${e || 0}|${norm(lib)}`);
           if (s) acts.push(["UpdateRecord", src.table, id, { [src.col]: s }]);
         });
-        for (let k = 0; k < acts.length; k += 400) await grist.docApi.applyUserActions(acts.slice(k, k + 400));
+        for (let k = 0; k < acts.length; k += 400) await Donnees.ecrire(acts.slice(k, k + 400));
         n += acts.length;
       }
       if (!silencieux) dire(`${n} ligne(s) de saisie complétée(s) avec le site du référentiel.`);

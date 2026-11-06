@@ -55,7 +55,7 @@
   const estUrlAdmin = (url) => /\/admin\/?(index\.html)?(\?.*)?$/i.test(url || "");
   async function pagesAdmin() {
     const [s, v, t] = await Promise.all(
-      ["_grist_Views_section", "_grist_Views", "_grist_Tables"].map((x) => grist.docApi.fetchTable(x)),
+      ["_grist_Views_section", "_grist_Views", "_grist_Tables"].map((x) => Donnees.lire(x)),
     );
     return s.id
       .map((id, i) => {
@@ -112,10 +112,10 @@
     b.disabled = true;
     try {
       const tref = meta[S.TABLE_ADMIN].ref;
-      const res = await grist.docApi.applyUserActions([["CreateViewSection", tref, 0, "custom", null, null]]);
+      const res = await Donnees.ecrire([["CreateViewSection", tref, 0, "custom", null, null]]);
       const rv = (res && res.retValues && res.retValues[0]) || {};
       if (!rv.sectionRef) throw new Error("Grist n'a pas indiqué la vue créée");
-      const sec = await grist.docApi.fetchTable("_grist_Views_section"),
+      const sec = await Donnees.lire("_grist_Views_section"),
         i = sec.id.indexOf(rv.sectionRef);
       let o = {};
       try {
@@ -124,7 +124,7 @@
         o = {};
       }
       o.customView = JSON.stringify({ mode: "url", url: adresseAdmin(), access: "full", widgetOptions: {} });
-      await grist.docApi.applyUserActions([
+      await Donnees.ecrire([
         [
           "UpdateRecord",
           "_grist_Views_section",
@@ -264,7 +264,7 @@
 
   /* ---------- Événements ---------- */
   $("btn-relire").addEventListener("click", () => {
-    S.viderCacheLecture();
+    Donnees.viderCache();
     charger();
   });
 

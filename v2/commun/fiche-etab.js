@@ -65,7 +65,7 @@
   async function charger(meta, table, opts = {}) {
     const tm = meta[table];
     if (!tm) return null;
-    const t = await grist.docApi.fetchTable(table),
+    const t = await Donnees.lire(table),
       exclure = new Set(opts.exclure || []);
     const cols = Object.values(tm.colonnes).filter(
       (c) => !/^(manualSort|gristHelper)/.test(c.colId) && !/^(uuid|lien|cle)$/i.test(c.colId) && !exclure.has(c.colId),
@@ -82,7 +82,7 @@
       const cible = cibleRef(c.type);
       if (!cible || refs[cible]) continue;
       try {
-        const tc = cible === table ? t : await grist.docApi.fetchTable(cible);
+        const tc = cible === table ? t : await Donnees.lire(cible);
         const cn =
           cible === table
             ? nomCol
@@ -212,7 +212,7 @@
           v = l.length ? ["L", ...l] : null;
         } else v = el.value.trim() === "" ? null : el.value;
         try {
-          await grist.docApi.applyUserActions([["UpdateRecord", fe.table, id, { [c.colId]: v }]]);
+          await Donnees.ecrire([["UpdateRecord", fe.table, id, { [c.colId]: v }]]);
           if (!fe.t[c.colId]) fe.t[c.colId] = fe.t.id.map(() => null);
           fe.t[c.colId][i] = v;
           dire(`${c.label} enregistré.`);
@@ -237,7 +237,7 @@
         while (fe.meta.colonnes[cid]) cid += "_2";
         aj.disabled = true;
         try {
-          await grist.docApi.applyUserActions([
+          await Donnees.ecrire([
             ["AddColumn", fe.table, cid, { type, isFormula: false, label: lib, untieColIdFromLabel: true }],
           ]);
           if (opts.apresAjout) await opts.apresAjout(cid, lib);

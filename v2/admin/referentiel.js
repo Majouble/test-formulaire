@@ -337,7 +337,7 @@
       const cible = S.cibleRef(colMeta.type);
       if (!cible) return valeur;
       if (!caches[cible]) {
-        const t = await grist.docApi.fetchTable(cible),
+        const t = await Donnees.lire(cible),
           index = new Map();
         for (const [col, vals] of Object.entries(t))
           if (col !== "id" && Array.isArray(vals))
@@ -399,7 +399,7 @@
       ];
       const colOrigine = col("Origine");
 
-      const existant = await grist.docApi.fetchTable(ctx.table);
+      const existant = await Donnees.lire(ctx.table);
       const colUai = col("UAI"),
         parUai = new Map();
       existant.id.forEach((id, i) => {
@@ -513,14 +513,12 @@
     $("btn-ref-importer").disabled = true;
     try {
       if (aCreer.length)
-        await grist.docApi.applyUserActions(
-          aCreer.map((c) => ["AddColumn", ctx.table, c.id, { type: c.type, isFormula: false }]),
-        );
+        await Donnees.ecrire(aCreer.map((c) => ["AddColumn", ctx.table, c.id, { type: c.type, isFormula: false }]));
       const colonnes = [...new Set(ajouts.flatMap((f) => Object.keys(f)))];
       for (let i = 0; i < ajouts.length; i += TAILLE_LOT) {
         const lot = ajouts.slice(i, i + TAILLE_LOT);
         statut(`Ajout : ${nf(Math.min(i + TAILLE_LOT, ajouts.length))} / ${nf(ajouts.length)}…`);
-        await grist.docApi.applyUserActions([
+        await Donnees.ecrire([
           [
             "BulkAddRecord",
             ctx.table,
@@ -532,10 +530,10 @@
       for (let i = 0; i < majs.length; i += TAILLE_LOT) {
         const lot = majs.slice(i, i + TAILLE_LOT);
         statut(`Mise à jour : ${nf(Math.min(i + TAILLE_LOT, majs.length))} / ${nf(majs.length)}…`);
-        await grist.docApi.applyUserActions(lot.map((m) => ["UpdateRecord", ctx.table, m.id, m.fields]));
+        await Donnees.ecrire(lot.map((m) => ["UpdateRecord", ctx.table, m.id, m.fields]));
       }
       const config = await S.lireConfig();
-      await grist.docApi.applyUserActions([
+      await Donnees.ecrire([
         S.actionConfig(config, "annuaire_en", {
           types: analyse.types,
           champs: analyse.extras,

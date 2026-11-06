@@ -740,8 +740,8 @@ function creerSource() {
   const src = { _charge: {} };
   async function lireMeta() {
     if (meta) return;
-    const t = await grist.docApi.fetchTable("_grist_Tables"),
-      c = await grist.docApi.fetchTable("_grist_Tables_column");
+    const t = await Donnees.lire("_grist_Tables"),
+      c = await Donnees.lire("_grist_Tables_column");
     const noms = {},
       colId = {};
     t.id.forEach((id, i) => (noms[id] = t.tableId[i]));
@@ -780,7 +780,7 @@ function creerSource() {
   };
   src.table = async (nom) => {
     if (!src._charge[nom]) {
-      const brut = await grist.docApi.fetchTable(nom),
+      const brut = await Donnees.lire(nom),
         ty = await src.types(nom);
       const lignes = brut.id.map((id, i) => {
         const r = { id };

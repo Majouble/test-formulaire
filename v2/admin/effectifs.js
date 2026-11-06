@@ -258,7 +258,7 @@
       }
     }
     // rapprochement avec le référentiel
-    const t = await grist.docApi.fetchTable(x.espace.referentiel),
+    const t = await Donnees.lire(x.espace.referentiel),
       cles = t[x.cleRef] || [],
       cols = meta[x.espace.referentiel].colonnes;
     const avant = t[COL.effectif] || [],
@@ -324,10 +324,10 @@
         COL.annee,
         { type: "Text", isFormula: false, label: "Effectif (année)", untieColIdFromLabel: true },
       ]);
-    if (aCreer.length) await grist.docApi.applyUserActions(aCreer);
+    if (aCreer.length) await Donnees.ecrire(aCreer);
     for (let k = 0; k < b.maj.length; k += TAILLE_LOT) {
       const lot = b.maj.slice(k, k + TAILLE_LOT);
-      await grist.docApi.applyUserActions([
+      await Donnees.ecrire([
         [
           "BulkUpdateRecord",
           T,
@@ -397,7 +397,7 @@
         },
       ]);
     }
-    if (actions.length) await grist.docApi.applyUserActions(actions);
+    if (actions.length) await Donnees.ecrire(actions);
     return actions.map((a) => a[1]);
   }
 

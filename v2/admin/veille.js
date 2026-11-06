@@ -51,7 +51,7 @@
     journal = [];
     if (meta[general.vigilances_journal])
       try {
-        const t = await grist.docApi.fetchTable(general.vigilances_journal),
+        const t = await Donnees.lire(general.vigilances_journal),
           v = (k, i) => (t[k] || [])[i];
         journal = t.id
           .map((id, i) => ({
@@ -88,7 +88,7 @@
       colUai = roles.UAI && roles.UAI.col,
       colAca = roles.Academie && roles.Academie.col;
     const colEff = meta[table].colonnes.Effectif ? "Effectif" : null;
-    const t = await grist.docApi.fetchTable(table),
+    const t = await Donnees.lire(table),
       parDep = {};
     t.id.forEach((_, i) => {
       const brut = colDep ? t[colDep][i] : null,

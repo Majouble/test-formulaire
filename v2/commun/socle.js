@@ -993,7 +993,7 @@ return sorted(champs)`;
   async function lireVigilances(g) {
     let t;
     try {
-      t = await grist.docApi.fetchTable((g && g.vigilances) || DEFAUTS_GENERAL.vigilances);
+      t = await Donnees.lire((g && g.vigilances) || DEFAUTS_GENERAL.vigilances);
     } catch (_) {
       return null;
     }
@@ -1094,7 +1094,7 @@ return sorted(champs)`;
   async function lireEmargements(g) {
     let t;
     try {
-      t = await grist.docApi.fetchTable(g.emargements || "Emargements");
+      t = await Donnees.lire(g.emargements || "Emargements");
     } catch (_) {
       return null;
     }
@@ -1161,7 +1161,7 @@ return sorted(champs)`;
   async function lireActions(g) {
     let t;
     try {
-      t = await grist.docApi.fetchTable(g.actions || "Actions");
+      t = await Donnees.lire(g.actions || "Actions");
     } catch (_) {
       return null;
     }
@@ -1198,7 +1198,7 @@ return sorted(champs)`;
   async function lirePlanning(g) {
     let c, a;
     try {
-      [c, a] = await Promise.all([grist.docApi.fetchTable(g.creneaux), grist.docApi.fetchTable(g.affectations)]);
+      [c, a] = await Promise.all([Donnees.lire(g.creneaux), Donnees.lire(g.affectations)]);
     } catch (_) {
       return null;
     }
@@ -1235,109 +1235,9 @@ return sorted(champs)`;
       .filter((x) => x.creneau && x.creneau.debut <= t && t < x.creneau.fin);
   }
 
-  /* ---------- Cache de lecture (administration) ----------
-     Les onglets relisent souvent les mêmes tables (métadonnées, Config, Agents, référentiel de plusieurs dizaines de milliers de lignes).
-     fetchTable est mis en cache : 15 s pour une table ordinaire, 1 min pour une grosse table (> 5 000 lignes).
-     Toute écriture par applyUserActions vide le cache, sauf les grosses tables qu'elle ne touche pas.
-     Chaque lecture rend une copie (les colonnes sont des tableaux neufs) : un module qui modifie ce qu'il lit ne gâte pas le cache. */
-  const ecouteursEcriture = [];
-  function surEcriture(fn) {
-    ecouteursEcriture.push(fn);
-  }
-  function activerCacheLecture() {
-    const api = window.grist && grist.docApi;
-    if (!api || api.__socleCache) return !!(api && api.__socleCache);
-    const fetchOrig = api.fetchTable && api.fetchTable.bind(api),
-      applyOrig = api.applyUserActions && api.applyUserActions.bind(api);
-    if (!fetchOrig || !applyOrig) return false;
-    const cache = new Map(),
-      TTL = 15000,
-      TTL_GROS = 60000,
-      GROS = 5000;
-    const copie = (t) => {
-      const r = {};
-      for (const [k, v] of Object.entries(t || {})) r[k] = Array.isArray(v) ? v.slice() : v;
-      return r;
-    };
-    const lire = (tableId) => {
-      const e = cache.get(tableId),
-        now = Date.now();
-      if (e && now - e.t < (e.gros ? TTL_GROS : TTL)) return e.p.then(copie);
-      const ent = { t: now, gros: false };
-      ent.p = fetchOrig(tableId);
-      cache.set(tableId, ent);
-      ent.p.then(
-        (r) => {
-          ent.gros = !!(r && r.id && r.id.length > GROS);
-        },
-        () => {
-          if (cache.get(tableId) === ent) cache.delete(tableId);
-        },
-      );
-      return ent.p.then(copie);
-    };
-    const invalider = (actions) => {
-      const cibles = new Set();
-      for (const a of actions || []) if (Array.isArray(a) && typeof a[1] === "string") cibles.add(a[1]);
-      for (const [k, e] of [...cache]) if (!e.gros || cibles.has(k) || k.startsWith("_grist")) cache.delete(k);
-      ecouteursEcriture.forEach((fn) => {
-        try {
-          fn(cibles);
-        } catch (_) {
-          /* écouteur fautif ignoré */
-        }
-      });
-    };
-    const ecrire = async (actions, opts) => {
-      try {
-        return await applyOrig(actions, opts);
-      } finally {
-        invalider(actions);
-      }
-    };
-    try {
-      api.fetchTable = lire;
-      api.applyUserActions = ecrire;
-    } catch (_) {
-      return false;
-    }
-    if (api.fetchTable !== lire || api.applyUserActions !== ecrire) {
-      // objet de Grist non modifiable : on remet tout en l'état, sans cache
-      try {
-        api.fetchTable = fetchOrig;
-        api.applyUserActions = applyOrig;
-      } catch (_) {
-        /* rien */
-      }
-      return false;
-    }
-    // oublier la structure (pages, tables, colonnes) : elle change aussi depuis Grist (page supprimée, colonne ajoutée…)
-    api.__socleCache = {
-      vider: () => {
-        cache.clear();
-        invalider([]);
-      },
-      oublierStructure: () => {
-        for (const k of [...cache.keys()]) if (k.startsWith("_grist")) cache.delete(k);
-      },
-    };
-    return true;
-  }
-  const oublierStructure = () => {
-    const c = window.grist && grist.docApi && grist.docApi.__socleCache;
-    if (c) c.oublierStructure();
-  };
-  const viderCacheLecture = () => {
-    const c = window.grist && grist.docApi && grist.docApi.__socleCache;
-    if (c) c.vider();
-  };
-
   /* ---------- Lecture des métadonnées Grist ---------- */
   async function lireMeta() {
-    const [t, c] = await Promise.all([
-      grist.docApi.fetchTable("_grist_Tables"),
-      grist.docApi.fetchTable("_grist_Tables_column"),
-    ]);
+    const [t, c] = await Promise.all([Donnees.lire("_grist_Tables"), Donnees.lire("_grist_Tables_column")]);
     const parRef = {},
       tables = {};
     t.id.forEach((ref, i) => {
@@ -1369,7 +1269,7 @@ return sorted(champs)`;
     if (meta && !meta[TABLE_CONFIG]) return null;
     let t;
     try {
-      t = await grist.docApi.fetchTable(TABLE_CONFIG);
+      t = await Donnees.lire(TABLE_CONFIG);
     } catch (_) {
       return null;
     }
@@ -1399,7 +1299,7 @@ return sorted(champs)`;
   async function ecrireConfig(cle, valeur) {
     const config = await lireConfig();
     if (!config) throw new Error("La table Config n'existe pas : lancez d'abord l'installation.");
-    await grist.docApi.applyUserActions([actionConfig(config, cle, valeur)]);
+    await Donnees.ecrire([actionConfig(config, cle, valeur)]);
   }
 
   /* ---------- Résolution des rôles ----------
@@ -1960,10 +1860,7 @@ return sorted(champs)`;
      établissements). La copie est rafraîchie à la publication d'un formulaire, à l'ouverture de l'onglet Établissements
      et à l'application des règles d'accès. */
   async function instantaneSchema(tables) {
-    const [T, C] = await Promise.all([
-      grist.docApi.fetchTable("_grist_Tables"),
-      grist.docApi.fetchTable("_grist_Tables_column"),
-    ]);
+    const [T, C] = await Promise.all([Donnees.lire("_grist_Tables"), Donnees.lire("_grist_Tables_column")]);
     const out = {};
     for (const tid of [...new Set(tables)].filter(Boolean).sort()) {
       const ref = T.id[T.tableId.indexOf(tid)];
@@ -2012,7 +1909,7 @@ return sorted(champs)`;
       try {
         let actions = e.actions;
         if (e.configCle) actions = [actionConfig(await lireConfig(), e.configCle, e.configValeur)];
-        if (actions.length) await grist.docApi.applyUserActions(actions);
+        if (actions.length) await Donnees.ecrire(actions);
         resultats.push({ etape: e, ok: true });
       } catch (err) {
         resultats.push({ etape: e, ok: false, erreur: (err && err.message) || String(err) });
@@ -2080,10 +1977,6 @@ return sorted(champs)`;
     cibleRef,
     lireMeta,
     lireConfig,
-    activerCacheLecture,
-    viderCacheLecture,
-    oublierStructure,
-    surEcriture,
     general,
     actionConfig,
     ecrireConfig,

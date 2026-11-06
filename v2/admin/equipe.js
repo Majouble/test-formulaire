@@ -70,9 +70,7 @@
     const cl = t && t.colonnes[S.INVITE.lien];
     if (cl && String(cl.formula || "").replace(/\s+/g, "") === S.ANCIENNE_FORMULE_LIEN_INVITE.replace(/\s+/g, ""))
       try {
-        await grist.docApi.applyUserActions([
-          ["ModifyColumn", table(), S.INVITE.lien, { formula: S.formuleLienInvite() }],
-        ]);
+        await Donnees.ecrire([["ModifyColumn", table(), S.INVITE.lien, { formula: S.formuleLienInvite() }]]);
         agents = await R.lireAgents(general);
       } catch (_) {
         /* droits insuffisants */
@@ -95,7 +93,7 @@
       .map((a) => ["UpdateRecord", table(), a.id, { [S.INVITE.page]: pageDeAgent(a) || null }]);
     if (!acts.length) return;
     try {
-      await grist.docApi.applyUserActions(acts);
+      await Donnees.ecrire(acts);
       agents = await R.lireAgents(general);
     } catch (_) {
       /* droits insuffisants : lien vers la page d'accueil */
@@ -244,7 +242,7 @@
     const avant = a[champ];
     a[champ] = valeur;
     try {
-      await grist.docApi.applyUserActions([
+      await Donnees.ecrire([
         [
           "UpdateRecord",
           table(),
@@ -691,7 +689,7 @@
     if (!ids.length) return;
     const fin = avecExpiration() ? finValidite() : undefined;
     try {
-      await grist.docApi.applyUserActions(
+      await Donnees.ecrire(
         ids.map((id) => [
           "UpdateRecord",
           table(),
@@ -748,7 +746,7 @@
       for (const [t, c, e] of cibles)
         if (t && c && meta[t] && S.auteurAMettreAJour(meta[t].colonnes[c]))
           acts.push(["ModifyColumn", t, c, { formula: S.formuleAuteur(g, e) }]);
-      if (acts.length) await grist.docApi.applyUserActions(acts);
+      if (acts.length) await Donnees.ecrire(acts);
     } catch (_) {
       /* facultatif : l'auteur d'un invité resterait vide */
     }
@@ -782,7 +780,7 @@
     }
     try {
       const ancienInvite = a.id && !!(agents.find((x) => x.id === a.id) || {}).cle;
-      await grist.docApi.applyUserActions([
+      await Donnees.ecrire([
         a.id ? ["UpdateRecord", table(), a.id, champs(a)] : ["AddRecord", table(), null, champs(a)],
       ]);
       if (a.invite) await auteurPourInvites();
@@ -824,7 +822,7 @@
     )
       return;
     try {
-      await grist.docApi.applyUserActions([["RemoveRecord", table(), a.id]]);
+      await Donnees.ecrire([["RemoveRecord", table(), a.id]]);
       edition = null;
       await charger();
       dessiner();
@@ -874,7 +872,7 @@
     }
     if (!nouveaux.length) return;
     try {
-      await grist.docApi.applyUserActions(nouveaux.map((a) => ["AddRecord", table(), null, champs(a)]));
+      await Donnees.ecrire(nouveaux.map((a) => ["AddRecord", table(), null, champs(a)]));
       await charger();
       dessiner();
       dire(
@@ -955,7 +953,7 @@
       ]),
     ];
     try {
-      await grist.docApi.applyUserActions(acts);
+      await Donnees.ecrire(acts);
       await charger();
       dessiner();
       dire(

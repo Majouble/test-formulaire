@@ -6,6 +6,7 @@
     <title>Signalements</title>
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
     <script src="../commun/outils.js"></script>
+    <script src="../commun/donnees.js"></script>
     <script src="../commun/theme.js"></script>
     <script src="../commun/marque.js"></script>
     <script src="../commun/socle.js"></script>
@@ -3996,10 +3997,9 @@ Cordialement,`,
           maintenant = Date.now() / 1000;
         erreurEmargement = "";
         try {
-          if (emargementOuvert)
-            await grist.docApi.applyUserActions([["UpdateRecord", t, emargementOuvert.id, { Fin: maintenant }]]);
+          if (emargementOuvert) await Donnees.ecrire([["UpdateRecord", t, emargementOuvert.id, { Fin: maintenant }]]);
           else
-            await grist.docApi.applyUserActions([
+            await Donnees.ecrire([
               [
                 "AddRecord",
                 t,
@@ -4246,24 +4246,11 @@ Cordialement,`,
         regroupes: 0,
         curseur: 0,
         curseurIgnores: 0,
-        lectures: {},
         longues: 0,
         dureeLongues: 0,
       };
+      // lectures du document : comptées par Donnees (Donnees.compteurs())
       (() => {
-        const f = grist.docApi.fetchTable.bind(grist.docApi);
-        grist.docApi.fetchTable = async (n) => {
-          const t0 = performance.now();
-          try {
-            return await f(n);
-          } finally {
-            const d = performance.now() - t0,
-              l = (ACTIVITE.lectures[n] = ACTIVITE.lectures[n] || { n: 0, total: 0, max: 0 });
-            l.n++;
-            l.total += d;
-            l.max = Math.max(l.max, d);
-          }
-        };
         try {
           new PerformanceObserver((liste) => {
             for (const e of liste.getEntries()) {
@@ -4383,14 +4370,13 @@ Cordialement,`,
       let promesseMeta = null; // réinitialisée à chaque nouvelle configuration
       function lireMeta() {
         if (!promesseMeta)
-          promesseMeta = Promise.all([
-            grist.docApi.fetchTable("_grist_Tables"),
-            grist.docApi.fetchTable("_grist_Tables_column"),
-          ]).catch(async (e) => {
-            const m = await metaDeSecours();
-            if (!m) throw e;
-            return m;
-          });
+          promesseMeta = Promise.all([Donnees.lire("_grist_Tables"), Donnees.lire("_grist_Tables_column")]).catch(
+            async (e) => {
+              const m = await metaDeSecours();
+              if (!m) throw e;
+              return m;
+            },
+          );
         return promesseMeta;
       }
       // Métadonnées illisibles (accès par lien d'établissement : les règles d'accès cachent les tables _grist_) :
@@ -4398,7 +4384,7 @@ Cordialement,`,
       let metaCopie = false;
       async function metaDeSecours() {
         try {
-          const t = await grist.docApi.fetchTable("Config"),
+          const t = await Donnees.lire("Config"),
             i = (t.Cle || []).indexOf("schema");
           const sch = i >= 0 && t.Valeur[i] ? JSON.parse(t.Valeur[i]) : null;
           if (!sch || !sch.tables) return null;
@@ -4478,7 +4464,7 @@ Cordialement,`,
         if (!pj.length) return;
         let cols;
         try {
-          cols = Object.keys((await grist.docApi.fetchTable(tid)) || {});
+          cols = Object.keys((await Donnees.lire(tid)) || {});
         } catch (_) {
           return;
         }
@@ -4664,7 +4650,7 @@ Cordialement,`,
       let dernierControleFormulaire = 0;
       async function lireFormulaires() {
         try {
-          const t = await grist.docApi.fetchTable(TABLE_FORMULAIRES);
+          const t = await Donnees.lire(TABLE_FORMULAIRES);
           return t.id.map((id, i) => ({
             id,
             nom: String(t.Nom ? (t.Nom[i] ?? "") : ""),
@@ -4997,9 +4983,11 @@ Cordialement,`,
         const moy = fait.length ? fait.reduce((s, e) => s + e.ms, 0) / fait.length : 0,
           max = fait.reduce((m, e) => Math.max(m, e.ms), 0);
         const ms = (v) => `${Math.round(v)} ms`;
-        const lectures = Object.entries(A.lectures)
-          .sort((a, b) => b[1].total - a[1].total)
-          .map(([t, l]) => `<li>${esc(t)} : ${l.n} fois, ${ms(l.total / l.n)} en moyenne (au plus ${ms(l.max)})</li>`)
+        const lectures = Donnees.compteurs()
+          .lectures.map(
+            (l) =>
+              `<li>${esc(l.table)} : ${l.nombre} fois, ${ms(l.ms / l.nombre)} en moyenne (au plus ${ms(l.max)})</li>`,
+          )
           .join("");
         $("cfg-activite").innerHTML =
           `<p style="margin:0 0 4px">Depuis l'ouverture du widget (${Math.round(min)} min) :</p><ul style="margin:0;padding-left:18px">
@@ -5109,7 +5097,7 @@ Cordialement,`,
             b.textContent = "Rattachement…";
             try {
               const acts = aRattacher.map((l) => ["UpdateRecord", tableId, l.id, { [cE]: etabDeLigne(l).id }]);
-              for (let k = 0; k < acts.length; k += 400) await grist.docApi.applyUserActions(acts.slice(k, k + 400));
+              for (let k = 0; k < acts.length; k += 400) await Donnees.ecrire(acts.slice(k, k + 400));
               b.textContent = `${aRattacher.length} signalement(s) rattachés`;
             } catch (e) {
               b.disabled = false;
@@ -5388,7 +5376,7 @@ Cordialement,`,
             choisie = socleGeneral.referentiel;
         } else
           try {
-            const t = await grist.docApi.fetchTable(PARAMETRES.table);
+            const t = await Donnees.lire(PARAMETRES.table);
             const brut = (t[PARAMETRES.colonne] || [])[0];
             if (typeof brut === "string" && brut.trim()) choisie = JSON.parse(brut)[CLE_TABLE_ETAB] || null;
           } catch (_) {
@@ -5534,17 +5522,13 @@ Cordialement,`,
         cols.forEach((c, k) => {
           t[c] = recs.map((x) => conv[k](x.fields[c]));
         });
-        const d = performance.now() - t0,
-          l = (ACTIVITE.lectures[`${tid} (SQL)`] = ACTIVITE.lectures[`${tid} (SQL)`] || { n: 0, total: 0, max: 0 });
-        l.n++;
-        l.total += d;
-        l.max = Math.max(l.max, d);
+        Donnees.noterLecture(`${tid} (SQL)`, t0);
         return t;
       }
       const lireTableRapide = (tid) =>
         lireTableSQL(tid).catch((e) => {
           if (!sqlRefuse) console.warn(`Lecture SQL de ${tid} impossible`, e);
-          return grist.docApi.fetchTable(tid);
+          return Donnees.lire(tid);
         });
       function lireTableReference(tid) {
         const c = cacheTables.get(tid);
@@ -6175,8 +6159,7 @@ Cordialement,`,
         // noms et tailles des pièces déjà jointes : table _grist_Attachments (lue une fois)
         async function lireMeta() {
           if (!metaLue)
-            metaLue = grist.docApi
-              .fetchTable("_grist_Attachments")
+            metaLue = Donnees.lire("_grist_Attachments")
               .then((t) => {
                 t.id.forEach((id, i) => {
                   if (!infos.has(id))
@@ -8358,7 +8341,7 @@ Cordialement,`,
           return;
         }
         try {
-          const t = await grist.docApi.fetchTable(PARAMETRES.table);
+          const t = await Donnees.lire(PARAMETRES.table);
           colsParametres = Object.keys(t);
           if (t.id.length) {
             ligneParametres = {};
@@ -9237,7 +9220,7 @@ Cordialement,`,
             try {
               const m = await metaColonnes(this.sites.alias);
               if (m && m.Libelle && m.Site) {
-                const t = await grist.docApi.fetchTable(this.sites.alias);
+                const t = await Donnees.lire(this.sites.alias);
                 t.id.forEach((id, i) => {
                   if (/cart/i.test(String((t.Statut || [])[i] || ""))) return;
                   const s = refId(t.Site[i]);
@@ -9363,7 +9346,7 @@ Cordialement,`,
           this.confLisible = true;
           if (!dossier || !confs.length || !this.colDossier || !this.colLigne) return res;
           try {
-            const t = await grist.docApi.fetchTable(this.table);
+            const t = await Donnees.lire(this.table);
             if (confs.some((d) => !(d.colId in t))) this.confLisible = false;
             // table historisée : les lignes de la version la plus récente qui en a (sinon les lignes sans version)
             const duDossier = t.id
@@ -10146,7 +10129,7 @@ Cordialement,`,
         // ----- table dédiée : réécriture des lignes d'un dossier
         async synchroniser(dossier, complet, t, lignesSource, avecConf = true, version = null) {
           if (!this.pret || !this.colDossier) return 0;
-          t = t || (await grist.docApi.fetchTable(this.table));
+          t = t || (await Donnees.lire(this.table));
           if (this.colVersion && t[this.colVersion])
             return this.synchroniserVersions(dossier, complet, t, lignesSource, avecConf, version);
           const lignes = lignesSource || this.lignesValides();
@@ -10382,7 +10365,7 @@ Cordialement,`,
           }
           if (c.pret && c.colDossier)
             try {
-              const t = await grist.docApi.fetchTable(c.table),
+              const t = await Donnees.lire(c.table),
                 suppr = [];
               t.id.forEach((id, i) => {
                 if (refId(t[c.colDossier][i]) !== dossier && t[c.colDossier][i] !== dossier) return;
@@ -10410,7 +10393,7 @@ Cordialement,`,
         let n = 0;
         try {
           for (const c of ctrl) {
-            const t = await grist.docApi.fetchTable(c.table);
+            const t = await Donnees.lire(c.table);
             if (c.colVersion && t[c.colVersion]) {
               const cD = col("Dossier");
               for (const l of dossiersInit) {
@@ -12402,7 +12385,7 @@ Cordialement,`,
       async function chargerProfil() {
         monNiveau = null;
         try {
-          const t = await grist.docApi.fetchTable(UTILISATEURS.table);
+          const t = await Donnees.lire(UTILISATEURS.table);
           const cols = Object.keys(t);
           const U = UTILISATEURS.colonnes;
           if (!cols.includes(U.mail) || !cols.includes(U.niveau) || t.id.length !== 1) return;
@@ -12429,7 +12412,7 @@ Cordialement,`,
         }
         if (agentPage == null) return;
         try {
-          const t = await grist.docApi.fetchTable(socleGeneral.agents || "Agents"),
+          const t = await Donnees.lire(socleGeneral.agents || "Agents"),
             i = t.id.indexOf(agentPage);
           if (i < 0 || !t.Echelon_visa) return;
           const ech = String(t.Echelon_visa[i] || ""),

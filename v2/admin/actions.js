@@ -636,7 +636,7 @@
       st.className = `statut${err ? " err" : " ok"}`;
     }
   };
-  const action = (...l) => grist.docApi.applyUserActions(l);
+  const action = (...l) => Donnees.ecrire(l);
   async function relire() {
     actions = await S.lireActions(general);
     dessiner();
@@ -849,7 +849,7 @@
         { widgetOptions: JSON.stringify({ ...o, ...JSON.parse(S.optionsStatuts(nouveau.statuts)) }) },
       ]);
     }
-    await grist.docApi.applyUserActions([S.actionConfig(config, "actions", nouveau), ...acts]);
+    await Donnees.ecrire([S.actionConfig(config, "actions", nouveau), ...acts]);
     config = await S.lireConfig();
     reglages = S.reglagesActions(config);
   }

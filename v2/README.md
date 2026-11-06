@@ -33,6 +33,7 @@ Bascule d'un document v1 vers la v2 : exporter le document en sauvegarde (.grist
 v2/                      développement (prod/ = copie figée, voir « Mise en production »)
 ├── README.md            ce fichier
 ├── commun/outils.js     petits outils communs, chargés en premier par chaque page : esc (texte → HTML sûr), $ (élément par identifiant), stockage (préférences du navigateur)
+├── commun/donnees.js    accès au document : toutes les lectures (Donnees.lire) et écritures (Donnees.ecrire) passent par là ; cache de l'administration, écouteurs d'écriture, compteurs de lectures
 ├── commun/socle.js      code partagé : lecture de Config, rôles, plan d'installation
 ├── commun/theme.js      thème clair ou sombre de tous les widgets (data-theme sur <html>)
 ├── commun/marque.js     logo PRISME en haut à gauche de tous les widgets (variantes bloc, compact, spectre, centre)

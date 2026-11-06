@@ -33,7 +33,7 @@
     meta = await S.lireMeta();
     formulaires = await R.lireFormulairesPublies(general);
     try {
-      agentsT = await grist.docApi.fetchTable(general.agents);
+      agentsT = await Donnees.lire(general.agents);
     } catch (_) {
       agentsT = null;
     }
@@ -57,7 +57,7 @@
       );
       let t = null;
       try {
-        t = await grist.docApi.fetchTable(e.reponses);
+        t = await Donnees.lire(e.reponses);
       } catch (_) {
         t = null;
       }
@@ -383,7 +383,7 @@
         const formula = S.formuleStatutValidation(r, e.cols),
           wo = S.optionsStatutValidation();
         const c = meta[e.reponses].colonnes[r.colonne];
-        await grist.docApi.applyUserActions([
+        await Donnees.ecrire([
           c
             ? ["ModifyColumn", e.reponses, r.colonne, { type: "Choice", isFormula: true, formula, widgetOptions: wo }]
             : [
@@ -415,7 +415,7 @@
   }
   async function majAgent(id, fields, statutId) {
     try {
-      await grist.docApi.applyUserActions([["UpdateRecord", general.agents, id, fields]]);
+      await Donnees.ecrire([["UpdateRecord", general.agents, id, fields]]);
       await recharger();
       dire(statutId || "va-statut-v", "Enregistré.");
     } catch (err) {
@@ -468,7 +468,7 @@
     if (bc)
       bc.addEventListener("click", async () => {
         try {
-          await grist.docApi.applyUserActions(
+          await Donnees.ecrire(
             colonnesViseursManquantes().map((c) => [
               "AddColumn",
               general.agents,

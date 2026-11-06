@@ -44,9 +44,7 @@
     );
     if (anciennes.length)
       try {
-        await grist.docApi.applyUserActions(
-          anciennes.map((g) => ["ModifyColumn", g.table, LIEN, { formula: formuleAttendue(g) }]),
-        );
+        await Donnees.ecrire(anciennes.map((g) => ["ModifyColumn", g.table, LIEN, { formula: formuleAttendue(g) }]));
         meta = await S.lireMeta();
         groupes = R.groupesLiens(meta, config, general, formulaires);
       } catch (_) {
@@ -61,7 +59,7 @@
   // attributs utilisateur en place (null : règles illisibles)
   async function lireAttributs() {
     try {
-      const r = await grist.docApi.fetchTable("_grist_ACLRules");
+      const r = await Donnees.lire("_grist_ACLRules");
       return (r.id || [])
         .map((_, i) => {
           try {
@@ -82,7 +80,7 @@
       return;
     }
     try {
-      const t = await grist.docApi.fetchTable(g.table);
+      const t = await Donnees.lire(g.table);
       const ref = await R.lireReferentiel({ ...general, referentiel: g.table }, config);
       const roles = ref.roles || {};
       const col = (role, defaut) => roles[role] || (t[defaut] ? defaut : null);
@@ -467,13 +465,13 @@
     try {
       if (!g.cle) {
         // formule UUID() calculée pour chaque ligne, puis convertie en données : elle reste formule d'initialisation (nouveaux établissements)
-        await grist.docApi.applyUserActions([
+        await Donnees.ecrire([
           ["AddColumn", g.table, CLE, { type: "Text", isFormula: true, formula: "UUID()", label: CLE }],
         ]);
-        await grist.docApi.applyUserActions([["ModifyColumn", g.table, CLE, { isFormula: false, formula: "UUID()" }]]);
+        await Donnees.ecrire([["ModifyColumn", g.table, CLE, { isFormula: false, formula: "UUID()" }]]);
       }
       if (!g.lien)
-        await grist.docApi.applyUserActions([
+        await Donnees.ecrire([
           ["AddColumn", g.table, LIEN, { type: "Text", isFormula: true, formula: formuleAttendue(g), label: LIEN }],
         ]);
       await recharger();
@@ -485,11 +483,11 @@
   async function genererCles(k) {
     const g = groupes[k];
     try {
-      const t = await grist.docApi.fetchTable(g.table),
+      const t = await Donnees.lire(g.table),
         ids = t.id.filter((_, i) => !lisible((t[CLE] || [])[i]));
       for (let j = 0; j < ids.length; j += 500) {
         const lot = ids.slice(j, j + 500);
-        await grist.docApi.applyUserActions([["BulkUpdateRecord", g.table, lot, { [CLE]: lot.map(uuid) }]]);
+        await Donnees.ecrire([["BulkUpdateRecord", g.table, lot, { [CLE]: lot.map(uuid) }]]);
       }
       await recharger();
       dire(`li-statut-${k}`, `${ids.length} clé(s) générée(s).`);
@@ -502,12 +500,12 @@
       sel = $(`li-form-${k}`),
       f = g.formulaires.find((x) => x.nom === (sel ? sel.value : g.formulaires[0].nom)) || g.formulaires[0];
     try {
-      const T = await grist.docApi.fetchTable("_grist_Tables"),
+      const T = await Donnees.lire("_grist_Tables"),
         tref = T.id[T.tableId.indexOf(f.table)];
-      const res = await grist.docApi.applyUserActions([["CreateViewSection", tref, 0, "custom", null, null]]);
+      const res = await Donnees.ecrire([["CreateViewSection", tref, 0, "custom", null, null]]);
       const rv = (res && res.retValues && res.retValues[0]) || {};
       if (!rv.sectionRef) throw new Error("Grist n'a pas indiqué la vue créée");
-      const sections = await grist.docApi.fetchTable("_grist_Views_section"),
+      const sections = await Donnees.lire("_grist_Views_section"),
         i = sections.id.indexOf(rv.sectionRef);
       const { o, cv } = R.optionsVue(i >= 0 ? sections.options[i] : "");
       let url;
@@ -531,7 +529,7 @@
       ];
       // le lien vise cette page
       if (g.lien) acts.push(["ModifyColumn", g.table, LIEN, { formula: R.formuleLien(g.attribut, rv.viewRef) }]);
-      await grist.docApi.applyUserActions(acts);
+      await Donnees.ecrire(acts);
       await recharger();
       dire(`li-statut-${k}`, `Page « ${nom} » créée${g.lien ? " ; les liens l'ouvrent désormais" : ""}.`);
     } catch (e) {
@@ -541,7 +539,7 @@
   async function majFormule(k) {
     const g = groupes[k];
     try {
-      await grist.docApi.applyUserActions([["ModifyColumn", g.table, LIEN, { formula: formuleAttendue(g) }]]);
+      await Donnees.ecrire([["ModifyColumn", g.table, LIEN, { formula: formuleAttendue(g) }]]);
       await recharger();
       dire(`li-statut-${k}`, "Formule mise à jour.");
     } catch (e) {
@@ -561,7 +559,7 @@
     });
     $("li-oui").addEventListener("click", async () => {
       try {
-        await grist.docApi.applyUserActions([["UpdateRecord", donnees.table, id, { [CLE]: uuid() }]]);
+        await Donnees.ecrire([["UpdateRecord", donnees.table, id, { [CLE]: uuid() }]]);
         await recharger();
         dire("li-statut", `Nouvelle clé pour « ${nom} ».`);
       } catch (e) {

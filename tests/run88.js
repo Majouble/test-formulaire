@@ -52,7 +52,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
   await page.click('#qa-liste').catch(() => {}); await page.selectOption('#qa-type', ''); await page.selectOption('#qa-statut', 'a_traiter'); await page.waitForTimeout(200);
   const avant = await page.$$eval('.qa-item', l => l.length), badgeAvant = await page.textContent('#badge-qa');
   await page.click('[data-vue=etab]'); await page.fill('#etab-q', 'romain'); await page.waitForTimeout(200); await page.click('#etab-res li >> nth=0'); await page.waitForTimeout(300);
-  await page.evaluate(() => grist.docApi.applyUserActions([['UpdateRecord', 'Reponses', 2, { Qualification: null }]]));   // nouvelle anomalie, écrite ailleurs
+  await page.evaluate(() => Donnees.ecrire([['UpdateRecord', 'Reponses', 2, { Qualification: null }]]));   // nouvelle anomalie, écrite ailleurs
   await page.waitForTimeout(2500);
   console.log('BADGE MIS À JOUR :', badgeAvant, '→', await page.textContent('#badge-qa'));
   await page.click('[data-vue=qa]'); await page.waitForTimeout(800);

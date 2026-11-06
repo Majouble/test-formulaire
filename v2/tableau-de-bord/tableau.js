@@ -735,7 +735,7 @@
       await Promise.all(
         todo.map(async (t) => {
           try {
-            const data = await grist.docApi.fetchTable(t);
+            const data = await Donnees.lire(t);
             refCache.set(t, { data, stale: false });
           } catch (e) {
             refCache.set(t, { error: e && e.message ? e.message : String(e), stale: false });
@@ -1039,7 +1039,7 @@
 
     async function readCfgTable() {
       try {
-        return await grist.docApi.fetchTable(CFG_TABLE);
+        return await Donnees.lire(CFG_TABLE);
       } catch (e) {
         return null;
       } // la table n'existe pas encore
@@ -3460,12 +3460,12 @@
       Object.keys(value).forEach((k) => findConfigs(value[k], path.concat(k), out, depth + 1));
     }
     async function scanDocument() {
-      const S = await grist.docApi.fetchTable("_grist_Views_section");
+      const S = await Donnees.lire("_grist_Views_section");
       let V = { id: [], name: [] };
       try {
-        V = await grist.docApi.fetchTable("_grist_Views");
+        V = await Donnees.lire("_grist_Views");
       } catch (e) {}
-      const T = await grist.docApi.fetchTable("_grist_Tables");
+      const T = await Donnees.lire("_grist_Tables");
       const found = [];
       S.id.forEach((id, i) => {
         const out = [];
@@ -5202,9 +5202,9 @@
       try {
         const tableId = CTX.table;
         if (!tableId || !grist.docApi) return null;
-        const T = await grist.docApi.fetchTable("_grist_Tables");
+        const T = await Donnees.lire("_grist_Tables");
         const ref = T.id[T.tableId.indexOf(tableId)];
-        const C = await grist.docApi.fetchTable("_grist_Tables_column");
+        const C = await Donnees.lire("_grist_Tables_column");
         docMeta = { T, C };
         mainTable = tableId;
         const types = {},

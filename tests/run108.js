@@ -81,7 +81,7 @@ if (require.main === module) (async () => {
   console.log('VISEURS :', await page.evaluate(() => { const A = window.__DOC__.__data.Agents; return A.id.map((id, i) => `${A.Nom[i]} : ${A.Echelon_visa[i] || '—'} ${JSON.stringify(A.Visa_departements[i] || null)} ${JSON.stringify(A.Visa_academies[i] || null)}`).join(' | '); }));
   // Grist calcule la formule : on pose les statuts attendus (même règle, calculée en JavaScript par le socle)
   await page.evaluate(() => { const S = window.Socle, R = window.__DOC__.__data.Reponses, r = { echelons: 'dep_aca', verdict_dep: 'Avis_dep', verdict_aca: 'Avis_aca', favorables: ['Favorable'] };
-    R.Statut_validation = R.id.map((_, i) => R.Derniere_version[i] ? S.statutValidation(r, { Avis_dep: R.Avis_dep[i], Avis_aca: R.Avis_aca[i] }) : null); S.viderCacheLecture(); });
+    R.Statut_validation = R.id.map((_, i) => R.Derniere_version[i] ? S.statutValidation(r, { Avis_dep: R.Avis_dep[i], Avis_aca: R.Avis_aca[i] }) : null); Donnees.viderCache(); });
   await page.click('nav button[data-onglet=installation]'); await page.click('nav button[data-onglet=validation]'); await page.waitForTimeout(1500);
   const sv = await texte(page, '#validation section[data-table=Reponses]');
   console.log('SUIVI :\n' + (sv.includes('Suivi des dossiers') ? sv.split('Suivi des dossiers')[1] : sv));
@@ -108,7 +108,7 @@ if (require.main === module) (async () => {
   // deux réponses après le lancement : Hoche (aujourd'hui) et Éluard (« Rien à signaler »)
   await page.evaluate(debut => { const R = window.__DOC__.__data.Reponses; [[2, 'Fermé', 'Toujours fermé'], [3, 'RAS', 'Rien à signaler.']].forEach(([e, q, d]) => {
     const id = Math.max(...R.id) + 1; R.id.push(id); R.Etablissement.push(e); R.Dossier.push(id); R.Date_faits.push(Math.floor(debut / 86400) * 86400); R.Cree_le.push(debut + 60); R.Nature.push('Nouveau signalement');
-    R.Qualification.push(q); R.Description.push(d); R.Derniere_version.push(true); R.Departement.push(''); R.Academie.push(''); R.Avis_dep.push(null); R.Obs_dep.push(''); R.Avis_aca.push(null); R.Statut_validation.push('À viser (département)'); }); window.Socle.viderCacheLecture(); }, c0.debut);
+    R.Qualification.push(q); R.Description.push(d); R.Derniere_version.push(true); R.Departement.push(''); R.Academie.push(''); R.Avis_dep.push(null); R.Obs_dep.push(''); R.Avis_aca.push(null); R.Statut_validation.push('À viser (département)'); }); Donnees.viderCache(); }, c0.debut);
   await page.click('nav button[data-onglet=installation]'); await page.click('nav button[data-onglet=liens]'); await page.waitForTimeout(2200);
   console.log('SUIVI (2 réponses) :', (await texte(page, '.cp-campagne')).split('\n').slice(3, 12).join(' | '));
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-cp=relance]')]);

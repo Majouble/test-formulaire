@@ -145,7 +145,7 @@
       throw new Error("indiquez l'adresse complète du widget de saisie (https://…)");
     const cibles = [];
     if (nouvelles.length) {
-      const res = await grist.docApi.applyUserActions(
+      const res = await Donnees.ecrire(
         nouvelles.map((c) => ["CreateViewSection", meta[c.f.table].ref, 0, "custom", null, null]),
       );
       const rvs = (res && res.retValues) || [];
@@ -160,7 +160,7 @@
         .filter((p) => !aJour(p, c.a, c.f))
         .forEach((p) => cibles.push({ c, sec: p.sectionRef, vue: p.viewRef, url: p.url })),
     );
-    const sections = await grist.docApi.fetchTable("_grist_Views_section"),
+    const sections = await Donnees.lire("_grist_Views_section"),
       acts = [];
     for (const { c, sec, vue, url: u } of cibles) {
       const i = sections.id.indexOf(sec),
@@ -183,7 +183,7 @@
       const v = vue || (i >= 0 ? sections.parentId[i] : null);
       if (v) acts.push(["UpdateRecord", "_grist_Views", v, { name: nom }]);
     }
-    if (acts.length) await grist.docApi.applyUserActions(acts);
+    if (acts.length) await Donnees.ecrire(acts);
     pages = await R.lirePages();
     return { crees: nouvelles.length, maj: modifiees.length };
   }
@@ -256,7 +256,7 @@
       <label class="champ" style="margin-top:12px"><span>Adresse du widget de saisie (nouvelles pages)</span><input type="text" id="pa-url" value="${esc(urlProposee())}" spellcheck="false"></label>
       <div class="boutons"><button class="secondaire" id="pa-relire" title="Relire les pages du document (après une suppression dans Grist, par exemple)">↻ Relire</button><button class="primaire" id="pa-creer"${aFaire.length ? "" : " disabled"}>${aFaire.length ? `Créer et mettre à jour les pages (${aFaire.length})` : "Pages à jour"}</button><span class="statut" id="pa-statut" role="status"></span></div></section>`;
     $("pa-relire").addEventListener("click", () => {
-      S.oublierStructure();
+      Donnees.oublierStructure();
       afficher();
       Groupe.resume();
     });
@@ -379,7 +379,7 @@
       }
     },
     afficher(sous) {
-      S.oublierStructure();
+      Donnees.oublierStructure();
       if (sous) sousCourant = sous;
       const nav = $("eq-sous");
       nav.innerHTML = SOUS.map(

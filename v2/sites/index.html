@@ -7,6 +7,7 @@
     <!-- Widget Grist : mise à jour du référentiel des sites de l'enseignement supérieur (carte IGN, lieux IGN, OpenStreetMap, adresses) -->
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
     <script src="../commun/outils.js"></script>
+    <script src="../commun/donnees.js"></script>
     <script src="../commun/theme.js"></script>
     <script src="../commun/marque.js"></script>
     <script src="../commun/socle.js"></script>
@@ -1014,7 +1015,7 @@
       async function lireDonnees() {
         ctx = await contexte();
         const ce = ctx.ce,
-          te = await grist.docApi.fetchTable(ctx.tEtab);
+          te = await Donnees.lire(ctx.tEtab);
         const v = (c, i) => (c && te[c] ? te[c][i] : null);
         etabs = te.id
           .map((id, i) => {
@@ -1039,7 +1040,7 @@
         ctx.cols = colonnesSites();
         sites = [];
         if (ctx.tSites) {
-          const ts = await grist.docApi.fetchTable(ctx.tSites),
+          const ts = await Donnees.lire(ctx.tSites),
             c = ctx.cols,
             w = (k, i) => (c[k] && ts[c[k]] ? ts[c[k]][i] : null);
           sites = ts.id.map((id, i) => ({
@@ -1091,7 +1092,7 @@
               .filter(([k, d]) => d.id && !["id", "nom"].includes(k))
               .map(([, d]) => ({ id: d.id, type: d.type })),
           ];
-          await grist.docApi.applyUserActions([["AddTable", tid, cols.map((c) => ({ ...c, isFormula: false }))]]);
+          await Donnees.ecrire([["AddTable", tid, cols.map((c) => ({ ...c, isFormula: false }))]]);
           ctx.tSites = tid;
         }
         ctx.meta = await S.lireMeta();
@@ -1113,7 +1114,7 @@
             "Composante",
             { type: `Ref:${ctx.tEtab}`, isFormula: false, label: "Composante concernée", untieColIdFromLabel: true },
           ]);
-        if (acts.length) await grist.docApi.applyUserActions(acts);
+        if (acts.length) await Donnees.ecrire(acts);
         ctx.meta = await S.lireMeta();
         ctx.cols = colonnesSites();
       }
@@ -1133,7 +1134,7 @@
         if (!manque.length) return;
         o.choices = ch.concat(manque);
         m.widgetOptions = JSON.stringify(o);
-        await grist.docApi.applyUserActions([["ModifyColumn", ctx.tSites, c, { widgetOptions: m.widgetOptions }]]);
+        await Donnees.ecrire([["ModifyColumn", ctx.tSites, c, { widgetOptions: m.widgetOptions }]]);
       }
       const champs = (f) => {
         const out = {};
@@ -1184,7 +1185,7 @@
             [ctx.cols.etab]: (estComposante ? p : e).id,
             ...(estComposante && ctx.cols.comp ? { [ctx.cols.comp]: e.id } : {}),
           };
-          await grist.docApi.applyUserActions([["AddRecord", ctx.tSites, null, rec]]);
+          await Donnees.ecrire([["AddRecord", ctx.tSites, null, rec]]);
           await lireDonnees();
           const s = sites.find((x) => x.code === f.id);
           siteChoisi = s ? s.id : null;
@@ -1199,7 +1200,7 @@
         try {
           await preparerTable();
           if (f.source) await etendreChoix("source", f.source);
-          await grist.docApi.applyUserActions([["UpdateRecord", ctx.tSites, id, champs(f)]]);
+          await Donnees.ecrire([["UpdateRecord", ctx.tSites, id, champs(f)]]);
           const s = sites.find((x) => x.id === id);
           if (s) Object.assign(s, f);
           statut(quoi || "Enregistré.", "ok");
@@ -1549,7 +1550,7 @@
           const f = { [ctx.ce.lat]: +(+lat).toFixed(6), [ctx.ce.lon]: +(+lon).toFixed(6) };
           if (commune && ctx.ce.commune && !e.commune && !colFormule(ctx.tEtab, ctx.ce.commune))
             f[ctx.ce.commune] = commune;
-          await grist.docApi.applyUserActions([["UpdateRecord", ctx.tEtab, e.id, f]]);
+          await Donnees.ecrire([["UpdateRecord", ctx.tEtab, e.id, f]]);
           await lireDonnees();
           const n = etabDe(e.id);
           if (n) {
@@ -1792,7 +1793,7 @@
           }
           if (quoi === "desactiver" || quoi === "reactiver")
             sel.forEach((s) => maj.set(s.id, { actif: quoi === "reactiver" }));
-          await grist.docApi.applyUserActions([...maj].map(([id, f]) => ["UpdateRecord", ctx.tSites, id, champs(f)]));
+          await Donnees.ecrire([...maj].map(([id, f]) => ["UpdateRecord", ctx.tSites, id, champs(f)]));
           maj.forEach((f, id) => {
             const s = sites.find((x) => x.id === id);
             if (s) Object.assign(s, f);
@@ -1818,7 +1819,7 @@
             (c) => !c.isFormula && (c.type === `Ref:${ctx.tSites}` || c.type === `RefList:${ctx.tSites}`),
           );
           if (!cols.length) continue;
-          const d = await grist.docApi.fetchTable(t);
+          const d = await Donnees.lire(t);
           for (const c of cols)
             (d[c.colId] || []).forEach((v, i) => {
               if (c.type.startsWith("RefList")) {
@@ -1858,7 +1859,7 @@
           ...autres.map((s) => ["UpdateRecord", ctx.tSites, s.id, champs({ actif: false, statut: "Fusionné" })]),
           ...refs,
         ];
-        for (let k = 0; k < acts.length; k += 400) await grist.docApi.applyUserActions(acts.slice(k, k + 400));
+        for (let k = 0; k < acts.length; k += 400) await Donnees.ecrire(acts.slice(k, k + 400));
         selection.clear();
         fusionGarde = null;
         await lireDonnees();
@@ -2420,7 +2421,7 @@
             }
             if (td) champs[cD] = td.value;
             try {
-              await grist.docApi.applyUserActions([["UpdateRecord", esp.espace.reponses, d.id, champs]]);
+              await Donnees.ecrire([["UpdateRecord", esp.espace.reponses, d.id, champs]]);
               qaMsg = `Dossier n° ${f.id} : dernière version enregistrée.`;
               await analyserQa(true);
               if (!(qaEdition && qaEdition.resolue)) qaDire(qaMsg);
@@ -2640,10 +2641,7 @@
           sources[0] ||
           null;
         if (!src) return { meta, sources, src: null, groupes: [] };
-        const [t, trep] = await Promise.all([
-          grist.docApi.fetchTable(src.table),
-          src.viaDossier ? grist.docApi.fetchTable(src.rep) : null,
-        ]);
+        const [t, trep] = await Promise.all([Donnees.lire(src.table), src.viaDossier ? Donnees.lire(src.rep) : null]);
         const idxRep = trep ? new Map(trep.id.map((id, i) => [id, i])) : null;
         const etabDeLigne = (i) =>
           src.viaDossier
@@ -2883,7 +2881,7 @@
               [ctx.cols.etab]: (comp ? p : choisi).id,
               ...(comp && ctx.cols.comp ? { [ctx.cols.comp]: choisi.id } : {}),
             };
-            const r = await grist.docApi.applyUserActions([["AddRecord", ctx.tSites, null, rec]]);
+            const r = await Donnees.ecrire([["AddRecord", ctx.tSites, null, rec]]);
             siteId = r && r.retValues ? r.retValues[0] : null;
             await lireDonnees();
             if (!siteId) {
@@ -2917,7 +2915,7 @@
             refCol = "Site_referentiel";
             let k = 2;
             while (sx.meta[src.table].colonnes[refCol]) refCol = `Site_referentiel_${k++}`;
-            await grist.docApi.applyUserActions([
+            await Donnees.ecrire([
               [
                 "AddColumn",
                 src.table,
@@ -2942,7 +2940,7 @@
           const meta = await S.lireMeta(),
             tA = "Sites_correspondances";
           if (!meta[tA]) {
-            await grist.docApi.applyUserActions([
+            await Donnees.ecrire([
               [
                 "AddTable",
                 tA,
@@ -2955,7 +2953,7 @@
                 ].map(([id, type]) => ({ id, type, isFormula: false })),
               ],
             ]);
-            await grist.docApi.applyUserActions([
+            await Donnees.ecrire([
               [
                 "ModifyColumn",
                 tA,
@@ -2978,7 +2976,7 @@
               .replace(/[’']/g, " ")
               .replace(/\s+/g, " ")
               .trim();
-          const ta = await grist.docApi.fetchTable(tA),
+          const ta = await Donnees.lire(tA),
             cleA = new Map(ta.id.map((id, i) => [`${refId(ta.Etablissement[i])}|${normA(ta.Libelle[i])}`, id]));
           for (const g of choisis)
             for (const [lib, nb] of g.libelles) {
@@ -2988,7 +2986,7 @@
               acts.push(cleA.has(k) ? ["UpdateRecord", tA, cleA.get(k), f] : ["AddRecord", tA, null, f]);
               cleA.set(k, -1);
             }
-          for (let k = 0; k < acts.length; k += 400) await grist.docApi.applyUserActions(acts.slice(k, k + 400));
+          for (let k = 0; k < acts.length; k += 400) await Donnees.ecrire(acts.slice(k, k + 400));
           sxCoches.clear();
           await afficherSaisies();
           dire(
@@ -3058,33 +3056,21 @@
 
       // toute écriture dans le document rend l'analyse « À vérifier » périmée : recalcul (et compteur) peu après
       function suivreEcritures() {
-        const api = grist.docApi,
-          ecrire = api.applyUserActions.bind(api);
-        api.applyUserActions = async (actions, opts) => {
-          try {
-            return await ecrire(actions, opts);
-          } finally {
-            if (!(actions || []).every((a) => Array.isArray(a) && a[1] === "Config")) {
-              // les statuts seuls ne changent pas l'analyse
-              qaPerime = true;
-              clearTimeout(qaMinuterie);
-              // en cours de correction d'un dossier : données et compteur mis à jour sans redessiner la saisie en cours
-              qaMinuterie = setTimeout(() => {
-                if (qa && !qaEnCours) analyserQa(true, vue === "qa" && !!qaEdition);
-              }, 1500);
-            }
-          }
-        };
+        Donnees.surEcriture((tables, actions) => {
+          if (actions.every((a) => Array.isArray(a) && a[1] === "Config")) return; // les statuts seuls ne changent pas l'analyse
+          qaPerime = true;
+          clearTimeout(qaMinuterie);
+          // en cours de correction d'un dossier : données et compteur mis à jour sans redessiner la saisie en cours
+          qaMinuterie = setTimeout(() => {
+            if (qa && !qaEnCours) analyserQa(true, vue === "qa" && !!qaEdition);
+          }, 1500);
+        });
       }
       (async function demarrer() {
         initCarte();
         if (!window.grist) return;
         grist.ready({ requiredAccess: "full" });
-        try {
-          suivreEcritures();
-        } catch (_) {
-          /* écritures non suivies : bouton « Relancer l'analyse » */
-        }
+        suivreEcritures();
         try {
           await lireDonnees();
           const dernier = +Outils.stockage.lire("socle-v2-sites-etab");

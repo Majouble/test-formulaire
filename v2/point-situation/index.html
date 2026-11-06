@@ -6,6 +6,7 @@
     <title>Point de situation</title>
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
     <script src="../commun/outils.js"></script>
+    <script src="../commun/donnees.js"></script>
     <script src="../commun/theme.js"></script>
     <script src="../commun/marque.js"></script>
     <script src="../commun/socle.js"></script>
@@ -351,7 +352,7 @@
         }
         try {
           if (!(await listeTables()).includes(TABLE_REGLAGES)) return defauts;
-          const t = await grist.docApi.fetchTable(TABLE_REGLAGES);
+          const t = await Donnees.lire(TABLE_REGLAGES);
           const v = (t[COL_REGLAGES] || []).find((x) => x && String(x).trim());
           return { ...defauts, ...(v ? JSON.parse(v) : {}) };
         } catch (e) {
@@ -369,7 +370,7 @@
             ["AddRecord", TABLE_REGLAGES, null, { [COL_REGLAGES]: json }],
           );
         } else {
-          const t = await grist.docApi.fetchTable(TABLE_REGLAGES);
+          const t = await Donnees.lire(TABLE_REGLAGES);
           if (!(COL_REGLAGES in t)) acts.push(["AddColumn", TABLE_REGLAGES, COL_REGLAGES, { type: "Text" }]);
           acts.push(
             t.id.length
@@ -377,7 +378,7 @@
               : ["AddRecord", TABLE_REGLAGES, null, { [COL_REGLAGES]: json }],
           );
         }
-        await grist.docApi.applyUserActions(acts);
+        await Donnees.ecrire(acts);
       }
       $("btnReglages").onclick = () => {
         const o = $("reglages").classList.toggle("ouvert");
@@ -497,7 +498,7 @@
             etat("Les tables Colonnes_point, Sections_point et Tri_point existent déjà.");
             return;
           }
-          await grist.docApi.applyUserActions(acts);
+          await Donnees.ecrire(acts);
           etat("Tables créées : ajoutez une page pour les modifier, puis « Actualiser ».");
           charger();
         } catch (e) {
@@ -716,7 +717,7 @@
               Nb_dossiers: point ? point.nb : null,
             },
           ]);
-          await grist.docApi.applyUserActions(acts);
+          await Donnees.ecrire(acts);
           etat(`Point n°${$("numero").value} enregistré.`);
           $("dernierPoint").value = $("maintenant").value;
           $("numero").value = (Number($("numero").value) || 0) + 1;

@@ -88,7 +88,7 @@
     const cible = S.cibleRef(type);
     if (!cible) return null;
     try {
-      const t = await grist.docApi.fetchTable(cible),
+      const t = await Donnees.lire(cible),
         c = Object.keys(t).find(
           (k) => k !== "id" && k !== "manualSort" && (t[k] || []).some((x) => typeof x === "string"),
         );
@@ -106,7 +106,7 @@
     const c = (r) => rr[r] && rr[r].col;
     const colEtab = c("Etablissement"),
       refTable = colEtab ? S.cibleRef(tMeta.colonnes[colEtab].type) : null;
-    const t = await grist.docApi.fetchTable(e.reponses);
+    const t = await Donnees.lire(e.reponses);
     const v = (col, i) => (col ? (t[col] || [])[i] : null);
     // référentiel : établissements cités, leurs sections et voisins
     let ref = null,
@@ -123,7 +123,7 @@
       ["Nom", "UAI", "Type", "Libelle_nature", "Commune", "Academie", "Latitude", "Longitude"].forEach((k) => {
         if (rf[k] && rf[k].col) rc[k] = rf[k].col;
       });
-      ref = await grist.docApi.fetchTable(refTable);
+      ref = await Donnees.lire(refTable);
       // référentiel ESR : composantes et sites rattachés à leur établissement (colonne Rattachement), niveau
       const cR = Object.values(meta[refTable].colonnes).find(
         (x) => x.type === `Ref:${refTable}` && /rattach|parent/i.test(x.colId),
@@ -444,7 +444,7 @@
           .forEach((l) => acts.push(["UpdateRecord", esp.espace.reponses, l.id, { [C.etab]: vers, ...copies }])),
       );
     }
-    if (acts.length) await grist.docApi.applyUserActions(acts);
+    if (acts.length) await Donnees.ecrire(acts);
     return acts.length;
   }
   /* Suppression d'une saisie erronée : une version d'un dossier (versionId), ou le dossier entier (sans versionId, ou dossier
@@ -470,7 +470,7 @@
       const hist = refs.some((c) => c.colId === "Version");
       let data;
       try {
-        data = await grist.docApi.fetchTable(t);
+        data = await Donnees.lire(t);
       } catch (_) {
         continue;
       }
@@ -484,7 +484,7 @@
       }
     }
     acts.push(["BulkRemoveRecord", rep, [...ids]]);
-    await grist.docApi.applyUserActions(acts);
+    await Donnees.ecrire(acts);
     return { versions: ids.size, liees, entier };
   }
   /* Rattachement d'un dossier à un autre (doublon, même affaire saisie deux fois : blocage le matin, occupation l'après-midi) :
@@ -527,7 +527,7 @@
     let natures = 0;
     const colNat = col("Nature");
     if (colNat && tm.colonnes[colNat] && !tm.colonnes[colNat].isFormula) {
-      const t = await grist.docApi.fetchTable(rep),
+      const t = await Donnees.lire(rep),
         idx = new Map(t.id.map((id, i) => [id, i]));
       const toutes = [...src.lignes, ...cib.lignes].sort((a, b) => (a.cree || 0) - (b.cree || 0) || a.id - b.id);
       toutes.forEach((l, k) => {
@@ -550,7 +550,7 @@
       if (!refs.length) continue;
       let data;
       try {
-        data = await grist.docApi.fetchTable(t);
+        data = await Donnees.lire(t);
       } catch (_) {
         continue;
       }
@@ -567,7 +567,7 @@
       });
       if (n) liees.push(`${n} ligne(s) de « ${t} »`);
     }
-    await grist.docApi.applyUserActions(acts);
+    await Donnees.ecrire(acts);
     return { versions: src.lignes.length, liees, natures };
   }
   window.QualiteMoteur = {

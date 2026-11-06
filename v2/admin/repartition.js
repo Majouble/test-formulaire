@@ -35,7 +35,7 @@
   // { table, cols: {colId: {label, ref}}, roles: {role: colId}, valeurs: {colId: [{v, n}]} } ou { absent } / { erreur }
   // Valeurs des critères du référentiel : calcul coûteux sur un gros référentiel, gardé 5 min tant que la table n'est pas modifiée
   const memoRef = new Map();
-  S().surEcriture((cibles) => {
+  Donnees.surEcriture((cibles) => {
     for (const k of [...memoRef.keys()])
       if (!cibles.size || cibles.has(k.split("|")[0]) || [...cibles].some((c) => c.startsWith("_grist")))
         memoRef.delete(k);
@@ -72,7 +72,7 @@
         (config && config.valeurs.roles && config.valeurs.roles.referentiel) || {},
         {},
       );
-      const t = await grist.docApi.fetchTable(table),
+      const t = await Donnees.lire(table),
         valeurs = {},
         cols = {};
       for (const c of Object.values(tMeta.colonnes)) {
@@ -82,7 +82,7 @@
         if (cible) {
           // référence : on répartit sur le libellé affiché de la ligne visée
           try {
-            const tc = await grist.docApi.fetchTable(cible),
+            const tc = await Donnees.lire(cible),
               cTexte = Object.keys(tc).find(
                 (k) => k !== "id" && k !== "manualSort" && (tc[k] || []).some((x) => typeof x === "string"),
               );
@@ -196,7 +196,7 @@
     const table = general.agents || "Agents";
     let t;
     try {
-      t = await grist.docApi.fetchTable(table);
+      t = await Donnees.lire(table);
     } catch (_) {
       return null;
     }
@@ -242,9 +242,9 @@
   async function lirePages() {
     try {
       const [s, v, t] = await Promise.all([
-        grist.docApi.fetchTable("_grist_Views_section"),
-        grist.docApi.fetchTable("_grist_Views"),
-        grist.docApi.fetchTable("_grist_Tables"),
+        Donnees.lire("_grist_Views_section"),
+        Donnees.lire("_grist_Views"),
+        Donnees.lire("_grist_Tables"),
       ]);
       return s.id
         .map((id, i) => {
@@ -291,7 +291,7 @@
   async function lireFormulairesPublies(general) {
     let t;
     try {
-      t = await grist.docApi.fetchTable(general.formulaires);
+      t = await Donnees.lire(general.formulaires);
     } catch (_) {
       return [];
     }
@@ -410,10 +410,7 @@
   // Pages des établissements : vues personnalisées dont l'option « etablissements » nomme le référentiel
   async function lirePagesEtab() {
     try {
-      const [s, v] = await Promise.all([
-        grist.docApi.fetchTable("_grist_Views_section"),
-        grist.docApi.fetchTable("_grist_Views"),
-      ]);
+      const [s, v] = await Promise.all([Donnees.lire("_grist_Views_section"), Donnees.lire("_grist_Views")]);
       return s.id
         .map((id, i) => {
           if (s.parentKey[i] !== "custom" || !s.parentId[i]) return null;

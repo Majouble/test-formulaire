@@ -7,6 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
     <script src="../commun/outils.js"></script>
+    <script src="../commun/donnees.js"></script>
     <script src="../commun/theme.js"></script>
     <script src="../commun/marque.js"></script>
     <script src="../commun/socle.js"></script>
@@ -626,8 +627,8 @@
       async function chargerMeta() {
         meta = {};
         try {
-          const t = await grist.docApi.fetchTable("_grist_Tables");
-          const c = await grist.docApi.fetchTable("_grist_Tables_column");
+          const t = await Donnees.lire("_grist_Tables");
+          const c = await Donnees.lire("_grist_Tables_column");
           const tableParRef = {};
           t.id.forEach((id, i) => {
             tableParRef[id] = t.tableId[i];
@@ -726,7 +727,7 @@
         const tableId = config.tableId;
         lignes = [];
         if (!tableId) return;
-        const d = await grist.docApi.fetchTable(tableId);
+        const d = await Donnees.lire(tableId);
         const cols = Object.keys(d).filter((k) => k !== "manualSort" && !k.startsWith("gristHelper_"));
         if (!meta[tableId] || !Object.keys(meta[tableId]).length) {
           meta[tableId] = Object.fromEntries(
@@ -747,7 +748,7 @@
         for (const [refTable, visCols] of Object.entries(aResoudre)) {
           if (refCache[refTable]) continue;
           try {
-            const r = await grist.docApi.fetchTable(refTable);
+            const r = await Donnees.lire(refTable);
             const vis = [...visCols][0];
             refCache[refTable] = {};
             r.id.forEach((id, i) => (refCache[refTable][id] = r[vis] ? r[vis][i] : id));

@@ -248,10 +248,7 @@
   let pagesPS = [];
   async function lirePagesPS() {
     try {
-      const [sec, vues] = await Promise.all([
-        grist.docApi.fetchTable("_grist_Views_section"),
-        grist.docApi.fetchTable("_grist_Views"),
-      ]);
+      const [sec, vues] = await Promise.all([Donnees.lire("_grist_Views_section"), Donnees.lire("_grist_Views")]);
       pagesPS = sec.id
         .map((id, i) => {
           if (sec.parentKey[i] !== "custom") return null;
@@ -281,13 +278,13 @@
       ),
     };
     const table = o.table || "Reponses";
-    const T = await grist.docApi.fetchTable("_grist_Tables"),
+    const T = await Donnees.lire("_grist_Tables"),
       ref = T.id[T.tableId.indexOf(table)];
     if (ref == null) throw new Error(`table ${table} introuvable`);
-    const res = await grist.docApi.applyUserActions([["CreateViewSection", ref, 0, "custom", null, null]]);
+    const res = await Donnees.ecrire([["CreateViewSection", ref, 0, "custom", null, null]]);
     const rv = (res && res.retValues && res.retValues[0]) || {};
     if (!rv.sectionRef) throw new Error("Grist n'a pas indiqué la vue créée");
-    const sec = await grist.docApi.fetchTable("_grist_Views_section"),
+    const sec = await Donnees.lire("_grist_Views_section"),
       i = sec.id.indexOf(rv.sectionRef);
     let op = {};
     try {
@@ -304,7 +301,7 @@
     if (!/^https?:/.test(url)) url = "https://majouble.github.io/test-formulaire/v2/point-situation/";
     op.customView = JSON.stringify({ mode: "url", url, access: "full", widgetOptions: {} });
     const nom = pagesPS.length ? `Point de situation (${pagesPS.length + 1})` : "Point de situation";
-    await grist.docApi.applyUserActions([
+    await Donnees.ecrire([
       ["UpdateRecord", "_grist_Views_section", rv.sectionRef, { options: JSON.stringify(op), title: "" }],
       ...(rv.viewRef ? [["UpdateRecord", "_grist_Views", rv.viewRef, { name: nom }]] : []),
     ]);
@@ -383,7 +380,7 @@
       return;
     const lire = async (n) => {
       try {
-        const t = await grist.docApi.fetchTable(n);
+        const t = await Donnees.lire(n);
         return t.id.map((id, i) =>
           Object.fromEntries(
             Object.keys(t)
@@ -412,7 +409,7 @@
     if (s) brouillon.sections = garder(ordre(s), ["Titre", "Condition", "Actif"]);
     if (t) brouillon.tri = garder(ordre(t), ["Champ", "Sens", "Valeurs", "Actif"]);
     try {
-      const p = await grist.docApi.fetchTable("Parametres"),
+      const p = await Donnees.lire("Parametres"),
         v = (p.Reglages_point_situation || []).find((x) => x && String(x).trim());
       if (v) brouillon.options = Object.fromEntries(Object.entries(JSON.parse(v)).filter(([k]) => k !== "tri"));
     } catch (_) {
@@ -441,7 +438,7 @@
             }),
           },
         ]);
-      if (acts.length) await grist.docApi.applyUserActions(acts);
+      if (acts.length) await Donnees.ecrire(acts);
       statut(
         "Emplacement prêt : dans Grist, « Données brutes › Config », ligne « modele_point_situation », déposez le modèle .docx dans la cellule Fichier.",
         "ok",
@@ -1028,7 +1025,7 @@
         calculerApercu();
       });
       $("ps-ap-actualiser").addEventListener("click", async () => {
-        window.Socle.viderCacheLecture();
+        Donnees.viderCache();
         await chargerDonnees();
         dessinerEditeur();
         calculerApercu();

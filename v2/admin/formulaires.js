@@ -182,10 +182,7 @@
 
   /* ---------- lecture de Grist ---------- */
   async function lireMeta() {
-    metaTables = await Promise.all([
-      grist.docApi.fetchTable("_grist_Tables"),
-      grist.docApi.fetchTable("_grist_Tables_column"),
-    ]);
+    metaTables = await Promise.all([Donnees.lire("_grist_Tables"), Donnees.lire("_grist_Tables_column")]);
     const [t] = metaTables;
     tables = t.tableId.filter((x) => x && !TABLES_EXCLUES.test(x) && !x.startsWith("_grist"));
   }
@@ -227,7 +224,7 @@
   }
   async function lireFormulaires() {
     try {
-      const t = await grist.docApi.fetchTable(TABLE_FORMULAIRES);
+      const t = await Donnees.lire(TABLE_FORMULAIRES);
       formulaires = t.id.map((id, i) => ({
         id,
         nom: t.Nom ? String(t.Nom[i] ?? "") : `Formulaire ${id}`,
@@ -245,11 +242,11 @@
     }
   }
   async function creerTableFormulaires() {
-    await grist.docApi.applyUserActions([
+    await Donnees.ecrire([
       ["AddTable", TABLE_FORMULAIRES, COLS_FORMULAIRES.map((c) => ({ id: c.id, type: c.type, isFormula: false }))],
     ]);
   }
-  const actions = (a) => grist.docApi.applyUserActions(a);
+  const actions = (a) => Donnees.ecrire(a);
 
   /* ---------- reprise des repères écrits dans les descriptions (formulaires existants) ---------- */
   const sansGuillemets = (v) =>
@@ -600,7 +597,7 @@
   async function lireRemplissage(tid) {
     if (!tid || remplissage.has(tid)) return;
     try {
-      const t = await grist.docApi.fetchTable(tid);
+      const t = await Donnees.lire(tid);
       remplissage.set(tid, new Set(Object.keys(t).filter((c) => c !== "id" && (t[c] || []).some(celluleRemplie))));
     } catch (_) {
       remplissage.set(tid, new Set());
@@ -1541,10 +1538,7 @@
   }
   // Nouvelle table de même structure que la sous-table d'une question tableau (colonnes, libellés, choix, réglages) ; renvoie son nom
   async function copierSousTable(src) {
-    const [T, C] = await Promise.all([
-      grist.docApi.fetchTable("_grist_Tables"),
-      grist.docApi.fetchTable("_grist_Tables_column"),
-    ]);
+    const [T, C] = await Promise.all([Donnees.lire("_grist_Tables"), Donnees.lire("_grist_Tables_column")]);
     const ref = T.id[T.tableId.indexOf(src)];
     if (!ref) throw new Error(`table ${src} introuvable`);
     const idx = C.id
@@ -1826,10 +1820,7 @@
       return;
     try {
       const envoi = await creerColonne(courant.table, `${c.libelle} (envoi)`, "Text", null);
-      const [t, att] = await Promise.all([
-        grist.docApi.fetchTable(courant.table),
-        grist.docApi.fetchTable("_grist_Attachments"),
-      ]);
+      const [t, att] = await Promise.all([Donnees.lire(courant.table), Donnees.lire("_grist_Attachments")]);
       const ident = new Map(att.id.map((id, i) => [id, String((att.fileIdent || [])[i] || "").replace(/\..*$/, "")]));
       const ids = [],
         vals = [];
@@ -2822,7 +2813,7 @@
     const el = $("pa-nb-rep");
     if (!el) return;
     try {
-      const t = await grist.docApi.fetchTable(courant.table);
+      const t = await Donnees.lire(courant.table);
       const n = (t[b.colonne] || []).filter((v) => lisible(v) && !estVideValeur(v)).length;
       if (!$("pa-nb-rep")) return;
       el.textContent = `${n} réponse${n > 1 ? "s" : ""} enregistrée${n > 1 ? "s" : ""}`;
@@ -3366,7 +3357,7 @@
   async function supprimerColonne(b) {
     const c = meta[b.colonne];
     if (!c) return;
-    const t = await grist.docApi.fetchTable(courant.table);
+    const t = await Donnees.lire(courant.table);
     if (!c.formule && (t[c.colId] || []).some((v) => !estVideValeur(v))) {
       message("La colonne contient des réponses : elle ne peut pas être supprimée d'ici.", "err");
       return;
@@ -4131,7 +4122,7 @@
     etabsTest = [];
     if (!te) return;
     try {
-      const t = await grist.docApi.fetchTable(te),
+      const t = await Donnees.lire(te),
         cols = Object.keys(t).filter((c) => c !== "manualSort");
       etabsTest = t.id.map((id, i) => {
         const r = {};
@@ -4297,7 +4288,7 @@
       return;
     }
     try {
-      const t = await grist.docApi.fetchTable("Parametres");
+      const t = await Donnees.lire("Parametres");
       const v = t.Resume_auto && t.Resume_auto[0];
       reglagesCommuns = v ? JSON.parse(v) : {};
     } catch (_) {
@@ -5551,8 +5542,8 @@
     return { erreur, colDossier, ligne, ordre, html };
   }
   async function reprendreLignesExistantes(tid, colJson, colDos) {
-    const t = await grist.docApi.fetchTable(tid),
-      rep = await grist.docApi.fetchTable(courant.table);
+    const t = await Donnees.lire(tid),
+      rep = await Donnees.lire(courant.table);
     if (!t[colDos]) return { lignes: 0, dossiers: 0 };
     const champs = sousColonnes(tid).filter((c) => c.colId !== colDos && !c.r.confidentiel); // confidentiels : restent dans la table seulement
     const num = (v) => (typeof v === "number" ? v : Array.isArray(v) && v[0] === "R" ? v[2] : 0);
@@ -5654,7 +5645,7 @@
         action: "rien",
         texte: `Référentiel actuel de la table ${tid}${col !== "Etablissement" ? ` (colonne ${col})` : ""}.`,
       };
-    const rep = await grist.docApi.fetchTable(tid);
+    const rep = await Donnees.lire(tid);
     const lignes = rep.id.map((id, i) => ({ id, e: rep[col][i] })).filter((x) => x.e);
     if (!lignes.length)
       return {
@@ -5678,7 +5669,7 @@
         erreur: `Colonne UAI introuvable dans ${!uA ? actuelle : cible} : impossible de retrouver les établissements des ${lignes.length} signalement(s) déjà saisis.`,
         texte: "",
       };
-    const [ta, tc] = await Promise.all([grist.docApi.fetchTable(actuelle), grist.docApi.fetchTable(cible)]);
+    const [ta, tc] = await Promise.all([Donnees.lire(actuelle), Donnees.lire(cible)]);
     const cle = (v) =>
       String(v ?? "")
         .trim()

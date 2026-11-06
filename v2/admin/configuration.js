@@ -64,7 +64,7 @@
   }
   async function lireFormulaires(general) {
     try {
-      const t = await grist.docApi.fetchTable(general.formulaires);
+      const t = await Donnees.lire(general.formulaires);
       return (t.id || []).map((id, i) =>
         Object.fromEntries([["id", id], ...CHAMPS_FORM.map((c) => [c, t[c] ? (t[c][i] ?? null) : null])]),
       );
@@ -74,7 +74,7 @@
   }
   async function lireEquipe(general) {
     try {
-      const t = await grist.docApi.fetchTable(general.agents);
+      const t = await Donnees.lire(general.agents);
       return (t.id || []).map((_, i) =>
         Object.fromEntries(CHAMPS_AGENT.filter((c) => t[c]).map((c) => [c, t[c][i] ?? null])),
       );
@@ -334,7 +334,7 @@
     for (const t of tables.filter((x) => x.creer)) {
       const simples = t.cols.filter((c) => !estRef(c) && !c.isFormula);
       await essayer(`table ${t.table} créée`, () =>
-        grist.docApi.applyUserActions([
+        Donnees.ecrire([
           [
             "AddTable",
             t.table,
@@ -348,9 +348,7 @@
       // colonnes simples d'abord, formules ensuite (elles peuvent lire les premières)
       const ordre = [...reste.filter((c) => !c.isFormula), ...reste.filter((c) => c.isFormula)];
       for (const c of ordre)
-        await essayer(`${t.table}.${c.colId}`, () =>
-          grist.docApi.applyUserActions([["AddColumn", t.table, c.colId, infoCol(c)]]),
-        );
+        await essayer(`${t.table}.${c.colId}`, () => Donnees.ecrire([["AddColumn", t.table, c.colId, infoCol(c)]]));
     }
     // colonne affichée des références (ex. le nom de l'établissement plutôt que son numéro de ligne)
     try {
@@ -360,10 +358,7 @@
           .map((c) => ({ t: t.table, c })),
       );
       if (refs.length) {
-        const [T, C] = await Promise.all([
-          grist.docApi.fetchTable("_grist_Tables"),
-          grist.docApi.fetchTable("_grist_Tables_column"),
-        ]);
+        const [T, C] = await Promise.all([Donnees.lire("_grist_Tables"), Donnees.lire("_grist_Tables_column")]);
         const idCol = (tid, col) => {
           const r = T.id[T.tableId.indexOf(tid)];
           const i = C.id.findIndex((_, k) => C.parentId[k] === r && C.colId[k] === col);
@@ -375,7 +370,7 @@
             vis = idCol(cible, c.visibleCol);
           if (ref && vis)
             await essayer(`affichage de ${t}.${c.colId}`, () =>
-              grist.docApi.applyUserActions([
+              Donnees.ecrire([
                 ["SetDisplayFormula", t, null, ref, `$${c.colId}.${c.visibleCol}`],
                 ["ModifyColumn", t, c.colId, { visibleCol: vis }],
               ]),
@@ -399,7 +394,7 @@
       champs.Modifie_le = Date.now() / 1000;
       if (champs.Publie) champs.Publie_le = Date.now() / 1000;
       await essayer(`formulaire « ${x.valeur.Nom} »`, () =>
-        grist.docApi.applyUserActions([x.id ? ["UpdateRecord", tF, x.id, champs] : ["AddRecord", tF, null, champs]]),
+        Donnees.ecrire([x.id ? ["UpdateRecord", tF, x.id, champs] : ["AddRecord", tF, null, champs]]),
       );
     }
     // 4. équipe
@@ -407,7 +402,7 @@
       const nouveaux = a.equipe.filter((x) => x.nouveau).map((x) => x.valeur);
       if (nouveaux.length)
         await essayer(`${nouveaux.length} agent(s)`, () =>
-          grist.docApi.applyUserActions(
+          Donnees.ecrire(
             nouveaux.map((v) => ["AddRecord", a.general.agents, null, { ...v, Actif: v.Actif !== false }]),
           ),
         );

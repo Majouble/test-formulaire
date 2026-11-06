@@ -39,10 +39,7 @@
     return { o, cv };
   };
   async function lirePages() {
-    const [sec, vues] = await Promise.all([
-      grist.docApi.fetchTable("_grist_Views_section"),
-      grist.docApi.fetchTable("_grist_Views"),
-    ]);
+    const [sec, vues] = await Promise.all([Donnees.lire("_grist_Views_section"), Donnees.lire("_grist_Views")]);
     const lire = (re) =>
       sec.id
         .map((id, i) => {
@@ -102,13 +99,13 @@
     const base = type === "tdb" ? td.nom || m.nom : m.nom;
     const nom = existantes.length ? `${base} (${existantes.length + 1})` : base;
     try {
-      const T = await grist.docApi.fetchTable("_grist_Tables"),
+      const T = await Donnees.lire("_grist_Tables"),
         ref = T.id[T.tableId.indexOf(table)];
       if (ref == null) throw new Error(`table ${table} introuvable`);
-      const res = await grist.docApi.applyUserActions([["CreateViewSection", ref, 0, "custom", null, null]]);
+      const res = await Donnees.ecrire([["CreateViewSection", ref, 0, "custom", null, null]]);
       const rv = (res && res.retValues && res.retValues[0]) || {};
       if (!rv.sectionRef) throw new Error("Grist n'a pas indiqué la vue créée");
-      const sec = await grist.docApi.fetchTable("_grist_Views_section"),
+      const sec = await Donnees.lire("_grist_Views_section"),
         i = sec.id.indexOf(rv.sectionRef);
       const { o, cv } = optionsVue(i >= 0 ? sec.options[i] : "");
       let url;
@@ -127,7 +124,7 @@
       });
       const acts = [["UpdateRecord", "_grist_Views_section", rv.sectionRef, { options: JSON.stringify(o), title: "" }]];
       if (rv.viewRef) acts.push(["UpdateRecord", "_grist_Views", rv.viewRef, { name: nom }]);
-      await grist.docApi.applyUserActions(acts);
+      await Donnees.ecrire(acts);
       await lirePages();
       dessinerPages();
       statut(
@@ -218,7 +215,7 @@
   }
   // lignes de la table du tableau de bord, au format attendu par le module (une ligne = un objet)
   async function lignes() {
-    const t = await grist.docApi.fetchTable(table),
+    const t = await Donnees.lire(table),
       cols = Object.keys(t).filter((k) => k !== "id");
     return t.id.map((id, i) => {
       const r = { id };
@@ -233,7 +230,7 @@
     const meta = await S.lireMeta(),
       out = new Set(S.espaces(general).map((e) => e.reponses));
     try {
-      const t = await grist.docApi.fetchTable(general.formulaires);
+      const t = await Donnees.lire(general.formulaires);
       (t.Table || []).forEach((x) => {
         if (x && meta[x]) out.add(x);
       });
@@ -305,7 +302,7 @@
     });
     $("tdb-recharger").addEventListener("click", () => {
       fermerMenu();
-      window.Socle.viderCacheLecture();
+      Donnees.viderCache();
       if (recharger) recharger();
     });
     $("tdb-choix").addEventListener("change", (e) => monterTableau(e.target.value));

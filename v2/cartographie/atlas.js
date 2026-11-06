@@ -511,7 +511,7 @@ async function chargerSousTables() {
         });
       let data = null;
       try {
-        data = await grist.docApi.fetchTable(table);
+        data = await Donnees.lire(table);
       } catch (_) {
         data = null;
       }
@@ -548,7 +548,7 @@ async function chargerSousTables() {
       const siteRef = siteCol ? { col: siteCol.col, table: siteCol.type.slice(4) } : null;
       if (siteRef && !refSitesAtlas.has(siteRef.table)) {
         try {
-          const t2 = await grist.docApi.fetchTable(siteRef.table),
+          const t2 = await Donnees.lire(siteRef.table),
             k = coordsDe(siteRef.table),
             v = (c, j) => (c && t2[c] ? t2[c][j] : null);
           refSitesAtlas.set(siteRef.table, {
@@ -2815,7 +2815,7 @@ const AtlasUI = (() => {
         ];
         const idModele = config.ids[PREFIXE_MODELE + nom];
         if (idModele) acts.push(["RemoveRecord", window.Socle.TABLE_CONFIG || "Config", idModele]);
-        await grist.docApi.applyUserActions(acts);
+        await Donnees.ecrire(acts);
         config = await window.Socle.lireConfig();
       }
       statut(`Profil « ${nom} » supprimé.`, "ok");
@@ -2843,7 +2843,7 @@ const AtlasUI = (() => {
     const ligne = idModeleDoc();
     if (!ligne) return null;
     if (modeleCache[etat.actif]) return modeleCache[etat.actif];
-    const t = await grist.docApi.fetchTable(window.Socle.TABLE_CONFIG || "Config");
+    const t = await Donnees.lire(window.Socle.TABLE_CONFIG || "Config");
     const i = t.id.indexOf(ligne),
       pj = i >= 0 && t.Fichier ? t.Fichier[i] : null;
     const ids = Array.isArray(pj) ? pj.filter((x) => typeof x === "number") : [];
@@ -2903,7 +2903,7 @@ const AtlasUI = (() => {
           ? ["UpdateRecord", T, id, { Valeur: valeur, Fichier: ["L", idPj] }]
           : ["AddRecord", T, null, { Cle: cle, Valeur: valeur, Fichier: ["L", idPj] }],
       );
-      await grist.docApi.applyUserActions(acts);
+      await Donnees.ecrire(acts);
       config = await S.lireConfig();
       delete modeleCache[etat.actif];
       modeleLocal = null;
@@ -2932,7 +2932,7 @@ const AtlasUI = (() => {
     const id = idModeleDoc();
     if (!id) return;
     try {
-      await grist.docApi.applyUserActions([["RemoveRecord", window.Socle.TABLE_CONFIG || "Config", id]]);
+      await Donnees.ecrire([["RemoveRecord", window.Socle.TABLE_CONFIG || "Config", id]]);
       config = await window.Socle.lireConfig();
       delete modeleCache[etat.actif];
       dessiner();

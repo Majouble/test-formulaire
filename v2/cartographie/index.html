@@ -8,6 +8,7 @@
      cette adresse par https://VOTRE-GRIST/grist-plugin-api.js -->
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
     <script src="../commun/outils.js"></script>
+    <script src="../commun/donnees.js"></script>
     <script src="../commun/theme.js"></script>
     <script src="../commun/marque.js"></script>
     <!-- Socle v2 : rôles des colonnes (établissement, coordonnées du référentiel, dernière version, qualification) -->
@@ -1858,8 +1859,8 @@
 
       async function loadMeta(force) {
         if (metaT && !force) return;
-        metaT = await grist.docApi.fetchTable("_grist_Tables");
-        metaC = await grist.docApi.fetchTable("_grist_Tables_column");
+        metaT = await Donnees.lire("_grist_Tables");
+        metaC = await Donnees.lire("_grist_Tables_column");
       }
       function typesOfTable(tableId) {
         const types = {};
@@ -1890,7 +1891,7 @@
         const p = (async () => {
           try {
             await loadMeta();
-            const data = await grist.docApi.fetchTable(tableId);
+            const data = await Donnees.lire(tableId);
             const cols = Object.keys(data).filter(
               (c) => c !== "id" && c !== "manualSort" && !c.startsWith("gristHelper_"),
             );
@@ -2313,7 +2314,7 @@
           );
           const c = (role) => rf[role] && rf[role].col;
           if (!c("Latitude") || !c("Longitude")) return records;
-          const data = await grist.docApi.fetchTable(refTable);
+          const data = await Donnees.lire(refTable);
           const idx = new Map((data.id || []).map((id, i) => [id, i]));
           // colonnes déjà recopiées par formule dans la table ($Etablissement.UAI…) : reprises telles quelles, sans doublon
           const deja = new Map();
@@ -2637,7 +2638,7 @@
                 const tbl = grist.selectedTable || (grist.getTable && grist.getTable());
                 const tableId = tbl && tbl.getTableId ? await tbl.getTableId() : null;
                 if (tableId && grist.docApi && grist.docApi.fetchTable) {
-                  const data = await grist.docApi.fetchTable(tableId);
+                  const data = await Donnees.lire(tableId);
                   const idx = new Map((data.id || []).map((id, i) => [id, i]));
                   const colIds = Object.keys(data).filter(
                     (c) => c !== "id" && c !== "manualSort" && !c.startsWith("gristHelper_"),

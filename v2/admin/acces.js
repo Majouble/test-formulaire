@@ -53,10 +53,7 @@
   // null si les règles ne sont pas lisibles (non propriétaire)
   async function lireAcl() {
     try {
-      const [res, regles] = await Promise.all([
-        grist.docApi.fetchTable("_grist_ACLResources"),
-        grist.docApi.fetchTable("_grist_ACLRules"),
-      ]);
+      const [res, regles] = await Promise.all([Donnees.lire("_grist_ACLResources"), Donnees.lire("_grist_ACLRules")]);
       const ressources = new Map(
         (res.id || []).map((id, i) => [id, { id, tableId: res.tableId[i], colIds: res.colIds[i] }]),
       );
@@ -874,9 +871,7 @@
   async function lirePagesDoc() {
     try {
       const [p, v, s, t] = await Promise.all(
-        ["_grist_Pages", "_grist_Views", "_grist_Views_section", "_grist_Tables"].map((x) =>
-          grist.docApi.fetchTable(x),
-        ),
+        ["_grist_Pages", "_grist_Views", "_grist_Views_section", "_grist_Tables"].map((x) => Donnees.lire(x)),
       );
       const tref = (n) => t.id[t.tableId.indexOf(n)];
       const optionsDe = (i) => {
@@ -951,18 +946,14 @@
     st("Rangement…");
     try {
       if (!meta[S.TABLE_CELLULE]) {
-        await grist.docApi.applyUserActions([
-          ["AddTable", S.TABLE_CELLULE, [{ id: "Note", type: "Text", isFormula: false }]],
-        ]);
+        await Donnees.ecrire([["AddTable", S.TABLE_CELLULE, [{ id: "Note", type: "Text", isFormula: false }]]]);
         meta = await S.lireMeta();
       }
       if (!pagesDoc.some((x) => x.cellule)) {
-        const res = await grist.docApi.applyUserActions([
-          ["CreateViewSection", meta[S.TABLE_CELLULE].ref, 0, "record", null, null],
-        ]);
+        const res = await Donnees.ecrire([["CreateViewSection", meta[S.TABLE_CELLULE].ref, 0, "record", null, null]]);
         const rv = (res && res.retValues && res.retValues[0]) || {};
         if (rv.viewRef)
-          await grist.docApi.applyUserActions([
+          await Donnees.ecrire([
             ["UpdateRecord", "_grist_Views", rv.viewRef, { name: "Cellule" }],
             ...(rv.sectionRef
               ? [["UpdateRecord", "_grist_Views_section", rv.sectionRef, { title: "Pages réservées à la cellule" }]]
@@ -980,7 +971,7 @@
         ordre.push({ x, ind });
         prec = ind;
       }
-      await grist.docApi.applyUserActions([
+      await Donnees.ecrire([
         [
           "BulkUpdateRecord",
           "_grist_Pages",
@@ -1103,7 +1094,7 @@
       // 0. sous-tables : colonne d'aide (établissement du signalement parent), lue par les règles
       const aides = propose.filter((p) => p.sousTable && !p.sousTable.acces);
       if (aides.length)
-        await grist.docApi.applyUserActions(
+        await Donnees.ecrire(
           aides.map((p) => [
             "AddColumn",
             p.tableId,
@@ -1115,7 +1106,7 @@
       const trouver = (t, c) => [...acl.ressources.values()].find((x) => x.tableId === t && x.colIds === c);
       const manquantes = propose.filter((p) => !trouver(p.tableId, p.colIds));
       if (manquantes.length)
-        await grist.docApi.applyUserActions(
+        await Donnees.ecrire(
           manquantes.map((p) => ["AddRecord", "_grist_ACLResources", null, { tableId: p.tableId, colIds: p.colIds }]),
         );
       acl = await lireAcl();
@@ -1165,7 +1156,7 @@
       const fantomes = [...acl.ressources.values()]
         .filter((x) => x.tableId === "*SPECIAL" && x.colIds === "SchemaEdit" && !restantes.has(x.id))
         .map((x) => x.id);
-      await grist.docApi.applyUserActions([
+      await Donnees.ecrire([
         ...(ids.length ? [["BulkRemoveRecord", "_grist_ACLRules", ids]] : []),
         ...ajouts,
         ...(fantomes.length ? [["BulkRemoveRecord", "_grist_ACLResources", fantomes]] : []),
@@ -1229,7 +1220,7 @@
   }
   async function executerRetrait(socle) {
     try {
-      await grist.docApi.applyUserActions([["BulkRemoveRecord", "_grist_ACLRules", socle.map((r) => r.id)]]);
+      await Donnees.ecrire([["BulkRemoveRecord", "_grist_ACLRules", socle.map((r) => r.id)]]);
       await charger();
       dessiner();
       dire("Règles du socle retirées.");
