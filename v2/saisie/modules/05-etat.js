@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 05/31 : État du widget et périmètre de la page (agent, académies, départements).
+/* PRISME — widget de saisie, module 05/34 : État du widget et périmètre de la page (agent, académies, départements).
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* =========================================================
@@ -124,7 +124,7 @@ const etatSaisie = {
   // ---------- module 09 : Données du dossier et qualification initiale
   demandeAffichage: 0,
 
-  // ---------- module 13 : Établissement : identification, mail et lien d'accès
+  // ---------- module 14 : Établissement : identification, mail et lien d'accès
   ligneAnnuaire: null, // sans objet dans la version ESR (pas de recherche dans les annuaires en ligne)
   sectionGardee: null,
   sectionCalculee: { id: null, r: null },
@@ -133,13 +133,13 @@ const etatSaisie = {
   deux fois ; la composante est rappelée, reprise dans la question « site » et ses sites sont proposés en premier. */
   composanteChoisie: null,
 
-  // ---------- module 14 : Onglets, affichage du dossier, en-tête
+  // ---------- module 15 : Onglets, affichage du dossier, en-tête
   dateFaitsTouchee: false, // la date a-t-elle été changée à la main depuis l'ouverture du formulaire ?
 
-  // ---------- module 15 : Description automatique, résumé des modifications, jour de mobilisation, doublons
+  // ---------- module 16 : Description automatique, résumé des modifications, jour de mobilisation, doublons
   ligneParametres: null,
   colsParametres: [],
-  optionsAuto: null, // posée par le module 15
+  optionsAuto: null, // posée par le module 16
   /* ---------- Description rédigée à partir des réponses ---------- */
   // Tant que l'utilisateur n'a pas modifié la description à la main, elle suit les réponses.
   // Dès qu'il la modifie, elle n'est plus réécrite ; le bouton « Régénérer » la recalcule à la demande.
@@ -150,10 +150,10 @@ const etatSaisie = {
   un second. La création reste possible après confirmation explicite. */
   doublonConfirme: null, // clé « établissement|jour » confirmée par l'utilisateur
 
-  // ---------- module 16 : Réglages du formulaire (table Parametres) : bornes des nombres, options, panneau ⚙
+  // ---------- module 17 : Réglages du formulaire (table Parametres) : bornes des nombres, options, panneau ⚙
   optionsParametres: null,
 
-  // ---------- module 17 : Menu et recherche des signalements
+  // ---------- module 18 : Menu et recherche des signalements
   // Menu des signalements, dessiné par le widget. Il rend la sélection possible sans « Sélectionner par » :
   // un widget lié est recouvert par Grist dès qu'aucune ligne n'est sélectionnée, ce qui empêcherait
   // toute création quand la vue est vide ou filtrée.
@@ -163,10 +163,10 @@ const etatSaisie = {
   de la version initiale comme de la dernière version. Tous les mots tapés doivent être présents (sans accents). */
   indexRecherche: null,
 
-  // ---------- module 20 : Couleur du formulaire selon une réponse
+  // ---------- module 23 : Couleur du formulaire selon une réponse
   reglesCouleur: [],
 
-  // ---------- module 21 : Filtre des signalements et navigation d'une fiche à l'autre
+  // ---------- module 24 : Filtre des signalements et navigation d'une fiche à l'autre
   // Plusieurs filtres, combinés par ET ; dans un même filtre, plusieurs valeurs combinées par OU.
   // Chaque filtre : { colonne, valeurs: [clés], libelles: { clé: texte }, contient: "" }
   filtres: [],
@@ -176,7 +176,7 @@ const etatSaisie = {
   filtreOuvert: null,
   minuterieContient: null,
 
-  // ---------- module 23 : Formulaire par site (enseignement supérieur)
+  // ---------- module 26 : Formulaire par site (enseignement supérieur)
   /* « Une ligne par site connu » : nouveau dossier d'un établissement déjà signalé, le tableau des sites se remplit seul
   du dernier état connu de chaque site (sites revenus à la normale compris, sauf réglage contraire). Reprise
   réglable (reglages.tableau.sites.reprise) : "auto", "bouton" (proposée par un bouton), "non" (désactivée, par défaut :
@@ -185,11 +185,11 @@ const etatSaisie = {
   sitesAutoPour: null,
   qualifTouchee: false,
 
-  // ---------- module 25 : Signalement : création, puis mise à jour par nouvelle version
+  // ---------- module 28 : Signalement : création, puis mise à jour par nouvelle version
   // Le formulaire reflète toujours l'état courant, c'est-à-dire la dernière version enregistrée.
   versionAffichee: null, // copie de la version sur laquelle l'agent travaille
 
-  // ---------- module 27 : Visas départementaux et académiques
+  // ---------- module 30 : Visas départementaux et académiques
   monNiveau: null, // niveau : "departement" | "academie" | "region" | null
   /* Viseur (onglet Validation de l'administration, 2.41) : l'agent de la page porte un échelon (Départemental, Académique)
   et un périmètre de visa (départements, académies ; vide = tous) ; il prime sur l'ancienne table Utilisateurs.
@@ -202,20 +202,20 @@ const etatSaisie = {
   vigilancesPage: null,
   dernierVeille: 0,
 
-  // ---------- module 28 : Recherche d'établissement (autocomplétion)
+  // ---------- module 31 : Recherche d'établissement (autocomplétion)
   resultats: [],
   index: -1,
   minuterie: null,
   requete: 0,
 
-  // ---------- module 30 : Corriger l'établissement d'un signalement
+  // ---------- module 33 : Corriger l'établissement d'un signalement
   reaffectation: false,
   etabPropose: null,
   dossierCorrection: undefined,
   // ---------- Fiche de l'établissement
   champsFiche: [], // [cle (rôle ou colonne), libellé, colonne]
 
-  // ---------- module 31 : Parcours : accueil, vue de saisie, bandeaux, démarrage du widget
+  // ---------- module 34 : Parcours : accueil, vue de saisie, bandeaux, démarrage du widget
   vue: "accueil",
   nbCartes: 30,
   ficheDepliee: false,

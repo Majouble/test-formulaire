@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 24/31 : Nouveau signalement : reprise des réponses d'un jour précédent.
+/* PRISME — widget de saisie, module 27/34 : Nouveau signalement : reprise des réponses d'un jour précédent.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* ---------- nouveau signalement : reprendre les réponses du signalement d'un jour précédent ---------- */

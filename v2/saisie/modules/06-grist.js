@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 06/31 : Liaison avec Grist (colonnes, réception des lignes) et lecture de la configuration.
+/* PRISME — widget de saisie, module 06/34 : Liaison avec Grist (colonnes, réception des lignes) et lecture de la configuration.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* =========================================================
@@ -362,7 +362,7 @@ const defsDe = (cle) =>
         .map(avecRegles)
     : [];
 
-/* Branchement sur Grist : appelé par le dernier module (31-parcours.js), une fois TOUS les modules chargés.
+/* Branchement sur Grist : appelé par le dernier module (34-parcours.js), une fois TOUS les modules chargés.
    Grist peut envoyer les lignes dès ce branchement ; le navigateur traiterait alors cet envoi entre deux fichiers
    si le branchement était fait ici, avant que les modules suivants (visas, parcours…) soient définis. */
 function brancherGrist() {

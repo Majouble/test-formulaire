@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 01/31 : Configuration : référentiel des établissements, identifiants de colonnes, constantes.
+/* PRISME — widget de saisie, module 01/34 : Configuration : référentiel des établissements, identifiants de colonnes, constantes.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* =========================================================

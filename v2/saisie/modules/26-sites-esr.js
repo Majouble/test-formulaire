@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 23/31 : Formulaire par site (enseignement supérieur).
+/* PRISME — widget de saisie, module 26/34 : Formulaire par site (enseignement supérieur).
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* ---------- Formulaire par site (enseignement supérieur) ----------

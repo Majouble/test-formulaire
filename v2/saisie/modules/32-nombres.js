@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 29/31 : Nombres saisis avec séparateur de milliers.
+/* PRISME — widget de saisie, module 32/34 : Nombres saisis avec séparateur de milliers.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* =========================================================

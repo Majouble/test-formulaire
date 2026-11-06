@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 21/31 : Filtre des signalements et navigation d'une fiche à l'autre.
+/* PRISME — widget de saisie, module 24/34 : Filtre des signalements et navigation d'une fiche à l'autre.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* ---------- Filtre des signalements et navigation d'une fiche à l'autre ----------

@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 31/31 : Parcours : accueil, vue de saisie, bandeaux, démarrage du widget.
+/* PRISME — widget de saisie, module 34/34 : Parcours : accueil, vue de saisie, bandeaux, démarrage du widget.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* =========================================================

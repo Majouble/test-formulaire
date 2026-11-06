@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 26/31 : Historique des versions.
+/* PRISME — widget de saisie, module 29/34 : Historique des versions.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* =========================================================

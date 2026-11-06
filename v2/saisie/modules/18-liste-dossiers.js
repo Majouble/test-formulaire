@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 17/31 : Menu et recherche des signalements.
+/* PRISME — widget de saisie, module 18/34 : Menu et recherche des signalements.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 function libelleDossier(l) {

@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 22/31 : Faits sur plusieurs jours, report sur d'autres jours.
+/* PRISME — widget de saisie, module 25/34 : Faits sur plusieurs jours, report sur d'autres jours.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* =========================================================

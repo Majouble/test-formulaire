@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 28/31 : Recherche d'établissement (autocomplétion).
+/* PRISME — widget de saisie, module 31/34 : Recherche d'établissement (autocomplétion).
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* =========================================================

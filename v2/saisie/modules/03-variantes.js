@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 03/31 : Spécificités du formulaire : établissements scolaires ou enseignement supérieur.
+/* PRISME — widget de saisie, module 03/34 : Spécificités du formulaire : établissements scolaires ou enseignement supérieur.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* =========================================================

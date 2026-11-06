@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 16/31 : Réglages du formulaire (table Parametres) : bornes des nombres, options, panneau ⚙.
+/* PRISME — widget de saisie, module 17/34 : Réglages du formulaire (table Parametres) : bornes des nombres, options, panneau ⚙.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* ---------- Réglages : lus et enregistrés dans la table Parametres ---------- */

@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 19/31 : Choix du formulaire de la page.
+/* PRISME — widget de saisie, module 22/34 : Choix du formulaire de la page.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 async function remplirChoixFormulaire() {

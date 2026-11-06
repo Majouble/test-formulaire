@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 15/31 : Description automatique, résumé des modifications, jour de mobilisation, doublons.
+/* PRISME — widget de saisie, module 16/34 : Description automatique, résumé des modifications, jour de mobilisation, doublons.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 // Mise à jour : résumé automatique des réponses modifiées, ajouté au commentaire à l'enregistrement.

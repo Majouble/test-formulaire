@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 12/31 : Cohérence des dossiers.
+/* PRISME — widget de saisie, module 13/34 : Cohérence des dossiers.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* ---------- Cohérence des dossiers ---------- */

@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 08/31 : Référentiel des établissements conservé dans le navigateur.
+/* PRISME — widget de saisie, module 08/34 : Référentiel des établissements conservé dans le navigateur.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* ---------- Référentiel conservé dans le navigateur ----------

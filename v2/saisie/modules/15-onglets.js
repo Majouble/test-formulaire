@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 14/31 : Onglets, affichage du dossier, en-tête.
+/* PRISME — widget de saisie, module 15/34 : Onglets, affichage du dossier, en-tête.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* =========================================================

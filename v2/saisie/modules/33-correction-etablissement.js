@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 30/31 : Corriger l'établissement d'un signalement.
+/* PRISME — widget de saisie, module 33/34 : Corriger l'établissement d'un signalement.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* =========================================================
