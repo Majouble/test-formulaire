@@ -2642,7 +2642,7 @@
           null;
         if (!src) return { meta, sources, src: null, groupes: [] };
         const [t, trep] = await Promise.all([Donnees.lire(src.table), src.viaDossier ? Donnees.lire(src.rep) : null]);
-        const idxRep = trep ? new Map(trep.id.map((id, i) => [id, i])) : null;
+        const idxRep = trep ? Donnees.positions(trep) : null;
         const etabDeLigne = (i) =>
           src.viaDossier
             ? ((k) => (k === undefined ? null : refId(trep[src.etabCol][k])))(idxRep.get(refId(t[src.viaDossier][i])))

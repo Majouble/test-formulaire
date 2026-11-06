@@ -198,7 +198,7 @@
         return;
       }
       const t = await Donnees.lire(table),
-        pos = new Map(t.id.map((id, i) => [id, i])),
+        pos = Donnees.positions(t),
         v = (c, i) => (c && t[c] ? t[c][i] : null),
         nom = (id) => String(v(cNom, pos.get(id)) ?? "");
       const separees = new Map();
@@ -646,7 +646,7 @@
         if (n && !idx.nom.has(n)) idx.nom.set(n, rid);
       });
     });
-    const pos = new Map(existant.id.map((rid, i) => [rid, i])),
+    const pos = Donnees.positions(existant),
       utilises = new Set();
     const lignes = fE.lignes
       .filter((l) => idDe(l["Établissement ID"], "ETAB"))
@@ -841,7 +841,7 @@
         eS = lS("etab").col;
       const idxS = new Map(),
         idxN = new Map(),
-        posS = new Map(exS.id.map((rid, i) => [rid, i]));
+        posS = Donnees.positions(exS);
       exS.id.forEach((rid, i) => {
         const k = kS && exS[kS] ? idDe(exS[kS][i], "SITE") : null;
         if (k && !idxS.has(k)) idxS.set(k, rid);
@@ -1234,7 +1234,7 @@
       a.lignes.forEach((o) => {
         if (o.ex != null) rowDe.set(o.id, o.ex);
       });
-      const pos2 = new Map(t2.id.map((rid, i) => [rid, i]));
+      const pos2 = Donnees.positions(t2);
       // 3. mises à jour, rattachements, lignes absorbées
       const champs = new Map(a.majs.map((m) => [m.id, { ...m.f }]));
       const champsDe = (rid) => {

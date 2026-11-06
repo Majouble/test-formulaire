@@ -195,11 +195,8 @@
   async function lireAgents(general, ref) {
     const table = general.agents || "Agents";
     let t;
-    try {
-      t = await Donnees.lire(table);
-    } catch (_) {
-      return null;
-    }
+    t = await Donnees.lireSiPresente(table);
+    if (!t) return null;
     const col = (k, i) => (t[k] || [])[i];
     return (t.id || [])
       .map((id, i) => ({

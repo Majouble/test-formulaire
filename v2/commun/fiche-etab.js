@@ -103,7 +103,7 @@
       cols,
       t,
       nomCol,
-      pos: new Map(t.id.map((id, i) => [id, i])),
+      pos: Donnees.positions(t),
       principales: opts.ordre === "table" ? cols.length : cols.filter((c) => rang(c) < 999).length,
       refs,
       opts,

@@ -528,7 +528,7 @@
     const colNat = col("Nature");
     if (colNat && tm.colonnes[colNat] && !tm.colonnes[colNat].isFormula) {
       const t = await Donnees.lire(rep),
-        idx = new Map(t.id.map((id, i) => [id, i]));
+        idx = Donnees.positions(t);
       const toutes = [...src.lignes, ...cib.lignes].sort((a, b) => (a.cree || 0) - (b.cree || 0) || a.id - b.id);
       toutes.forEach((l, k) => {
         const v = texte((t[colNat] || [])[idx.get(l.id)]),

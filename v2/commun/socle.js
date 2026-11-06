@@ -991,12 +991,8 @@ return sorted(champs)`;
     };
   }
   async function lireVigilances(g) {
-    let t;
-    try {
-      t = await Donnees.lire((g && g.vigilances) || DEFAUTS_GENERAL.vigilances);
-    } catch (_) {
-      return null;
-    }
+    const t = await Donnees.lireSiPresente((g && g.vigilances) || DEFAUTS_GENERAL.vigilances);
+    if (!t) return null;
     const v = (k, i) => (t[k] || [])[i];
     return (t.id || []).map((id, i) => ({
       id,
@@ -1093,11 +1089,8 @@ return sorted(champs)`;
   // Émargements lus en une fois : [{ id, agent, creneau, debut, fin, auteur, note }] ; null si la table n'existe pas
   async function lireEmargements(g) {
     let t;
-    try {
-      t = await Donnees.lire(g.emargements || "Emargements");
-    } catch (_) {
-      return null;
-    }
+    t = await Donnees.lireSiPresente(g.emargements || "Emargements");
+    if (!t) return null;
     const v = (k, i) => (t[k] || [])[i];
     return (t.id || [])
       .map((id, i) => ({
@@ -1160,11 +1153,8 @@ return sorted(champs)`;
   }
   async function lireActions(g) {
     let t;
-    try {
-      t = await Donnees.lire(g.actions || "Actions");
-    } catch (_) {
-      return null;
-    }
+    t = await Donnees.lireSiPresente(g.actions || "Actions");
+    if (!t) return null;
     const v = (k, i) => (t[k] || [])[i];
     return (t.id || []).map((id, i) => ({
       id,
@@ -1268,11 +1258,8 @@ return sorted(champs)`;
   async function lireConfig(meta) {
     if (meta && !meta[TABLE_CONFIG]) return null;
     let t;
-    try {
-      t = await Donnees.lire(TABLE_CONFIG);
-    } catch (_) {
-      return null;
-    }
+    t = await Donnees.lireSiPresente(TABLE_CONFIG);
+    if (!t) return null;
     const res = { valeurs: {}, ids: {}, erreurs: [] };
     (t.id || []).forEach((id, i) => {
       const cle = String((t.Cle || [])[i] || "").trim();

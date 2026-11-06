@@ -510,11 +510,7 @@ async function chargerSousTables() {
           };
         });
       let data = null;
-      try {
-        data = await Donnees.lire(table);
-      } catch (_) {
-        data = null;
-      }
+      data = await Donnees.lireSiPresente(table);
       if (!data) continue;
       // tableau des sites : colonne vers un référentiel des sites (table avec Latitude / Longitude), nom libre, qualification du site
       const colsDe = (t2) => {
@@ -552,7 +548,7 @@ async function chargerSousTables() {
             k = coordsDe(siteRef.table),
             v = (c, j) => (c && t2[c] ? t2[c][j] : null);
           refSitesAtlas.set(siteRef.table, {
-            idx: new Map(t2.id.map((id, j) => [id, j])),
+            idx: Donnees.positions(t2),
             nom: (j) => texteCellule(v(k.nom, j)),
             lat: (j) => toNumber(v(k.lat, j)),
             lon: (j) => toNumber(v(k.lon, j)),
@@ -609,7 +605,7 @@ function localisateurSous(ST) {
   // 1. référence vers le référentiel
   const colRef = ref && socle.referentiel ? cols.find((c) => typeDe(c) === `Ref:${socle.referentiel}`) : null;
   if (colRef) {
-    const idx = new Map(ref.id.map((id, j) => [id, j]));
+    const idx = Donnees.positions(ref);
     return Object.assign(
       (i) => {
         const v = ST.data[colRef][i],

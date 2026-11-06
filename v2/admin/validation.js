@@ -32,11 +32,7 @@
     general = S.general(config);
     meta = await S.lireMeta();
     formulaires = await R.lireFormulairesPublies(general);
-    try {
-      agentsT = await Donnees.lire(general.agents);
-    } catch (_) {
-      agentsT = null;
-    }
+    agentsT = await Donnees.lireSiPresente(general.agents);
     ref = await R.lireReferentiel(general, config).catch(() => null);
     espaces = [];
     for (const e of S.espaces(general)) {
@@ -56,11 +52,7 @@
           .map(([k, r]) => [k, r.col]),
       );
       let t = null;
-      try {
-        t = await Donnees.lire(e.reponses);
-      } catch (_) {
-        t = null;
-      }
+      t = await Donnees.lireSiPresente(e.reponses);
       espaces.push({ ...e, cols, t, candidats: candidatsAvis(e.reponses) });
     }
   }

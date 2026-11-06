@@ -301,7 +301,7 @@
       Donnees.lire(ref.table),
       meta[TABLE_ALIAS] ? Donnees.lire(TABLE_ALIAS) : null,
     ]);
-    const idxRep = new Map(trep.id.map((id, i) => [id, i])),
+    const idxRep = Donnees.positions(trep),
       etabRep = (id) => {
         const i = idxRep.get(id);
         return i === undefined ? null : refId(trep[source.etab.col][i]);
@@ -415,7 +415,7 @@
           ) || {}
         ).colId || null;
     const tEtab = S.cibleRef(tm.colonnes[ref.etabCol].type);
-    const [t, te] = await Promise.all([Donnees.lire(ref.table), tEtab ? Donnees.lire(tEtab).catch(() => null) : null]);
+    const [t, te] = await Promise.all([Donnees.lire(ref.table), tEtab ? Donnees.lireSiPresente(tEtab) : null]);
     let noms = new Map();
     if (te) {
       const cn =
@@ -945,7 +945,7 @@
       for (const r of reglages) {
         const ts = await Donnees.lire(r.table),
           trep = await Donnees.lire(r.rep),
-          idx = new Map(trep.id.map((id, i) => [id, i]));
+          idx = Donnees.positions(trep);
         const cD = Object.values(meta[r.table].colonnes).find((c) => c.colId === "Dossier") ? "Dossier" : null;
         if (!cD || !trep.Etablissement) continue;
         const acts = [];
@@ -964,7 +964,7 @@
       for (const src of sourcesRef) {
         const ts = await Donnees.lire(src.table),
           trep = src.viaDossier ? await Donnees.lire(src.rep) : ts,
-          idx = new Map(trep.id.map((id, i) => [id, i]));
+          idx = Donnees.positions(trep);
         const acts = [];
         ts.id.forEach((id, i) => {
           const v = ts[src.col][i];
