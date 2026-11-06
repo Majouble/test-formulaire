@@ -25,27 +25,17 @@
   let edition = null; // agent en cours de modification : { id|null, nom, email, telephone, actif, equipe, fonction }
   // filtres et tri de la liste, mémorisés par poste
   const CLE_LISTE = "socle-v2-equipe-liste";
-  let liste = (() => {
-    try {
-      return {
-        equipe: "",
-        fonction: "",
-        inactifs: true,
-        tri: "nom",
-        sens: 1,
-        ...JSON.parse(localStorage.getItem(CLE_LISTE) || "{}"),
-        q: "",
-      };
-    } catch (_) {
-      return { q: "", equipe: "", fonction: "", inactifs: true, tri: "nom", sens: 1 };
-    }
-  })();
+  let liste = {
+    equipe: "",
+    fonction: "",
+    inactifs: true,
+    tri: "nom",
+    sens: 1,
+    ...Outils.stockage.lireJSON(CLE_LISTE, {}),
+    q: "", // la recherche n'est jamais reprise
+  };
   const memoriserListe = () => {
-    try {
-      localStorage.setItem(CLE_LISTE, JSON.stringify({ ...liste, q: "" }));
-    } catch (_) {
-      /* stockage indisponible */
-    }
+    Outils.stockage.ecrireJSON(CLE_LISTE, { ...liste, q: "" });
   };
   let colonnesManquantes = []; // colonnes du socle absentes de la table Agents (document d'une version antérieure)
   let racine = null;

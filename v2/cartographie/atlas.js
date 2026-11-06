@@ -2719,18 +2719,10 @@ const AtlasUI = (() => {
   };
 
   function lireLocal() {
-    try {
-      return JSON.parse(localStorage.getItem(STOCKAGE_LOCAL) || "null");
-    } catch (_) {
-      return null;
-    }
+    return Outils.stockage.lireJSON(STOCKAGE_LOCAL);
   }
   function ecrireLocal() {
-    try {
-      localStorage.setItem(STOCKAGE_LOCAL, JSON.stringify({ etat }));
-    } catch (_) {
-      /* stockage indisponible */
-    }
+    Outils.stockage.ecrireJSON(STOCKAGE_LOCAL, { etat });
   }
 
   async function charger() {

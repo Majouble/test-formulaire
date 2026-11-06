@@ -10844,13 +10844,11 @@ Cordialement,`,
         return `${champ ? champ.libelle : "?"} : ${val}`;
       }
       function sauverFiltre() {
-        try {
-          localStorage.setItem(`signalements-filtres:${tableId || ""}`, JSON.stringify(filtres));
-        } catch (_) {}
+        Outils.stockage.ecrireJSON(`signalements-filtres:${tableId || ""}`, filtres);
       }
       function restaurerFiltre() {
         try {
-          const f = JSON.parse(localStorage.getItem(`signalements-filtres:${tableId || ""}`) || "[]");
+          const f = Outils.stockage.lireJSON(`signalements-filtres:${tableId || ""}`, []);
           if (Array.isArray(f))
             filtres = f
               .filter((x) => x && typeof x.colonne === "string")

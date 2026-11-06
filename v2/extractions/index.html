@@ -1353,9 +1353,7 @@
           try {
             grist.setOptions(opts);
           } catch (e) {}
-          try {
-            localStorage.setItem("prisme-extractions", JSON.stringify(opts));
-          } catch (e) {}
+          Outils.stockage.ecrireJSON("prisme-extractions", opts);
         }, 600);
       }
 
@@ -1587,11 +1585,7 @@
         if (optionsChargees) return;
         optionsChargees = true;
         let opts = options && options.config ? options : null;
-        if (!opts) {
-          try {
-            opts = JSON.parse(localStorage.getItem("prisme-extractions") || "null");
-          } catch (e) {}
-        }
+        if (!opts) opts = Outils.stockage.lireJSON("prisme-extractions");
         if (opts) {
           config = Object.assign(configParDefaut(), opts.config || {});
           filtres = normaliserFiltres(opts.filtres);

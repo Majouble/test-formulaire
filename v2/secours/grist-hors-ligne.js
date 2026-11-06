@@ -1934,9 +1934,7 @@
       if (vid !== "veille" && (!VUES[vid] || !VUES[vid].page())) vid = "saisie";
       if (vid === "veille") {
         this.vue = vid;
-        try {
-          localStorage.setItem("kit-secours-vue", vid);
-        } catch (_) {}
+        Outils.stockage.ecrire("kit-secours-vue", vid);
         if (!this.hoteVeille) {
           this.hoteVeille = document.createElement("div");
           this.hoteVeille.className = "kit-panneau";
@@ -1953,9 +1951,7 @@
       }
       if (this.hoteVeille) this.hoteVeille.hidden = true;
       this.vue = vid;
-      try {
-        localStorage.setItem("kit-secours-vue", vid);
-      } catch (_) {}
+      Outils.stockage.ecrire("kit-secours-vue", vid);
       let f = this.zone.querySelector(`iframe[data-vue="${vid}"]`);
       if (!f) {
         f = document.createElement("iframe");
@@ -2520,9 +2516,7 @@ details summary { cursor: pointer; color: #5d6675; margin: 8px 0; }
     );
     resoudrePret();
     let vue = K.mode === "veille" && relaisRegle() ? "veille" : "saisie";
-    try {
-      vue = localStorage.getItem("kit-secours-vue") || vue;
-    } catch (_) {}
+    vue = Outils.stockage.lire("kit-secours-vue") || vue;
     UI.ouvrirVue(vue);
     if (K.dirEtat === "ok") {
       await lireDossier();

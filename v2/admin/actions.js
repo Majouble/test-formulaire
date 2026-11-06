@@ -51,17 +51,9 @@
   // Préférences d'affichage (par navigateur)
   const PREF = "signalements-v2-actions";
   let vue = { groupe: "statut", tri: "manuel", replies: {}, masquerAnciennes: true };
-  try {
-    vue = { ...vue, ...JSON.parse(localStorage.getItem(PREF) || "{}") };
-  } catch (_) {
-    /* stockage indisponible */
-  }
+  vue = { ...vue, ...Outils.stockage.lireJSON(PREF, {}) };
   const memoriser = () => {
-    try {
-      localStorage.setItem(PREF, JSON.stringify(vue));
-    } catch (_) {
-      /* stockage indisponible */
-    }
+    Outils.stockage.ecrireJSON(PREF, vue);
   };
   // Filtres et état de la page
   let recherche = "",

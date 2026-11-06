@@ -30,17 +30,9 @@
     etat = null,
     filtre = { type: "", statut: "a_traiter", espace: "" },
     enCours = false;
-  try {
-    filtre = { ...filtre, ...JSON.parse(localStorage.getItem("socle-v2-qualite") || "{}") };
-  } catch (_) {
-    /* stockage indisponible */
-  }
+  filtre = { ...filtre, ...Outils.stockage.lireJSON("socle-v2-qualite", {}) };
   const memoriser = () => {
-    try {
-      localStorage.setItem("socle-v2-qualite", JSON.stringify(filtre));
-    } catch (_) {
-      /* stockage indisponible */
-    }
+    Outils.stockage.ecrireJSON("socle-v2-qualite", filtre);
   };
   const statuts = () => ((config && config.valeurs.qualite) || {}).statuts || {};
 

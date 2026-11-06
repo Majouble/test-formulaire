@@ -39,13 +39,7 @@
   let emargements = null; // null : pas de table Emargements
   let lundi = null; // premier jour de la semaine affichée (AAAA-MM-JJ)
   let edition = null; // { mode: "cellule", jour, fonction, lignes, origine } ou { mode: "jour", jour, creneaux }
-  let vue = (() => {
-    try {
-      return localStorage.getItem("socle-v2-planning-vue") === "grille" ? "grille" : "fonction";
-    } catch (_) {
-      return "fonction";
-    }
-  })();
+  let vue = Outils.stockage.lire("socle-v2-planning-vue") === "grille" ? "grille" : "fonction";
   let grille = null; // vue Grille : { lundi, cases: Map("agent|créneau" → {f, ch}), orig, sel, filtre, message }
   let suivi = null; // agent dont le détail est affiché
   let reglagesEdites = null; // copie des réglages en cours de modification
@@ -742,11 +736,7 @@
     if (v === vue || (v !== "grille" && !quitterGrille())) return;
     vue = v;
     grille = null;
-    try {
-      localStorage.setItem("socle-v2-planning-vue", v);
-    } catch (_) {
-      /* stockage indisponible */
-    }
+    Outils.stockage.ecrire("socle-v2-planning-vue", v);
     dessiner();
   }
   // codes des fonctions : celui des réglages, sinon l'initiale (puis deux lettres en cas de doublon)
@@ -815,13 +805,7 @@
     planning.affectations
       .filter((a) => ids.has(a.creneau))
       .forEach((a) => cases.set(cleCase(a.agent, a.creneau), { f: a.fonction, ch: S.champsDe(a), id: a.id }));
-    const pref = (() => {
-      try {
-        return JSON.parse(localStorage.getItem("socle-v2-planning-grille") || "{}") || {};
-      } catch (_) {
-        return {};
-      }
-    })();
+    const pref = Outils.stockage.lireJSON("socle-v2-planning-grille", {});
     grille = {
       lundi,
       cases,
@@ -835,14 +819,11 @@
     };
   }
   const memoriserGrille = () => {
-    try {
-      localStorage.setItem(
-        "socle-v2-planning-grille",
-        JSON.stringify({ equipe: grille.equipe, fonction: grille.fonction, tri: grille.tri }),
-      );
-    } catch (_) {
-      /* stockage indisponible */
-    }
+    Outils.stockage.ecrireJSON("socle-v2-planning-grille", {
+      equipe: grille.equipe,
+      fonction: grille.fonction,
+      tri: grille.tri,
+    });
   };
   const SANS = "\u0000"; // filtre « sans équipe » / « sans fonction »
   const equipesConnues = () =>

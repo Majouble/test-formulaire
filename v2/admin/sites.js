@@ -144,19 +144,13 @@
     choixSource = "",
     choixRef = "",
     choixEtabMc = "";
-  try {
-    const p = JSON.parse(localStorage.getItem("socle-v2-sites") || "{}");
+  {
+    const p = Outils.stockage.lireJSON("socle-v2-sites", {});
     choixSource = p.source || "";
     choixRef = p.ref || "";
-  } catch (_) {
-    /* stockage indisponible */
   }
   const memoriser = () => {
-    try {
-      localStorage.setItem("socle-v2-sites", JSON.stringify({ source: choixSource, ref: choixRef }));
-    } catch (_) {
-      /* stockage indisponible */
-    }
+    Outils.stockage.ecrireJSON("socle-v2-sites", { source: choixSource, ref: choixRef });
   };
 
   /* ---------- tables : réponses (et leur établissement), sources de libellés, référentiels de sites ---------- */

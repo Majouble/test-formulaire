@@ -1585,20 +1585,11 @@
         sxCoches.clear();
         $("etab-res").hidden = true;
         $("etab-q").value = choisi ? choisi.nom : "";
-        try {
-          localStorage.setItem("socle-v2-sites-etab", String(id));
-        } catch (_) {
-          /* stockage indisponible */
-        }
+        Outils.stockage.ecrire("socle-v2-sites-etab", String(id));
         $("fiche").innerHTML = choisi ? `<div class="fiche">${enteteEtab(choisi)}</div>` : "";
         if (choisi) lierEntete(document.querySelector(".fiche"));
         if (choisi && window.FicheEtab) {
-          let ouvert = false;
-          try {
-            ouvert = localStorage.getItem("socle-v2-sites-fiche") === "1";
-          } catch (_) {
-            /* stockage indisponible */
-          }
+          const ouvert = Outils.stockage.lire("socle-v2-sites-fiche") === "1";
           $("fiche").insertAdjacentHTML(
             "beforeend",
             `<details class="fe-bloc" id="fe-bloc"${ouvert ? " open" : ""}><summary>Informations de l'établissement (effectif, tutelle…)</summary>
@@ -1606,11 +1597,7 @@
           );
           const bloc = $("fe-bloc");
           bloc.addEventListener("toggle", () => {
-            try {
-              localStorage.setItem("socle-v2-sites-fiche", bloc.open ? "1" : "0");
-            } catch (_) {
-              /* stockage indisponible */
-            }
+            Outils.stockage.ecrire("socle-v2-sites-fiche", bloc.open ? "1" : "0");
             if (bloc.open) dessinerFicheEtab();
           });
           if (ouvert) dessinerFicheEtab();
@@ -2133,11 +2120,7 @@
         qaFiltre = { type: "", statut: "a_traiter" },
         qaEdition = null,
         qaChoixEtab = {};
-      try {
-        qaFiltre = { ...qaFiltre, ...JSON.parse(localStorage.getItem("socle-v2-sites-qa") || "{}") };
-      } catch (_) {
-        /* stockage indisponible */
-      }
+      qaFiltre = { ...qaFiltre, ...Outils.stockage.lireJSON("socle-v2-sites-qa", {}) };
       const qaStatut = (a) => Q.statuts(qa.config)[a.cle] || null;
       const qaToutes = () => (qa && qa.espaces ? qa.espaces.flatMap((x) => x.anomalies) : []);
       function changerVue(v) {
@@ -2255,11 +2238,7 @@
         : `<p class="vide">${qaFiltre.statut === "a_traiter" ? "Rien à vérifier." : "Aucune anomalie."}</p>`
     }`;
         const memo = () => {
-          try {
-            localStorage.setItem("socle-v2-sites-qa", JSON.stringify(qaFiltre));
-          } catch (_) {
-            /* stockage indisponible */
-          }
+          Outils.stockage.ecrireJSON("socle-v2-sites-qa", qaFiltre);
         };
         $("qa-type").addEventListener("change", (e) => {
           qaFiltre.type = e.target.value;
@@ -2528,19 +2507,13 @@
         sxSource = "",
         sxRemplacer = true,
         sxCoches = new Set();
-      try {
-        const m = JSON.parse(localStorage.getItem("socle-v2-sites-saisies") || "{}");
+      {
+        const m = Outils.stockage.lireJSON("socle-v2-sites-saisies", {});
         sxSource = m.source || "";
         if (m.remplacer === false) sxRemplacer = false;
-      } catch (_) {
-        /* stockage indisponible */
       }
       const memoSaisies = () => {
-        try {
-          localStorage.setItem("socle-v2-sites-saisies", JSON.stringify({ source: sxSource, remplacer: sxRemplacer }));
-        } catch (_) {
-          /* stockage indisponible */
-        }
+        Outils.stockage.ecrireJSON("socle-v2-sites-saisies", { source: sxSource, remplacer: sxRemplacer });
       };
       const MOTS_SITE_VIDES = new Set([
         "campus",
@@ -2740,12 +2713,7 @@
       }
       /* deux modes : l'établissement choisi (rattachement par lot ci-dessous), ou tous les établissements (rapprochement des
    libellés saisis avec site proposé, comme dans l'administration > Référentiel : admin/sites.js en mode compact) */
-      let sxMode = "etab";
-      try {
-        if (localStorage.getItem("socle-v2-sites-mode") === "tous") sxMode = "tous";
-      } catch (_) {
-        /* stockage indisponible */
-      }
+      let sxMode = Outils.stockage.lire("socle-v2-sites-mode") === "tous" ? "tous" : "etab";
       async function afficherSaisies() {
         const v = $("vue-saisies");
         if (!$("sx-corps")) {
@@ -2753,11 +2721,7 @@
           v.querySelectorAll("[data-sx-mode]").forEach((b) =>
             b.addEventListener("click", () => {
               sxMode = b.dataset.sxMode;
-              try {
-                localStorage.setItem("socle-v2-sites-mode", sxMode);
-              } catch (_) {
-                /* stockage indisponible */
-              }
+              Outils.stockage.ecrire("socle-v2-sites-mode", sxMode);
               afficherSaisies();
             }),
           );
@@ -3123,12 +3087,7 @@
         }
         try {
           await lireDonnees();
-          let dernier = null;
-          try {
-            dernier = +localStorage.getItem("socle-v2-sites-etab");
-          } catch (_) {
-            /* stockage indisponible */
-          }
+          const dernier = +Outils.stockage.lire("socle-v2-sites-etab");
           if (dernier && etabDe(dernier)) choisirEtab(dernier);
           else $("etab-q").focus();
           if (Q) setTimeout(() => analyserQa(), 1500); // nombre d'anomalies sur l'onglet « À vérifier », en arrière-plan
