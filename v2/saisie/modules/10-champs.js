@@ -75,8 +75,9 @@ const PJ = (() => {
   // Établissement ouvert par son lien : Grist ne le reconnaît, pour un téléchargement, que si l'adresse porte les
   // paramètres de son lien (« Etab_=… »), repris de la colonne Lien de sa ligne (lisible par lui seul).
   function parametresLien() {
-    if (typeof modeEtab === "undefined" || !modeEtab || !etabs || !etabs[0]) return "";
-    const l = String(etabs[0][E.lien] || "");
+    if (typeof etatSaisie.modeEtab === "undefined" || !etatSaisie.modeEtab || !etatSaisie.etabs || !etatSaisie.etabs[0])
+      return "";
+    const l = String(etatSaisie.etabs[0][E.lien] || "");
     return [...l.matchAll(/[?&]([A-Za-z][A-Za-z0-9_]*_)=([^&#\s"'<>]+)/g)]
       .filter((m) => !/^aclAs/i.test(m[1]))
       .map((m) => `&${m[1]}=${m[2]}`)
@@ -103,7 +104,7 @@ const PJ = (() => {
             }
             throw new Error(
               r.status === 403
-                ? `accès refusé par Grist${modeEtab && !parametresLien() ? " (lien de l'établissement illisible : règles d'accès à réappliquer)" : ""}`
+                ? `accès refusé par Grist${etatSaisie.modeEtab && !parametresLien() ? " (lien de l'établissement illisible : règles d'accès à réappliquer)" : ""}`
                 : `${r.status}${d ? ` : ${d}` : ""}`,
             );
           }
@@ -355,7 +356,7 @@ const PJ = (() => {
       }
       dessiner(id);
       if (surChangement) surChangement();
-      if (typeof appliquerConditions === "function") appliquerConditions("q", defsQuestions);
+      if (typeof appliquerConditions === "function") appliquerConditions("q", etatSaisie.defsQuestions);
     });
     bloc.addEventListener("click", (ev) => {
       const o = ev.target.closest("[data-pj-ouvrir]");
@@ -418,7 +419,7 @@ const PJ = (() => {
 function rendreChamps(zone, prefix, defs, surChangement) {
   zone.innerHTML = "";
   queueMicrotask(() => {
-    if (prefix === "q") for (const dc of decorsQ.fin) zone.insertAdjacentHTML("beforeend", decorHtml(dc));
+    if (prefix === "q") for (const dc of etatSaisie.decorsQ.fin) zone.insertAdjacentHTML("beforeend", decorHtml(dc));
   });
   for (const def of defs) {
     const t = typeBase(def.type),
@@ -538,7 +539,7 @@ function rendreChamps(zone, prefix, defs, surChangement) {
       .querySelectorAll(".choix[data-valeur]")
       .forEach((l) => styleChoix(l, l.dataset.valeur, t === "Bool" ? carteOuiNon(def) : def.opts.choiceOptions || {}));
     if (prefix === "q")
-      for (const dc of decorsQ.avant[def.colId] || []) zone.insertAdjacentHTML("beforeend", decorHtml(dc));
+      for (const dc of etatSaisie.decorsQ.avant[def.colId] || []) zone.insertAdjacentHTML("beforeend", decorHtml(dc));
     zone.appendChild(bloc);
     if (t === "Attachments" && !def.formule) PJ.lier(bloc, id, surChangement);
     bloc.querySelectorAll("input, select, textarea").forEach((el) => {
@@ -560,7 +561,7 @@ async function remplirChamps(prefix, defs, valeurDe) {
     let v = valeurDe(def);
     if (!lisible(v)) v = null;
     if (def.tableau) {
-      if (tableaux[id]) await tableaux[id].charger(v, dossierId);
+      if (tableaux[id]) await tableaux[id].charger(v, etatSaisie.dossierId);
       continue;
     }
     if (def.formule) {

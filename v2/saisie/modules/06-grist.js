@@ -64,20 +64,19 @@ const COLONNES = [
 // l'éditeur de code et les options du widget contiennent le code lui-même. Les réglages sont
 // donc stockés dans la table Parametres (voir PARAMETRES).
 
-let file = Promise.resolve(); // sérialise les traitements asynchrones
+etatSaisie.file = Promise.resolve();
 // une erreur pendant le chargement (référentiel pas encore prêt) est affichée ; ensuite, seulement dans la console
 const enFile = (f) => {
-  file = file.then(f).catch((e) => {
+  etatSaisie.file = etatSaisie.file.then(f).catch((e) => {
     console.warn(e);
-    if (typeof referentielLu !== "undefined" && !referentielLu) signalerErreurChargement(e, "traitement");
+    if (typeof etatSaisie.referentielLu !== "undefined" && !etatSaisie.referentielLu)
+      signalerErreurChargement(e, "traitement");
   });
-  return file;
+  return etatSaisie.file;
 };
 
 const OPTIONS = { keepEncoded: true, expandRefs: false, includeColumns: "normal" };
 
-let idsPrecedents = null; // lignes connues avant le dernier envoi de Grist
-let idsNouveaux = new Set(); // lignes apparues lors du dernier envoi
 const idsCreesIci = new Set(); // lignes créées par ce widget-ci
 /* Mesure de l'activité (⚙ › « Activité du widget ») : envois de Grist, temps de traitement, lectures.
    Sert à savoir si une lenteur vient du widget ou de Grist. */
@@ -101,46 +100,36 @@ const ACTIVITE = {
     }).observe({ type: "longtask", buffered: true });
   } catch (_) {}
 })();
-// Envois rapprochés de Grist (plusieurs enregistrements à la suite) : seul le plus récent est traité
-let envoiEnAttente = null;
 async function traiterEnvoi(recs, m) {
-  mappings = m;
-  enregistrements = recs || [];
-  const ids = new Set(enregistrements.map((r) => r.id));
-  idsNouveaux = idsPrecedents ? new Set([...ids].filter((i) => !idsPrecedents.has(i))) : new Set();
-  idsPrecedents = ids;
+  etatSaisie.mappings = m;
+  etatSaisie.enregistrements = recs || [];
+  const ids = new Set(etatSaisie.enregistrements.map((r) => r.id));
+  etatSaisie.idsNouveaux = etatSaisie.idsPrecedents
+    ? new Set([...ids].filter((i) => !etatSaisie.idsPrecedents.has(i)))
+    : new Set();
+  etatSaisie.idsPrecedents = ids;
   const sig = JSON.stringify(m);
-  if (sig !== signatureMappings) {
-    signatureMappings = sig;
+  if (sig !== etatSaisie.signatureMappings) {
+    etatSaisie.signatureMappings = sig;
     await chargerConfiguration();
   }
   await rafraichir();
 }
 
-// Grist renvoie la ligne du curseur à chaque modification de la table, même si le curseur n'a pas bougé
-// (par exemple quand une autre vue enregistre un signalement). Seul un vrai déplacement du curseur doit
-// changer le signalement affiché : un simple renvoi ne fait que rafraîchir le signalement déjà ouvert,
-// et ne touche jamais à un formulaire en cours de saisie.
-let dernierCurseur = null; // identifiant de la dernière ligne reçue, ou "new" pour la ligne d'ajout
-
 /* =========================================================
    Configuration : lue une fois, relue si les associations changent
    ========================================================= */
-let promesseMeta = null; // réinitialisée à chaque nouvelle configuration
 function lireMeta() {
-  if (!promesseMeta)
-    promesseMeta = Promise.all([Donnees.lire("_grist_Tables"), Donnees.lire("_grist_Tables_column")]).catch(
+  if (!etatSaisie.promesseMeta)
+    etatSaisie.promesseMeta = Promise.all([Donnees.lire("_grist_Tables"), Donnees.lire("_grist_Tables_column")]).catch(
       async (e) => {
         const m = await metaDeSecours();
         if (!m) throw e;
         return m;
       },
     );
-  return promesseMeta;
+  return etatSaisie.promesseMeta;
 }
-// Métadonnées illisibles (accès par lien d'établissement : les règles d'accès cachent les tables _grist_) :
-// copie des colonnes utiles rangée par l'administration dans la clé « schema » de Config, au même format.
-let metaCopie = false;
 async function metaDeSecours() {
   try {
     const t = await Donnees.lire("Config"),
@@ -187,7 +176,7 @@ async function metaDeSecours() {
         }
       });
     });
-    metaCopie = true;
+    etatSaisie.metaCopie = true;
     return [tables, cols];
   } catch (_) {
     return null;
@@ -366,9 +355,9 @@ const avecRegles = (q) => {
   };
 };
 const defsDe = (cle) =>
-  mappings
-    ? (mappings[cle] || [])
-        .map((c) => metaSig[c])
+  etatSaisie.mappings
+    ? (etatSaisie.mappings[cle] || [])
+        .map((c) => etatSaisie.metaSig[c])
         .filter(Boolean)
         .map(avecRegles)
     : [];
@@ -387,15 +376,15 @@ function brancherGrist() {
     };
     ACTIVITE.envois.push(arrive);
     if (ACTIVITE.envois.length > 300) ACTIVITE.envois.shift();
-    const dejaPrevu = !!envoiEnAttente;
-    envoiEnAttente = { recs, m, arrive };
+    const dejaPrevu = !!etatSaisie.envoiEnAttente;
+    etatSaisie.envoiEnAttente = { recs, m, arrive };
     if (dejaPrevu) {
       ACTIVITE.regroupes++;
       return;
     }
     return enFile(async () => {
-      const { recs, m, arrive } = envoiEnAttente;
-      envoiEnAttente = null;
+      const { recs, m, arrive } = etatSaisie.envoiEnAttente;
+      etatSaisie.envoiEnAttente = null;
       const t0 = performance.now();
       try {
         await traiterEnvoi(recs, m);
@@ -408,16 +397,16 @@ function brancherGrist() {
     (rec) =>
       enFile(async () => {
         ACTIVITE.curseur++;
-        if (!rec || (!mappings && !Object.keys(colsParDefaut).length)) return;
-        const premiereSelection = !curseurInitialVu;
-        curseurInitialVu = true;
-        const r = enregistrements.find((x) => x.id === rec.id) || rec;
+        if (!rec || (!etatSaisie.mappings && !Object.keys(etatSaisie.colsParDefaut).length)) return;
+        const premiereSelection = !etatSaisie.curseurInitialVu;
+        etatSaisie.curseurInitialVu = true;
+        const r = etatSaisie.enregistrements.find((x) => x.id === rec.id) || rec;
         const d = refId(col("Dossier") && r[col("Dossier")]) || r.id;
-        const renvoi = rec.id === dernierCurseur;
-        dernierCurseur = rec.id;
+        const renvoi = rec.id === etatSaisie.dernierCurseur;
+        etatSaisie.dernierCurseur = rec.id;
         // même signalement : un simple renvoi (après une modification de la table) est déjà traité par onRecords,
         // qui rafraîchit le dossier ouvert ; seul un clic sur une autre ligne du même dossier le relit
-        if (d === dossierId) {
+        if (d === etatSaisie.dossierId) {
           if (renvoi) {
             ACTIVITE.curseurIgnores++;
             return;
@@ -427,11 +416,12 @@ function brancherGrist() {
         }
         // Ligne tout juste créée par une autre vue : Grist a pu y décaler le curseur lors de l'insertion.
         const creeeAilleurs =
-          (idsNouveaux.has(rec.id) || !enregistrements.some((x) => x.id === rec.id)) && !idsCreesIci.has(rec.id);
+          (etatSaisie.idsNouveaux.has(rec.id) || !etatSaisie.enregistrements.some((x) => x.id === rec.id)) &&
+          !idsCreesIci.has(rec.id);
         if (creeeAilleurs) return;
         if (renvoi) return; // curseur inchangé, mais le widget affiche autre chose (nouveau signalement, menu)
         // Vrai déplacement du curseur : on ne l'applique pas si une saisie est en cours, pour ne rien perdre
-        if (modifie) {
+        if (etatSaisie.modifie) {
           statut(
             "statut-signalement",
             "Saisie en cours non enregistrée : enregistrez-la ou cliquez sur « " +
@@ -442,7 +432,7 @@ function brancherGrist() {
           return;
         }
         await ouvrirDossier(d);
-        if (!premiereSelection && dossierId === d) {
+        if (!premiereSelection && etatSaisie.dossierId === d) {
           cacherConfirmation();
           montrerVue("saisie");
         }
@@ -451,10 +441,10 @@ function brancherGrist() {
   );
   grist.onNewRecord(() =>
     enFile(async () => {
-      const renvoi = dernierCurseur === "new";
-      dernierCurseur = "new";
-      if (!dossierId) return; // déjà sur un nouveau signalement : rien à réinitialiser
-      if (renvoi || modifie) return; // simple renvoi, ou saisie en cours à préserver
+      const renvoi = etatSaisie.dernierCurseur === "new";
+      etatSaisie.dernierCurseur = "new";
+      if (!etatSaisie.dossierId) return; // déjà sur un nouveau signalement : rien à réinitialiser
+      if (renvoi || etatSaisie.modifie) return; // simple renvoi, ou saisie en cours à préserver
       await passerEnCreation();
     }),
   );

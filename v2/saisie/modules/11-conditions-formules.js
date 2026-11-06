@@ -21,7 +21,7 @@ function resoudreColonne(ref, defs) {
     liste.find((d) => d.colId === ref) || liste.find((d) => normaliser(d.colId) === n || normaliser(d.libelle) === n);
   const q = trouve(defs);
   if (q) return { genre: "question", def: q };
-  const tous = Object.values(metaSig);
+  const tous = Object.values(etatSaisie.metaSig);
   const autre = trouve(tous);
   if (!autre) return null;
   if (autre.colId === col("Qualification")) return { genre: "qualification", def: autre };
@@ -50,12 +50,12 @@ function formuleEtab(def) {
   const f = ((def && def.formule && def.texteFormule) || "").trim().replace(/^return\s+/, "");
   const m = f.match(/^\$(\w+)\.(\w+)$/);
   if (!m) return null;
-  const ref = metaSig[m[1]];
+  const ref = etatSaisie.metaSig[m[1]];
   const versEtab = m[1] === col("Etablissement") || (ref && (ref.type || "") === `Ref:${ETAB.table}`);
   return versEtab ? m[2] : null;
 }
 // Valeur d'une question formule pendant la saisie ; undefined si le widget ne sait pas la calculer
-function valeurFormuleEnDirect(def, prefix = "q", defs = defsQuestions) {
+function valeurFormuleEnDirect(def, prefix = "q", defs = etatSaisie.defsQuestions) {
   const c = formuleEtab(def);
   if (c) {
     const e = etabDe(etablissementDuFormulaire());
@@ -68,7 +68,7 @@ function valeurFormuleEnDirect(def, prefix = "q", defs = defsQuestions) {
 const formuleConnue = (def) => !!def.formule && (!!formuleEtab(def) || !!formuleCalculable(def));
 // Affichage en direct des questions formules calculables
 function majFormulesEnDirect() {
-  for (const def of defsQuestions) {
+  for (const def of etatSaisie.defsQuestions) {
     if (!formuleConnue(def)) continue;
     const el = document.getElementById(`q-${def.colId}`),
       v = valeurFormuleEnDirect(def);
@@ -123,7 +123,7 @@ function calculerFormule(f, lire, profondeur = 0) {
 // Valeur actuelle d'une colonne, pour le calcul : réponse en cours si c'est une question du formulaire,
 // formule simple recalculée si c'en est une, sinon dernière valeur enregistrée
 function valeurColonneEnDirect(colId, prefix, defs, profondeur = 0) {
-  const def = defs.find((d) => d.colId === colId) || metaSig[colId];
+  const def = defs.find((d) => d.colId === colId) || etatSaisie.metaSig[colId];
   if (!def) return 0;
   const f = formuleCalculable(def);
   if (f && profondeur < 5)
@@ -134,7 +134,7 @@ function valeurColonneEnDirect(colId, prefix, defs, profondeur = 0) {
     if (bloc && !bloc.hidden) return nombreDe(lireUnChamp(prefix, def));
     if (bloc && bloc.hidden) return 0;
   }
-  const ref = derniere || initiale;
+  const ref = etatSaisie.derniere || etatSaisie.initiale;
   return nombreDe(ref ? ref[colId] : null);
 }
 
@@ -145,13 +145,13 @@ function valeurPourCondition(prefix, defs, cond) {
   const f = formuleCalculable(def);
   if (f) return calculerFormule(f, (c, p) => valeurColonneEnDirect(c, prefix, defs, p + 1));
   if (typeBase(def.type) === "Bool" && cible.genre === "colonne") {
-    const r = derniere || initiale;
+    const r = etatSaisie.derniere || etatSaisie.initiale;
     return !!(r && r[def.colId]);
   }
   if (cible.genre === "qualification" && prefix === "q") return lireQualificationInitiale();
   if (cible.genre === "description" && prefix === "q") return $("description").value.trim();
   if (cible.genre === "question" && def.formule) {
-    const r = derniere || initiale;
+    const r = etatSaisie.derniere || etatSaisie.initiale;
     return r ? r[def.colId] : null;
   }
   if (cible.genre === "question" && def.tableau) {
@@ -171,7 +171,7 @@ function valeurPourCondition(prefix, defs, cond) {
     return v;
   }
   // Colonne hors formulaire : valeur de la version affichée (ou vide pour un nouveau signalement)
-  const ref = derniere || initiale;
+  const ref = etatSaisie.derniere || etatSaisie.initiale;
   return ref ? ref[def.colId] : null;
 }
 
@@ -221,7 +221,7 @@ function evaluerCondition(v, cond) {
 // conditionnée par une autre question elle-même conditionnelle suive correctement.
 function afficherDiagnostic() {
   if (!$("diagnostic-conditions").open) return;
-  const defs = defsQuestions;
+  const defs = etatSaisie.defsQuestions;
   const lignes = defs
     .filter((d) => d.condition)
     .map((d) => {

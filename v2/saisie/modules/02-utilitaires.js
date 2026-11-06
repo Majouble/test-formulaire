@@ -40,8 +40,6 @@ const RECONNAISSANCE_ETAB = {
   departement: { motifs: [/^(nom_|libelle_)?(du_)?departement$/, /departement/], sauf: /code|^id|numero/ },
   mail: { motifs: [/^(mail|courriel|e_?mail)$/, /mail|courriel/], sauf: /annuaire|contact_2|secondaire/ },
 };
-let colonnesReconnues = {},
-  colonnesParContenu = new Set(); // clé → colonne retenue quand elle diffère de l'identifiant par défaut
 const normColonne = (s) =>
   String(s ?? "")
     .normalize("NFD")
@@ -51,8 +49,8 @@ const normColonne = (s) =>
     .replace(/^_|_$/g, "");
 async function reconnaitreColonnesEtab(t) {
   Object.assign(E, COLONNES_ETAB_DEFAUT);
-  colonnesReconnues = {};
-  colonnesParContenu = new Set();
+  etatSaisie.colonnesReconnues = {};
+  etatSaisie.colonnesParContenu = new Set();
   let meta = null;
   try {
     meta = await metaColonnes(ETAB.table);
@@ -102,11 +100,11 @@ async function reconnaitreColonnesEtab(t) {
           .sort((a, b) => b[1] - a[1])
           .map(([c]) => c)[0] || null;
     }
-    if (trouve && !noms(trouve).some((n) => r.motifs.some((m) => m.test(n)))) colonnesParContenu.add(k);
+    if (trouve && !noms(trouve).some((n) => r.motifs.some((m) => m.test(n)))) etatSaisie.colonnesParContenu.add(k);
     if (trouve) {
       E[k] = trouve;
       pris.add(trouve);
-      colonnesReconnues[k] = trouve;
+      etatSaisie.colonnesReconnues[k] = trouve;
     }
   }
 }

@@ -63,17 +63,17 @@ function erreurPlusieursJours() {
 // Lignes d'un dossier ; signalement d'un établissement pour un jour donné (hors dossier ouvert)
 const versionsDe = (d) => {
   const cD = col("Dossier");
-  return enregistrements.filter((l) => (refId(cD && l[cD]) || l.id) === d);
+  return etatSaisie.enregistrements.filter((l) => (refId(cD && l[cD]) || l.id) === d);
 };
 function dossierDuJour(etabId, t) {
   if (!etabId) return null;
   const k = jourFaits(t),
     cD = col("Dossier"),
     par = new Map();
-  for (const l of enregistrements) {
+  for (const l of etatSaisie.enregistrements) {
     if (refId(val(l, "Etablissement")) !== etabId) continue;
     const d = refId(cD && l[cD]) || l.id;
-    if (d === dossierId) continue;
+    if (d === etatSaisie.dossierId) continue;
     if (!par.has(d)) par.set(d, []);
     par.get(d).push(l);
   }
@@ -95,7 +95,7 @@ function majAideJours() {
     choisi = lireDateFaits();
   // mise à jour d'un dossier alors que l'établissement a des signalements les jours suivants : proposer de les mettre à jour aussi
   sug.hidden = true;
-  if (!actif && dossierId && etabId && choisi != null) {
+  if (!actif && etatSaisie.dossierId && etabId && choisi != null) {
     let fin = null;
     for (let t = choisi + UN_JOUR, n = 0; n < MAX_JOURS; t += UN_JOUR, n++) {
       if (dossierDuJour(etabId, t)) fin = t;
@@ -107,7 +107,7 @@ function majAideJours() {
       $("btn-jusqu-derniere").addEventListener("click", () => {
         $("plusieurs-jours").checked = true;
         $("date-fin").value = jourCle(fin);
-        modifie = true;
+        etatSaisie.modifie = true;
         avertirFaitsAnterieurs();
       });
     }
@@ -126,7 +126,7 @@ function majAideJours() {
   }
   const deja = l.filter((t) => dossierDuJour(etabId, t));
   a.textContent =
-    `${l.length + 1} signalements, un par jour : ${[choisi, ...l].map(jourCourt).join(", ")}${dossierId ? " (le premier est cette mise à jour)" : ""}.` +
+    `${l.length + 1} signalements, un par jour : ${[choisi, ...l].map(jourCourt).join(", ")}${etatSaisie.dossierId ? " (le premier est cette mise à jour)" : ""}.` +
     (deja.length
       ? ` Déjà signalé${deja.length > 1 ? "s" : ""} ces jours-là, mis à jour : ${deja.map(jourCourt).join(", ")}.`
       : "");
@@ -141,7 +141,7 @@ function reinitialiserJours() {
 }
 // Réponses du formulaire, au format enregistré (sans établissement, dossier ni date)
 function valeursSaisies(manquants = []) {
-  const valeurs = { ...lireChamps("q", defsQuestions, manquants) },
+  const valeurs = { ...lireChamps("q", etatSaisie.defsQuestions, manquants) },
     qualif = lireQualificationInitiale();
   if (col("Description")) valeurs[col("Description")] = $("description").value.trim();
   if (col("Site")) valeurs[col("Site")] = $("site").value.trim();
@@ -160,14 +160,14 @@ async function reprendreSurJours(etabId, valeurs, jours, origine) {
     inchanges = [];
   for (const t of jours) {
     const v = { ...valeurs, [cF]: t };
-    if (cD && typeof v[cD] === "string" && optionsAuto.mobilisation && MOTIF_MOBILISATION.test(v[cD]))
-      v[cD] = ajouterMobilisation(v[cD], optionsAuto, jourDeMobilisation(t, jours));
+    if (cD && typeof v[cD] === "string" && etatSaisie.optionsAuto.mobilisation && MOTIF_MOBILISATION.test(v[cD]))
+      v[cD] = ajouterMobilisation(v[cD], etatSaisie.optionsAuto, jourDeMobilisation(t, jours));
     const f = { ...v, [col("Etablissement")]: etabId };
     if (col("Date") && !dateParGrist()) f[col("Date")] = Date.now() / 1000;
     const ex = dossierDuJour(etabId, t);
     if (ex) {
       const { [cF]: _, ...sansDate } = v;
-      if (!Object.keys(seulementModifies(champsVersion, sansDate, ex.derniere)).length) {
+      if (!Object.keys(seulementModifies(etatSaisie.champsVersion, sansDate, ex.derniere)).length) {
         inchanges.push(t);
         continue;
       }
@@ -188,20 +188,20 @@ async function reprendreSurJours(etabId, valeurs, jours, origine) {
   let nouveaux = [];
   if (creer.length) {
     nouveaux = ids(
-      await etape("Création des signalements des jours suivants", tableId || "réponses", () =>
+      await etape("Création des signalements des jours suivants", etatSaisie.tableId || "réponses", () =>
         table.create(creer.map((x) => ({ fields: x.fields }))),
       ),
     );
     nouveaux.forEach((id) => idsCreesIci.add(id));
     if (cDos && nouveaux.length)
-      await etape("Rattachement de chaque signalement à son propre dossier", tableId || "réponses", () =>
+      await etape("Rattachement de chaque signalement à son propre dossier", etatSaisie.tableId || "réponses", () =>
         table.update(nouveaux.map((id) => ({ id, fields: { [cDos]: id } }))),
       );
   }
   let idsCompletes = [];
   if (completer.length)
     (idsCompletes = ids(
-      await etape("Mise à jour des signalements des jours suivants", tableId || "réponses", () =>
+      await etape("Mise à jour des signalements des jours suivants", etatSaisie.tableId || "réponses", () =>
         table.create(completer.map((x) => ({ fields: x.fields }))),
       ),
     )).forEach((id) => idsCreesIci.add(id));
@@ -244,7 +244,10 @@ function erreurReport() {
   const debut = $("rep-debut").value,
     fin = $("rep-fin").value;
   if (!debut) return "Indiquez le premier jour.";
-  const jourDossier = derniere && jourDesFaits(derniere) != null ? jourCle(jourDesFaits(derniere)) : null;
+  const jourDossier =
+    etatSaisie.derniere && jourDesFaits(etatSaisie.derniere) != null
+      ? jourCle(jourDesFaits(etatSaisie.derniere))
+      : null;
   const l = joursReport().filter((t) => jourCle(t) !== jourDossier);
   if (fin < debut) return "Le dernier jour doit suivre le premier.";
   return erreurJours(l, l.length, fin, jourCle(Date.parse(debut + "T00:00:00Z") / 1000 - UN_JOUR));
@@ -257,22 +260,25 @@ function majAideReport() {
     a.textContent = err;
     return;
   }
-  const jourDossier = derniere && jourDesFaits(derniere) != null ? jourCle(jourDesFaits(derniere)) : null;
+  const jourDossier =
+    etatSaisie.derniere && jourDesFaits(etatSaisie.derniere) != null
+      ? jourCle(jourDesFaits(etatSaisie.derniere))
+      : null;
   const l = joursReport().filter((t) => jourCle(t) !== jourDossier),
-    etabId = refId(val(initiale, "Etablissement"));
+    etabId = refId(val(etatSaisie.initiale, "Etablissement"));
   const deja = l.filter((t) => dossierDuJour(etabId, t));
   a.textContent =
     `${pluriel(l.length, "jour", "jours")} : ${l.map(jourCourt).join(", ")}.` +
     (deja.length
       ? ` Déjà signalé${deja.length > 1 ? "s" : ""} ces jours-là, mis à jour : ${deja.map(jourCourt).join(", ")}.`
       : "") +
-    (modifie
+    (etatSaisie.modifie
       ? " Vos modifications non enregistrées sont reprises dans ces signalements (ce dossier-ci reste inchangé)."
       : "");
 }
 function ouvrirReport() {
-  if (!dossierId || !derniere || !initiale) return;
-  const ref = jourDesFaits(derniere) ?? Date.parse(valeurLocale(new Date(), false) + "T00:00:00Z") / 1000;
+  if (!etatSaisie.dossierId || !etatSaisie.derniere || !etatSaisie.initiale) return;
+  const ref = jourDesFaits(etatSaisie.derniere) ?? Date.parse(valeurLocale(new Date(), false) + "T00:00:00Z") / 1000;
   $("rep-debut").value = $("rep-fin").value = jourCle(ref + UN_JOUR);
   $("rep-ouvres").checked = false;
   statut("rep-statut", "");
@@ -294,15 +300,15 @@ $("rep-ok").addEventListener("click", () =>
       statut("rep-statut", err, "err");
       return;
     }
-    const jourDossier = jourDesFaits(derniere) != null ? jourCle(jourDesFaits(derniere)) : null;
+    const jourDossier = jourDesFaits(etatSaisie.derniere) != null ? jourCle(jourDesFaits(etatSaisie.derniere)) : null;
     const jours = joursReport().filter((t) => jourCle(t) !== jourDossier);
     $("rep-ok").disabled = true;
     try {
       const r = await reprendreSurJours(
-        refId(val(initiale, "Etablissement")),
+        refId(val(etatSaisie.initiale, "Etablissement")),
         valeursSaisies([]),
         jours,
-        jourDesFaits(derniere),
+        jourDesFaits(etatSaisie.derniere),
       );
       $("dlg-reporter").close();
       const t = texteSerie(r).trim();

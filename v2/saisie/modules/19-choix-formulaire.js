@@ -7,9 +7,9 @@ async function remplirChoixFormulaire() {
   try {
     voulu = grist.getOption ? await grist.getOption("formulaire") : null;
   } catch (_) {}
-  const liste = (await lireFormulaires()).filter((f) => f.table === tableId);
+  const liste = (await lireFormulaires()).filter((f) => f.table === etatSaisie.tableId);
   sel.innerHTML =
-    `<option value="">Automatique (premier formulaire publié pour la table ${esc(tableId || "")})</option>` +
+    `<option value="">Automatique (premier formulaire publié pour la table ${esc(etatSaisie.tableId || "")})</option>` +
     liste
       .map(
         (f) =>
@@ -18,8 +18,8 @@ async function remplirChoixFormulaire() {
       .join("");
   sel.value = voulu || "";
   $("cfg-formulaire-info").textContent =
-    (formulaireActif
-      ? `Affiché actuellement : « ${formulaireActif.nom} ». `
+    (etatSaisie.formulaireActif
+      ? `Affiché actuellement : « ${etatSaisie.formulaireActif.nom} ». `
       : "Aucun formulaire publié pour cette table : questions issues des associations du widget. ") +
     "Ce choix est enregistré avec la page (il suit la page dupliquée). Il nécessite un widget ouvert depuis une adresse (pas le Custom Widget Builder, dont les options contiennent le code).";
 }

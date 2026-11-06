@@ -6,10 +6,6 @@
    ========================================================= */
 const nom = $("nom"),
   liste = $("liste");
-let resultats = [],
-  index = -1,
-  minuterie = null,
-  requete = 0;
 // Recherche dans le référentiel du document (sans accents, tous les mots doivent être présents)
 const sansAccent = (s) =>
   String(s ?? "")
@@ -56,13 +52,13 @@ const sourcesActives = () => SOURCES.filter((x) => S().annuaires.includes(x.cle)
 function rechercheLocale(q) {
   const mots = sansAccent(q).split(/\s+/).filter(Boolean);
   if (!mots.length) return [];
-  const colsRecherche = colsEtab.includes(E.nom)
+  const colsRecherche = etatSaisie.colsEtab.includes(E.nom)
     ? [...new Set([E.nom, E.commune, E.uai, ...COLONNES_RECHERCHE_EN_PLUS, ...S().recherche])]
-    : colsEtab.filter(
+    : etatSaisie.colsEtab.filter(
         (c) => c !== "id" && c !== "manualSort" && !c.startsWith("gristHelper") && c !== E.cle && c !== E.lien,
       );
   // lignes fusionnées dans un autre établissement (référentiel ESR, colonne Etat) : plus proposées
-  const trouves = etabs.filter((e) => {
+  const trouves = etatSaisie.etabs.filter((e) => {
     if (typeof e.Etat === "string" && /^fusionn/i.test(e.Etat.trim())) return false;
     const texte = sansAccent(
       colsRecherche
@@ -99,17 +95,19 @@ function rechercheLocale(q) {
 
 // Sans colonne de nom reconnue : première valeur texte de la ligne
 function libelleEtabDeRepli(e) {
-  const c = colsEtab.find((c) => c !== "id" && c !== E.cle && c !== E.lien && typeof e[c] === "string" && e[c].trim());
+  const c = etatSaisie.colsEtab.find(
+    (c) => c !== "id" && c !== E.cle && c !== E.lien && typeof e[c] === "string" && e[c].trim(),
+  );
   return c ? e[c] : `Ligne ${e.id}`;
 }
 async function rechercher(q) {
-  const id = ++requete;
+  const id = ++etatSaisie.requete;
   const locaux = rechercheLocale(q),
     actives = q.length >= MIN_CARACTERES_ANNUAIRE ? sourcesActives() : [];
   if (!actives.length) {
     // référentiel seul
-    resultats = locaux;
-    if (!resultats.length)
+    etatSaisie.resultats = locaux;
+    if (!etatSaisie.resultats.length)
       etat(
         `Aucun établissement du référentiel ne correspond. Vérifiez l'orthographe, essayez la commune ou l'UAI${sourcesActives().length ? " (au moins 3 caractères pour l'annuaire)" : ""}, ou cliquez sur « Établissement introuvable ? Le créer ».`,
       );
@@ -117,12 +115,12 @@ async function rechercher(q) {
     return;
   }
   if (locaux.length) {
-    resultats = locaux;
+    etatSaisie.resultats = locaux;
     afficherResultats();
   } else etat("Recherche…");
   // L'annuaire en ligne complète la recherche (établissements pas encore dans le référentiel)
   const rep = await Promise.allSettled(actives.map((x) => interroger(x, q)));
-  if (id !== requete) return;
+  if (id !== etatSaisie.requete) return;
   const connus = new Set(locaux.map((l) => String(l.uai || "").toUpperCase()));
   // annuaire en ligne : filtré sur l'académie ou le département quand le périmètre en dépend
   const p = perimetreActif() ? perimetre() : {},
@@ -134,13 +132,13 @@ async function rechercher(q) {
     .flatMap((r) => (r.status === "fulfilled" ? r.value : []))
     .filter((e) => !connus.has(String(e.uai || "").toUpperCase()))
     .filter((e) => filtres.every(([k, c]) => !e[k] || p[c].some((x) => sansAccent(x) === sansAccent(e[k]))));
-  resultats = [...locaux, ...distants];
+  etatSaisie.resultats = [...locaux, ...distants];
   if (locaux.length && rep.every((r) => r.status === "rejected")) {
     afficherResultats();
     return;
   }
   rep.filter((r) => r.status === "rejected").forEach((r) => console.warn("Autocomplétion :", r.reason));
-  if (!resultats.length) {
+  if (!etatSaisie.resultats.length) {
     etat(
       rep.every((r) => r.status === "rejected")
         ? `Annuaire injoignable (${(rep[0].reason && rep[0].reason.message) || "erreur réseau"}). Saisissez les informations à la main.`
@@ -151,8 +149,8 @@ async function rechercher(q) {
   afficherResultats();
 }
 function afficherResultats() {
-  index = -1;
-  liste.innerHTML = resultats
+  etatSaisie.index = -1;
+  liste.innerHTML = etatSaisie.resultats
     .map(
       (e, i) => `
     <li role="option" id="opt-${i}" data-i="${i}" aria-selected="false">
@@ -166,8 +164,8 @@ function afficherResultats() {
 }
 function etat(t) {
   liste.innerHTML = `<li class="etat" aria-disabled="true">${esc(t)}</li>`;
-  resultats = [];
-  index = -1;
+  etatSaisie.resultats = [];
+  etatSaisie.index = -1;
   ouvrir();
 }
 function ouvrir() {
@@ -177,31 +175,31 @@ function ouvrir() {
 function fermer() {
   liste.hidden = true;
   nom.setAttribute("aria-expanded", "false");
-  index = -1;
+  etatSaisie.index = -1;
 }
 function surligner(i) {
   [...liste.querySelectorAll("[role=option]")].forEach((li, k) => {
     li.setAttribute("aria-selected", k === i);
     if (k === i) li.scrollIntoView({ block: "nearest" });
   });
-  index = i;
+  etatSaisie.index = i;
   nom.setAttribute("aria-activedescendant", i >= 0 ? `opt-${i}` : "");
 }
 function choisir(i) {
-  const e = resultats[i];
+  const e = etatSaisie.resultats[i];
   if (!e) return;
-  if (reaffectation) {
+  if (etatSaisie.reaffectation) {
     proposerRattachement(e);
     return;
   }
   fermer();
   const existant = (e.ligne && etabDe(e.ligne.id)) || e.ligne || etabParUai(e.uai);
-  composanteChoisie = null;
+  etatSaisie.composanteChoisie = null;
   if (existant) {
-    etabCourant = versEtablissement(existant);
-    ligneAnnuaire = null;
+    etatSaisie.etabCourant = versEtablissement(existant);
+    etatSaisie.ligneAnnuaire = null;
   } else {
-    ligneAnnuaire = e;
+    etatSaisie.ligneAnnuaire = e;
     nom.value = e.nom || "";
     CHAMPS_NOUVEL_ETAB.forEach((k) => {
       $(k).value = e[k] || "";
@@ -209,12 +207,12 @@ function choisir(i) {
     });
     $("mail").dataset.saisi = e.mail || "";
   }
-  modifie = true;
+  etatSaisie.modifie = true;
   afficherEtablissement();
   focusPremiereQuestion();
 }
 nom.addEventListener("input", () => {
-  clearTimeout(minuterie);
+  clearTimeout(etatSaisie.minuterie);
   CHAMPS_NOUVEL_ETAB.forEach((k) => $(k).classList.remove("auto"));
   afficherEtablissement();
   const q = nom.value.trim();
@@ -222,19 +220,19 @@ nom.addEventListener("input", () => {
     fermer();
     return;
   }
-  minuterie = setTimeout(() => rechercher(q), sourcesActives().length ? 300 : 150);
+  etatSaisie.minuterie = setTimeout(() => rechercher(q), sourcesActives().length ? 300 : 150);
 });
 nom.addEventListener("keydown", (ev) => {
-  if (liste.hidden || !resultats.length) return;
+  if (liste.hidden || !etatSaisie.resultats.length) return;
   if (ev.key === "ArrowDown") {
     ev.preventDefault();
-    surligner(Math.min(index + 1, resultats.length - 1));
+    surligner(Math.min(etatSaisie.index + 1, etatSaisie.resultats.length - 1));
   } else if (ev.key === "ArrowUp") {
     ev.preventDefault();
-    surligner(Math.max(index - 1, 0));
-  } else if (ev.key === "Enter" && index >= 0) {
+    surligner(Math.max(etatSaisie.index - 1, 0));
+  } else if (ev.key === "Enter" && etatSaisie.index >= 0) {
     ev.preventDefault();
-    choisir(index);
+    choisir(etatSaisie.index);
   } else if (ev.key === "Escape") fermer();
 });
 liste.addEventListener("mousedown", (ev) => {
@@ -249,8 +247,8 @@ CHAMPS_NOUVEL_ETAB.forEach((k) => $(k).addEventListener("input", () => $(k).clas
 $("uai").addEventListener("change", () => {
   const existant = etabParUai($("uai").value);
   if (existant) {
-    etabCourant = versEtablissement(existant);
-    ligneAnnuaire = null;
+    etatSaisie.etabCourant = versEtablissement(existant);
+    etatSaisie.ligneAnnuaire = null;
     afficherEtablissement();
   }
 });

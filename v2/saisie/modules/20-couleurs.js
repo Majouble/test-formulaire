@@ -82,16 +82,15 @@ function lireRegleCouleur(txt) {
   }
   return { regles };
 }
-let reglesCouleur = [];
 function construireReglesCouleur(alertes) {
-  reglesCouleur = [];
+  etatSaisie.reglesCouleur = [];
   const vus = new Set();
   const ajouter = (def, genre) => {
     if (!def || vus.has(def.colId)) return;
     const r = lireRegleCouleur(def.description);
     if (!r) return;
     vus.add(def.colId);
-    reglesCouleur.push({ def, genre, regles: r.regles });
+    etatSaisie.reglesCouleur.push({ def, genre, regles: r.regles });
     const couleursGrist = Object.values((def.opts && def.opts.choiceOptions) || {}).some(
       (o) => o && hexVersRvb(o.fillColor),
     );
@@ -101,9 +100,9 @@ function construireReglesCouleur(alertes) {
           `donnez une couleur de fond à ses choix, ou indiquez-les dans le repère, par exemple [couleur Blocage=rouge, Tentative=orange].`,
       );
   };
-  ajouter(metaSig[col("Qualification")], "qualification");
-  defsQuestions.forEach((d) => ajouter(d, "question"));
-  Object.values(metaSig).forEach((d) => ajouter(d, "colonne"));
+  ajouter(etatSaisie.metaSig[col("Qualification")], "qualification");
+  etatSaisie.defsQuestions.forEach((d) => ajouter(d, "question"));
+  Object.values(etatSaisie.metaSig).forEach((d) => ajouter(d, "colonne"));
 }
 // Libellés des colonnes Référence (lus une fois, à la demande)
 const cacheLibelles = new Map(),
@@ -149,7 +148,7 @@ function valeursEnCours(r) {
     const s = lireDateFaits();
     return s == null ? [] : [String(s)];
   }
-  const ref = derniere || initiale;
+  const ref = etatSaisie.derniere || etatSaisie.initiale;
   if (r.genre === "question" && !r.def.formule) {
     const bloc = document.querySelector(`[data-champ="q-${r.def.colId}"]`);
     if (!bloc || bloc.hidden) return [];
@@ -208,9 +207,9 @@ function valeurLisible(def, v) {
   return v;
 }
 function couleurLigne(l) {
-  if (!reglesCouleur.length) return null;
+  if (!etatSaisie.reglesCouleur.length) return null;
   const der = derniereDe(l);
-  for (const r of reglesCouleur) {
+  for (const r of etatSaisie.reglesCouleur) {
     const c = couleurDe(r, textesValeur(r.def, der[r.def.colId]));
     if (c) return c;
   }
@@ -222,7 +221,7 @@ const bandeCouleur = (l) => {
 };
 function majCouleur() {
   let c = null;
-  for (const r of reglesCouleur) {
+  for (const r of etatSaisie.reglesCouleur) {
     c = couleurDe(r, valeursEnCours(r));
     if (c) break;
   }

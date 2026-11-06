@@ -9,13 +9,6 @@
    de saisie) passent au signalement précédent ou suivant dans l'ordre de la liste. */
 const VIDE_FILTRE = "∅",
   RENSEIGNE_FILTRE = "✱";
-// Plusieurs filtres, combinés par ET ; dans un même filtre, plusieurs valeurs combinées par OU.
-// Chaque filtre : { colonne, valeurs: [clés], libelles: { clé: texte }, contient: "" }
-let filtres = [];
-let listeChampsFiltre = [],
-  posNav = null,
-  cacheDernieres = null,
-  filtreOuvert = null;
 const CHAMPS_ETAB_FILTRE = [
   ["academie", "Académie"],
   ["departement", "Département"],
@@ -24,16 +17,16 @@ const CHAMPS_ETAB_FILTRE = [
 ];
 const MAX_VALEURS_FILTRE = 60;
 function derniereDe(l) {
-  if (!cacheDernieres) {
+  if (!etatSaisie.cacheDernieres) {
     const cD = col("Dossier");
-    cacheDernieres = new Map();
-    for (const x of enregistrements) {
+    etatSaisie.cacheDernieres = new Map();
+    for (const x of etatSaisie.enregistrements) {
       const d = refId(cD && x[cD]) || x.id,
-        p = cacheDernieres.get(d);
-      if (!p || comparerVersions(p, x) < 0) cacheDernieres.set(d, x);
+        p = etatSaisie.cacheDernieres.get(d);
+      if (!p || comparerVersions(p, x) < 0) etatSaisie.cacheDernieres.set(d, x);
     }
   }
-  return cacheDernieres.get(l.id) || l;
+  return etatSaisie.cacheDernieres.get(l.id) || l;
 }
 // Colonnes proposées : qualification et dates, toutes les questions supplémentaires (quel que soit leur type),
 // les visas (agents), l'établissement (agents), puis les autres colonnes à valeurs fermées de la table.
@@ -45,17 +38,20 @@ function champsFiltrables() {
     vus.add(def.colId);
     res.push({ cle: "c:" + def.colId, libelle: def.libelle || def.colId, groupe, def });
   };
-  ["Qualification", "Date_faits", "Date", "Nature"].forEach((k) => ajouter(col(k) && metaSig[col(k)], "Signalement"));
-  defsQuestions.filter((d) => !d.tableau).forEach((d) => ajouter(d, "Questions supplémentaires"));
-  if (!modeEtab) [...defsDep, ...defsAca].forEach((d) => ajouter(d, "Visas"));
-  if (!modeEtab)
+  ["Qualification", "Date_faits", "Date", "Nature"].forEach((k) =>
+    ajouter(col(k) && etatSaisie.metaSig[col(k)], "Signalement"),
+  );
+  etatSaisie.defsQuestions.filter((d) => !d.tableau).forEach((d) => ajouter(d, "Questions supplémentaires"));
+  if (!etatSaisie.modeEtab) [...etatSaisie.defsDep, ...etatSaisie.defsAca].forEach((d) => ajouter(d, "Visas"));
+  if (!etatSaisie.modeEtab)
     for (const [k, lib] of CHAMPS_ETAB_FILTRE)
-      if (E[k] && colsEtab.includes(E[k])) res.push({ cle: "e:" + k, libelle: lib, groupe: "Établissement" });
+      if (E[k] && etatSaisie.colsEtab.includes(E[k]))
+        res.push({ cle: "e:" + k, libelle: lib, groupe: "Établissement" });
   const exclus = new Set(
     [col("Dossier"), col("Etablissement"), col("Description"), col("Commentaire"), "id", "manualSort"].filter(Boolean),
   );
   const fermes = ["Choice", "ChoiceList", "Bool", "Ref", "RefList", "Date", "DateTime"];
-  for (const def of Object.values(metaSig))
+  for (const def of Object.values(etatSaisie.metaSig))
     if (!exclus.has(def.colId) && !def.colId.startsWith("gristHelper") && fermes.includes(typeBase(def.type)))
       ajouter(def, "Autres colonnes");
   return res;
@@ -88,9 +84,9 @@ function valeursDossier(l, champ) {
       return { cle: normaliser(x), libelle: s.length > 70 ? s.slice(0, 68) + "…" : s };
     });
 }
-const champDe = (f) => listeChampsFiltre.find((c) => c.cle === f.colonne) || null;
+const champDe = (f) => etatSaisie.listeChampsFiltre.find((c) => c.cle === f.colonne) || null;
 const filtreEffectif = (f) => !!(champDe(f) && (f.valeurs.length || (f.contient || "").trim()));
-const filtreActif = () => filtres.some(filtreEffectif);
+const filtreActif = () => etatSaisie.filtres.some(filtreEffectif);
 function passeUn(f, l) {
   if (!filtreEffectif(f)) return true;
   const vs = valeursDossier(l, champDe(f));
@@ -103,8 +99,9 @@ function passeUn(f, l) {
   const c = normaliser(f.contient || "");
   return !!c && vs.some((x) => x.cle.includes(c));
 }
-const passeFiltre = (l, sauf) => filtres.every((f) => f === sauf || passeUn(f, l));
-const dossiersFiltres = () => (filtreActif() ? dossiersInit.filter((l) => passeFiltre(l)) : dossiersInit);
+const passeFiltre = (l, sauf) => etatSaisie.filtres.every((f) => f === sauf || passeUn(f, l));
+const dossiersFiltres = () =>
+  filtreActif() ? etatSaisie.dossiersInit.filter((l) => passeFiltre(l)) : etatSaisie.dossiersInit;
 function resumeFiltre(f, court) {
   const champ = champDe(f);
   const noms = f.valeurs.map((k) =>
@@ -119,13 +116,13 @@ function resumeFiltre(f, court) {
   return `${champ ? champ.libelle : "?"} : ${val}`;
 }
 function sauverFiltre() {
-  Outils.stockage.ecrireJSON(`signalements-filtres:${tableId || ""}`, filtres);
+  Outils.stockage.ecrireJSON(`signalements-filtres:${etatSaisie.tableId || ""}`, etatSaisie.filtres);
 }
 function restaurerFiltre() {
   try {
-    const f = Outils.stockage.lireJSON(`signalements-filtres:${tableId || ""}`, []);
+    const f = Outils.stockage.lireJSON(`signalements-filtres:${etatSaisie.tableId || ""}`, []);
     if (Array.isArray(f))
-      filtres = f
+      etatSaisie.filtres = f
         .filter((x) => x && typeof x.colonne === "string")
         .map((x) => ({
           colonne: x.colonne,
@@ -141,7 +138,7 @@ function valeursDisponibles(f) {
     compte = new Map();
   let vides = 0,
     renseignes = 0;
-  for (const l of dossiersInit) {
+  for (const l of etatSaisie.dossiersInit) {
     if (!passeFiltre(l, f)) continue;
     const vs = valeursDossier(l, champ);
     if (vs.length) renseignes++;
@@ -175,34 +172,36 @@ function valeursDisponibles(f) {
   return { entrees, vides, renseignes, trop };
 }
 function majFiltre() {
-  listeChampsFiltre = champsFiltrables();
+  etatSaisie.listeChampsFiltre = champsFiltrables();
   // Filtre sur une colonne disparue (associations modifiées) : retiré
-  if (Object.keys(metaSig).length)
-    filtres = filtres.filter((f) => champDe(f) || (f.colonne.startsWith("e:") && !etabsCharges));
+  if (Object.keys(etatSaisie.metaSig).length)
+    etatSaisie.filtres = etatSaisie.filtres.filter(
+      (f) => champDe(f) || (f.colonne.startsWith("e:") && !etatSaisie.etabsCharges),
+    );
   // Pastilles des filtres
-  $("filtres-actifs").innerHTML = filtres
+  $("filtres-actifs").innerHTML = etatSaisie.filtres
     .map(
       (f, i) =>
         `<span class="puce-filtre${filtreEffectif(f) ? "" : " inactive"}">` +
-        `<button type="button" class="puce-libelle" data-i="${i}" aria-expanded="${filtreOuvert === f}" aria-controls="panneau-filtre" title="${esc(resumeFiltre(f))}">${esc(resumeFiltre(f, true))} ▾</button>` +
+        `<button type="button" class="puce-libelle" data-i="${i}" aria-expanded="${etatSaisie.filtreOuvert === f}" aria-controls="panneau-filtre" title="${esc(resumeFiltre(f))}">${esc(resumeFiltre(f, true))} ▾</button>` +
         `<button type="button" class="puce-retirer" data-i="${i}" aria-label="Retirer le filtre ${esc(champDe(f) ? champDe(f).libelle : "")}">×</button></span>`,
     )
     .join("");
-  $("filtre-tout-effacer").hidden = filtres.length < 2;
+  $("filtre-tout-effacer").hidden = etatSaisie.filtres.length < 2;
   // Liste des colonnes encore disponibles pour un nouveau filtre
   const sel = $("filtre-ajout");
   if (document.activeElement !== sel) {
-    const pris = new Set(filtres.map((f) => f.colonne));
-    const dispo = listeChampsFiltre.filter(
+    const pris = new Set(etatSaisie.filtres.map((f) => f.colonne));
+    const dispo = etatSaisie.listeChampsFiltre.filter(
       (c) =>
         !pris.has(c.cle) &&
         (c.groupe === "Questions supplémentaires" ||
           c.groupe === "Signalement" ||
-          dossiersInit.some((l) => valeursDossier(l, c).length)),
+          etatSaisie.dossiersInit.some((l) => valeursDossier(l, c).length)),
     );
     const groupes = [...new Set(dispo.map((c) => c.groupe))];
     sel.innerHTML =
-      `<option value="">${filtres.length ? "+ Ajouter un filtre" : "Filtrer par…"}</option>` +
+      `<option value="">${etatSaisie.filtres.length ? "+ Ajouter un filtre" : "Filtrer par…"}</option>` +
       groupes
         .map(
           (g) =>
@@ -215,19 +214,19 @@ function majFiltre() {
     sel.value = "";
     sel.hidden = !dispo.length;
   }
-  if (filtreOuvert && !filtres.includes(filtreOuvert)) fermerPanneauFiltre();
-  else if (filtreOuvert) remplirPanneauFiltre(false);
+  if (etatSaisie.filtreOuvert && !etatSaisie.filtres.includes(etatSaisie.filtreOuvert)) fermerPanneauFiltre();
+  else if (etatSaisie.filtreOuvert) remplirPanneauFiltre(false);
   majNavigation();
 }
 function appliquerFiltre() {
   sauverFiltre();
-  posNav = null;
+  etatSaisie.posNav = null;
   majListeDossiers();
   if (!$("resultats-signalements").hidden) afficherResultatsRecherche();
 }
 /* ---------- Panneau des valeurs d'un filtre (cases à cocher, appliquées aussitôt) ---------- */
 function remplirPanneauFiltre(reconstruire = true) {
-  const f = filtreOuvert,
+  const f = etatSaisie.filtreOuvert,
     champ = f && champDe(f);
   if (!champ) return;
   const { entrees, vides, renseignes, trop } = valeursDisponibles(f);
@@ -263,7 +262,7 @@ function remplirPanneauFiltre(reconstruire = true) {
 }
 function ouvrirPanneauFiltre(f, bouton) {
   fermerRecherche();
-  filtreOuvert = f;
+  etatSaisie.filtreOuvert = f;
   const p = $("panneau-filtre");
   p.hidden = false;
   remplirPanneauFiltre(true);
@@ -272,14 +271,14 @@ function ouvrirPanneauFiltre(f, bouton) {
   p.style.left = Math.max(0, Math.min(b.left - barre.left, barre.width - p.offsetWidth)) + "px";
   document
     .querySelectorAll(".puce-libelle")
-    .forEach((x) => x.setAttribute("aria-expanded", String(+x.dataset.i === filtres.indexOf(f))));
+    .forEach((x) => x.setAttribute("aria-expanded", String(+x.dataset.i === etatSaisie.filtres.indexOf(f))));
   const cible = !$("pf-cherche").hidden ? $("pf-cherche") : p.querySelector(".pf-valeur input") || $("pf-ok");
   cible.focus();
 }
 function fermerPanneauFiltre(rendreFocus) {
-  if (!filtreOuvert) return;
-  const i = filtres.indexOf(filtreOuvert);
-  filtreOuvert = null;
+  if (!etatSaisie.filtreOuvert) return;
+  const i = etatSaisie.filtres.indexOf(etatSaisie.filtreOuvert);
+  etatSaisie.filtreOuvert = null;
   $("panneau-filtre").hidden = true;
   document.querySelectorAll(".puce-libelle").forEach((x) => x.setAttribute("aria-expanded", "false"));
   if (rendreFocus) {
@@ -289,7 +288,7 @@ function fermerPanneauFiltre(rendreFocus) {
 }
 $("pf-valeurs").addEventListener("change", (ev) => {
   const c = ev.target,
-    f = filtreOuvert;
+    f = etatSaisie.filtreOuvert;
   if (!f || !c.matches('input[type="checkbox"]')) return;
   f.valeurs = f.valeurs.filter((k) => k !== c.value);
   if (c.checked) {
@@ -299,27 +298,26 @@ $("pf-valeurs").addEventListener("change", (ev) => {
   appliquerFiltre();
 });
 $("pf-cherche").addEventListener("input", () => remplirPanneauFiltre(false));
-let minuterieContient = null;
 $("pf-contient").addEventListener("input", () => {
-  clearTimeout(minuterieContient);
-  minuterieContient = setTimeout(() => {
-    if (filtreOuvert) {
-      filtreOuvert.contient = $("pf-contient").value;
+  clearTimeout(etatSaisie.minuterieContient);
+  etatSaisie.minuterieContient = setTimeout(() => {
+    if (etatSaisie.filtreOuvert) {
+      etatSaisie.filtreOuvert.contient = $("pf-contient").value;
       appliquerFiltre();
     }
   }, 250);
 });
 $("pf-aucune").addEventListener("click", () => {
-  if (!filtreOuvert) return;
-  filtreOuvert.valeurs = [];
-  filtreOuvert.contient = "";
+  if (!etatSaisie.filtreOuvert) return;
+  etatSaisie.filtreOuvert.valeurs = [];
+  etatSaisie.filtreOuvert.contient = "";
   $("pf-contient").value = "";
   appliquerFiltre();
 });
 // Tout cocher : toutes les valeurs listées (celles que la recherche du panneau laisse visibles),
 // sans « (renseigné) » ni « (vide) »
 $("pf-tout").addEventListener("click", () => {
-  const f = filtreOuvert;
+  const f = etatSaisie.filtreOuvert;
   if (!f) return;
   $("pf-valeurs")
     .querySelectorAll(".pf-valeur:not(.special):not([hidden]) input")
@@ -343,30 +341,30 @@ $("panneau-filtre").addEventListener("keydown", (ev) => {
   }
 });
 document.addEventListener("mousedown", (ev) => {
-  if (filtreOuvert && !$("panneau-filtre").contains(ev.target) && !ev.target.closest(".puce-libelle"))
+  if (etatSaisie.filtreOuvert && !$("panneau-filtre").contains(ev.target) && !ev.target.closest(".puce-libelle"))
     fermerPanneauFiltre(false);
 });
 $("filtres-actifs").addEventListener("click", (ev) => {
   const b = ev.target.closest("button[data-i]");
   if (!b) return;
-  const f = filtres[+b.dataset.i];
+  const f = etatSaisie.filtres[+b.dataset.i];
   if (b.classList.contains("puce-retirer")) {
-    if (filtreOuvert === f) fermerPanneauFiltre(false);
-    filtres.splice(+b.dataset.i, 1);
+    if (etatSaisie.filtreOuvert === f) fermerPanneauFiltre(false);
+    etatSaisie.filtres.splice(+b.dataset.i, 1);
     appliquerFiltre();
     $("filtre-ajout").focus();
-  } else if (filtreOuvert === f) fermerPanneauFiltre(false);
+  } else if (etatSaisie.filtreOuvert === f) fermerPanneauFiltre(false);
   else ouvrirPanneauFiltre(f, b);
 });
 $("filtre-ajout").addEventListener("change", () => {
   const cle = $("filtre-ajout").value;
   if (!cle) return;
-  listeChampsFiltre = champsFiltrables();
+  etatSaisie.listeChampsFiltre = champsFiltrables();
   const f = { colonne: cle, valeurs: [], libelles: {}, contient: "" };
   // Un signalement est affiché : le filtre reprend d'emblée sa valeur (« même catégorie »)
   const champ = champDe(f);
-  if (champ && dossierId && initiale) {
-    const vs = valeursDossier(initiale, champ);
+  if (champ && etatSaisie.dossierId && etatSaisie.initiale) {
+    const vs = valeursDossier(etatSaisie.initiale, champ);
     if (vs.length)
       vs.forEach((x) => {
         f.valeurs.push(x.cle);
@@ -374,33 +372,34 @@ $("filtre-ajout").addEventListener("change", () => {
       });
     else f.valeurs.push(VIDE_FILTRE);
   }
-  filtres.push(f);
+  etatSaisie.filtres.push(f);
   $("filtre-ajout").blur();
   appliquerFiltre();
-  const b = document.querySelector(`.puce-libelle[data-i="${filtres.length - 1}"]`);
+  const b = document.querySelector(`.puce-libelle[data-i="${etatSaisie.filtres.length - 1}"]`);
   if (!f.valeurs.length) ouvrirPanneauFiltre(f, b);
   else if (b) b.focus();
 });
 $("filtre-tout-effacer").addEventListener("click", () => {
   fermerPanneauFiltre(false);
-  filtres = [];
+  etatSaisie.filtres = [];
   appliquerFiltre();
   $("filtre-ajout").focus();
 });
 // Voisins du signalement affiché ; s'il ne fait pas (ou plus) partie de la liste, ceux de la place qu'il occupait
 function voisins(liste, i) {
   if (i >= 0) return [liste[i - 1] || null, liste[i + 1] || null];
-  if (posNav == null) return [liste[liste.length - 1] || null, liste[0] || null];
-  const k = Math.min(posNav, liste.length);
+  if (etatSaisie.posNav == null) return [liste[liste.length - 1] || null, liste[0] || null];
+  const k = Math.min(etatSaisie.posNav, liste.length);
   return [liste[k - 1] || null, liste[k] || null];
 }
 function majNavigation() {
   const liste = dossiersFiltres(),
-    i = liste.findIndex((l) => l.id === dossierId);
-  if (i >= 0) posNav = i;
-  $("nav-fiches").hidden = !liste.length || (!dossierId && !filtreActif());
+    i = liste.findIndex((l) => l.id === etatSaisie.dossierId);
+  if (i >= 0) etatSaisie.posNav = i;
+  $("nav-fiches").hidden = !liste.length || (!etatSaisie.dossierId && !filtreActif());
   $("nav-position").textContent = i >= 0 ? `${i + 1} / ${liste.length}` : `– / ${liste.length}`;
-  $("nav-position").title = i >= 0 ? "" : dossierId ? "Le signalement affiché ne correspond pas au filtre" : "";
+  $("nav-position").title =
+    i >= 0 ? "" : etatSaisie.dossierId ? "Le signalement affiché ne correspond pas au filtre" : "";
   const [p, s] = voisins(liste, i);
   $("nav-prec").disabled = !p;
   $("nav-suiv").disabled = !s;
@@ -409,11 +408,11 @@ function majNavigation() {
 }
 function allerA(sens) {
   const liste = dossiersFiltres(),
-    i = liste.findIndex((l) => l.id === dossierId);
+    i = liste.findIndex((l) => l.id === etatSaisie.dossierId);
   const cible = voisins(liste, i)[sens < 0 ? 0 : 1];
   if (!cible) return;
   if (
-    (modifie || modifieVisa) &&
+    (etatSaisie.modifie || etatSaisie.modifieVisa) &&
     !confirm("La saisie en cours n'est pas enregistrée. L'abandonner pour ouvrir un autre signalement ?")
   )
     return;
@@ -445,7 +444,7 @@ document.addEventListener("keydown", (ev) => {
       (t.closest && t.closest('[role="tablist"], [role="listbox"], .choix-groupe')))
   )
     return;
-  if ($("nav-fiches").hidden || vue !== "saisie" || menuOuvert() || filtreOuvert) return;
+  if ($("nav-fiches").hidden || etatSaisie.vue !== "saisie" || menuOuvert() || etatSaisie.filtreOuvert) return;
   ev.preventDefault();
   allerA(ev.key === "ArrowLeft" ? -1 : 1);
 });
@@ -458,14 +457,14 @@ function afficherOptionsDossiers() {
         return sansAccent(`${lib.titre} ${lib.detail}`).includes(q);
       })
     : dossiersFiltres();
-  const courant = dossiersInit.find((l) => l.id === dossierId);
+  const courant = etatSaisie.dossiersInit.find((l) => l.id === etatSaisie.dossierId);
   $("options-dossiers").innerHTML =
     `<li role="option" tabindex="-1" data-id="" aria-selected="${!courant}">Nouveau signalement</li>` +
     (visibles.length
       ? visibles
           .map((l) => {
             const lib = libelleDossier(l);
-            return `<li role="option" tabindex="-1" data-id="${l.id}" aria-selected="${l.id === dossierId}"${bandeCouleur(l)}>${esc(lib.titre)}<small>${esc(lib.detail)}</small></li>`;
+            return `<li role="option" tabindex="-1" data-id="${l.id}" aria-selected="${l.id === etatSaisie.dossierId}"${bandeCouleur(l)}>${esc(lib.titre)}<small>${esc(lib.detail)}</small></li>`;
           })
           .join("")
       : `<li class="vide" style="cursor:default;color:var(--gris)">Aucun signalement ne correspond</li>`);

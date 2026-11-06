@@ -8,7 +8,7 @@ function valeurLocale(d, avecHeure) {
 }
 const faitsAvecHeure = () => $("date-faits").type === "datetime-local";
 function initialiserDateFaits(v) {
-  dateFaitsTouchee = false;
+  etatSaisie.dateFaitsTouchee = false;
   const s = secondes(v);
   if (s == null) {
     $("date-faits").value = valeurLocale(new Date(), faitsAvecHeure());

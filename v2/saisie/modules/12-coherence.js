@@ -6,8 +6,8 @@ function lignesIncoherentes() {
   const cD = col("Dossier"),
     cE = col("Etablissement");
   if (!cD || !cE) return [];
-  const parId = new Map(enregistrements.map((l) => [l.id, l]));
-  return enregistrements
+  const parId = new Map(etatSaisie.enregistrements.map((l) => [l.id, l]));
+  return etatSaisie.enregistrements
     .filter((l) => {
       const d = refId(l[cD]);
       if (!d || d === l.id) return false;
@@ -83,13 +83,14 @@ function appliquerConditions(prefix, defs) {
 // et pour les autres celles de la version la plus récente (l'apport du collègue n'est pas effacé).
 function fusionnerAvecVersionRecente(valeurs) {
   const res = { valeurs: {}, conflits: [], recuperes: [] };
-  if (!versionAffichee || !derniere || versionAffichee.id === derniere.id) return res;
-  const defs = [...champsVersion, ...defsQuestions],
+  if (!etatSaisie.versionAffichee || !etatSaisie.derniere || etatSaisie.versionAffichee.id === etatSaisie.derniere.id)
+    return res;
+  const defs = [...etatSaisie.champsVersion, ...etatSaisie.defsQuestions],
     def = (c) => defs.find((d) => d.colId === c) || { type: "Any" };
   const pareil = (c, a, b) => egal(norm(def(c), a), norm(def(c), b));
   for (const [c, v] of Object.entries(valeurs)) {
-    const avant = versionAffichee[c],
-      recent = derniere[c];
+    const avant = etatSaisie.versionAffichee[c],
+      recent = etatSaisie.derniere[c];
     const moi = !pareil(c, v, avant),
       lui = !pareil(c, recent, avant);
     if (!moi && lui) {

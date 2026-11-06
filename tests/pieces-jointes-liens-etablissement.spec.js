@@ -70,7 +70,7 @@ function docLien(perimee, etab) {
       console.log(etiquette, '| enregistré :', R.desc === 'Dégradation, photo jointe', '| colonne Photos (formule) non écrite :', R.photos, '| envoi :', String(R.envoi || '').replace(/:([0-9a-f]{40})$/, ':<sha1 ok>'), err && /formula|Pièces jointes/.test(err) ? `| ERREUR : ${err.slice(0, 160)}` : '');
     } else {
       // dossier déjà enregistré, avec une photo (colonne en formule calculée par Grist), rouvert depuis la liste
-      console.log(etiquette, '| mode établissement :', await page.evaluate(() => modeEtab), '| établissement :', await page.evaluate(() => etabCourant && etabCourant.Nom));
+      console.log(etiquette, '| mode établissement :', await page.evaluate(() => etatSaisie.modeEtab), '| établissement :', await page.evaluate(() => etatSaisie.etabCourant && etatSaisie.etabCourant.Nom));
       await page.evaluate(() => ouvrirDepuisListe(window.__DOC__.__data.Reponses.id[0])); await page.waitForTimeout(1500);
       console.log(etiquette, '| dossier rouvert, pièce :', await page.$$eval(`${champ} .pj-liste li`, l => l.map(li => li.querySelector('.pj-nom').textContent + (li.querySelector('img:not([hidden])') ? ' [vignette affichée]' : '')).join(' | ')));
       console.log(etiquette, '| jeton dans la page :', await page.evaluate(() => [...document.querySelectorAll('[href],[src]')].some(e => /auth=/.test((e.getAttribute('href') || '') + (e.getAttribute('src') || '')))));

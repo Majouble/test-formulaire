@@ -7,8 +7,6 @@
 // Les réglages sont ceux du widget (panneau de configuration de Grist), communs à tous les utilisateurs.
 // Réglages du résumé : une colonne texte de la table Parametres (première ligne), au format JSON.
 const PARAMETRES = { table: "Parametres", colonne: "Resume_auto" };
-let ligneParametres = null,
-  colsParametres = [];
 const OPTIONS_DEFAUT = {
   actif: true,
   format: "libelle",
@@ -28,14 +26,14 @@ const SEPARATEURS = { ligne: "\n", pv: " ; ", virgule: ", ", barre: " / ", espac
 
 // Assemble les éléments avec le séparateur choisi. Avec le point, chaque élément devient une phrase :
 // son éventuel point final est retiré avant l'assemblage (pas de « .. »), et le texte se termine par un point.
-function joindre(elements, o = optionsAuto) {
+function joindre(elements, o = etatSaisie.optionsAuto) {
   const liste = elements.filter((e) => String(e).trim());
   if (o.separateur !== "point") return liste.join(SEPARATEURS[o.separateur] ?? "\n");
   if (!liste.length) return "";
   const texte = liste.map((e) => String(e).trim().replace(/\.+$/, "")).join(". ");
   return /[.!?…]$/.test(texte) ? texte : texte + ".";
 }
-let optionsAuto = { ...OPTIONS_DEFAUT };
+etatSaisie.optionsAuto = { ...OPTIONS_DEFAUT };
 
 // Comparaison tolérante aux écarts de forme sans changement réel de valeur
 function memeReponse(def, a, b) {
@@ -59,7 +57,7 @@ function memeReponse(def, a, b) {
 }
 
 // Met une valeur au format choisi : sur une seule ligne, abrégée si une longueur maximale est fixée
-function mettreEnForme(texte, o = optionsAuto) {
+function mettreEnForme(texte, o = etatSaisie.optionsAuto) {
   let t = String(texte ?? "")
     .replace(/\s+/g, " ")
     .trim();
@@ -67,33 +65,33 @@ function mettreEnForme(texte, o = optionsAuto) {
   if (max > 0 && t.length > max) t = t.slice(0, max - 1) + "…";
   return t;
 }
-function element(libelle, valeur, o = optionsAuto) {
+function element(libelle, valeur, o = etatSaisie.optionsAuto) {
   const v = mettreEnForme(valeur, o);
   return `${o.puce || ""}${o.format === "valeur" ? v : `${libelle} : ${v}`}`;
 }
 
 // Réponses modifiées par rapport à la version précédente : [{ libelle, valeur }]
 function modificationsSaisies() {
-  const ref = derniere || initiale;
+  const ref = etatSaisie.derniere || etatSaisie.initiale;
   const res = [];
-  const defQ = metaSig[col("Qualification")];
-  if (defQ && optionsAuto.qualification) {
+  const defQ = etatSaisie.metaSig[col("Qualification")];
+  if (defQ && etatSaisie.optionsAuto.qualification) {
     const saisie = lireQualificationInitiale();
     const apres = Array.isArray(saisie) ? saisie : saisie ? [saisie] : [];
     const avant = listeQualif(ref ? val(ref, "Qualification") : "");
     if (apres.length && JSON.stringify([...apres].map(String).sort()) !== JSON.stringify([...avant].map(String).sort()))
       res.push({ libelle: defQ.libelle || "Qualification", valeur: apres.join(", ") });
   }
-  const defD = metaSig[col("Description")];
-  if (defD && optionsAuto.description) {
+  const defD = etatSaisie.metaSig[col("Description")];
+  if (defD && etatSaisie.optionsAuto.description) {
     const nouvelle = $("description").value.trim();
     const avant = String((ref ? val(ref, "Description") : "") ?? "").trim();
     if (nouvelle.replace(/\s+/g, " ") !== avant.replace(/\s+/g, " "))
       res.push({ libelle: defD.libelle || "Description", valeur: nouvelle || "(vide)" });
   }
-  if (optionsAuto.questions) {
-    const valeurs = lireChamps("q", defsQuestions, []); // questions visibles uniquement
-    for (const def of defsQuestions) {
+  if (etatSaisie.optionsAuto.questions) {
+    const valeurs = lireChamps("q", etatSaisie.defsQuestions, []); // questions visibles uniquement
+    for (const def of etatSaisie.defsQuestions) {
       if (def.formule && formuleConnue(def) && !def.confidentiel && questionVisible("q", def)) {
         const v = valeurFormuleEnDirect(def),
           avant = ref ? ref[def.colId] : null;
@@ -118,7 +116,7 @@ function modificationsSaisies() {
   return res;
 }
 
-function texteAutomatique(o = optionsAuto, modifs = modificationsSaisies()) {
+function texteAutomatique(o = etatSaisie.optionsAuto, modifs = modificationsSaisies()) {
   if (!o.actif) return "";
   return joindre(
     modifs.map((m) => element(m.libelle, m.valeur, o)),
@@ -130,15 +128,10 @@ function texteAutomatique(o = optionsAuto, modifs = modificationsSaisies()) {
 function commentaireComplet() {
   const auto = texteAutomatique();
   const libre = $("commentaire").value.trim();
-  const sep = SEPARATEURS[optionsAuto.separateur] ?? "\n";
-  const parties = optionsAuto.position === "apres" ? [libre, auto] : [auto, libre];
+  const sep = SEPARATEURS[etatSaisie.optionsAuto.separateur] ?? "\n";
+  const parties = etatSaisie.optionsAuto.position === "apres" ? [libre, auto] : [auto, libre];
   return parties.filter(Boolean).join(sep);
 }
-
-/* ---------- Description rédigée à partir des réponses ---------- */
-// Tant que l'utilisateur n'a pas modifié la description à la main, elle suit les réponses.
-// Dès qu'il la modifie, elle n'est plus réécrite ; le bouton « Régénérer » la recalcule à la demande.
-let descriptionManuelle = false;
 
 /* ---------- Format de chaque élément : par question, sinon par type de colonne, sinon général ---------- */
 const FAMILLES = {
@@ -158,7 +151,7 @@ function famille(def) {
   if (t === "Ref" || t === "RefList") return "reference";
   return "texte";
 }
-function formatPour(def, o = optionsAuto) {
+function formatPour(def, o = etatSaisie.optionsAuto) {
   if (def && def.formatDescription) return def.formatDescription;
   const parQuestion = def && (o.formatsQuestion || {})[def.colId];
   if (parQuestion && parQuestion !== "defaut") return parQuestion;
@@ -168,21 +161,21 @@ function formatPour(def, o = optionsAuto) {
 }
 // Questions concernées par la description : qualification puis questions supplémentaires
 function questionsDescription() {
-  const q = metaSig[col("Qualification")];
+  const q = etatSaisie.metaSig[col("Qualification")];
   return [
     ...(q ? [{ ...q, libelle: q.libelle || "Qualification" }] : []),
-    ...defsQuestions.filter((d) => !d.formule || formuleConnue(d)),
+    ...etatSaisie.defsQuestions.filter((d) => !d.formule || formuleConnue(d)),
   ];
 }
 
-function elementsDescription(o = optionsAuto) {
+function elementsDescription(o = etatSaisie.optionsAuto) {
   const items = [];
-  const defQ = metaSig[col("Qualification")];
+  const defQ = etatSaisie.metaSig[col("Qualification")];
   if (o.qualification && defQ) {
     const q = lireQualificationInitiale();
     const l = Array.isArray(q) ? q : q ? [q] : [];
-    const avecFleche = defsQuestions.some((d) => d.tableau && (d._sousDefs || []).some(estQualifSous));
-    const avant = avecFleche && versionDuJour() ? listeQualif(val(derniere, "Qualification")) : [];
+    const avecFleche = etatSaisie.defsQuestions.some((d) => d.tableau && (d._sousDefs || []).some(estQualifSous));
+    const avant = avecFleche && versionDuJour() ? listeQualif(val(etatSaisie.derniere, "Qualification")) : [];
     const change =
       avant.length &&
       l.length &&
@@ -195,8 +188,8 @@ function elementsDescription(o = optionsAuto) {
       });
   }
   if (o.questions) {
-    const valeurs = lireChamps("q", defsQuestions, []); // questions visibles uniquement
-    for (const def of defsQuestions) {
+    const valeurs = lireChamps("q", etatSaisie.defsQuestions, []); // questions visibles uniquement
+    for (const def of etatSaisie.defsQuestions) {
       if (def.formule && formuleConnue(def) && !def.confidentiel && questionVisible("q", def)) {
         const v = valeurFormuleEnDirect(def);
         if (v != null && v !== "") items.push({ libelle: def.libelle, valeur: formatValeur(def, v), def });
@@ -226,7 +219,7 @@ function elementsDescription(o = optionsAuto) {
 const MOTIF_MOBILISATION = /\s*\(\d+(?:er|e) jour de mobilisation\)\s*$/;
 const ordinal = (n) => (n === 1 ? "1er" : `${n}e`);
 function jourCalendaire(sec) {
-  const tz = /^Date$/.test((metaDate && metaDate.type) || "") ? "UTC" : Outils.dates.FUSEAU;
+  const tz = /^Date$/.test((etatSaisie.metaDate && etatSaisie.metaDate.type) || "") ? "UTC" : Outils.dates.FUSEAU;
   return formateur(`jour|${tz || ""}`, {
     year: "numeric",
     month: "2-digit",
@@ -240,9 +233,9 @@ function jourCalendaire(sec) {
 async function preparerRefSite(ds) {
   try {
     const cible = ds.type.split(":")[1];
-    if (!cible || cible === ETAB.table || cible === tableId) return false;
+    if (!cible || cible === ETAB.table || cible === etatSaisie.tableId) return false;
     // référentiel des établissements : celui de la recherche, ou celui que vise la colonne Établissement du formulaire
-    const mr = col("Etablissement") && metaSig[col("Etablissement")],
+    const mr = col("Etablissement") && etatSaisie.metaSig[col("Etablissement")],
       visee = mr && ((mr.type || "").match(/^Ref:(.+)$/) || [])[1];
     const m = Object.values((await metaColonnes(cible)) || {}),
       versEtab = m.filter((c) => c.type === `Ref:${ETAB.table}` || (visee && c.type === `Ref:${visee}`));
@@ -294,22 +287,23 @@ function sitesDeLEtablissement(d, e, opts, choisi) {
   const r =
     !p || a.some((o) => o.id !== choisi) ? a : opts.filter((o) => d._siteEtab.get(o.id) === p || o.id === choisi);
   // dossier ouvert depuis une composante : ses sites d'abord
-  const c = composanteChoisie && d._siteComp ? composanteChoisie.id : null;
+  const c = etatSaisie.composanteChoisie && d._siteComp ? etatSaisie.composanteChoisie.id : null;
   return c ? [...r.filter((o) => d._siteComp.get(o.id) === c), ...r.filter((o) => d._siteComp.get(o.id) !== c)] : r;
 }
 function etablissementDuFormulaire() {
-  if (initiale) return refId(val(initiale, "Etablissement"));
-  if (modeEtab) return etabs[0] ? etabs[0].id : null;
-  return etabCourant ? etabCourant.id : null; // établissement pas encore dans le référentiel : aucune ligne
+  if (etatSaisie.initiale) return refId(val(etatSaisie.initiale, "Etablissement"));
+  if (etatSaisie.modeEtab) return etatSaisie.etabs[0] ? etatSaisie.etabs[0].id : null;
+  return etatSaisie.etabCourant ? etatSaisie.etabCourant.id : null; // établissement pas encore dans le référentiel : aucune ligne
 }
 // Jour calendaire d'une date des faits : une colonne Date est à minuit UTC, on la lit donc en UTC
 /* Date de saisie : si la colonne a une formule (formule d'initialisation NOW() « à la création »,
    ou colonne formule), c'est Grist qui la remplit avec l'heure de son serveur, et le widget n'envoie rien.
    Sinon, le widget écrit l'heure de l'ordinateur, qui peut être fausse si son horloge est déréglée. */
-const dateParGrist = () => !!(metaDate && String(metaDate.texteFormule || "").trim());
+const dateParGrist = () => !!(etatSaisie.metaDate && String(etatSaisie.metaDate.texteFormule || "").trim());
 
 function jourFaits(sec) {
-  const tz = metaFaits && (metaFaits.type || "").startsWith("DateTime") ? Outils.dates.FUSEAU : "UTC";
+  const tz =
+    etatSaisie.metaFaits && (etatSaisie.metaFaits.type || "").startsWith("DateTime") ? Outils.dates.FUSEAU : "UTC";
   return formateur(`jour|${tz || ""}`, {
     year: "numeric",
     month: "2-digit",
@@ -317,11 +311,6 @@ function jourFaits(sec) {
     timeZone: tz,
   }).format(new Date(sec * 1000));
 }
-/* ---------- Repérage des doublons ----------
-   À la création, si l'établissement a déjà un signalement (un dossier) dont une version porte sur le même
-   jour des faits, le formulaire le signale et propose de l'ouvrir pour le mettre à jour plutôt que d'en créer
-   un second. La création reste possible après confirmation explicite. */
-let doublonConfirme = null; // clé « établissement|jour » confirmée par l'utilisateur
 function jourDuFormulaire() {
   return col("Date_faits") && lireDateFaits() != null ? jourFaits(lireDateFaits()) : jourCalendaire(Date.now() / 1000);
 }
@@ -349,13 +338,13 @@ function memeSite(a, b) {
   return x === y || court.every((m) => long.includes(m));
 }
 function doublonsDuJour() {
-  if (dossierId) return [];
+  if (etatSaisie.dossierId) return [];
   const etabId = etablissementDuFormulaire();
   if (!etabId) return [];
   const jour = jourDuFormulaire(),
     cD = col("Dossier"),
     parDossier = new Map();
-  for (const l of enregistrements) {
+  for (const l of etatSaisie.enregistrements) {
     if (refId(val(l, "Etablissement")) !== etabId) continue;
     const d = refId(cD && l[cD]) || l.id;
     if (!parDossier.has(d)) parDossier.set(d, []);
@@ -393,7 +382,7 @@ function verifierDoublons() {
     return;
   }
   const jour = jourDuFormulaire(),
-    confirme = doublonConfirme === cleDoublon();
+    confirme = etatSaisie.doublonConfirme === cleDoublon();
   bloc.hidden = false;
   bloc.classList.toggle("confirme", confirme);
   const items = liste
@@ -427,11 +416,11 @@ $("alerte-doublon").addEventListener("click", (ev) => {
       verifierDoublons();
     });
   } else if (b.id === "btn-confirmer-doublon") {
-    doublonConfirme = cleDoublon();
+    etatSaisie.doublonConfirme = cleDoublon();
     verifierDoublons();
     statut("statut-signalement", "");
   } else if (b.id === "btn-annuler-doublon") {
-    doublonConfirme = null;
+    etatSaisie.doublonConfirme = null;
     verifierDoublons();
   }
 });
@@ -456,7 +445,7 @@ function jourDeMobilisation(cible, serie) {
     if (cle(j) <= limite) jours.add(j);
   };
   if (etabId)
-    for (const l of enregistrements) {
+    for (const l of etatSaisie.enregistrements) {
       if (refId(val(l, "Etablissement")) !== etabId) continue;
       if (col("Qualification") && qualificationRas(val(l, "Qualification"))) continue; // jour « RAS » : non compté
       const f = avecFaits ? secondes(val(l, "Date_faits")) : null;
@@ -477,14 +466,15 @@ const mentionMobilisation = (n) => `(${ordinal(n)} jour de mobilisation)`;
 function qualificationRas(q) {
   const l = Array.isArray(q) ? q.filter((x) => x !== "L") : q == null || q === "" ? [] : [q];
   const retour = new Set(
-    (socleGeneral.retour_normale && socleGeneral.retour_normale.length ? socleGeneral.retour_normale : ["RAS"]).map(
-      (x) => String(x).trim().toUpperCase(),
-    ),
+    (etatSaisie.socleGeneral.retour_normale && etatSaisie.socleGeneral.retour_normale.length
+      ? etatSaisie.socleGeneral.retour_normale
+      : ["RAS"]
+    ).map((x) => String(x).trim().toUpperCase()),
   );
   return l.length > 0 && l.every((x) => retour.has(String(x).trim().toUpperCase()));
 }
 const signalementEnCoursRas = () => !!col("Qualification") && qualificationRas(lireQualificationInitiale());
-function ajouterMobilisation(texte, o = optionsAuto, n = jourDeMobilisation()) {
+function ajouterMobilisation(texte, o = etatSaisie.optionsAuto, n = jourDeMobilisation()) {
   const base = String(texte || "").replace(MOTIF_MOBILISATION, "");
   if (!o.mobilisation || signalementEnCoursRas()) return base; // signalement « RAS » : pas de mention
   const sep = o.separateur === "ligne" && base ? "\n" : base ? " " : "";
@@ -494,12 +484,12 @@ function ajouterMobilisation(texte, o = optionsAuto, n = jourDeMobilisation()) {
 // Établissement et commune du formulaire : établissement connu, ou établissement choisi dans l'annuaire
 // (ou saisi à la main) en cours de création
 function identiteDuFormulaire() {
-  const e = etabCourant || (modeEtab ? etabs[0] : null);
+  const e = etatSaisie.etabCourant || (etatSaisie.modeEtab ? etatSaisie.etabs[0] : null);
   const site = col("Site") ? $("site").value.trim() : "";
   if (e) return { ...valeursEtab(e), site };
   return {
     nom: $("nom").value.trim(),
-    commune: (ligneAnnuaire && ligneAnnuaire.commune) || "",
+    commune: (etatSaisie.ligneAnnuaire && etatSaisie.ligneAnnuaire.commune) || "",
     site,
     uai: $("uai").value.trim(),
     type: $("type").value.trim(),
@@ -524,7 +514,7 @@ function elementsTableau(m, fmt, o) {
   else if (tete) enTete = fmt === "valeur" ? tete : `${m.libelle} : ${tete}`;
   return [enTete, ...lignes].filter(Boolean).map((x) => `${o.puce || ""}${x}`);
 }
-function descriptionGeneree(o = optionsAuto, items = elementsDescription(o), n, ident) {
+function descriptionGeneree(o = etatSaisie.optionsAuto, items = elementsDescription(o), n, ident) {
   const corps = joindre(
     items.flatMap((m) => {
       const fmt = formatPour(m.def, o);
@@ -544,18 +534,18 @@ function descriptionGeneree(o = optionsAuto, items = elementsDescription(o), n, 
 
 function majEtatDescription() {
   const bloc = $("etat-description"),
-    actif = !!optionsAuto.actif;
+    actif = !!etatSaisie.optionsAuto.actif;
   bloc.hidden = !actif;
   if (!actif) {
     $("apercu-generee").hidden = true;
     return;
   }
-  bloc.classList.toggle("manuel", descriptionManuelle);
-  $("etat-description-texte").textContent = descriptionManuelle
+  bloc.classList.toggle("manuel", etatSaisie.descriptionManuelle);
+  $("etat-description-texte").textContent = etatSaisie.descriptionManuelle
     ? "✎ Texte modifié à la main : il ne suit plus les réponses du formulaire."
     : "↻ Rédigé automatiquement : le texte suit les réponses du formulaire.";
-  $("etat-description-actions").hidden = !descriptionManuelle;
-  if (!descriptionManuelle) {
+  $("etat-description-actions").hidden = !etatSaisie.descriptionManuelle;
+  if (!etatSaisie.descriptionManuelle) {
     $("apercu-generee").hidden = true;
     $("btn-voir-auto").setAttribute("aria-expanded", "false");
     $("btn-voir-auto").textContent = "Voir le texte automatique";
@@ -572,11 +562,11 @@ $("btn-voir-auto").addEventListener("click", () => {
 function majDescriptionAuto() {
   majFormulesEnDirect();
   majEtatDescription();
-  if (!optionsAuto.actif) return;
-  if (descriptionManuelle) {
+  if (!etatSaisie.optionsAuto.actif) return;
+  if (etatSaisie.descriptionManuelle) {
     // Texte modifié à la main : on ne touche qu'à la mention de mobilisation si elle y figure déjà
     const t = $("description").value;
-    if (optionsAuto.mobilisation && MOTIF_MOBILISATION.test(t)) {
+    if (etatSaisie.optionsAuto.mobilisation && MOTIF_MOBILISATION.test(t)) {
       const maj = signalementEnCoursRas()
         ? t.replace(MOTIF_MOBILISATION, "")
         : t.replace(/\(\d+(?:er|e) jour de mobilisation\)(\s*)$/, `${mentionMobilisation(jourDeMobilisation())}$1`);
@@ -592,24 +582,24 @@ function majDescriptionAuto() {
 function evaluerDescriptionManuelle() {
   const actuelle = $("description").value.trim();
   const sansMention = (t) => t.replace(MOTIF_MOBILISATION, "").trim();
-  descriptionManuelle =
-    !!actuelle && optionsAuto.actif && sansMention(actuelle) !== sansMention(descriptionGeneree().trim());
+  etatSaisie.descriptionManuelle =
+    !!actuelle && etatSaisie.optionsAuto.actif && sansMention(actuelle) !== sansMention(descriptionGeneree().trim());
   majDescriptionAuto();
 }
 
 $("description").addEventListener("input", () => {
-  descriptionManuelle = true;
+  etatSaisie.descriptionManuelle = true;
   majEtatDescription();
 });
 $("btn-regenerer").addEventListener("click", () => {
-  descriptionManuelle = false;
+  etatSaisie.descriptionManuelle = false;
   majDescriptionAuto();
-  appliquerConditions("q", defsQuestions);
+  appliquerConditions("q", etatSaisie.defsQuestions);
   majApercuAuto();
 });
 
 function majApercuAuto() {
-  if (!dossierId || !col("Commentaire")) {
+  if (!etatSaisie.dossierId || !col("Commentaire")) {
     $("apercu-auto").hidden = true;
     return;
   }
@@ -618,7 +608,7 @@ function majApercuAuto() {
   $("apercu-auto").classList.toggle("vide", !auto);
   $("apercu-texte").textContent =
     auto ||
-    (optionsAuto.actif
+    (etatSaisie.optionsAuto.actif
       ? "Aucune réponse modifiée pour l'instant : modifiez la qualification, la description ou une question, le résumé s'écrira ici."
       : "Résumé automatique désactivé (bouton « ⚙ Réglages »).");
 }

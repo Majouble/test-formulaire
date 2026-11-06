@@ -4,13 +4,12 @@
 /* =========================================================
    Établissement : identification, mail et lien
    ========================================================= */
-let ligneAnnuaire = null; // sans objet dans la version ESR (pas de recherche dans les annuaires en ligne)
 
 /* Section d'établissement (SEGPA, SEP, SGT, SES) choisie à la création : le signalement doit porter sur
    l'établissement ; celui de rattachement probable (même adresse ou presque) est proposé en un clic. */
 function infoSection(e) {
   if (!e) return null;
-  const c = (re) => (colsEtab || []).find((k) => re.test(k));
+  const c = (re) => (etatSaisie.colsEtab || []).find((k) => re.test(k));
   const cNat = c(/libelle_?nature|^nature/i),
     cLat = c(/^(etab_)?lat(itude)?$/i),
     cLon = c(/^(etab_)?(lon|lng|longitude)$/i);
@@ -28,25 +27,23 @@ function infoSection(e) {
     lon: isFinite(lon) && lon ? lon : null,
   };
 }
-let sectionGardee = null,
-  sectionCalculee = { id: null, r: null };
 function alerterSection(e) {
   const bloc = $("alerte-section");
   const x = e && Socle && Socle.genreSection ? infoSection(e) : null,
     genre = x ? Socle.genreSection(x.nature, x.type, x.nom) : null;
-  if (!genre || sectionGardee === x.id) {
-    bloc.hidden = !(genre && sectionGardee === x.id);
+  if (!genre || etatSaisie.sectionGardee === x.id) {
+    bloc.hidden = !(genre && etatSaisie.sectionGardee === x.id);
     if (bloc.hidden) bloc.innerHTML = "";
     return;
   }
-  if (sectionCalculee.id !== x.id) {
-    const cLat = (colsEtab || []).find((k) => /^(etab_)?lat(itude)?$/i.test(k));
-    const proches = etabs
+  if (etatSaisie.sectionCalculee.id !== x.id) {
+    const cLat = (etatSaisie.colsEtab || []).find((k) => /^(etab_)?lat(itude)?$/i.test(k));
+    const proches = etatSaisie.etabs
       .filter((y) => y.id !== x.id && (x.lat == null || !cLat || Math.abs(+y[cLat] - x.lat) < 0.01))
       .map(infoSection);
-    sectionCalculee = { id: x.id, r: Socle.rattachementSection({ ...x, section: genre }, proches) };
+    etatSaisie.sectionCalculee = { id: x.id, r: Socle.rattachementSection({ ...x, section: genre }, proches) };
   }
-  const r = sectionCalculee.r;
+  const r = etatSaisie.sectionCalculee.r;
   bloc.innerHTML = `<strong>⚠ Vous avez choisi une ${esc(genre)}</strong>, section rattachée à un ${genre === "SEP" || genre === "SGT" ? "lycée" : "collège"} :
     le signalement doit porter sur l'établissement, sinon il est compté à part (et souvent deux fois).
     ${
@@ -59,23 +56,21 @@ function alerterSection(e) {
   bloc.hidden = false;
   if (r)
     $("btn-choisir-rattachement").addEventListener("click", () => {
-      etabCourant = r.etab.ligne;
-      ligneAnnuaire = null;
-      modifie = true;
+      etatSaisie.etabCourant = r.etab.ligne;
+      etatSaisie.ligneAnnuaire = null;
+      etatSaisie.modifie = true;
       afficherEtablissement();
     });
   $("btn-garder-section").addEventListener("click", () => {
-    sectionGardee = x.id;
+    etatSaisie.sectionGardee = x.id;
     bloc.classList.add("confirme");
     bloc.innerHTML = `${esc(genre)} conservée à votre demande.`;
   });
 }
-/* Composante (IUT, INSPÉ, école interne…) ou site / campus du référentiel de l'enseignement supérieur (colonne
-   Rattachement) : le dossier s'ouvre sur l'établissement de rattachement, pour que l'établissement ne soit pas compté
-   deux fois ; la composante est rappelée, reprise dans la question « site » et ses sites sont proposés en premier. */
-let composanteChoisie = null;
 const colRattachement = () =>
-  (colsEtab || []).find((k) => /^(rattachement|etablissement_de_rattachement|etablissement_parent)$/i.test(k)) || null;
+  (etatSaisie.colsEtab || []).find((k) =>
+    /^(rattachement|etablissement_de_rattachement|etablissement_parent)$/i.test(k),
+  ) || null;
 function rattachementDe(e) {
   const c = colRattachement();
   if (!e || !c) return null;
@@ -89,7 +84,7 @@ function rattachementDe(e) {
 }
 function versEtablissement(e) {
   const p = rattachementDe(e);
-  composanteChoisie = p ? e : null;
+  etatSaisie.composanteChoisie = p ? e : null;
   return p || e;
 }
 const nomEtabId = (id) => {
@@ -99,9 +94,16 @@ const nomEtabId = (id) => {
 function alerterRattachement() {
   const b = $("alerte-rattachement");
   if (!b) return;
-  const x = composanteChoisie,
+  const x = etatSaisie.composanteChoisie,
     p = x && rattachementDe(x);
-  if (!x || !p || !etabCourant || p.id !== etabCourant.id || dossierId || modeEtab) {
+  if (
+    !x ||
+    !p ||
+    !etatSaisie.etabCourant ||
+    p.id !== etatSaisie.etabCourant.id ||
+    etatSaisie.dossierId ||
+    etatSaisie.modeEtab
+  ) {
     b.hidden = true;
     b.innerHTML = "";
     return;
@@ -121,23 +123,25 @@ function alerterRattachement() {
 function afficherEtablissement() {
   queueMicrotask(majDescriptionAuto); // le jour de mobilisation dépend de l'établissement
   queueMicrotask(verifierDoublons);
-  const creation = !dossierId;
-  const connu = !!etabCourant;
-  $("bloc-recherche").hidden = !(creation && !modeEtab && !connu);
-  $("btn-changer-etab").hidden = !(creation && !modeEtab && connu);
+  const creation = !etatSaisie.dossierId;
+  const connu = !!etatSaisie.etabCourant;
+  $("bloc-recherche").hidden = !(creation && !etatSaisie.modeEtab && !connu);
+  $("btn-changer-etab").hidden = !(creation && !etatSaisie.modeEtab && connu);
   if (typeof majBoutonsCorrection === "function") majBoutonsCorrection();
-  $("carte-etab").innerHTML = connu ? carteHtml(etabCourant) : "";
-  alerterSection(creation && connu && !modeEtab ? etabCourant : null);
+  $("carte-etab").innerHTML = connu ? carteHtml(etatSaisie.etabCourant) : "";
+  alerterSection(creation && connu && !etatSaisie.modeEtab ? etatSaisie.etabCourant : null);
   alerterRattachement();
   if (creation && connu) setTimeout(reprendreSitesAuto, 0);
   majResumeEtab();
   majProposition();
 
   // Contact et lien : réservés aux agents
-  $("bloc-contact").hidden = modeEtab || !(connu || ligneAnnuaire || $("nom").value.trim());
-  if (modeEtab) return;
-  const mailEnregistre = connu ? nettoieMail(etabCourant[E.mail]) : "";
-  const mailAnnuaire = connu ? nettoieMail(etabCourant[E.mailAnnuaire]) : nettoieMail($("mail").dataset.saisi);
+  $("bloc-contact").hidden = etatSaisie.modeEtab || !(connu || etatSaisie.ligneAnnuaire || $("nom").value.trim());
+  if (etatSaisie.modeEtab) return;
+  const mailEnregistre = connu ? nettoieMail(etatSaisie.etabCourant[E.mail]) : "";
+  const mailAnnuaire = connu
+    ? nettoieMail(etatSaisie.etabCourant[E.mailAnnuaire])
+    : nettoieMail($("mail").dataset.saisi);
   if (document.activeElement !== $("mail"))
     $("mail").value = connu ? mailEnregistre || mailAnnuaire : $("mail").dataset.saisi || "";
   const aide = $("aide-mail");
@@ -157,8 +161,8 @@ function afficherEtablissement() {
     aide.hidden = false;
   } else aide.hidden = true;
   $("btn-mail").hidden = !connu;
-  if (connu) completerLienEtab(etabCourant);
-  const lien = connu && lisible(etabCourant[E.lien]) ? extraireUrl(etabCourant[E.lien]) : "";
+  if (connu) completerLienEtab(etatSaisie.etabCourant);
+  const lien = connu && lisible(etatSaisie.etabCourant[E.lien]) ? extraireUrl(etatSaisie.etabCourant[E.lien]) : "";
   $("lien").value = lien;
   $("lien").placeholder = connu
     ? `Lien absent : vérifiez les formules des colonnes ${E.cle} et ${E.lien}`
@@ -189,7 +193,7 @@ function majBoutonEnvoi() {
   const a = $("btn-envoyer");
   const lien = $("lien").value,
     mail = $("mail").value.trim();
-  const nomEtab = etabCourant ? etabCourant[E.nom] : $("nom").value.trim();
+  const nomEtab = etatSaisie.etabCourant ? etatSaisie.etabCourant[E.nom] : $("nom").value.trim();
   if (!lien || !mail) {
     a.setAttribute("aria-disabled", "true");
     a.removeAttribute("href");
@@ -199,8 +203,9 @@ function majBoutonEnvoi() {
   a.removeAttribute("aria-disabled");
   a.title = "";
   // message réglé dans l'administration (onglet Établissements, clé « liens » de Config), sinon message par défaut
-  const m = socleConfig && socleConfig.valeurs.liens && socleConfig.valeurs.liens.message,
-    e = etabCourant || {};
+  const m =
+      etatSaisie.socleConfig && etatSaisie.socleConfig.valeurs.liens && etatSaisie.socleConfig.valeurs.liens.message,
+    e = etatSaisie.etabCourant || {};
   const remplir = (t) =>
     String(t).replace(/\{(nom|uai|commune|lien|situation)\}/g, (_, k) =>
       k === "nom"
@@ -208,7 +213,10 @@ function majBoutonEnvoi() {
         : k === "lien"
           ? lien
           : k === "situation"
-            ? (socleConfig && socleConfig.valeurs.general && socleConfig.valeurs.general.situation) || ""
+            ? (etatSaisie.socleConfig &&
+                etatSaisie.socleConfig.valeurs.general &&
+                etatSaisie.socleConfig.valeurs.general.situation) ||
+              ""
             : String(e[E[k]] ?? ""),
     );
   const objet = m && m.objet ? remplir(m.objet) : MESSAGE.objet(nomEtab),
@@ -217,20 +225,20 @@ function majBoutonEnvoi() {
 }
 
 $("mail").addEventListener("input", () => {
-  if (!etabCourant) $("mail").dataset.saisi = $("mail").value;
+  if (!etatSaisie.etabCourant) $("mail").dataset.saisi = $("mail").value;
   majBoutonEnvoi();
 });
 
 $("btn-mail").addEventListener("click", async () => {
-  if (!etabCourant) return;
+  if (!etatSaisie.etabCourant) return;
   const mail = $("mail").value.trim();
   if (mail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) {
     statut("statut-signalement", "Adresse mail invalide.", "err");
     return;
   }
   try {
-    await grist.getTable(ETAB.table).update({ id: etabCourant.id, fields: { [E.mail]: mail } });
-    etabCourant[E.mail] = mail;
+    await grist.getTable(ETAB.table).update({ id: etatSaisie.etabCourant.id, fields: { [E.mail]: mail } });
+    etatSaisie.etabCourant[E.mail] = mail;
     statut("statut-signalement", "Mail de l'établissement enregistré.", "ok");
   } catch (e) {
     statut("statut-signalement", `Échec : ${e.message || e}`, "err");
@@ -252,8 +260,8 @@ $("btn-copier").addEventListener("click", async () => {
 });
 
 $("btn-changer-etab").addEventListener("click", () => {
-  etabCourant = null;
-  ligneAnnuaire = null;
+  etatSaisie.etabCourant = null;
+  etatSaisie.ligneAnnuaire = null;
   ["nom", ...CHAMPS_NOUVEL_ETAB].forEach((k) => {
     $(k).value = "";
     $(k).classList.remove("auto");
@@ -265,22 +273,25 @@ $("btn-changer-etab").addEventListener("click", () => {
 
 function etabParUai(uai) {
   const u = (uai || "").trim().toUpperCase();
-  return u ? etabs.find((e) => String(e[E.uai] || "").toUpperCase() === u) || null : null;
+  return u ? etatSaisie.etabs.find((e) => String(e[E.uai] || "").toUpperCase() === u) || null : null;
 }
 
 // Retourne l'identifiant de l'établissement du signalement, en le créant si besoin
 async function etablissementPourCreation() {
-  if (modeEtab) return etabs[0] ? etabs[0].id : null;
-  if (etabCourant) return etabCourant.id;
+  if (etatSaisie.modeEtab) return etatSaisie.etabs[0] ? etatSaisie.etabs[0].id : null;
+  if (etatSaisie.etabCourant) return etatSaisie.etabCourant.id;
   await chargerEtabs(); // un collègue l'a peut-être créé entre-temps
   const existant = etabParUai($("uai").value);
   if (existant) {
-    etabCourant = existant;
+    etatSaisie.etabCourant = existant;
     return existant.id;
   }
   const uai = $("uai").value.trim().toUpperCase();
   // Origine « annuaire » seulement si l'établissement vient d'une suggestion et que l'UAI n'a pas été modifié
-  const depuisAnnuaire = ligneAnnuaire && ligneAnnuaire.uai && String(ligneAnnuaire.uai).toUpperCase() === uai;
+  const depuisAnnuaire =
+    etatSaisie.ligneAnnuaire &&
+    etatSaisie.ligneAnnuaire.uai &&
+    String(etatSaisie.ligneAnnuaire.uai).toUpperCase() === uai;
   const candidats = {
     [E.nom]: $("nom").value.trim(),
     [E.uai]: uai,
@@ -288,19 +299,19 @@ async function etablissementPourCreation() {
     [E.academie]: $("academie").value.trim(),
     [E.departement]: $("departement").value.trim(),
     [E.mail]: $("mail").value.trim(),
-    [E.commune]: depuisAnnuaire ? ligneAnnuaire.commune || "" : "",
-    [E.origine]: depuisAnnuaire ? ORIGINE[ligneAnnuaire.source] || ORIGINE.manuel : ORIGINE.manuel,
+    [E.commune]: depuisAnnuaire ? etatSaisie.ligneAnnuaire.commune || "" : "",
+    [E.origine]: depuisAnnuaire ? ORIGINE[etatSaisie.ligneAnnuaire.source] || ORIGINE.manuel : ORIGINE.manuel,
     [E.present]: depuisAnnuaire ? true : null,
-    [E.mailAnnuaire]: depuisAnnuaire ? ligneAnnuaire.mail || "" : "",
+    [E.mailAnnuaire]: depuisAnnuaire ? etatSaisie.ligneAnnuaire.mail || "" : "",
   };
   const fields = {};
-  for (const [c, v] of Object.entries(candidats)) if (colsEtab.includes(c) && v !== null) fields[c] = v;
+  for (const [c, v] of Object.entries(candidats)) if (etatSaisie.colsEtab.includes(c) && v !== null) fields[c] = v;
   const id = idDe(
     await etape("Création de l'établissement dans le référentiel", ETAB.table, () =>
       grist.getTable(ETAB.table).create({ fields }),
     ),
   );
   await chargerEtabs(); // récupère la clé et le lien calculés par Grist
-  etabCourant = etabDe(id);
+  etatSaisie.etabCourant = etabDe(id);
   return id;
 }

@@ -142,7 +142,7 @@ function syntheseTableau(sousDefs, lignes, court) {
 const TYPES_DECOMPTE = ["Choice", "ChoiceList", "Bool", "Ref", "RefList"];
 const decomptable = (d) => TYPES_DECOMPTE.includes(typeBase(d.type)) || ["Numeric", "Int"].includes(typeBase(d.type));
 // Réglage d'une colonne : dans la ligne de chaque élément (format), et décompte en tête (ou somme pour un nombre)
-function modeSous(def, d, o = optionsAuto) {
+function modeSous(def, d, o = etatSaisie.optionsAuto) {
   const m = ((o.formatsTableau || {})[def.colId] || {})[d.colId];
   const anciens = {
     detail: { ligne: "defaut", decompte: false },
@@ -159,7 +159,7 @@ function modeSous(def, d, o = optionsAuto) {
 const estQualifSous = (d) =>
   !!d && typeBase(d.type) === "Choice" && (/qualif/i.test(d.colId) || /qualif/i.test(d.libelle || ""));
 // Valeurs d'une ligne de tableau mises en forme selon les réglages de la description automatique
-function valeursLigneTableau(def, l, o = optionsAuto) {
+function valeursLigneTableau(def, l, o = etatSaisie.optionsAuto) {
   const tous = def._sousDefs || [];
   const vis = (d) => !d.condition || evaluerConditionLigne(d.condition, tous, l);
   const formatGeneral = (d) => {
@@ -182,12 +182,12 @@ function valeursLigneTableau(def, l, o = optionsAuto) {
     .filter(Boolean);
 }
 // Texte proposé pour un champ [auto] d'une ligne
-const texteAutoLigne = (def, l, o = optionsAuto) => valeursLigneTableau(def, l, o).join(" — ");
+const texteAutoLigne = (def, l, o = etatSaisie.optionsAuto) => valeursLigneTableau(def, l, o).join(" — ");
 /* Évolution depuis la version précédente du dossier (même jour) : chaque décompte en tête reçoit l'écart entre
    parenthèses (« RAS 19 (−1) ») ; la qualification d'une ligne qui a changé est écrite « Blocage → ==RAS== »
    (== : surlignage dans Word, soulignement dans Tchap). Les lignes sont retrouvées d'une version à l'autre par leur
    identifiant, sinon par le premier champ texte (nom du site…). */
-function texteTableauDescription(def, lignesBrutes, o = optionsAuto, avantBrutes = null) {
+function texteTableauDescription(def, lignesBrutes, o = etatSaisie.optionsAuto, avantBrutes = null) {
   const tous = def._sousDefs || [],
     sous = tous.filter((d) => !d.confidentiel);
   const vis = (l, d) => !d.condition || evaluerConditionLigne(d.condition, tous, l);
@@ -287,13 +287,14 @@ function texteTableauDescription(def, lignesBrutes, o = optionsAuto, avantBrutes
 }
 // Version précédente du dossier, si elle est du même jour (un nouveau dossier chaque jour) : base de comparaison
 function versionDuJour() {
-  if (!dossierId || !derniere) return false;
-  const s = secondes(val(derniere, "Date"));
+  if (!etatSaisie.dossierId || !etatSaisie.derniere) return false;
+  const s = secondes(val(etatSaisie.derniere, "Date"));
   if (s == null) return true;
   const jour = (d) => d.toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" });
   return jour(new Date(s * 1000)) === jour(new Date());
 }
-const lignesPrecedentes = (def) => (def.tableau && versionDuJour() ? lireTableauJson(derniere[def.colId]) : null);
+const lignesPrecedentes = (def) =>
+  def.tableau && versionDuJour() ? lireTableauJson(etatSaisie.derniere[def.colId]) : null;
 function lignesExemple(def) {
   // deux lignes fictives pour l'exemple des réglages
   return [0, 1].map((k) => {
@@ -346,13 +347,15 @@ class Tableau {
     this.colDossier =
       (
         cols.find((c) => c.colId === "Dossier") ||
-        cols.find((c) => c.type === `Ref:${tableId}` && c.colId !== "Version") ||
+        cols.find((c) => c.type === `Ref:${etatSaisie.tableId}` && c.colId !== "Version") ||
         {}
       ).colId || null;
     this.colLigne = cols.some((c) => c.colId === "Ligne_id") ? "Ligne_id" : null;
     this.colOrdre = cols.some((c) => c.colId === "Ordre") ? "Ordre" : null;
     // historique : une copie des lignes par version (colonne Version vers la table des signalements)
-    this.colVersion = cols.some((c) => c.colId === "Version" && c.type === `Ref:${tableId}`) ? "Version" : null;
+    this.colVersion = cols.some((c) => c.colId === "Version" && c.type === `Ref:${etatSaisie.tableId}`)
+      ? "Version"
+      : null;
     this.colMouvement = this.colVersion && cols.some((c) => c.colId === "Mouvement") ? "Mouvement" : null;
     this.sousDefs = cols
       .filter(
@@ -474,7 +477,8 @@ class Tableau {
   colonneNombre() {
     const ref = (this.def.tableau && this.def.tableau.lignes) || (this.def.condition && this.def.condition.ref);
     if (!ref) return null;
-    const defs = this.prefix === "q" ? defsQuestions : this.prefix === "vd" ? defsDep : defsAca;
+    const defs =
+      this.prefix === "q" ? etatSaisie.defsQuestions : this.prefix === "vd" ? etatSaisie.defsDep : etatSaisie.defsAca;
     const c = resoudreColonne(ref, defs);
     return c && ["Numeric", "Int"].includes(typeBase(c.def.type)) ? c : null;
   }
@@ -486,7 +490,7 @@ class Tableau {
       const bloc = document.querySelector(`[data-champ="${this.prefix}-${c.def.colId}"]`);
       v = bloc && !bloc.hidden ? lireUnChamp(this.prefix, c.def) : null;
     } else {
-      const r = derniere || initiale;
+      const r = etatSaisie.derniere || etatSaisie.initiale;
       v = r ? r[c.def.colId] : null;
     }
     return typeof v === "number" && v > 0 ? Math.min(200, Math.floor(v)) : 0;
@@ -752,12 +756,12 @@ class Tableau {
         : "";
     // site repris dans un nouveau signalement : peut être laissé de côté (pas d'information nouvelle), son dernier état reste connu
     const retirer =
-      fixe && l._repris && !dossierId
+      fixe && l._repris && !etatSaisie.dossierId
         ? `<button type="button" class="icone" data-action="retirer-repris" title="Ne pas faire figurer ce site dans ce signalement : il ne sera plus proposé ensuite (seuls les sites du dernier dossier sont repris)" aria-label="Retirer le site de la ligne ${k + 1} de ce signalement">✕</button>`
         : "";
     // site d'un dossier saisi à tort : supprimé de toutes les versions du dossier à l'enregistrement (2.50)
     const supprimer =
-      fixe && dossierId && !l._repris
+      fixe && etatSaisie.dossierId && !l._repris
         ? `<button type="button" class="icone" data-action="supprimer-site" title="Supprimer ce site du dossier (saisi à tort) : il disparaît de toutes les étapes du dossier" aria-label="Supprimer le site de la ligne ${k + 1} du dossier">🗑</button>`
         : "";
     return `<span class="actions-ligne"><button type="button" class="icone" data-action="dupliquer" title="Dupliquer cette ligne" aria-label="Dupliquer la ligne ${k + 1}">⧉</button>${corriger}${
@@ -822,7 +826,7 @@ class Tableau {
       return;
     }
     this.el.innerHTML =
-      (this.avertissement && !modeEtab ? `<p class="bandeau">${esc(this.avertissement)}</p>` : "") +
+      (this.avertissement && !etatSaisie.modeEtab ? `<p class="bandeau">${esc(this.avertissement)}</p>` : "") +
       (this.noteAuto && this.lignes.some((l) => l._repris) ? `<p class="note">${esc(this.noteAuto)}</p>` : "") +
       (this.retires && this.retires.length
         ? `<p class="note retires">${this.retires.length} site${this.retires.length > 1 ? "s" : ""} laissé${this.retires.length > 1 ? "s" : ""} de côté pour ce signalement (${this.retires.map((x) => esc(this.nomLigne(x.l))).join(", ")})  : ${this.retires.length > 1 ? "ils ne seront plus proposés" : "il ne sera plus proposé"} ensuite. <button type="button" class="lien-texte" data-action="remettre-retires">Remettre</button></p>`
@@ -831,8 +835,8 @@ class Tableau {
         ? `<p class="note retires supprimes">${this.supprimes.length > 1 ? `${this.supprimes.length} sites seront supprimés` : "1 site sera supprimé"} du dossier à l'enregistrement, dans toutes ses étapes (${this.supprimes.map((x) => esc(this.nomLigne(x.l))).join(", ")}). <button type="button" class="lien-texte" data-action="annuler-supprimes">Annuler la suppression</button></p>`
         : "") +
       (this.offreReprise &&
-      etabCourant &&
-      this.offreReprise.etab === etabCourant.id &&
+      etatSaisie.etabCourant &&
+      this.offreReprise.etab === etatSaisie.etabCourant.id &&
       !this.lignes.some((l) => l._repris)
         ? `<p class="note offre-reprise">${this.offreReprise.n} site${this.offreReprise.n > 1 ? "s" : ""} dans le dernier signalement de cet établissement. <button type="button" class="secondaire petit" data-action="reprendre-sites">Reprendre leur dernier état</button></p>`
         : "") +
@@ -951,7 +955,7 @@ class Tableau {
   signaler() {
     if (this.surChangement) this.surChangement();
     if (this.prefix === "q") {
-      appliquerConditions("q", defsQuestions);
+      appliquerConditions("q", etatSaisie.defsQuestions);
       majDescriptionAuto();
       majApercuAuto();
       if (this.sites) majQualifDeduite();
@@ -1150,9 +1154,9 @@ class Tableau {
           : "";
         this.dessiner();
         this.signaler();
-        qualifTouchee = false;
+        etatSaisie.qualifTouchee = false;
         majQualifDeduite();
-        modifie = true;
+        etatSaisie.modifie = true;
         return;
       }
       if (action === "ajouter") {
@@ -1195,7 +1199,7 @@ class Tableau {
           )
         )
           return;
-        const etab = etabCourant ? etabCourant.id : 0;
+        const etab = etatSaisie.etabCourant ? etatSaisie.etabCourant.id : 0;
         (this.supprimes = this.supprimes || []).push({ k, l, _id: l._id, cle: this.cleSite(etab, l.valeurs) });
         this.lignes.splice(k, 1);
         this.dessiner();
@@ -1386,7 +1390,7 @@ class Tableau {
       .filter((x) => refId(t[this.colDossier][x.i]) === dossier || t[this.colDossier][x.i] === dossier);
     // versions connues du dossier (ordre de création)
     const cD = col("Dossier"),
-      versionsDossier = enregistrements
+      versionsDossier = etatSaisie.enregistrements
         .filter((l) => (refId(cD && l[cD]) || l.id) === dossier)
         .map((l) => l.id)
         .sort((a, b) => a - b);
@@ -1523,7 +1527,8 @@ async function purgerSitesSupprimes(dossier) {
   for (const c of controleursTableau("q")) {
     const sup = c.supprimes || [];
     if (!sup.length || !c.sites) continue;
-    const etab = refId(val(initiale, "Etablissement")) || (etabCourant && etabCourant.id) || 0;
+    const etab =
+      refId(val(etatSaisie.initiale, "Etablissement")) || (etatSaisie.etabCourant && etatSaisie.etabCourant.id) || 0;
     // un site encore présent dans le tableau (ressaisi sur une autre ligne) n'est visé que par l'identifiant de la ligne supprimée
     const gardees = new Set(
       c
@@ -1536,7 +1541,7 @@ async function purgerSitesSupprimes(dossier) {
     const vise = (o, v) => (o._id && ids.has(o._id)) || cles.has(c.cleSite(etab, v || o));
     const cD = col("Dossier"),
       maj = [];
-    for (const l of enregistrements.filter((r) => (refId(cD && r[cD]) || r.id) === dossier)) {
+    for (const l of etatSaisie.enregistrements.filter((r) => (refId(cD && r[cD]) || r.id) === dossier)) {
       const f = {},
         filtrer = (colonne, vue) => {
           const a = lireTableauJson(l[colonne]),
@@ -1585,14 +1590,16 @@ async function reconstruireTableaux() {
       const t = await Donnees.lire(c.table);
       if (c.colVersion && t[c.colVersion]) {
         const cD = col("Dossier");
-        for (const l of dossiersInit) {
-          const vs = enregistrements.filter((x) => (refId(cD && x[cD]) || x.id) === l.id).sort((a, b) => a.id - b.id);
+        for (const l of etatSaisie.dossiersInit) {
+          const vs = etatSaisie.enregistrements
+            .filter((x) => (refId(cD && x[cD]) || x.id) === l.id)
+            .sort((a, b) => a.id - b.id);
           for (const v of vs)
             n += await c.synchroniser(l.id, true, null, c.lignesDepuisJson(v[c.def.colId]), false, v.id);
         }
         continue;
       }
-      for (const l of dossiersInit) {
+      for (const l of etatSaisie.dossiersInit) {
         const der = derniereDe(l);
         n += await c.synchroniser(l.id, true, t, c.lignesDepuisJson(der[c.def.colId]), false);
       }

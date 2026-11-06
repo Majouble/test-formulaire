@@ -8,7 +8,6 @@
    Les colonnes de clé et de lien d'accès ne sont jamais conservées : elles sont lues à la demande, pour
    l'établissement affiché. Jamais utilisé en accès par lien d'établissement (une seule ligne visible). */
 const DUREE_CACHE_REFERENTIEL = 24 * 3600 * 1000;
-let referentielDuCache = null; // date de la copie utilisée, ou null (lecture du serveur)
 function ouvrirBaseCache() {
   return new Promise((ok, ko) => {
     if (!window.indexedDB) return ko(new Error("IndexedDB indisponible"));
@@ -94,7 +93,13 @@ async function oublierCacheReferentiel() {
 // Clé et lien d'accès de l'établissement affiché, quand le référentiel vient du navigateur (non conservés)
 const liensDemandes = new Set();
 async function completerLienEtab(e) {
-  if (!referentielDuCache || !e || liensDemandes.has(e.id) || !(E.lien in e) || (e[E.lien] != null && e[E.lien] !== ""))
+  if (
+    !etatSaisie.referentielDuCache ||
+    !e ||
+    liensDemandes.has(e.id) ||
+    !(E.lien in e) ||
+    (e[E.lien] != null && e[E.lien] !== "")
+  )
     return;
   liensDemandes.add(e.id);
   try {
@@ -114,30 +119,28 @@ async function completerLienEtab(e) {
     if (!rec && E.uai && e[E.uai]) rec = await lire({ [E.uai]: [e[E.uai]] });
     const f = (rec && rec.fields) || {};
     for (const c of [E.cle, E.lien]) if (c && c in f) e[c] = f[c];
-    if (etabCourant && etabCourant.id === e.id) afficherEtablissement();
+    if (etatSaisie.etabCourant && etatSaisie.etabCourant.id === e.id) afficherEtablissement();
   } catch (err) {
     console.warn("Lien d'accès non lu", err);
     liensDemandes.delete(e.id);
   }
 }
 
-let etabsCharges = false,
-  promesseEtabs = null;
 // avecCache : copie du navigateur acceptée (ouverture du widget) ; sinon relecture sur le serveur
 function chargerEtabs(avecCache) {
   // Deux demandes simultanées partagent la même lecture au lieu d'en lancer deux
-  if (!promesseEtabs)
-    promesseEtabs = lireEtabs(avecCache)
+  if (!etatSaisie.promesseEtabs)
+    etatSaisie.promesseEtabs = lireEtabs(avecCache)
       .then(() => {
-        etabsCharges = true;
+        etatSaisie.etabsCharges = true;
       })
       .finally(() => {
-        promesseEtabs = null;
+        etatSaisie.promesseEtabs = null;
       });
-  return promesseEtabs;
+  return etatSaisie.promesseEtabs;
 }
 async function lireEtabs(avecCache) {
-  dernierChargementEtabs = Date.now();
+  etatSaisie.dernierChargementEtabs = Date.now();
   // tables visées par les colonnes Référence du référentiel (académies…) : lues en parallèle, pas après lui
   metaColonnes(ETAB.table)
     .then((m) => {
@@ -152,45 +155,45 @@ async function lireEtabs(avecCache) {
     copie = null;
     oublierCacheReferentiel();
   }
-  referentielDuCache = copie ? copie.t : null;
+  etatSaisie.referentielDuCache = copie ? copie.t : null;
   liensDemandes.clear();
   const t = copie ? copie.table : await lireTableRapide(ETAB.table);
   cacheTables.set(ETAB.table, { t: Date.now(), p: Promise.resolve(t) }); // réutilisée par les listes de choix qui visent le référentiel
   const cols = Object.keys(t);
-  etabs = t.id.map((id, i) => {
+  etatSaisie.etabs = t.id.map((id, i) => {
     const l = {};
     cols.forEach((c) => (l[c] = t[c][i]));
     return l;
   });
-  indexEtabs = new Map(etabs.map((e) => [e.id, e]));
-  idEtabMax = etabs.reduce((m, e) => Math.max(m, e.id), 0);
-  colsEtab = cols;
+  etatSaisie.indexEtabs = new Map(etatSaisie.etabs.map((e) => [e.id, e]));
+  etatSaisie.idEtabMax = etatSaisie.etabs.reduce((m, e) => Math.max(m, e.id), 0);
+  etatSaisie.colsEtab = cols;
   await reconnaitreColonnesEtab(t);
   appliquerColonnesForcees();
   await resoudreRefsEtab();
   // Mode établissement : une seule ligne est visible (celle de l'établissement du lien), et sa clé
   // n'est pas lisible — soit la colonne est absente du schéma transmis, soit sa valeur est censurée
   // par une règle d'accès de colonne (cas le plus courant : le rôle « colonne » sur UUID/Lien).
-  const uneSeuleLigne = etabs.length === 1;
-  const cleLisible = uneSeuleLigne && cols.includes(E.cle) && lisible(etabs[0][E.cle]);
-  modeEtab = uneSeuleLigne && !cleLisible;
+  const uneSeuleLigne = etatSaisie.etabs.length === 1;
+  const cleLisible = uneSeuleLigne && cols.includes(E.cle) && lisible(etatSaisie.etabs[0][E.cle]);
+  etatSaisie.modeEtab = uneSeuleLigne && !cleLisible;
   const colsLisibles = cols.filter((c) => c !== "id" && c !== "manualSort" && !c.startsWith("gristHelper")).join(", ");
-  const devinees = [...colonnesParContenu].filter((k) => ["nom", "uai"].includes(k));
-  alerteStructure = [
-    !modeEtab && devinees.length
+  const devinees = [...etatSaisie.colonnesParContenu].filter((k) => ["nom", "uai"].includes(k));
+  etatSaisie.alerteStructure = [
+    !etatSaisie.modeEtab && devinees.length
       ? `Dans la table « ${ETAB.table} », ${devinees.map((k) => `la colonne « ${E[k]} » est utilisée comme ${k === "nom" ? "nom de l'établissement" : "UAI"}`).join(" et ")}, d'après son contenu. Renommez-la « ${devinees.map((k) => (k === "nom" ? "Nom" : "UAI")).join(" » / « ")} » si ce n'est pas la bonne.`
       : "",
-    !modeEtab && !cols.includes(E.nom)
+    !etatSaisie.modeEtab && !cols.includes(E.nom)
       ? `Aucune colonne de nom d'établissement reconnue dans la table « ${ETAB.table} »${cols.includes(E.uai) ? "" : " (ni d'UAI)"} : la recherche porte sur toutes ses colonnes texte. Nommez la colonne du nom « Nom »${cols.includes(E.uai) ? "" : " et celle de l'UAI « UAI »"} pour une recherche fiable. Colonnes trouvées : ${colsLisibles}.`
       : "",
-    !modeEtab && !cols.includes(E.cle)
+    !etatSaisie.modeEtab && !cols.includes(E.cle)
       ? `Colonne « ${E.cle} » introuvable dans ${ETAB.table} : les liens d'accès des établissements n'existent pas encore. Mise en place : administration, onglet Établissements.${cols.includes(E.nom) ? ` Colonnes trouvées : ${colsLisibles}.` : ""}`
       : "",
   ]
     .filter(Boolean)
     .join(" ");
   // copie conservée dans le navigateur (jamais en accès par lien d'établissement), sans clé ni lien d'accès
-  if (!copie && !modeEtab && etabs.length > 1)
+  if (!copie && !etatSaisie.modeEtab && etatSaisie.etabs.length > 1)
     ecrireCacheReferentiel(
       t,
       [E.cle, E.lien]

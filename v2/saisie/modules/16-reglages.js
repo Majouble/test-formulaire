@@ -4,14 +4,17 @@
 /* ---------- Réglages : lus et enregistrés dans la table Parametres ---------- */
 /* ---------- Limites des nombres : description de la colonne > réglage de la question > réglage général ---------- */
 const questionsNumeriques = () =>
-  [...defsQuestions, ...defsDep, ...defsAca].filter((d) => !d.formule && ["Numeric", "Int"].includes(typeBase(d.type)));
+  [...etatSaisie.defsQuestions, ...etatSaisie.defsDep, ...etatSaisie.defsAca].filter(
+    (d) => !d.formule && ["Numeric", "Int"].includes(typeBase(d.type)),
+  );
 const nombreOuNul = (x) =>
   x === "" || x == null || isNaN(parseFloat(String(x).replace(",", ".")))
     ? null
     : parseFloat(String(x).replace(",", "."));
 function bornesDe(def) {
-  const r = ((optionsAuto && optionsAuto.bornes) || {})[def.colId] || {};
-  const min = def.min ?? nombreOuNul(r.min) ?? (optionsAuto && optionsAuto.nombresPositifs ? 0 : null);
+  const r = ((etatSaisie.optionsAuto && etatSaisie.optionsAuto.bornes) || {})[def.colId] || {};
+  const min =
+    def.min ?? nombreOuNul(r.min) ?? (etatSaisie.optionsAuto && etatSaisie.optionsAuto.nombresPositifs ? 0 : null);
   return { min, max: def.max ?? nombreOuNul(r.max) };
 }
 // Reporte les limites sur les champs (attributs min / max des flèches du champ nombre)
@@ -29,7 +32,7 @@ function appliquerBornes() {
   }
 }
 function remplirBornesConfig() {
-  const o = optionsAuto,
+  const o = etatSaisie.optionsAuto,
     qs = questionsNumeriques();
   $("cfg-bornes").innerHTML =
     qs
@@ -74,13 +77,13 @@ const CLES_DESCRIPTION = [
   "formatsQuestion",
   "formatsTableau",
 ];
-let optionsParametres = null;
 function descriptionDuFormulaire() {
-  const d = formulaireActif && formulaireActif.conf && formulaireActif.conf.description;
+  const d =
+    etatSaisie.formulaireActif && etatSaisie.formulaireActif.conf && etatSaisie.formulaireActif.conf.description;
   if (!d || !d.perso) return null;
   const res = { formatsQuestion: {}, formatsTableau: {} };
   for (const k of CLES_DESCRIPTION) if (k in d && d[k] != null) res[k] = d[k];
-  for (const b of formulaireActif.conf.blocs || []) {
+  for (const b of etatSaisie.formulaireActif.conf.blocs || []) {
     const t = b.reglages && b.reglages.descTableau;
     if (b.colonne && t && typeof t === "object" && Object.keys(t).length) res.formatsTableau[b.colonne] = t;
   }
@@ -90,45 +93,50 @@ function descriptionDuFormulaire() {
 function garderDescriptionCommune(o) {
   if (!descriptionDuFormulaire()) return o;
   for (const k of CLES_DESCRIPTION) {
-    if (optionsParametres && k in optionsParametres) o[k] = optionsParametres[k];
+    if (etatSaisie.optionsParametres && k in etatSaisie.optionsParametres) o[k] = etatSaisie.optionsParametres[k];
     else delete o[k];
   }
   return o;
 }
 function appliquerOptions(o) {
-  optionsParametres = o || null;
-  optionsAuto = { ...OPTIONS_DEFAUT, ...(o || {}), ...(descriptionDuFormulaire() || {}), description: false };
+  etatSaisie.optionsParametres = o || null;
+  etatSaisie.optionsAuto = {
+    ...OPTIONS_DEFAUT,
+    ...(o || {}),
+    ...(descriptionDuFormulaire() || {}),
+    description: false,
+  };
   appliquerBornes();
   majDescriptionAuto();
   majApercuAuto();
 }
 async function chargerReglages() {
-  ligneParametres = null;
-  colsParametres = [];
-  if (!socleConfig) {
+  etatSaisie.ligneParametres = null;
+  etatSaisie.colsParametres = [];
+  if (!etatSaisie.socleConfig) {
     try {
       await lireSocleSaisie();
     } catch (_) {}
   }
   if (reglagesDansConfig()) {
-    const v = socleConfig.valeurs.resume_auto;
-    ligneParametres = { id: null, [PARAMETRES.colonne]: v ? JSON.stringify(v) : "" };
-    colsParametres = [PARAMETRES.colonne];
+    const v = etatSaisie.socleConfig.valeurs.resume_auto;
+    etatSaisie.ligneParametres = { id: null, [PARAMETRES.colonne]: v ? JSON.stringify(v) : "" };
+    etatSaisie.colsParametres = [PARAMETRES.colonne];
     appliquerOptions(v || null);
     return;
   }
   try {
     const t = await Donnees.lire(PARAMETRES.table);
-    colsParametres = Object.keys(t);
+    etatSaisie.colsParametres = Object.keys(t);
     if (t.id.length) {
-      ligneParametres = {};
-      colsParametres.forEach((c) => (ligneParametres[c] = t[c][0]));
+      etatSaisie.ligneParametres = {};
+      etatSaisie.colsParametres.forEach((c) => (etatSaisie.ligneParametres[c] = t[c][0]));
     }
   } catch (_) {
     /* table absente ou illisible (établissement) : réglages par défaut */
   }
   let o = null;
-  const brutReglages = ligneParametres && ligneParametres[PARAMETRES.colonne];
+  const brutReglages = etatSaisie.ligneParametres && etatSaisie.ligneParametres[PARAMETRES.colonne];
   if (typeof brutReglages === "string" && brutReglages.trim()) {
     try {
       o = JSON.parse(brutReglages);
@@ -144,7 +152,7 @@ async function remplirChoixTable() {
   try {
     tables = (await grist.docApi.listTables()).filter((t) => !t.startsWith("_grist"));
   } catch (_) {}
-  const choisie = optionsAuto[CLE_TABLE_ETAB] || "";
+  const choisie = etatSaisie.optionsAuto[CLE_TABLE_ETAB] || "";
   sel.innerHTML =
     `<option value="">Automatique (table visée par la colonne Établissement)</option>` +
     tables.map((t) => `<option value="${esc(t)}"${t === choisie ? " selected" : ""}>${esc(t)}</option>`).join("");
@@ -159,16 +167,16 @@ async function remplirChoixTable() {
     mail: "mail",
   };
   const utilisees = Object.keys(LIB_COL)
-    .filter((k) => colsEtab.includes(E[k]))
+    .filter((k) => etatSaisie.colsEtab.includes(E[k]))
     .map((k) => `${LIB_COL[k]} → ${E[k]}`);
-  const absentes = ["nom", "uai"].filter((k) => !colsEtab.includes(E[k])).map((k) => LIB_COL[k]);
+  const absentes = ["nom", "uai"].filter((k) => !etatSaisie.colsEtab.includes(E[k])).map((k) => LIB_COL[k]);
   $("cfg-table-etab-info").textContent =
-    `Table utilisée actuellement : ${ETAB.table} (${ETAB.origineTable || "table par défaut"}), ${etabs.length} établissement(s).` +
+    `Table utilisée actuellement : ${ETAB.table} (${ETAB.origineTable || "table par défaut"}), ${etatSaisie.etabs.length} établissement(s).` +
     (utilisees.length ? ` Colonnes utilisées : ${utilisees.join(", ")}.` : "") +
     (absentes.length ? ` Non trouvée(s) : ${absentes.join(", ")}.` : "");
 }
 function ouvrirConfig() {
-  const o = optionsAuto;
+  const o = etatSaisie.optionsAuto;
   remplirChoixTable();
   $("cfg-actif").checked = !!o.actif;
   $("cfg-format").value = o.format;
@@ -263,7 +271,7 @@ function ouvrirConfig() {
   $("cfg-desc-formulaire").hidden = !descForm;
   if (descForm)
     $("cfg-desc-formulaire").textContent =
-      `La description automatique du formulaire « ${formulaireActif.nom} » est réglée dans l'administration des formulaires (champ Description, « Réglages propres à ce formulaire »). Les réglages ci-dessous ne la concernent pas.`;
+      `La description automatique du formulaire « ${etatSaisie.formulaireActif.nom} » est réglée dans l'administration des formulaires (champ Description, « Réglages propres à ce formulaire »). Les réglages ci-dessous ne la concernent pas.`;
   statut("cfg-statut", "");
   majExempleConfig();
   $("config").hidden = false;
@@ -275,8 +283,8 @@ function lireConfig() {
     format: $("cfg-format").value,
     separateur: $("cfg-separateur").value,
     puce: $("cfg-puce").value,
-    longueur: optionsAuto.longueur,
-    position: optionsAuto.position,
+    longueur: etatSaisie.optionsAuto.longueur,
+    position: etatSaisie.optionsAuto.position,
     qualification: $("cfg-qualification").checked,
     description: false,
     questions: $("cfg-questions").checked,
@@ -317,7 +325,7 @@ function majExempleConfig() {
           choix: (d.opts && (d.opts.choices || [])[0]) || "Oui",
           texte: "texte saisi",
         }[famille(d)];
-  const qDef = metaSig[col("Qualification")];
+  const qDef = etatSaisie.metaSig[col("Qualification")];
   let items = questionsDescription()
     .filter((d) => (d.colId === (qDef && qDef.colId) ? o.qualification : o.questions))
     .map((d) => ({ libelle: d.libelle, valeur: exemple(d), def: d }));
@@ -353,12 +361,12 @@ $("btn-config").addEventListener("click", () => {
 $("cfg-enregistrer").addEventListener("click", async () => {
   let anciens = {};
   try {
-    anciens = JSON.parse((ligneParametres && ligneParametres[PARAMETRES.colonne]) || "{}") || {};
+    anciens = JSON.parse((etatSaisie.ligneParametres && etatSaisie.ligneParametres[PARAMETRES.colonne]) || "{}") || {};
   } catch (_) {}
   const o = garderDescriptionCommune({ ...anciens, ...lireConfig() });
   if (!o[CLE_TABLE_ETAB]) delete o[CLE_TABLE_ETAB];
   const tableAvant = ETAB.table;
-  if (!reglagesDansConfig() && !colsParametres.includes(PARAMETRES.colonne)) {
+  if (!reglagesDansConfig() && !etatSaisie.colsParametres.includes(PARAMETRES.colonne)) {
     statut(
       "cfg-statut",
       `Créez d'abord une colonne texte « ${PARAMETRES.colonne} » dans la table « ${PARAMETRES.table} ».`,
@@ -385,12 +393,12 @@ $("cfg-enregistrer").addEventListener("click", async () => {
   }
   try {
     const table = grist.getTable(PARAMETRES.table);
-    if (ligneParametres) await table.update({ id: ligneParametres.id, fields });
+    if (etatSaisie.ligneParametres) await table.update({ id: etatSaisie.ligneParametres.id, fields });
     else await table.create({ fields });
     await chargerReglages();
     await determinerTableEtab();
     if (ETAB.table !== tableAvant) {
-      etabCourant = null;
+      etatSaisie.etabCourant = null;
       enFile(async () => {
         await chargerConfiguration();
         await rafraichir();

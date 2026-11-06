@@ -11,25 +11,26 @@
    - Qualification de l'établissement : en bas du formulaire, déduite du site le plus grave (ordre des choix de la
      colonne Qualification, du plus grave au moins grave) ; contrôle de cohérence avant l'enregistrement. */
 const sitesCtrl = () => controleursTableau("q").find((c) => c.sites && c.pret) || null;
-const formulaireParSite = () => defsQuestions.some((d) => d.tableau && d.tableau.sites);
+const formulaireParSite = () => etatSaisie.defsQuestions.some((d) => d.tableau && d.tableau.sites);
 // reprise du dernier état des sites (réglage du tableau des sites) : "auto", "bouton" ou "non" (par défaut)
 const modeRepriseSites = () => {
-  const d = defsQuestions.find((x) => x.tableau && x.tableau.sites);
+  const d = etatSaisie.defsQuestions.find((x) => x.tableau && x.tableau.sites);
   if (!d) return null;
   const r = d.tableau.sites.reprise;
   return r === true || r === "auto" ? "auto" : r === "bouton" ? "bouton" : "non";
 };
 const retourNormale = () =>
   new Set(
-    (socleGeneral.retour_normale && socleGeneral.retour_normale.length ? socleGeneral.retour_normale : ["RAS"]).map(
-      (x) => String(x).trim().toUpperCase(),
-    ),
+    (etatSaisie.socleGeneral.retour_normale && etatSaisie.socleGeneral.retour_normale.length
+      ? etatSaisie.socleGeneral.retour_normale
+      : ["RAS"]
+    ).map((x) => String(x).trim().toUpperCase()),
   );
 // rang de gravité d'une qualification : 0 = la plus grave (premier choix) ; retour à la normale en dernier
 function rangGravite(q) {
   if (!q) return 1e9;
   if (retourNormale().has(String(q).trim().toUpperCase())) return 1e6;
-  const i = choix.indexOf(q);
+  const i = etatSaisie.choix.indexOf(q);
   return i < 0 ? 5e5 : i;
 }
 const plusGrave = (liste) => [...liste].filter(Boolean).sort((a, b) => rangGravite(a) - rangGravite(b))[0] || null;
@@ -42,7 +43,7 @@ function dernierEtatSites(c, etabId, avecRas, dossierChoisi = null) {
     cD = col("Dossier"),
     jour = jourDuFormulaire(),
     limite = col("Date_faits") && lireDateFaits() != null ? lireDateFaits() : Date.now() / 1000;
-  const versions = enregistrements.filter(
+  const versions = etatSaisie.enregistrements.filter(
     (l) =>
       refId(val(l, "Etablissement")) === etabId &&
       jourDeLaVersion(l) !== jour &&
@@ -117,22 +118,16 @@ function reprendreEtatSites(c, etabId, avecRas = c.sites.avecRas !== false, doss
   c.dessiner();
   return etats.length;
 }
-/* « Une ligne par site connu » : nouveau dossier d'un établissement déjà signalé, le tableau des sites se remplit seul
-   du dernier état connu de chaque site (sites revenus à la normale compris, sauf réglage contraire). Reprise
-   réglable (reglages.tableau.sites.reprise) : "auto", "bouton" (proposée par un bouton), "non" (désactivée, par défaut :
-   le tableau part vide, rien n'est proposé ; une reprise d'un signalement précédent ne reprend pas les sites). Refait si
-   l'établissement change tant qu'aucune ligne n'a été touchée. */
-let sitesAutoPour = null;
 function reprendreSitesAuto() {
   const c = sitesCtrl();
-  if (!c || dossierId || !etabCourant || modeEtab) return;
-  const e = etabCourant.id;
-  if (sitesAutoPour === e) return;
+  if (!c || etatSaisie.dossierId || !etatSaisie.etabCourant || etatSaisie.modeEtab) return;
+  const e = etatSaisie.etabCourant.id;
+  if (etatSaisie.sitesAutoPour === e) return;
   const intactes = c.lignes.every(
     (l) => c.ligneVide(l) || (l._repris && !["modifie", "confirme"].includes(l._repris.etat)),
   );
   if (!intactes) return;
-  sitesAutoPour = e;
+  etatSaisie.sitesAutoPour = e;
   if (c.sites.reprise === "non") {
     c.offreReprise = null;
     c.noteAuto = "";
@@ -150,10 +145,9 @@ function reprendreSitesAuto() {
     ? `${n} site${n > 1 ? "s" : ""} du dernier signalement de cet établissement, dans leur dernier état : confirmez ou modifiez ceux qui ne sont pas revenus à la normale, ajoutez les nouveaux.`
     : "";
   c.dessiner();
-  qualifTouchee = false;
+  etatSaisie.qualifTouchee = false;
   majQualifDeduite();
 }
-let qualifTouchee = false;
 // qualification en bas (après les sites), et mention de la qualification déduite des sites
 function placerQualification() {
   const fs = $("qualifs-initiales").closest("fieldset"),
@@ -187,23 +181,23 @@ function majQualifDeduite() {
     p.classList.remove("alerte-faits");
     return;
   }
-  if (d.plusGrave && !qualifTouchee) cocherQualif(qualifMultiple ? [d.plusGrave] : d.plusGrave);
+  if (d.plusGrave && !etatSaisie.qualifTouchee) cocherQualif(etatSaisie.qualifMultiple ? [d.plusGrave] : d.plusGrave);
   const actuel = plusGrave(listeQualif(lireQualificationInitiale()));
   const ecart = d.plusGrave && actuel && actuel !== d.plusGrave;
   p.innerHTML = d.plusGrave
-    ? `Qualification la plus grave des sites : <strong>${esc(d.plusGrave)}</strong>${ecart ? ` — différente de celle choisie (${esc(actuel)}) : vérifiez avant d'enregistrer. <button type="button" class="lien-texte" id="btn-qualif-sites">Reprendre ${esc(d.plusGrave)}</button>` : qualifTouchee ? "" : " (reprise automatiquement)"}`
+    ? `Qualification la plus grave des sites : <strong>${esc(d.plusGrave)}</strong>${ecart ? ` — différente de celle choisie (${esc(actuel)}) : vérifiez avant d'enregistrer. <button type="button" class="lien-texte" id="btn-qualif-sites">Reprendre ${esc(d.plusGrave)}</button>` : etatSaisie.qualifTouchee ? "" : " (reprise automatiquement)"}`
     : "Aucun site n'a de qualification.";
   p.classList.toggle("alerte-faits", !!ecart);
   const b = $("btn-qualif-sites");
   if (b)
     b.addEventListener("click", () => {
-      qualifTouchee = false;
+      etatSaisie.qualifTouchee = false;
       majQualifDeduite();
-      modifie = true;
+      etatSaisie.modifie = true;
     });
 }
 $("qualifs-initiales").addEventListener("change", () => {
-  qualifTouchee = true;
+  etatSaisie.qualifTouchee = true;
   majQualifDeduite();
 });
 // avant l'enregistrement : qualification incohérente avec les sites, sites repris ni confirmés ni modifiés

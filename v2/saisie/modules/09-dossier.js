@@ -22,66 +22,81 @@ function comparerVersions(a, b) {
 }
 function calculerVersions() {
   const cD = col("Dossier");
-  const lignes = enregistrements.filter((l) => (refId(cD && l[cD]) || l.id) === dossierId);
+  const lignes = etatSaisie.enregistrements.filter((l) => (refId(cD && l[cD]) || l.id) === etatSaisie.dossierId);
   lignes.sort(comparerVersions);
-  versions = lignes;
-  initiale = lignes.find((l) => l.id === dossierId) || lignes[0] || null;
-  derniere = lignes[lignes.length - 1] || null;
+  etatSaisie.versions = lignes;
+  etatSaisie.initiale = lignes.find((l) => l.id === etatSaisie.dossierId) || lignes[0] || null;
+  etatSaisie.derniere = lignes[lignes.length - 1] || null;
 }
 
 async function rafraichir() {
   verifierFormulairePublie().catch(() => {});
-  if (selectionAttendue && enregistrements.some((l) => l.id === selectionAttendue)) {
-    const id = selectionAttendue;
-    selectionAttendue = null;
-    const r = enregistrements.find((l) => l.id === id);
+  if (etatSaisie.selectionAttendue && etatSaisie.enregistrements.some((l) => l.id === etatSaisie.selectionAttendue)) {
+    const id = etatSaisie.selectionAttendue;
+    etatSaisie.selectionAttendue = null;
+    const r = etatSaisie.enregistrements.find((l) => l.id === id);
     await ouvrirDossier(refId(col("Dossier") && r[col("Dossier")]) || id, true);
     return;
   }
   majListeDossiers();
-  if (!dossierId) return;
+  if (!etatSaisie.dossierId) return;
   calculerVersions();
-  if (!initiale) {
+  if (!etatSaisie.initiale) {
     await passerEnCreation();
     return;
   }
-  if (!modifie) await remplirFormulaire();
-  if (!modifieVisa) await remplirVisas();
+  if (!etatSaisie.modifie) await remplirFormulaire();
+  if (!etatSaisie.modifieVisa) await remplirVisas();
   afficherDossier();
 }
 
-let demandeAffichage = 0;
 async function ouvrirDossier(d, force) {
-  const demande = ++demandeAffichage; // un clic plus récent annule celui-ci
-  const meme = d === dossierId && !force;
+  const demande = ++etatSaisie.demandeAffichage; // un clic plus récent annule celui-ci
+  const meme = d === etatSaisie.dossierId && !force;
   // Dossier encore absent des données reçues (ligne en cours de création ailleurs) : on ne change rien,
   // pour ne jamais associer le formulaire affiché à un autre dossier.
-  const avant = { dossierId, versions, initiale, derniere };
-  dossierId = d;
+  const avant = {
+    dossierId: etatSaisie.dossierId,
+    versions: etatSaisie.versions,
+    initiale: etatSaisie.initiale,
+    derniere: etatSaisie.derniere,
+  };
+  etatSaisie.dossierId = d;
   calculerVersions();
-  if (!initiale) {
-    ({ dossierId, versions, initiale, derniere } = avant);
+  if (!etatSaisie.initiale) {
+    ({
+      dossierId: etatSaisie.dossierId,
+      versions: etatSaisie.versions,
+      initiale: etatSaisie.initiale,
+      derniere: etatSaisie.derniere,
+    } = avant);
     return;
   }
   if (!meme) {
-    modifie = modifieVisa = false;
+    etatSaisie.modifie = etatSaisie.modifieVisa = false;
     ["statut-signalement", "statut-dep", "statut-aca"].forEach((s) => statut(s, ""));
   }
   // Le référentiel n'est relu que si l'établissement du dossier y est inconnu (sinon, on se contente
   // du cache : un établissement sans mail ni lien est un cas normal, pas une raison de tout recharger).
-  const e0 = etabDeLigne(initiale),
-    idE = refId(val(initiale, "Etablissement"));
+  const e0 = etabDeLigne(etatSaisie.initiale),
+    idE = refId(val(etatSaisie.initiale, "Etablissement"));
   // établissement inconnu : relu seulement s'il a pu être créé depuis la dernière lecture (numéro plus grand que
   // tous ceux connus), et pas plus d'une fois par minute (une référence invalide ne doit pas relancer la lecture)
-  if (!e0 && etabsCharges && idE && idE > idEtabMax && Date.now() - dernierChargementEtabs > 60000) {
+  if (
+    !e0 &&
+    etatSaisie.etabsCharges &&
+    idE &&
+    idE > etatSaisie.idEtabMax &&
+    Date.now() - etatSaisie.dernierChargementEtabs > 60000
+  ) {
     await rafraichirEtabs(true);
-    if (demande !== demandeAffichage) return;
+    if (demande !== etatSaisie.demandeAffichage) return;
   }
-  etabCourant = etabDeLigne(initiale);
-  if (!meme || !modifie) await remplirFormulaire();
-  if (demande !== demandeAffichage) return;
-  if (!meme || !modifieVisa) await remplirVisas();
-  if (demande !== demandeAffichage) return;
+  etatSaisie.etabCourant = etabDeLigne(etatSaisie.initiale);
+  if (!meme || !etatSaisie.modifie) await remplirFormulaire();
+  if (demande !== etatSaisie.demandeAffichage) return;
+  if (!meme || !etatSaisie.modifieVisa) await remplirVisas();
+  if (demande !== etatSaisie.demandeAffichage) return;
   afficherDossier();
 }
 
@@ -89,7 +104,7 @@ async function ouvrirDossier(d, force) {
    Qualification initiale
    ========================================================= */
 function styleChoix(el, v, carte) {
-  const c = (carte || couleurs)[v] || {};
+  const c = (carte || etatSaisie.couleurs)[v] || {};
   el.style.setProperty("--c", c.fillColor ? c.textColor || "#161616" : "var(--bleu)");
   el.style.setProperty("--c-bg", c.fillColor || "var(--bleu-clair)");
 }
@@ -100,23 +115,23 @@ function listeQualif(v) {
   return v ? [v] : [];
 }
 function estiloPastille(v) {
-  const c = couleurs[v] || {};
+  const c = etatSaisie.couleurs[v] || {};
   return `--c:${c.fillColor ? c.textColor || "#161616" : "var(--bleu)"};--c-bg:${c.fillColor || "var(--bleu-clair)"}`;
 }
 function afficherChoix(conteneurId, nom) {
   const cont = $(conteneurId);
-  const avant = listeQualif(qualifMultiple ? lireChoixMulti(nom) : lireChoix(nom));
+  const avant = listeQualif(etatSaisie.qualifMultiple ? lireChoixMulti(nom) : lireChoix(nom));
   cont.innerHTML = "";
-  if (!choix.length) {
+  if (!etatSaisie.choix.length) {
     cont.innerHTML = `<input type="text" data-libre="${nom}" aria-label="Qualification">`;
     cont.querySelector("input").value = avant.join(", ");
     cont.querySelector("input").addEventListener("input", () => {
-      modifie = true;
+      etatSaisie.modifie = true;
     });
     return;
   }
-  const multi = nom === "qualif-initiale" && qualifMultiple;
-  choix.forEach((v) => {
+  const multi = nom === "qualif-initiale" && etatSaisie.qualifMultiple;
+  etatSaisie.choix.forEach((v) => {
     const lab = document.createElement("label");
     lab.className = "choix";
     styleChoix(lab, v);
@@ -124,7 +139,7 @@ function afficherChoix(conteneurId, nom) {
     const inp = lab.querySelector("input");
     inp.checked = avant.includes(v);
     inp.addEventListener("change", () => {
-      modifie = true;
+      etatSaisie.modifie = true;
     });
     cont.appendChild(lab);
   });
@@ -141,15 +156,15 @@ function lireChoixMulti(nom) {
 // Valeur de la qualification initiale telle que choisie dans le formulaire : une chaîne à choix
 // unique, ou un tableau si la colonne accepte plusieurs valeurs.
 function lireQualificationInitiale() {
-  if (!choix.length) {
+  if (!etatSaisie.choix.length) {
     const l = document.querySelector('[data-libre="qualif-initiale"]');
     return l ? l.value.trim() : "";
   }
-  return qualifMultiple ? lireChoixMulti("qualif-initiale") : lireChoix("qualif-initiale");
+  return etatSaisie.qualifMultiple ? lireChoixMulti("qualif-initiale") : lireChoix("qualif-initiale");
 }
 function cocherQualif(v) {
   const liste = listeQualif(v);
-  if (qualifMultiple) {
+  if (etatSaisie.qualifMultiple) {
     document.querySelectorAll('input[name="qualif-initiale"]').forEach((x) => (x.checked = liste.includes(x.value)));
   } else {
     document

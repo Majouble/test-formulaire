@@ -1,53 +1,46 @@
 /* PRISME — widget de saisie, module 17/31 : Menu et recherche des signalements.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
-// Menu des signalements, dessiné par le widget. Il rend la sélection possible sans « Sélectionner par » :
-// un widget lié est recouvert par Grist dès qu'aucune ligne n'est sélectionnée, ce qui empêcherait
-// toute création quand la vue est vide ou filtrée.
-let dossiersInit = [];
 function libelleDossier(l) {
-  const d = secondes(val(l, "Date")) != null ? dateFr(val(l, "Date"), { ...(metaDate || {}), type: "Date" }) : "";
+  const d =
+    secondes(val(l, "Date")) != null ? dateFr(val(l, "Date"), { ...(etatSaisie.metaDate || {}), type: "Date" }) : "";
   const texte = String(val(l, "Description") || "").slice(0, 60);
-  const etab = modeEtab ? "" : nomEtabLigne(l);
+  const etab = etatSaisie.modeEtab ? "" : nomEtabLigne(l);
   return { titre: etab || `Signalement n° ${l.id}`, detail: `${d ? "du " + d + " — " : ""}${texte}` };
 }
 function majListeDossiers() {
   $("menu-dossiers").hidden = true; // remplacé par la liste de l'accueil
   $("barre-recherche").hidden = false;
-  indexRecherche = null; // reconstruit à la prochaine frappe
-  cacheDernieres = null;
+  etatSaisie.indexRecherche = null; // reconstruit à la prochaine frappe
+  etatSaisie.cacheDernieres = null;
   const cD = col("Dossier");
-  dossiersInit = enregistrements
+  etatSaisie.dossiersInit = etatSaisie.enregistrements
     .filter((l) => (refId(cD && l[cD]) || l.id) === l.id)
     .filter((l) => !perimetreActif() || dansPerimetre(etabDeLigne(l)))
     .sort((a, b) => (secondes(val(b, "Date")) ?? 0) - (secondes(val(a, "Date")) ?? 0));
   majFiltre();
   if (!$("resultats-signalements").hidden) afficherResultatsRecherche();
-  const courant = dossiersInit.find((l) => l.id === dossierId);
+  const courant = etatSaisie.dossiersInit.find((l) => l.id === etatSaisie.dossierId);
   const lib = courant ? libelleDossier(courant) : null;
   $("btn-dossiers").querySelector(".texte").textContent = lib
     ? `${lib.titre} — ${lib.detail}`
-    : `${modeEtab ? "Mes signalements" : "Signalements"} (${filtreActif() ? dossiersFiltres().length + " / " : ""}${dossiersInit.length})`;
-  $("recherche-dossiers").hidden = dossiersInit.length < 8;
+    : `${etatSaisie.modeEtab ? "Mes signalements" : "Signalements"} (${filtreActif() ? dossiersFiltres().length + " / " : ""}${etatSaisie.dossiersInit.length})`;
+  $("recherche-dossiers").hidden = etatSaisie.dossiersInit.length < 8;
   // Le contenu de la liste n'est construit qu'à l'ouverture du menu : inutile de formater
   // des centaines de libellés à chaque changement de signalement.
   if ($("btn-dossiers").getAttribute("aria-expanded") === "true") afficherOptionsDossiers();
-  if (vue === "accueil") afficherCartes();
+  if (etatSaisie.vue === "accueil") afficherCartes();
   afficherBandeauPerimetre();
 }
-/* ---------- Barre de recherche des signalements ----------
-   Cherche dans tous les dossiers visibles : établissement, commune, UAI, académie, n° de dossier, et le texte
-   de la version initiale comme de la dernière version. Tous les mots tapés doivent être présents (sans accents). */
-let indexRecherche = null;
 function construireIndexRecherche() {
   const cD = col("Dossier"),
     dernieres = new Map();
-  for (const l of enregistrements) {
+  for (const l of etatSaisie.enregistrements) {
     const d = refId(cD && l[cD]) || l.id,
       p = dernieres.get(d);
     if (!p || comparerVersions(p, l) < 0) dernieres.set(d, l);
   }
-  indexRecherche = dossiersInit.map((l) => {
+  etatSaisie.indexRecherche = etatSaisie.dossiersInit.map((l) => {
     const e = etabDeLigne(l) || {},
       der = dernieres.get(l.id) || l;
     const texte = [
@@ -95,7 +88,7 @@ function surligneMots(txt, mots) {
   return h + (dans ? "</mark>" : "");
 }
 function afficherResultatsRecherche() {
-  nbCartes = 30;
+  etatSaisie.nbCartes = 30;
   afficherCartes();
 }
 function fermerRecherche() {
@@ -148,7 +141,7 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key !== "/" || ev.ctrlKey || ev.metaKey || ev.altKey) return;
   const t = ev.target,
     saisie = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
-  if (saisie || $("barre-recherche").hidden || vue !== "accueil") return;
+  if (saisie || $("barre-recherche").hidden || etatSaisie.vue !== "accueil") return;
   ev.preventDefault();
   $("recherche-signalements").focus();
 });

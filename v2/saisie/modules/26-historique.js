@@ -6,13 +6,13 @@
    ========================================================= */
 async function afficherHistorique() {
   await Promise.all(Object.values(cheminsRef));
-  if (!initiale) return;
+  if (!etatSaisie.initiale) return;
   const etat = {};
-  champsVersion.forEach((d) => (etat[d.colId] = norm(d, initiale[d.colId])));
-  const entrees = versions.map((l) => {
+  etatSaisie.champsVersion.forEach((d) => (etat[d.colId] = norm(d, etatSaisie.initiale[d.colId])));
+  const entrees = etatSaisie.versions.map((l) => {
     const changements = [];
-    if (l !== initiale)
-      for (const d of champsVersion) {
+    if (l !== etatSaisie.initiale)
+      for (const d of etatSaisie.champsVersion) {
         const v = norm(d, l[d.colId]);
         if (egal(v, etat[d.colId])) continue;
         changements.push({
@@ -29,7 +29,7 @@ async function afficherHistorique() {
       auteur: lisible(val(l, "Auteur")) ? val(l, "Auteur") : null,
       changements,
       commentaire:
-        l === initiale
+        l === etatSaisie.initiale
           ? ["Signalement initial", val(l, "Commentaire")].filter(Boolean).join("\n")
           : val(l, "Commentaire"),
     };
@@ -51,12 +51,12 @@ async function afficherHistorique() {
           )
           .join("")}</ul>`
       : "";
-    li.innerHTML = `<div>${pastille}<span class="quand">${secondes(it.faits) != null ? `Faits du ${esc(dateFr(it.faits, { ...(metaFaits || {}), type: (metaFaits && metaFaits.type) || "Date" }))} — saisi le ` : ""}${esc(dateFr(it.date, metaDate) || "date inconnue")}${qui}</span></div>
+    li.innerHTML = `<div>${pastille}<span class="quand">${secondes(it.faits) != null ? `Faits du ${esc(dateFr(it.faits, { ...(etatSaisie.metaFaits || {}), type: (etatSaisie.metaFaits && etatSaisie.metaFaits.type) || "Date" }))} — saisi le ` : ""}${esc(dateFr(it.date, etatSaisie.metaDate) || "date inconnue")}${qui}</span></div>
                     ${chg}${it.commentaire ? `<div class="texte">${esc(it.commentaire)}</div>` : ""}`;
     ol.appendChild(li);
   });
 }
 
 $("commentaire").addEventListener("input", () => {
-  modifie = true;
+  etatSaisie.modifie = true;
 });

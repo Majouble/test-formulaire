@@ -5,16 +5,9 @@
    Parcours : accueil (nouveau / retrouver), vue de saisie, bandeau de mode,
    étapes, marques « modifié », proposition du signalement en cours, confirmation
    ========================================================= */
-var vue = "accueil",
-  nbCartes = 30,
-  ficheDepliee = false,
-  ficheEtabId = null,
-  creerEtabOuvert = false,
-  propositionMasquee = null,
-  curseurInitialVu = false;
 const JOURS_EN_COURS = 7; // un signalement dont les faits datent de moins de 7 jours est « en cours » (sauf s'il est clos)
 function montrerVue(v) {
-  vue = v;
+  etatSaisie.vue = v;
   $("accueil").hidden = v !== "accueil";
   $("vue-saisie").hidden = v !== "saisie";
   document.body.classList.toggle("vue-accueil", v === "accueil");
@@ -27,38 +20,38 @@ function montrerVue(v) {
   majModeSaisie();
 }
 function abandonAccepte() {
-  if (!(modifie || modifieVisa)) return true;
+  if (!(etatSaisie.modifie || etatSaisie.modifieVisa)) return true;
   if (!confirm("La saisie en cours n'est pas enregistrée. L'abandonner ?")) return false;
-  modifie = modifieVisa = false;
+  etatSaisie.modifie = etatSaisie.modifieVisa = false;
   return true;
 }
 function allerNouveau() {
   if (!abandonAccepte()) return;
   enFile(async () => {
     cacherConfirmation();
-    creerEtabOuvert = false;
-    propositionMasquee = null;
+    etatSaisie.creerEtabOuvert = false;
+    etatSaisie.propositionMasquee = null;
     grist.setCursorPos({ rowId: "new" }).catch(() => {});
     await passerEnCreation();
     montrerVue("saisie");
     window.scrollTo(0, 0);
-    if (modeEtab) focusPremiereQuestion();
+    if (etatSaisie.modeEtab) focusPremiereQuestion();
     else $("nom").focus({ preventScroll: true });
   });
 }
 function ouvrirDepuisListe(id) {
-  if (dossierId !== id && !abandonAccepte()) return;
+  if (etatSaisie.dossierId !== id && !abandonAccepte()) return;
   enFile(async () => {
     cacherConfirmation();
-    modifie = modifieVisa = false;
+    etatSaisie.modifie = etatSaisie.modifieVisa = false;
     try {
       await grist.setCursorPos({ rowId: id });
     } catch (_) {}
     await ouvrirDossier(id, true);
-    if (dossierId === id) {
+    if (etatSaisie.dossierId === id) {
       montrerVue("saisie");
       window.scrollTo(0, 0);
-      if (fileVisa && !$("onglet-visas").hidden) afficherOnglet("visas");
+      if (etatSaisie.fileVisa && !$("onglet-visas").hidden) afficherOnglet("visas");
     }
   });
 }
@@ -77,12 +70,12 @@ $("btn-retour-liste").addEventListener("click", () => {
 function afficherCartes() {
   const ul = $("cartes-signalements");
   if (!ul) return;
-  if (!indexRecherche) construireIndexRecherche();
-  $("titre-liste").textContent = modeEtab ? "Vos signalements" : "Signalements";
-  $("porte-nouveau-texte").textContent = modeEtab
+  if (!etatSaisie.indexRecherche) construireIndexRecherche();
+  $("titre-liste").textContent = etatSaisie.modeEtab ? "Vos signalements" : "Signalements";
+  $("porte-nouveau-texte").textContent = etatSaisie.modeEtab
     ? "Un événement à signaler dans votre établissement."
     : "Un événement à signaler dans un établissement.";
-  $("porte-retrouver-texte").textContent = modeEtab
+  $("porte-retrouver-texte").textContent = etatSaisie.modeEtab
     ? "Consulter ou actualiser vos signalements."
     : "Consulter ou actualiser un signalement existant.";
   majBandeauVisa();
@@ -90,44 +83,48 @@ function afficherCartes() {
   majBandeauVeille();
   const q = $("recherche-signalements").value.trim(),
     mots = sansAccent(q).split(/\s+/).filter(Boolean);
-  const base0 = fileVisa ? indexRecherche.filter((x) => aViserParMoi(x.l)) : indexRecherche;
+  const base0 = etatSaisie.fileVisa
+    ? etatSaisie.indexRecherche.filter((x) => aViserParMoi(x.l))
+    : etatSaisie.indexRecherche;
   const base = filtreActif() ? base0.filter((x) => passeFiltre(x.l)) : base0;
   const trouves = mots.length ? base.filter((x) => mots.every((m) => x.cle.includes(m))) : base;
   const activite = (x) => secondes(val(x.der, "Date")) ?? jourDesFaits(x.der) ?? 0;
   const tries = [...trouves].sort((a, b) => activite(b) - activite(a) || b.l.id - a.l.id);
   const cD = col("Dossier"),
     nb = new Map();
-  for (const l of enregistrements) {
+  for (const l of etatSaisie.enregistrements) {
     const d = refId(cD && l[cD]) || l.id;
     nb.set(d, (nb.get(d) || 0) + 1);
   }
   const total = base0.length;
-  $("titre-liste").textContent = fileVisa ? "Dossiers à viser" : $("titre-liste").textContent;
+  $("titre-liste").textContent = etatSaisie.fileVisa ? "Dossiers à viser" : $("titre-liste").textContent;
   $("nb-liste").textContent = !total
     ? ""
     : trouves.length === total
       ? `${total} signalement${total > 1 ? "s" : ""}`
       : `${trouves.length} sur ${total}`;
   const styleQ = (v) => {
-    const c = (couleurs || {})[v] || {};
+    const c = (etatSaisie.couleurs || {})[v] || {};
     return c.fillColor ? ` style="--c:${c.textColor || "#161616"};--c-bg:${c.fillColor}"` : "";
   };
   ul.innerHTML =
     tries
-      .slice(0, nbCartes)
+      .slice(0, etatSaisie.nbCartes)
       .map((x) => {
-        const titre = modeEtab
+        const titre = etatSaisie.modeEtab
           ? `Signalement n° ${x.l.id}`
           : x.e[E.nom] || texteEtabBrut(x.l) || `Signalement n° ${x.l.id}`;
         const n = nb.get(x.l.id) || 1,
           clos = !!(col("Clos") && val(x.der, "Clos"));
         const site = col("Site") ? String(val(x.der, "Site") || "").trim() : "";
         const d =
-          secondes(val(x.der, "Date")) != null ? dateFr(val(x.der, "Date"), { ...(metaDate || {}), type: "Date" }) : "";
+          secondes(val(x.der, "Date")) != null
+            ? dateFr(val(x.der, "Date"), { ...(etatSaisie.metaDate || {}), type: "Date" })
+            : "";
         const jf =
           !d && secondes(val(x.der, "Date_faits")) != null ? dateFr(val(x.der, "Date_faits"), { type: "Date" }) : "";
         const meta = [
-          !modeEtab && x.e[E.commune],
+          !etatSaisie.modeEtab && x.e[E.commune],
           `n° ${x.l.id}`,
           site && `site « ${site} »`,
           d ? `dernière saisie le ${d}` : jf && `faits du ${jf}`,
@@ -137,7 +134,7 @@ function afficherCartes() {
           .replace(/\*\*|==/g, "")
           .replace(/\s+/g, " ")
           .slice(0, 140);
-        const stC = !modeEtab ? statutDe(x.der) : "",
+        const stC = !etatSaisie.modeEtab ? statutDe(x.der) : "",
           svC = stC && (window.Socle.STATUTS_VALIDATION || []).find((y) => y.nom === stC);
         const qualifs =
           listeQualif(val(x.der, "Qualification"))
@@ -152,8 +149,8 @@ function afficherCartes() {
       <span class="carte-fleche" aria-hidden="true">›</span></button></li>`;
       })
       .join("") ||
-    `<li class="vide">${total ? `Aucun signalement ne correspond${q ? ` à « ${esc(q)} »` : " au filtre"}.` : fileVisa ? "Aucun dossier à viser dans votre périmètre." : "Aucun signalement pour l'instant."}</li>`;
-  $("plus-cartes").hidden = tries.length <= nbCartes;
+    `<li class="vide">${total ? `Aucun signalement ne correspond${q ? ` à « ${esc(q)} »` : " au filtre"}.` : etatSaisie.fileVisa ? "Aucun dossier à viser dans votre périmètre." : "Aucun signalement pour l'instant."}</li>`;
+  $("plus-cartes").hidden = tries.length <= etatSaisie.nbCartes;
 }
 $("cartes-signalements").addEventListener("click", (ev) => {
   const b = ev.target.closest(".carte-sig");
@@ -173,29 +170,33 @@ $("cartes-signalements").addEventListener("keydown", (ev) => {
   if (c) c.focus();
 });
 $("plus-cartes").addEventListener("click", () => {
-  nbCartes += 30;
+  etatSaisie.nbCartes += 30;
   afficherCartes();
 });
 
 // ---------- Bandeau de mode (nouveau / mise à jour / clos) et menu « Autres actions »
-const dossierClos = () => !!(col("Clos") && dossierId && derniere && val(derniere, "Clos"));
+const dossierClos = () =>
+  !!(col("Clos") && etatSaisie.dossierId && etatSaisie.derniere && val(etatSaisie.derniere, "Clos"));
 function majModeSaisie() {
-  const maj = !!(dossierId && initiale),
+  const maj = !!(etatSaisie.dossierId && etatSaisie.initiale),
     clos = maj && dossierClos(),
     b = document.body;
   b.classList.toggle("mode-nouveau", !maj);
   b.classList.toggle("mode-maj", maj);
   b.classList.toggle("mode-clos", clos);
   $("etiquette-mode").hidden = !maj;
-  $("etiquette-mode").textContent = maj ? `Mise à jour · dossier n° ${dossierId}${clos ? " · clos" : ""}` : "";
+  $("etiquette-mode").textContent = maj
+    ? `Mise à jour · dossier n° ${etatSaisie.dossierId}${clos ? " · clos" : ""}`
+    : "";
   $("phrase-mode").textContent = maj
     ? clos
       ? "Ce signalement est clos. Enregistrer une mise à jour le rouvre."
       : "Modifiez uniquement ce qui a changé : votre enregistrement s'ajoute comme nouvelle étape, l'état précédent reste dans l'historique."
-    : modeEtab
+    : etatSaisie.modeEtab
       ? "Décrivez les faits, puis enregistrez."
       : "Trois étapes : l'établissement, les faits, puis la description. Un dossier sera créé à l'enregistrement.";
-  $("libelle-etape-etab").textContent = maj || modeEtab ? "Établissement" : "Quel établissement est concerné ?";
+  $("libelle-etape-etab").textContent =
+    maj || etatSaisie.modeEtab ? "Établissement" : "Quel établissement est concerné ?";
   $("act-clore").hidden = !(maj && col("Clos"));
   $("act-reporter").hidden = !(maj && col("Date_faits") && S().plusieursJours && !faitsAvecHeure());
   $("act-clore-titre").textContent = clos ? "Rouvrir le signalement" : "Clore le signalement";
@@ -246,7 +247,7 @@ $("act-clore").addEventListener("click", () => {
   enFile(basculerClos);
 });
 async function basculerClos() {
-  if (!col("Clos") || !derniere) return;
+  if (!col("Clos") || !etatSaisie.derniere) return;
   const clore = !dossierClos();
   if (
     clore &&
@@ -256,31 +257,29 @@ async function basculerClos() {
   )
     return;
   try {
-    await grist.getTable().update({ id: derniere.id, fields: { [col("Clos")]: clore } });
-    derniere[col("Clos")] = clore;
-    indexRecherche = null;
+    await grist.getTable().update({ id: etatSaisie.derniere.id, fields: { [col("Clos")]: clore } });
+    etatSaisie.derniere[col("Clos")] = clore;
+    etatSaisie.indexRecherche = null;
     afficherDossier();
     confirmer(
       clore ? "Signalement clos" : "Signalement rouvert",
       clore
-        ? `Le dossier n° ${dossierId} est clos. Un prochain événement dans cet établissement fera l'objet d'un nouveau signalement.`
-        : `Le dossier n° ${dossierId} est de nouveau en cours.`,
+        ? `Le dossier n° ${etatSaisie.dossierId} est clos. Un prochain événement dans cet établissement fera l'objet d'un nouveau signalement.`
+        : `Le dossier n° ${etatSaisie.dossierId} est de nouveau en cours.`,
     );
   } catch (e) {
     statut("statut-signalement", `Échec : ${e.message || e}.`, "err");
   }
 }
 
-// ---------- Marques « modifié » et récapitulatif (mise à jour)
-let minuterieMarques = null;
 function planifierMarques() {
-  clearTimeout(minuterieMarques);
-  minuterieMarques = setTimeout(majMarquesModif, 0);
+  clearTimeout(etatSaisie.minuterieMarques);
+  etatSaisie.minuterieMarques = setTimeout(majMarquesModif, 0);
 }
 function majMarquesModif() {
   document.querySelectorAll("#form-signalement .modifie").forEach((el) => el.classList.remove("modifie"));
   const recap = $("recap-modifs");
-  if (!dossierId || !derniere) {
+  if (!etatSaisie.dossierId || !etatSaisie.derniere) {
     recap.hidden = true;
     return;
   }
@@ -290,25 +289,29 @@ function majMarquesModif() {
       noms.push(nom);
     };
   const tri = (v) => listeQualif(v).map(String).sort().join("|");
-  if (col("Qualification") && tri(lireQualificationInitiale()) !== tri(val(derniere, "Qualification")))
+  if (col("Qualification") && tri(lireQualificationInitiale()) !== tri(val(etatSaisie.derniere, "Qualification")))
     marquer(
       $("qualifs-initiales").closest("fieldset"),
-      (metaSig[col("Qualification")] || {}).libelle || "Qualification",
+      (etatSaisie.metaSig[col("Qualification")] || {}).libelle || "Qualification",
     );
-  if (col("Site") && $("site").value.trim() !== String(val(derniere, "Site") || "").trim())
+  if (col("Site") && $("site").value.trim() !== String(val(etatSaisie.derniere, "Site") || "").trim())
     marquer($("bloc-site"), "Site / bâtiment");
-  for (const def of defsQuestions) {
+  for (const def of etatSaisie.defsQuestions) {
     if (def.formule) continue;
     const bloc = document.querySelector(`[data-champ="q-${def.colId}"]`);
     if (!bloc || bloc.hidden) continue;
-    if (!memeReponse(def, lireUnChamp("q", def), derniere[def.colId])) marquer(bloc, def.libelle || def.colId);
+    if (!memeReponse(def, lireUnChamp("q", def), etatSaisie.derniere[def.colId]))
+      marquer(bloc, def.libelle || def.colId);
   }
   const sansMention = (t) =>
     String(t || "")
       .replace(MOTIF_MOBILISATION, "")
       .replace(/\s+/g, " ")
       .trim();
-  if (col("Description") && sansMention($("description").value) !== sansMention(val(derniere, "Description")))
+  if (
+    col("Description") &&
+    sansMention($("description").value) !== sansMention(val(etatSaisie.derniere, "Description"))
+  )
     marquer($("description").closest(".champ"), "Description");
   recap.hidden = false;
   recap.classList.toggle("avec", noms.length > 0);
@@ -332,27 +335,28 @@ function resumeEtabHtml(e) {
   return `<strong>${esc(e[E.nom] || "")}</strong>${reste ? ` <span class="meta">· ${reste}</span>` : ""}`;
 }
 function majResumeEtab() {
-  const connu = !!etabCourant;
-  if (!connu || etabCourant.id !== ficheEtabId) {
-    ficheDepliee = false;
-    ficheEtabId = connu ? etabCourant.id : null;
+  const connu = !!etatSaisie.etabCourant;
+  if (!connu || etatSaisie.etabCourant.id !== etatSaisie.ficheEtabId) {
+    etatSaisie.ficheDepliee = false;
+    etatSaisie.ficheEtabId = connu ? etatSaisie.etabCourant.id : null;
   }
   $("resume-etab").hidden = !connu;
-  if (connu) $("resume-etab-texte").innerHTML = resumeEtabHtml(etabCourant);
-  $("carte-etab").hidden = !connu || !ficheDepliee;
-  $("btn-voir-fiche").setAttribute("aria-expanded", String(ficheDepliee));
-  $("btn-voir-fiche").textContent = ficheDepliee ? "Masquer la fiche" : "Voir la fiche";
+  if (connu) $("resume-etab-texte").innerHTML = resumeEtabHtml(etatSaisie.etabCourant);
+  $("carte-etab").hidden = !connu || !etatSaisie.ficheDepliee;
+  $("btn-voir-fiche").setAttribute("aria-expanded", String(etatSaisie.ficheDepliee));
+  $("btn-voir-fiche").textContent = etatSaisie.ficheDepliee ? "Masquer la fiche" : "Voir la fiche";
   const creationVisible =
-    !reaffectation && (creerEtabOuvert || !!ligneAnnuaire || CHAMPS_NOUVEL_ETAB.some((k) => $(k).value.trim()));
+    !etatSaisie.reaffectation &&
+    (etatSaisie.creerEtabOuvert || !!etatSaisie.ligneAnnuaire || CHAMPS_NOUVEL_ETAB.some((k) => $(k).value.trim()));
   $("bloc-nouvel-etab").hidden = !creationVisible;
-  $("btn-creer-etab").hidden = reaffectation || creationVisible || modeEtab;
+  $("btn-creer-etab").hidden = etatSaisie.reaffectation || creationVisible || etatSaisie.modeEtab;
 }
 $("btn-voir-fiche").addEventListener("click", () => {
-  ficheDepliee = !ficheDepliee;
+  etatSaisie.ficheDepliee = !etatSaisie.ficheDepliee;
   majResumeEtab();
 });
 $("btn-creer-etab").addEventListener("click", () => {
-  creerEtabOuvert = true;
+  etatSaisie.creerEtabOuvert = true;
   fermer();
   majResumeEtab();
   if (!$("nom").value.trim()) $("nom").focus();
@@ -364,7 +368,7 @@ function dossiersEnCours(etabId) {
   const cD = col("Dossier"),
     dern = new Map(),
     nb = new Map();
-  for (const l of enregistrements) {
+  for (const l of etatSaisie.enregistrements) {
     if (refId(val(l, "Etablissement")) !== etabId) continue;
     const d = refId(cD && l[cD]) || l.id;
     nb.set(d, (nb.get(d) || 0) + 1);
@@ -378,13 +382,17 @@ function dossiersEnCours(etabId) {
         !(col("Clos") && val(l, "Clos")) &&
         ((jourDesFaits(l) ?? 0) >= limite || (secondes(val(l, "Date")) ?? 0) >= limite),
     )
-    .map(([d, l]) => ({ d, l, n: nb.get(d) || 1, initiale: enregistrements.find((x) => x.id === d) || l }))
+    .map(([d, l]) => ({ d, l, n: nb.get(d) || 1, initiale: etatSaisie.enregistrements.find((x) => x.id === d) || l }))
     .sort((a, b) => comparerVersions(b.l, a.l));
 }
 function majProposition() {
   const bloc = $("proposition-encours");
-  const enCreation = !dossierId && etabCourant && !reaffectation && propositionMasquee !== etabCourant.id;
-  const liste = enCreation ? dossiersEnCours(etabCourant.id) : [];
+  const enCreation =
+    !etatSaisie.dossierId &&
+    etatSaisie.etabCourant &&
+    !etatSaisie.reaffectation &&
+    etatSaisie.propositionMasquee !== etatSaisie.etabCourant.id;
+  const liste = enCreation ? dossiersEnCours(etatSaisie.etabCourant.id) : [];
   bloc.hidden = !liste.length;
   document.body.classList.toggle("proposition-visible", liste.length > 0);
   if (!liste.length) {
@@ -437,14 +445,14 @@ $("proposition-encours").addEventListener("click", (ev) => {
   const b = ev.target.closest("button");
   if (!b) return;
   if (b.dataset.actualiser) {
-    modifie = modifieVisa = false;
+    etatSaisie.modifie = etatSaisie.modifieVisa = false;
     ouvrirDepuisListe(+b.dataset.actualiser);
   } else if (b.dataset.reprendre) enFile(() => reprendreReponses(+b.dataset.reprendre));
   else if (b.dataset.autreEvenement) {
-    propositionMasquee = etabCourant ? etabCourant.id : null;
+    etatSaisie.propositionMasquee = etatSaisie.etabCourant ? etatSaisie.etabCourant.id : null;
     // vaut confirmation qu'il s'agit de faits distincts : l'alerte « même jour » ne redemande pas
     if (typeof cleDoublon === "function") {
-      doublonConfirme = cleDoublon();
+      etatSaisie.doublonConfirme = cleDoublon();
       verifierDoublons();
     }
     majProposition();
@@ -462,7 +470,7 @@ function confirmer(titre, texte, avecLien) {
       ${avecLien ? `<button type="button" class="secondaire petit" data-conf="lien">Transmettre le lien à l'établissement</button>` : ""}
       <button type="button" class="lien-texte" data-conf="fermer">Continuer sur ce signalement</button></div>`;
   c.hidden = false;
-  if (vue === "saisie") {
+  if (etatSaisie.vue === "saisie") {
     c.scrollIntoView({ block: "start" });
     c.focus({ preventScroll: true });
   }

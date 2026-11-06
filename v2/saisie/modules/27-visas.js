@@ -4,7 +4,6 @@
 /* =========================================================
    Visas : portent sur la dernière version, jamais recopiés dans les suivis
    ========================================================= */
-let monNiveau = null; // niveau : "departement" | "academie" | "region" | null
 const sansAccentBas = (s) =>
   String(s ?? "")
     .normalize("NFD")
@@ -18,7 +17,7 @@ function classerNiveau(v) {
   return null;
 }
 async function chargerProfil() {
-  monNiveau = null;
+  etatSaisie.monNiveau = null;
   try {
     const t = await Donnees.lire(UTILISATEURS.table);
     const cols = Object.keys(t);
@@ -26,35 +25,29 @@ async function chargerProfil() {
     if (!cols.includes(U.mail) || !cols.includes(U.niveau) || t.id.length !== 1) return;
     const l = {};
     cols.forEach((c) => (l[c] = t[c][0]));
-    monNiveau = classerNiveau(l[U.niveau]);
+    etatSaisie.monNiveau = classerNiveau(l[U.niveau]);
   } catch (e) {
     console.warn("Table Utilisateurs illisible", e);
   }
 }
 
-/* Viseur (onglet Validation de l'administration, 2.41) : l'agent de la page porte un échelon (Départemental, Académique)
-   et un périmètre de visa (départements, académies ; vide = tous) ; il prime sur l'ancienne table Utilisateurs.
-   reglageValidation : circuit de la table (null s'il n'est pas actif) ; la colonne de statut est une formule de Grist. */
-let monPerimetreVisa = null,
-  reglageValidation = null,
-  fileVisa = false;
 async function chargerProfilViseur() {
-  monPerimetreVisa = null;
+  etatSaisie.monPerimetreVisa = null;
   try {
-    reglageValidation = window.Socle.reglagesValidation(socleConfig, tableId);
+    etatSaisie.reglageValidation = window.Socle.reglagesValidation(etatSaisie.socleConfig, etatSaisie.tableId);
   } catch (_) {
-    reglageValidation = null;
+    etatSaisie.reglageValidation = null;
   }
-  if (agentPage == null) return;
+  if (etatSaisie.agentPage == null) return;
   try {
-    const t = await Donnees.lire(socleGeneral.agents || "Agents"),
-      i = t.id.indexOf(agentPage);
+    const t = await Donnees.lire(etatSaisie.socleGeneral.agents || "Agents"),
+      i = t.id.indexOf(etatSaisie.agentPage);
     if (i < 0 || !t.Echelon_visa) return;
     const ech = String(t.Echelon_visa[i] || ""),
       niveau = ech === "Départemental" ? "departement" : ech === "Académique" ? "academie" : null;
     if (!niveau) return;
-    monNiveau = niveau;
-    monPerimetreVisa = {
+    etatSaisie.monNiveau = niveau;
+    etatSaisie.monPerimetreVisa = {
       echelon: ech,
       departements: window.Socle.listeChoix((t.Visa_departements || [])[i]),
       academies: window.Socle.listeChoix((t.Visa_academies || [])[i]),
@@ -72,69 +65,66 @@ function lieuDe(l) {
     aca: String((E.academie && e[E.academie]) || d.Academie || ""),
   };
 }
-const statutDe = (l) => (reglageValidation && l ? String(l[reglageValidation.colonne] || "") : "");
+const statutDe = (l) =>
+  etatSaisie.reglageValidation && l ? String(l[etatSaisie.reglageValidation.colonne] || "") : "";
 // Le viseur de la page peut-il viser ce dossier à cet échelon (« dep » | « aca ») ? Sans profil de viseur : les règles d'accès décident.
-function peutViser(echelonVisa, l = initiale) {
-  if (!monPerimetreVisa) return true;
+function peutViser(echelonVisa, l = etatSaisie.initiale) {
+  if (!etatSaisie.monPerimetreVisa) return true;
   const { dep, aca } = lieuDe(l);
   return window.Socle.viseurCouvre(
-    monPerimetreVisa,
+    etatSaisie.monPerimetreVisa,
     echelonVisa,
     dep,
     aca,
-    reglageValidation || { aca_vise_dep: true },
+    etatSaisie.reglageValidation || { aca_vise_dep: true },
   );
 }
 // Dossier (ligne initiale) en attente du visa de ce viseur, dans son périmètre
 function aViserParMoi(l) {
-  if (!monPerimetreVisa || !reglageValidation) return false;
+  if (!etatSaisie.monPerimetreVisa || !etatSaisie.reglageValidation) return false;
   const s = statutDe(derniereDe(l));
   return (s === Socle.STATUT.dep && peutViser("dep", l)) || (s === Socle.STATUT.aca && peutViser("aca", l));
 }
 function majBandeauVisa() {
   const b = $("bandeau-visa");
   if (!b) return;
-  if (!monPerimetreVisa || !reglageValidation || modeEtab) {
+  if (!etatSaisie.monPerimetreVisa || !etatSaisie.reglageValidation || etatSaisie.modeEtab) {
     b.hidden = true;
-    fileVisa = false;
+    etatSaisie.fileVisa = false;
     return;
   }
-  const n = (indexRecherche || []).filter((x) => aViserParMoi(x.l)).length,
-    p = monPerimetreVisa;
+  const n = (etatSaisie.indexRecherche || []).filter((x) => aViserParMoi(x.l)).length,
+    p = etatSaisie.monPerimetreVisa;
   const zone = p.echelon === "Départemental" ? p.departements : p.academies;
   b.hidden = false;
   b.innerHTML = `<span class="grand">${n ? `${n} dossier${n > 1 ? "s" : ""} à viser` : "Aucun dossier à viser"}</span>
     <span>visa ${p.echelon === "Départemental" ? "départemental" : "académique"} · ${esc(zone.length ? zone.join(", ") : "tout le document")}</span>
-    <button type="button" class="secondaire petit" id="btn-file-visa">${fileVisa ? "Afficher tous les signalements" : n ? "Afficher la file" : "Afficher la file (vide)"}</button>`;
+    <button type="button" class="secondaire petit" id="btn-file-visa">${etatSaisie.fileVisa ? "Afficher tous les signalements" : n ? "Afficher la file" : "Afficher la file (vide)"}</button>`;
   $("btn-file-visa").addEventListener("click", () => {
-    fileVisa = !fileVisa;
-    nbCartes = 30;
+    etatSaisie.fileVisa = !etatSaisie.fileVisa;
+    etatSaisie.nbCartes = 30;
     afficherCartes();
   });
 }
-/* Veille (onglet Veille de l'administration, 2.43) : vigilances météo au-dessus du seuil, rappelées aux agents sur l'accueil.
-   Les établissements n'y ont pas accès (table illisible par leur lien) : rien ne s'affiche pour eux. */
-let vigilancesPage = null,
-  dernierVeille = 0;
 async function lireVeille() {
-  dernierVeille = Date.now();
+  etatSaisie.dernierVeille = Date.now();
   try {
-    vigilancesPage = await window.Socle.lireVigilances(socleGeneral);
+    etatSaisie.vigilancesPage = await window.Socle.lireVigilances(etatSaisie.socleGeneral);
   } catch (_) {
-    vigilancesPage = null;
+    etatSaisie.vigilancesPage = null;
   }
 }
 function majBandeauVeille() {
   const b = $("bandeau-veille");
   if (!b) return;
-  if (Date.now() - dernierVeille > 600000) lireVeille().then(majBandeauVeille); // relue toutes les 10 minutes
-  if (modeEtab || !vigilancesPage) {
+  if (Date.now() - etatSaisie.dernierVeille > 600000) lireVeille().then(majBandeauVeille); // relue toutes les 10 minutes
+  if (etatSaisie.modeEtab || !etatSaisie.vigilancesPage) {
     b.hidden = true;
     return;
   }
-  const r = Socle.reglagesVeille(socleConfig),
+  const r = Socle.reglagesVeille(etatSaisie.socleConfig),
     groupes = new Map();
-  for (const v of vigilancesPage) {
+  for (const v of etatSaisie.vigilancesPage) {
     if (v.niveau < r.seuil || (r.phenomenes.length && !r.phenomenes.includes(v.phenomene))) continue;
     const k = `${v.niveau}|${v.echeance === "Demain" ? 1 : 0}|${v.phenomene}`;
     if (!groupes.has(k)) groupes.set(k, { v, deps: [] });
@@ -159,13 +149,14 @@ function majBandeauVeille() {
 /* Campagnes (onglet Établissements de l'administration) : la page d'un établissement ouverte par son lien affiche la
    campagne qui le vise et propose « Rien à signaler », qui enregistre un signalement en retour à la normale. */
 function campagnesDeLEtab() {
-  if (!modeEtab || !etabs || !etabs[0] || !socleConfig || !Socle.campagnes) return [];
+  if (!etatSaisie.modeEtab || !etatSaisie.etabs || !etatSaisie.etabs[0] || !etatSaisie.socleConfig || !Socle.campagnes)
+    return [];
   const cols = { nom: E.nom, uai: E.uai, commune: E.commune, mail: E.mail };
-  return Socle.campagnes(socleConfig).filter(
+  return Socle.campagnes(etatSaisie.socleConfig).filter(
     (c) =>
       Socle.campagneEnCours(c) &&
       (!c.referentiel || c.referentiel === ETAB.table) &&
-      Socle.campagneVise(c, etabs[0], cols),
+      Socle.campagneVise(c, etatSaisie.etabs[0], cols),
   );
 }
 function majBandeauCampagne() {
@@ -176,7 +167,7 @@ function majBandeauCampagne() {
     b.hidden = true;
     return;
   }
-  const saisies = enregistrements.map((l) => secondes(val(l, "Date"))).filter((x) => x != null);
+  const saisies = etatSaisie.enregistrements.map((l) => secondes(val(l, "Date"))).filter((x) => x != null);
   const attente = cs.filter((c) => !saisies.some((x) => Socle.reponseCompte(c, x)));
   b.hidden = false;
   b.classList.toggle("ok", !attente.length);
@@ -194,8 +185,8 @@ function majBandeauCampagne() {
 // Valeur de qualification « retour à la normale » proposée par le formulaire (RAS par défaut)
 function qualificationRetourNormale() {
   const r = retourNormale(),
-    trouve = (choix || []).find((x) => r.has(String(x).trim().toUpperCase()));
-  return trouve || (choix && choix.length ? null : "RAS");
+    trouve = (etatSaisie.choix || []).find((x) => r.has(String(x).trim().toUpperCase()));
+  return trouve || (etatSaisie.choix && etatSaisie.choix.length ? null : "RAS");
 }
 async function rienASignaler() {
   const q = qualificationRetourNormale();
@@ -205,20 +196,23 @@ async function rienASignaler() {
   }
   if (!abandonAccepte()) return;
   // un dossier de ce jour existe déjà (un dossier par jour) : il est mis à jour en retour à la normale ; sinon, nouveau dossier
-  const duJour = modeEtab && etabs && etabs[0] ? dossierDuJour(etabs[0].id, Date.now() / 1000) : null;
+  const duJour =
+    etatSaisie.modeEtab && etatSaisie.etabs && etatSaisie.etabs[0]
+      ? dossierDuJour(etatSaisie.etabs[0].id, Date.now() / 1000)
+      : null;
   await enFile(async () => {
     cacherConfirmation();
     if (duJour) await ouvrirDossier(duJour.d, true);
     else await passerEnCreation();
     montrerVue("saisie");
   });
-  if (duJour && dossierId !== duJour.d) return;
+  if (duJour && etatSaisie.dossierId !== duJour.d) return;
   await enFile(async () => {
     cocherQualif(q);
     $("description").value = "Rien à signaler.";
-    descriptionManuelle = true;
+    etatSaisie.descriptionManuelle = true;
     majEtatDescription();
-    modifie = true;
+    etatSaisie.modifie = true;
     await enregistrerSignalement();
   });
 }
@@ -227,7 +221,7 @@ async function remplirVisas() {
   // Un bloc n'est affiché que si les règles d'accès laissent lire ses colonnes
   const visibles = (defs, prefix) =>
     defs.filter((d) => {
-      const ok = derniere && lisible(derniere[d.colId]) && d.colId in derniere;
+      const ok = etatSaisie.derniere && lisible(etatSaisie.derniere[d.colId]) && d.colId in etatSaisie.derniere;
       const bloc = document.querySelector(`[data-champ="${prefix}-${d.colId}"]`);
       if (bloc) {
         bloc.hidden = !ok;
@@ -235,16 +229,19 @@ async function remplirVisas() {
       }
       return ok;
     });
-  const vd = visibles(defsDep, "vd"),
-    va = visibles(defsAca, "va");
+  const vd = visibles(etatSaisie.defsDep, "vd"),
+    va = visibles(etatSaisie.defsAca, "va");
   // Un profil identifié dans « Utilisateurs » décide du périmètre : département → son échelon
   // seulement ; académie et région académique → les deux échelons. Sans profil reconnu (ex. le
   // propriétaire du document), on retombe sur ce que les règles d'accès laissent lire.
   let montrerDep = vd.length > 0;
-  let montrerAca = va.length > 0 && (!monNiveau || monNiveau !== "departement");
+  let montrerAca = va.length > 0 && (!etatSaisie.monNiveau || etatSaisie.monNiveau !== "departement");
   // Viseur de l'onglet Validation : son échelon, sur les établissements de son périmètre seulement
-  if (monPerimetreVisa) {
-    montrerDep = montrerDep && (!reglageValidation || reglageValidation.echelons === "dep_aca") && peutViser("dep");
+  if (etatSaisie.monPerimetreVisa) {
+    montrerDep =
+      montrerDep &&
+      (!etatSaisie.reglageValidation || etatSaisie.reglageValidation.echelons === "dep_aca") &&
+      peutViser("dep");
     montrerAca = montrerAca && peutViser("aca");
   }
   $("form-visa-dep").hidden = !montrerDep;
@@ -254,29 +251,29 @@ async function remplirVisas() {
 
   // Profil identifié : n'afficher que le geste de validation (le toggle), rien d'autre du bloc.
   [
-    ["form-visa-dep", defsDep, "vd", montrerDep],
-    ["form-visa-aca", defsAca, "va", montrerAca],
+    ["form-visa-dep", etatSaisie.defsDep, "vd", montrerDep],
+    ["form-visa-aca", etatSaisie.defsAca, "va", montrerAca],
   ].forEach(([formId, defs, prefix, montrer]) => {
-    $(formId).classList.toggle("mode-toggle", !!monNiveau);
-    if (!monNiveau || !montrer) return;
+    $(formId).classList.toggle("mode-toggle", !!etatSaisie.monNiveau);
+    if (!etatSaisie.monNiveau || !montrer) return;
     const prim = champVerdict(defs);
     defs.forEach((d) => {
       const bloc = document.querySelector(`[data-champ="${prefix}-${d.colId}"]`);
       if (bloc && d !== prim) bloc.hidden = true;
     });
   });
-  await remplirChamps("vd", vd, (d) => derniere[d.colId]);
-  await remplirChamps("va", va, (d) => derniere[d.colId]);
-  if (derniere) {
-    const d = val(derniere, "Date");
+  await remplirChamps("vd", vd, (d) => etatSaisie.derniere[d.colId]);
+  await remplirChamps("va", va, (d) => etatSaisie.derniere[d.colId]);
+  if (etatSaisie.derniere) {
+    const d = val(etatSaisie.derniere, "Date");
     $("note-visa").textContent =
       `Les visas portent sur la version la plus récente du signalement` +
       (secondes(d) != null
-        ? ` (${derniere === initiale ? "signalement initial" : "suivi"} du ${dateFr(d, metaDate)})`
+        ? ` (${etatSaisie.derniere === etatSaisie.initiale ? "signalement initial" : "suivi"} du ${dateFr(d, etatSaisie.metaDate)})`
         : "") +
       `. Tout nouveau suivi devra être visé à nouveau.`;
   }
-  modifieVisa = false;
+  etatSaisie.modifieVisa = false;
 }
 
 // Le premier champ « Choix » du visa (typiquement Favorable / À revoir / Défavorable) est traité
@@ -320,7 +317,7 @@ function activerVerdictRapide(prefix, defs, statutId) {
         return;
       }
       const encours = lireChoix(id);
-      const deja = derniere && egal(norm(def, encours), norm(def, derniere[def.colId]));
+      const deja = etatSaisie.derniere && egal(norm(def, encours), norm(def, etatSaisie.derniere[def.colId]));
       statut(statutId, deja ? "" : `« ${encours} » sélectionné, non enregistré : appuyez sur Entrée pour valider.`);
     });
     r.addEventListener("keydown", (ev) => {
@@ -336,13 +333,13 @@ function activerVerdictRapide(prefix, defs, statutId) {
 }
 
 async function enregistrerVerdict(def, id, statutId) {
-  if (!derniere) return;
+  if (!etatSaisie.derniere) return;
   const v = lireChoix(id);
-  if (!v || egal(norm(def, v), norm(def, derniere[def.colId]))) return;
+  if (!v || egal(norm(def, v), norm(def, etatSaisie.derniere[def.colId]))) return;
   statut(statutId, "Enregistrement…");
   try {
-    await grist.getTable().update({ id: derniere.id, fields: { [def.colId]: v } });
-    derniere[def.colId] = v; // évite qu'« Enregistrer » ne renvoie inutilement cette même valeur
+    await grist.getTable().update({ id: etatSaisie.derniere.id, fields: { [def.colId]: v } });
+    etatSaisie.derniere[def.colId] = v; // évite qu'« Enregistrer » ne renvoie inutilement cette même valeur
     statut(statutId, `Visa enregistré : ${v}.`, "ok");
   } catch (e) {
     statut(
@@ -354,21 +351,21 @@ async function enregistrerVerdict(def, id, statutId) {
 }
 
 async function enregistrerVisa(prefix, defs, statutId) {
-  if (!derniere) return;
+  if (!etatSaisie.derniere) return;
   const manquants = [];
   const valeurs = lireChamps(prefix, defs, manquants);
   if (manquants.length) {
     statut(statutId, `Renseignez ${manquants.join(", ")}.`, "err");
     return;
   }
-  const fields = seulementModifies(defs, valeurs, derniere);
+  const fields = seulementModifies(defs, valeurs, etatSaisie.derniere);
   if (!Object.keys(fields).length) {
     statut(statutId, "Aucune modification à enregistrer.");
     return;
   }
   try {
-    await grist.getTable().update({ id: derniere.id, fields });
-    modifieVisa = false;
+    await grist.getTable().update({ id: etatSaisie.derniere.id, fields });
+    etatSaisie.modifieVisa = false;
     statut(statutId, "Visa enregistré.", "ok");
   } catch (e) {
     statut(
@@ -380,9 +377,9 @@ async function enregistrerVisa(prefix, defs, statutId) {
 }
 $("form-visa-dep").addEventListener("submit", (ev) => {
   ev.preventDefault();
-  enFile(() => enregistrerVisa("vd", defsDep, "statut-dep"));
+  enFile(() => enregistrerVisa("vd", etatSaisie.defsDep, "statut-dep"));
 });
 $("form-visa-aca").addEventListener("submit", (ev) => {
   ev.preventDefault();
-  enFile(() => enregistrerVisa("va", defsAca, "statut-aca"));
+  enFile(() => enregistrerVisa("va", etatSaisie.defsAca, "statut-aca"));
 });

@@ -8,7 +8,9 @@ async function reprendreReponses(d) {
   cocherQualif(val(der, "Qualification"));
   if (col("Site") && val(der, "Site")) $("site").value = val(der, "Site");
   // pièces jointes : propres à chaque jour, jamais reprises d'un signalement précédent
-  await remplirChamps("q", defsQuestions, (def) => (typeBase(def.type) === "Attachments" ? null : der[def.colId]));
+  await remplirChamps("q", etatSaisie.defsQuestions, (def) =>
+    typeBase(def.type) === "Attachments" ? null : der[def.colId],
+  );
   // formulaire par site : le tableau des sites reprend les sites du signalement choisi, dans leur dernier état,
   // sauf reprise désactivée (réglage du tableau des sites) : il part vide
   let cs = sitesCtrl(),
@@ -21,15 +23,15 @@ async function reprendreReponses(d) {
     cs = null;
   } else if (cs) nbSites = reprendreEtatSites(cs, refId(val(der, "Etablissement")), undefined, d);
   if (cs) {
-    qualifTouchee = false;
+    etatSaisie.qualifTouchee = false;
     majQualifDeduite();
   }
-  appliquerConditions("q", defsQuestions);
-  descriptionManuelle = false;
+  appliquerConditions("q", etatSaisie.defsQuestions);
+  etatSaisie.descriptionManuelle = false;
   majDescriptionAuto();
   if (typeof majCouleur === "function") majCouleur();
-  modifie = true;
-  propositionMasquee = etabCourant ? etabCourant.id : null;
+  etatSaisie.modifie = true;
+  etatSaisie.propositionMasquee = etatSaisie.etabCourant ? etatSaisie.etabCourant.id : null;
   majProposition();
   statut(
     "statut-signalement",

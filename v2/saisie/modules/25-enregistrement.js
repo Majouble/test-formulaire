@@ -4,11 +4,9 @@
 /* =========================================================
    Signalement : création, puis mise à jour par nouvelle version
    ========================================================= */
-// Le formulaire reflète toujours l'état courant, c'est-à-dire la dernière version enregistrée.
-let versionAffichee = null; // copie de la version sur laquelle l'agent travaille
 async function remplirFormulaire() {
-  const ref = derniere || initiale;
-  versionAffichee = ref ? { ...ref } : null;
+  const ref = etatSaisie.derniere || etatSaisie.initiale;
+  etatSaisie.versionAffichee = ref ? { ...ref } : null;
   $("description").value = (ref ? val(ref, "Description") : "") ?? "";
   $("site").value = (ref && col("Site") ? val(ref, "Site") : "") ?? "";
   cocherQualif(ref ? val(ref, "Qualification") : "");
@@ -23,20 +21,20 @@ async function remplirFormulaire() {
       : aideFaitsDefaut();
   reinitialiserJours();
   majAideJours();
-  await remplirChamps("q", defsQuestions, (d) => (ref ? ref[d.colId] : null));
+  await remplirChamps("q", etatSaisie.defsQuestions, (d) => (ref ? ref[d.colId] : null));
   // formulaire par site : la qualification suit les sites tant qu'elle leur correspond
   if (sitesCtrl()) {
     const dq = qualifDesSites(),
       q0 = plusGrave(listeQualif(lireQualificationInitiale()));
-    qualifTouchee = !!(q0 && dq && dq.plusGrave && q0 !== dq.plusGrave);
+    etatSaisie.qualifTouchee = !!(q0 && dq && dq.plusGrave && q0 !== dq.plusGrave);
     majQualifDeduite();
   }
   $("commentaire").value = "";
-  appliquerConditions("q", defsQuestions);
+  appliquerConditions("q", etatSaisie.defsQuestions);
   evaluerDescriptionManuelle();
   majApercuAuto();
   majCouleur();
-  modifie = false;
+  etatSaisie.modifie = false;
 }
 
 // Marque les champs obligatoires vides (aria-invalid) et place le focus sur le premier
@@ -52,24 +50,25 @@ function signalerChampsManquants() {
       el.removeAttribute("aria-invalid");
     }
   };
-  if (!dossierId && !modeEtab && !etabCourant) marquer($("nom"), !$("nom").value.trim());
+  if (!etatSaisie.dossierId && !etatSaisie.modeEtab && !etatSaisie.etabCourant)
+    marquer($("nom"), !$("nom").value.trim());
   const q = lireQualificationInitiale();
   const premierChoix = $("qualifs-initiales").querySelector("input");
   marquer(premierChoix, !q || (Array.isArray(q) && !q.length));
-  for (const def of defsQuestions) {
+  for (const def of etatSaisie.defsQuestions) {
     if (!def.obligatoire || def.formule) continue;
     const bloc = document.querySelector(`[data-champ="q-${def.colId}"]`);
     if (!bloc || bloc.hidden) continue;
     const el = bloc.querySelector("input, select, textarea");
     marquer(el, typeBase(def.type) === "Bool" ? !boolRepondu("q", def) : estVide(def, lireUnChamp("q", def)));
   }
-  for (const def of defsQuestions) {
+  for (const def of etatSaisie.defsQuestions) {
     // nombres hors bornes ([positif], [min], [max])
     const bloc = document.querySelector(`[data-champ="q-${def.colId}"]`);
     const v = bloc && !bloc.hidden ? lireUnChamp("q", def) : null;
     if (typeof v === "number" && horsBornes(def, v)) marquer(bloc.querySelector("input"), true);
   }
-  for (const def of defsQuestions) {
+  for (const def of etatSaisie.defsQuestions) {
     // lignes incomplètes des questions « tableau »
     const c = def.tableau && tableaux[`q-${def.colId}`];
     if (!c || !c.verifier().length) continue;
@@ -111,8 +110,8 @@ $("form-signalement").addEventListener("keydown", (ev) => {
 async function enregistrerSignalement(correction = false) {
   // Correction : sauf si l'utilisateur l'a changée, la date des faits reste celle de la version corrigée
   // (le formulaire propose la date du jour, qui ne vaut que pour une nouvelle mise à jour).
-  if (correction && derniere && col("Date_faits") && !dateFaitsTouchee) {
-    const d = val(derniere, "Date_faits");
+  if (correction && etatSaisie.derniere && col("Date_faits") && !etatSaisie.dateFaitsTouchee) {
+    const d = val(etatSaisie.derniere, "Date_faits");
     if (secondes(d) != null) {
       initialiserDateFaits(d);
       majDescriptionAuto();
@@ -121,13 +120,14 @@ async function enregistrerSignalement(correction = false) {
   if (!col("Etablissement")) {
     statut(
       "statut-signalement",
-      `Colonne de l'établissement introuvable dans la table « ${tableId || "?"} » : voir ⚙ Réglages › « Colonnes et référentiel utilisés ».`,
+      `Colonne de l'établissement introuvable dans la table « ${etatSaisie.tableId || "?"} » : voir ⚙ Réglages › « Colonnes et référentiel utilisés ».`,
       "err",
     );
     return;
   }
   const manquants = [];
-  if (!dossierId && !modeEtab && !etabCourant && !$("nom").value.trim()) manquants.push("l'établissement");
+  if (!etatSaisie.dossierId && !etatSaisie.modeEtab && !etatSaisie.etabCourant && !$("nom").value.trim())
+    manquants.push("l'établissement");
   if (!$("description").value.trim()) manquants.push("la description");
   if (col("Date_faits") && !$("date-faits").value) manquants.push("la date des faits");
   if (col("Date_faits") && dateFaitsFuture() && !S().faitsFuturs) {
@@ -153,7 +153,7 @@ async function enregistrerSignalement(correction = false) {
     return;
   }
   const jours = correction ? [] : joursSuivants();
-  const reponses = lireChamps("q", defsQuestions, manquants);
+  const reponses = lireChamps("q", etatSaisie.defsQuestions, manquants);
   const qualif = lireQualificationInitiale();
   if (!qualif || (Array.isArray(qualif) && !qualif.length)) manquants.push("la qualification");
   if (manquants.length) {
@@ -169,7 +169,7 @@ async function enregistrerSignalement(correction = false) {
   if (col("Qualification"))
     valeurs[col("Qualification")] = Array.isArray(qualif) ? (qualif.length ? ["L", ...qualif] : null) : qualif;
 
-  if (dossierId && !initiale) {
+  if (etatSaisie.dossierId && !etatSaisie.initiale) {
     statut(
       "statut-signalement",
       "Le signalement affiché n'est plus disponible. Rechargez le widget avant d'enregistrer.",
@@ -178,7 +178,12 @@ async function enregistrerSignalement(correction = false) {
     return;
   }
   // Mise à jour : l'établissement affiché doit être celui du dossier
-  if (dossierId && initiale && etabCourant && etabCourant.id !== refId(val(initiale, "Etablissement"))) {
+  if (
+    etatSaisie.dossierId &&
+    etatSaisie.initiale &&
+    etatSaisie.etabCourant &&
+    etatSaisie.etabCourant.id !== refId(val(etatSaisie.initiale, "Etablissement"))
+  ) {
     statut(
       "statut-signalement",
       "L'établissement affiché ne correspond pas à celui du signalement ouvert : enregistrement annulé. Rouvrez le signalement depuis le menu.",
@@ -186,9 +191,9 @@ async function enregistrerSignalement(correction = false) {
     );
     return;
   }
-  if (!correction && !dossierId) {
+  if (!correction && !etatSaisie.dossierId) {
     verifierDoublons();
-    if (doublonsDuJour().length && doublonConfirme !== cleDoublon()) {
+    if (doublonsDuJour().length && etatSaisie.doublonConfirme !== cleDoublon()) {
       if (document.body.classList.contains("proposition-visible")) {
         statut(
           "statut-signalement",
@@ -219,11 +224,11 @@ async function enregistrerSignalement(correction = false) {
     f.scrollIntoView({ block: "center" });
     return;
   }
-  if (correction && !(dossierId && initiale && derniere)) {
+  if (correction && !(etatSaisie.dossierId && etatSaisie.initiale && etatSaisie.derniere)) {
     statut("statut-signalement", "Ouvrez d'abord un signalement à corriger.", "err");
     return;
   }
-  if (dossierId && !correction && !col("Dossier")) {
+  if (etatSaisie.dossierId && !correction && !col("Dossier")) {
     statut(
       "statut-signalement",
       "Mise à jour impossible : aucune colonne « Dossier » n'est associée au widget. Ajoutez à la table une colonne « Dossier » " +
@@ -236,10 +241,15 @@ async function enregistrerSignalement(correction = false) {
   $("btn-corriger").setAttribute("aria-disabled", "true");
   try {
     const table = grist.getTable();
-    if (correction && versionAffichee && derniere && versionAffichee.id !== derniere.id) {
+    if (
+      correction &&
+      etatSaisie.versionAffichee &&
+      etatSaisie.derniere &&
+      etatSaisie.versionAffichee.id !== etatSaisie.derniere.id
+    ) {
       statut(
         "statut-signalement",
-        `Une nouvelle version de ce dossier a été enregistrée pendant votre correction${auteurDe(derniere)}. Rouvrez le dossier pour partir de la version la plus récente.`,
+        `Une nouvelle version de ce dossier a été enregistrée pendant votre correction${auteurDe(etatSaisie.derniere)}. Rouvrez le dossier pour partir de la version la plus récente.`,
         "err",
       );
       return;
@@ -247,17 +257,17 @@ async function enregistrerSignalement(correction = false) {
     if (correction) {
       // Correction : la dernière version est modifiée sur place ; aucune nouvelle ligne, donc aucun message Tchap.
       // L'établissement, le dossier, la nature et la date de saisie ne changent pas.
-      const fields = seulementModifies(champsVersion, valeurs, derniere);
+      const fields = seulementModifies(etatSaisie.champsVersion, valeurs, etatSaisie.derniere);
       if (
         col("Date_faits") &&
         valeurs[col("Date_faits")] !== undefined &&
-        !egal(valeurs[col("Date_faits")], secondes(derniere[col("Date_faits")]))
+        !egal(valeurs[col("Date_faits")], secondes(etatSaisie.derniere[col("Date_faits")]))
       )
         fields[col("Date_faits")] = valeurs[col("Date_faits")];
       if (!Object.keys(fields).length && confidentielsModifies()) {
-        const errT = await synchroniserTableaux(dossierId, false);
+        const errT = await synchroniserTableaux(etatSaisie.dossierId, false);
         finConfidentiels();
-        modifie = false;
+        etatSaisie.modifie = false;
         statut(
           "statut-signalement",
           "Données confidentielles enregistrées (aucune nouvelle étape)." + texteErreursTableaux(errT),
@@ -269,14 +279,14 @@ async function enregistrerSignalement(correction = false) {
         statut("statut-signalement", "Aucune modification à corriger.", "err");
         return;
       }
-      await etape("Correction de la dernière version", tableId || "réponses", () =>
-        table.update({ id: derniere.id, fields }),
+      await etape("Correction de la dernière version", etatSaisie.tableId || "réponses", () =>
+        table.update({ id: etatSaisie.derniere.id, fields }),
       );
-      Object.assign(derniere, fields);
-      modifie = false;
+      Object.assign(etatSaisie.derniere, fields);
+      etatSaisie.modifie = false;
       const errT = [
-        ...(await synchroniserTableaux(dossierId, true, derniere.id)),
-        ...(await purgerSitesSupprimes(dossierId)),
+        ...(await synchroniserTableaux(etatSaisie.dossierId, true, etatSaisie.derniere.id)),
+        ...(await purgerSitesSupprimes(etatSaisie.dossierId)),
       ];
       statut(
         "statut-signalement",
@@ -285,19 +295,19 @@ async function enregistrerSignalement(correction = false) {
       );
       confirmer(
         "Dernière étape corrigée",
-        `La dernière étape du dossier n° ${dossierId} a été corrigée ; aucune nouvelle étape n'a été créée (pas de nouveau message Tchap).` +
+        `La dernière étape du dossier n° ${etatSaisie.dossierId} a été corrigée ; aucune nouvelle étape n'a été créée (pas de nouveau message Tchap).` +
           texteErreursTableaux(errT),
       );
-    } else if (dossierId && initiale) {
+    } else if (etatSaisie.dossierId && etatSaisie.initiale) {
       // Mise à jour : on n'écrase jamais la version précédente, on ajoute une nouvelle ligne
       // rattachée au signalement initial par la colonne Dossier.
       const com = col("Commentaire") ? commentaireComplet() : "";
-      const change = Object.keys(seulementModifies(champsVersion, valeurs, derniere)).length > 0;
+      const change = Object.keys(seulementModifies(etatSaisie.champsVersion, valeurs, etatSaisie.derniere)).length > 0;
       // Seules des données confidentielles ont changé : pas de nouvelle version (ni de message Tchap)
       if (!change && confidentielsModifies()) {
-        const errT = await synchroniserTableaux(dossierId, false);
+        const errT = await synchroniserTableaux(etatSaisie.dossierId, false);
         finConfidentiels();
-        modifie = false;
+        etatSaisie.modifie = false;
         statut(
           "statut-signalement",
           "Données confidentielles enregistrées (aucune nouvelle étape)." + texteErreursTableaux(errT),
@@ -307,7 +317,7 @@ async function enregistrerSignalement(correction = false) {
       }
       // La nouvelle version devient-elle la dernière (faits les plus récents) ? Sinon la table dédiée garde ses lignes.
       const faitsNouveaux = col("Date_faits") ? lireDateFaits() : null,
-        faitsDerniere = derniere ? jourDesFaits(derniere) : null;
+        faitsDerniere = etatSaisie.derniere ? jourDesFaits(etatSaisie.derniere) : null;
       const devientDerniere = faitsNouveaux == null || faitsDerniere == null || faitsNouveaux >= faitsDerniere;
       if (!change && !jours.length && !(afficherCommentaire() && $("commentaire").value.trim())) {
         statut(
@@ -323,7 +333,7 @@ async function enregistrerSignalement(correction = false) {
       if (
         fusion.conflits.length &&
         !confirm(
-          `Une mise à jour de ce dossier a été enregistrée pendant votre saisie${auteurDe(derniere)}.\n\n` +
+          `Une mise à jour de ce dossier a été enregistrée pendant votre saisie${auteurDe(etatSaisie.derniere)}.\n\n` +
             `Vous avez tous deux modifié : ${fusion.conflits.join(", ")}.\n\nOK : enregistrer vos réponses pour ces questions (les autres apports de votre collègue sont conservés).\nAnnuler : revenir au formulaire.`,
         )
       )
@@ -331,24 +341,29 @@ async function enregistrerSignalement(correction = false) {
       Object.assign(valeurs, fusion.valeurs);
       const fields = {
         ...valeurs,
-        [col("Etablissement")]: refId(val(initiale, "Etablissement")), // l'établissement du dossier, et lui seul
-        ...(col("Dossier") ? { [col("Dossier")]: dossierId } : {}),
+        [col("Etablissement")]: refId(val(etatSaisie.initiale, "Etablissement")), // l'établissement du dossier, et lui seul
+        ...(col("Dossier") ? { [col("Dossier")]: etatSaisie.dossierId } : {}),
       };
       if (col("Date") && !dateParGrist()) fields[col("Date")] = Date.now() / 1000;
       if (col("Nature")) fields[col("Nature")] = NATURE.suivi;
       if (col("Commentaire")) fields[col("Commentaire")] = com;
       const id = idDe(
-        await etape("Création de la nouvelle version", tableId || "réponses", () => table.create({ fields })),
+        await etape("Création de la nouvelle version", etatSaisie.tableId || "réponses", () =>
+          table.create({ fields }),
+        ),
       );
       if (id) idsCreesIci.add(id);
       const serie =
         id && jours.length
-          ? await reprendreSurJours(refId(val(initiale, "Etablissement")), valeurs, jours, faitsNouveaux)
+          ? await reprendreSurJours(refId(val(etatSaisie.initiale, "Etablissement")), valeurs, jours, faitsNouveaux)
           : null;
-      modifie = false;
+      etatSaisie.modifie = false;
       $("commentaire").value = "";
       const errT = id
-        ? [...(await synchroniserTableaux(dossierId, devientDerniere, id)), ...(await purgerSitesSupprimes(dossierId))]
+        ? [
+            ...(await synchroniserTableaux(etatSaisie.dossierId, devientDerniere, id)),
+            ...(await purgerSitesSupprimes(etatSaisie.dossierId)),
+          ]
         : [];
       finConfidentiels();
       statut(
@@ -358,7 +373,7 @@ async function enregistrerSignalement(correction = false) {
       );
       confirmer(
         "Mise à jour enregistrée",
-        `Étape ${versions.length + 1} du dossier n° ${dossierId}${etabCourant ? " (" + etabCourant[E.nom] + ")" : ""}.` +
+        `Étape ${etatSaisie.versions.length + 1} du dossier n° ${etatSaisie.dossierId}${etatSaisie.etabCourant ? " (" + etatSaisie.etabCourant[E.nom] + ")" : ""}.` +
           texteSerie(serie) +
           texteErreursTableaux(errT),
       );
@@ -373,20 +388,22 @@ async function enregistrerSignalement(correction = false) {
       const fields = { ...valeurs, [col("Etablissement")]: etabId };
       if (col("Date") && !dateParGrist()) fields[col("Date")] = Date.now() / 1000;
       if (col("Nature")) fields[col("Nature")] = NATURE.initial;
-      const id = idDe(await etape("Création du signalement", tableId || "réponses", () => table.create({ fields })));
+      const id = idDe(
+        await etape("Création du signalement", etatSaisie.tableId || "réponses", () => table.create({ fields })),
+      );
       if (id) idsCreesIci.add(id);
       if (id && col("Dossier"))
-        await etape("Rattachement du signalement à son propre dossier", tableId || "réponses", () =>
+        await etape("Rattachement du signalement à son propre dossier", etatSaisie.tableId || "réponses", () =>
           table.update({ id, fields: { [col("Dossier")]: id } }),
         );
       const serie = id && jours.length ? await reprendreSurJours(etabId, valeurs, jours, lireDateFaits()) : null;
-      modifie = false;
-      selectionAttendue = id;
+      etatSaisie.modifie = false;
+      etatSaisie.selectionAttendue = id;
       const errT = id ? await synchroniserTableaux(id, true, id) : [];
       finConfidentiels();
       statut(
         "statut-signalement",
-        (modeEtab
+        (etatSaisie.modeEtab
           ? "Signalement enregistré."
           : "Signalement enregistré. Vous pouvez transmettre le lien à l'établissement.") +
           texteSerie(serie) +
@@ -395,11 +412,11 @@ async function enregistrerSignalement(correction = false) {
       );
       confirmer(
         "Signalement enregistré",
-        `Dossier n° ${id} créé${etabCourant ? " pour " + etabCourant[E.nom] : ""}.` +
+        `Dossier n° ${id} créé${etatSaisie.etabCourant ? " pour " + etatSaisie.etabCourant[E.nom] : ""}.` +
           texteSerie(serie) +
-          (modeEtab ? "" : " Vous pouvez transmettre le lien d'accès à l'établissement.") +
+          (etatSaisie.modeEtab ? "" : " Vous pouvez transmettre le lien d'accès à l'établissement.") +
           texteErreursTableaux(errT),
-        !modeEtab,
+        !etatSaisie.modeEtab,
       );
       try {
         await grist.setCursorPos({ rowId: id });

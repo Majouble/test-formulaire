@@ -52,21 +52,23 @@ const PRESETS = {
     plusieursJours: true,
   },
 };
-let versionPage = null; // option « version » de la page (⚙), utilisée quand le formulaire publié ne fixe pas la version
 const confSaisie = () =>
-  (typeof formulaireActif !== "undefined" && formulaireActif && formulaireActif.conf && formulaireActif.conf.saisie) ||
+  (typeof etatSaisie.formulaireActif !== "undefined" &&
+    etatSaisie.formulaireActif &&
+    etatSaisie.formulaireActif.conf &&
+    etatSaisie.formulaireActif.conf.saisie) ||
   {};
 function versionSaisie() {
   const c = confSaisie();
   if (PRESETS[c.version]) return c.version;
-  if (PRESETS[versionPage]) return versionPage;
+  if (PRESETS[etatSaisie.versionPage]) return etatSaisie.versionPage;
   const f = decodeURIComponent(location.pathname || "").toLowerCase();
   if (/signalement-esr/.test(f)) return "esr";
   if (/signalement-sans-commentaire|widget-signalement\.html$/.test(f)) return "en";
   // document à deux champs (MEN et MESRE) : la table de réponses dit le champ
   try {
-    const e = window.Socle.espaceDeTable(socleGeneral, tableId);
-    if (e && window.Socle.espaces(socleGeneral).length > 1) return e.version;
+    const e = window.Socle.espaceDeTable(etatSaisie.socleGeneral, etatSaisie.tableId);
+    if (e && window.Socle.espaces(etatSaisie.socleGeneral).length > 1) return e.version;
   } catch (_) {
     /* socle indisponible */
   }
@@ -99,10 +101,10 @@ function appliquerVersion() {
 function appliquerColonnesForcees() {
   const c = S().colonnes || {};
   for (const k of ["nom", "uai", "commune", "type", "academie", "departement", "mail"]) {
-    if (c[k] && colsEtab.includes(c[k]) && E[k] !== c[k]) {
+    if (c[k] && etatSaisie.colsEtab.includes(c[k]) && E[k] !== c[k]) {
       E[k] = c[k];
-      colonnesReconnues[k] = c[k];
-      colonnesParContenu.delete(k);
+      etatSaisie.colonnesReconnues[k] = c[k];
+      etatSaisie.colonnesParContenu.delete(k);
     }
   }
 }
@@ -134,7 +136,7 @@ const libelleChampFiche = (cle) => (String(cle).startsWith("@") ? ROLES_FICHE[cl
 // Valeurs disponibles pour le modèle d'en-tête : rôles (nom, commune, uai…), région, et toute colonne du référentiel
 function valeursEtab(e) {
   const v = {};
-  for (const c of colsEtab) {
+  for (const c of etatSaisie.colsEtab) {
     const x = e[c];
     if (x != null && typeof x !== "object") v[c] = x;
   }
@@ -189,10 +191,10 @@ const identiteExemple = () =>
 function remplirVersionConfig() {
   const c = confSaisie(),
     sel = $("cfg-version");
-  sel.value = PRESETS[versionPage] ? versionPage : "";
+  sel.value = PRESETS[etatSaisie.versionPage] ? etatSaisie.versionPage : "";
   sel.disabled = !!PRESETS[c.version];
   $("cfg-version-info").textContent = PRESETS[c.version]
-    ? `Fixée par le formulaire « ${formulaireActif.nom} » dans l'administration des formulaires : ${PRESETS[c.version].libelle}.`
+    ? `Fixée par le formulaire « ${etatSaisie.formulaireActif.nom} » dans l'administration des formulaires : ${PRESETS[c.version].libelle}.`
     : `Version appliquée : ${PRESETS[S().version].libelle}. « Automatique » la déduit de la table (colonne Site, ou référentiel autre que « Etablissements » : enseignement supérieur). Enregistré avec la page.`;
   $("cfg-entete-texte").textContent =
     `Commencer par l'établissement, par exemple « ${appliquerModele(S().entete, identiteExemple())} : »`;
@@ -200,7 +202,7 @@ function remplirVersionConfig() {
 $("cfg-version").addEventListener("change", async () => {
   try {
     await grist.setOption("version", $("cfg-version").value || null);
-    versionPage = $("cfg-version").value || null;
+    etatSaisie.versionPage = $("cfg-version").value || null;
     statut("cfg-statut", "Version de la page enregistrée.", "ok");
     enFile(async () => {
       await chargerConfiguration();
@@ -251,7 +253,11 @@ function colonneRegion() {
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase();
-  return colsEtab.find((c) => /^region_?academique/.test(n(c))) || colsEtab.find((c) => /region/.test(n(c))) || null;
+  return (
+    etatSaisie.colsEtab.find((c) => /^region_?academique/.test(n(c))) ||
+    etatSaisie.colsEtab.find((c) => /region/.test(n(c))) ||
+    null
+  );
 }
 function regionAcademique(e) {
   if (!e) return "";
