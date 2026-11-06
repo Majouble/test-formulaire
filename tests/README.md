@@ -18,6 +18,8 @@ Chaque scénario affiche ce qu'il observe : textes affichés, comptes, contenus 
 
 Quand un changement est voulu, on vérifie l'écart puis on enregistre la nouvelle référence : `node verifier.js --maj run74`. Le commit montre alors, dans `references/`, exactement ce qui a changé à l'écran ou dans le document.
 
+`run99` (mode veille) enchaîne des étapes chronométrées qui se chevauchent : son déroulé varie d'une exécution à l'autre. Ses écarts sont affichés (« instable ») sans compter comme échec ; il est à réécrire avec des attentes explicites.
+
 Les scénarios qui ouvrent un serveur local (ports 87xx) passent l'un après l'autre ; les autres en parallèle (`PARALLELE=4` par défaut). Les scénarios du planning (`run68`, `run71`, `run72`) figent la date au 21/10/2026, semaine du planning d'essai.
 
 `lancer.sh` reste disponible : il lance la suite sans comparaison et ne signale que les erreurs de page.

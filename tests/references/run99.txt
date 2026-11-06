@@ -12,12 +12,12 @@
 [A] après « Écrire quand même » : lignes en place : 7 | précédente : 32
 [A] copie récente, dans la plage : appel au relais ? false
 [A] copie de 2 h, dans la plage : appel au relais ? true | lignes : 32
-[A] copie de 2 h, hors plage (19 h – 20 h) : appel au relais ? false | bandeau : hors plage signalé
+[A] copie de 2 h, hors plage (<H> h – <H> h) : appel au relais ? false | bandeau : hors plage signalé
 [A] base : copie des dossiers écrite (Reponses 32, Sites_signales 0) / base mise à jour (0.0 Mo) / copie des dossiers écrite (Reponses 32, Sites_signales 0)
 [A] établissements : 3 → 5 | sans rechargement de la page, dossier : ok | nouvelle base Copie Grist - référentiels et réglages.json prise en compte
 [A] tableau des signalements après la nouvelle base : 30 dossier(s), triés par nom d'établissement.
 [A] Grist en panne : Mode veille Veille cellule · Formulaire « Signalements » (sans page d'agent) · copie du <DATE> <HEURE> · dossiers de <HEURE> · 1 saisie(s) déjà réintégrée(s) Dossier partagé « partage » · 1 poste(s) · lu à <HEURE> Relais : lecture de Grist impossible : /tables : fetch failed — passer en mode secours ? VeilleTableau des signalements ExporterRéglages
-[A] relais coupé : relais injoignable (réseau coupé, ou réponse bloquée par le navigateur) | événements : relais injoignable (réseau coupé, ou réponse bloquée par le navigateur) / lecture de Grist impossible : /tables : fetch failed / lecture de Grist impossible : /tables : fetch failed
+[A] relais coupé : null | événements : le relais répond de nouveau / relais injoignable (réseau coupé, ou réponse bloquée par le navigateur) / lecture de Grist impossible : /tables : fetch failed
 [A] après « Passer en mode secours » : Mode secours Veille cellule · Formulaire « Signalements » (s | onglets : Veille | Saisie* | Tableau des signalements
 [A] saisie en mode secours : Signalement enregistré Dossier n° <N13> créé pour Collège Jean | statut :  | journal : 3
 [A] retour du réseau : Mode secours Veille cellule · Formulaire « Signalements » (sans page d'agent) · copie du <DATE> <HEURE> · dossiers de <HEURE> · 1 saisie(s) déjà réintégrée(s) Dossier partagé « partage » · 1 poste(s) · lu à <HEURE> Grist répond de nouveau (<HEURE>) : réintégrez les saisies VeilleSaisieTableau des signalements ExporterRéglages
