@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Signalements</title>
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+    <script src="../commun/outils.js"></script>
     <script src="../commun/theme.js"></script>
     <script src="../commun/marque.js"></script>
     <script src="../commun/socle.js"></script>
@@ -3347,9 +3348,7 @@ Cordialement,`,
       /* =========================================================
    Outils
    ========================================================= */
-      const $ = (id) => document.getElementById(id);
-      const esc = (s) =>
-        String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+      const { esc, $ } = Outils;
       const E = ETAB.colonnes;
       /* Reconnaissance des colonnes du référentiel : si une colonne attendue (Nom, UAI, Commune…) n'existe pas
    sous cet identifiant, le widget cherche une colonne équivalente d'après son identifiant ou son libellé

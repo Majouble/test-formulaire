@@ -18,12 +18,7 @@
   "use strict";
   const S = window.Socle,
     R = window.Repartition;
-  const $ = (id) => document.getElementById(id);
-  const esc = (s) =>
-    String(s == null ? "" : s).replace(
-      /[&<>"']/g,
-      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
-    );
+  const { esc, $ } = Outils;
   const JOURS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
   const MOIS = [
     "janvier",

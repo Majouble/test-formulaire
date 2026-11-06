@@ -12,11 +12,7 @@
 (function () {
   "use strict";
   const S = window.Socle;
-  const esc = (s) =>
-    String(s == null ? "" : s).replace(
-      /[&<>"']/g,
-      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
-    );
+  const { esc } = Outils;
   const dateHeure = (s) =>
     typeof s === "number"
       ? new Date(s * 1000).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })

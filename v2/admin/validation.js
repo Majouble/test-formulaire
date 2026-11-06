@@ -15,12 +15,7 @@
   "use strict";
   const S = window.Socle,
     R = window.Repartition;
-  const $ = (id) => document.getElementById(id);
-  const esc = (s) =>
-    String(s == null ? "" : s).replace(
-      /[&<>"']/g,
-      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
-    );
+  const { esc, $ } = Outils;
   const nf = (n) => Number(n || 0).toLocaleString("fr-FR");
   const PARTIES_DEFAUT = [
     { id: "q", role: "q" },

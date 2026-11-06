@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Point de situation</title>
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+    <script src="../commun/outils.js"></script>
     <script src="../commun/theme.js"></script>
     <script src="../commun/marque.js"></script>
     <script src="../commun/socle.js"></script>
@@ -299,7 +300,7 @@
     <script>
       /* global creerSource, DEFAUT_COLONNES, DEFAUT_SECTIONS, lireRegles, DEFAUT_TRI, assemblerPoint, echap, sectionsHTML, sectionsXML -- commun/point-moteur.js */
       /* ======================= widget Grist ======================= */
-      const $ = (id) => document.getElementById(id);
+      const { $ } = Outils;
       const etat = (t, cls) => {
         $("etat").textContent = t;
         $("etat").className = cls || "";

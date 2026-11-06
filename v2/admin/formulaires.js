@@ -132,9 +132,7 @@
   ];
 
   /* ---------- outils ---------- */
-  const $ = (id) => document.getElementById(id);
-  const esc = (s) =>
-    String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const { esc, $ } = Outils;
   const normaliser = (t) =>
     String(t ?? "")
       .normalize("NFD")

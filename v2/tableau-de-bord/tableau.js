@@ -51,13 +51,7 @@
     // =============================================================================
     // Outils
     // =============================================================================
-    const $ = (id) => document.getElementById(id);
-    const esc = (s) =>
-      String(s ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
+    const { esc, $ } = Outils;
     const norm = (s) =>
       String(s ?? "")
         .replace(/\*/g, "")

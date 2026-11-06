@@ -15,12 +15,7 @@
   "use strict";
   const S = window.Socle,
     G = () => window.Geo;
-  const $ = (id) => document.getElementById(id);
-  const esc = (s) =>
-    String(s == null ? "" : s).replace(
-      /[&<>"']/g,
-      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
-    );
+  const { esc, $ } = Outils;
   const nf = (n) => Math.round(Number(n) || 0).toLocaleString("fr-FR");
   const PASTILLE = ["", "🟢", "🟡", "🟠", "🔴"];
   const couleur = (n) => S.COULEURS_VIGILANCE.find((c) => c.niveau === n) || S.COULEURS_VIGILANCE[0];

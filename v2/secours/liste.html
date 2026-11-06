@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Tableau des signalements</title>
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+    <script src="../commun/outils.js"></script>
     <script src="../commun/theme.js"></script>
     <script src="../commun/marque.js"></script>
     <script src="../commun/socle.js"></script>
@@ -177,7 +178,7 @@
       /* Tableau des signalements, triés par établissement de A à Z : un seul tableau, avec les colonnes publiées du point
    de situation (administration › Point de situation), sans modèle Word. Utilisé par le kit de secours, et utilisable
    comme widget Grist. */
-      const $ = (id) => document.getElementById(id);
+      const { $ } = Outils;
       const etat = (t, c) => {
         $("etat").textContent = t;
         $("etat").className = c || "";

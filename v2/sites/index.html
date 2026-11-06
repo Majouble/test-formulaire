@@ -6,6 +6,7 @@
     <title>Référentiel des sites</title>
     <!-- Widget Grist : mise à jour du référentiel des sites de l'enseignement supérieur (carte IGN, lieux IGN, OpenStreetMap, adresses) -->
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+    <script src="../commun/outils.js"></script>
     <script src="../commun/theme.js"></script>
     <script src="../commun/marque.js"></script>
     <script src="../commun/socle.js"></script>
@@ -743,12 +744,7 @@
    (des signalements peuvent y renvoyer) : il se désactive (colonne Actif).
    ===================================================================== */
       const S = window.Socle;
-      const $ = (id) => document.getElementById(id);
-      const esc = (s) =>
-        String(s ?? "").replace(
-          /[&<>"']/g,
-          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
-        );
+      const { esc, $ } = Outils;
       const norm = (s) =>
         String(s ?? "")
           .normalize("NFD")

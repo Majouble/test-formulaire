@@ -18,12 +18,7 @@
 (function () {
   "use strict";
   const S = window.Socle;
-  const $ = (id) => document.getElementById(id);
-  const esc = (s) =>
-    String(s == null ? "" : s).replace(
-      /[&<>"']/g,
-      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
-    );
+  const { esc, $ } = Outils;
   const nf = (n) => Number(n || 0).toLocaleString("fr-FR");
   const refId = (v) =>
     typeof v === "number"

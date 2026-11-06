@@ -620,9 +620,7 @@ async function assemblerPoint(sources, cfg) {
 }
 
 /* ---------- rendu HTML (aperçu) ---------- */
-function echap(s) {
-  return String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-}
+const echap = Outils.esc; // nom historique, utilisé par le point de situation et le kit de secours
 function clair(hex) {
   const h = String(hex || "17877A").replace("#", "");
   const [r, g, b] = [0, 2, 4].map((i) => parseInt(h.substr(i, 2), 16));

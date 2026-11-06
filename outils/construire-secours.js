@@ -75,6 +75,9 @@ ${enScript(lire("v2/vendor/sql.js/sql-wasm.js"))}</script>
 window.__KIT_DEMO__=${enScript(JSON.stringify(JSON.parse(lire("v2/secours/demo.json")).tables))};
 window.__KIT_VUES__=${enScript(JSON.stringify(vues))};</script>
 <script>
+${enScript(lire("v2/commun/outils.js"))}
+</script>
+<script>
 ${enScript(lire("v2/commun/marque.js"))}
 </script>
 <script>

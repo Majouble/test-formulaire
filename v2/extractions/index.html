@@ -6,6 +6,7 @@
     <!-- Widget « Extractions » du socle v2 (2.44) : une ligne par établissement, filtres, export Excel ; page créée depuis l'administration (onglet Tableau de bord). -->
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+    <script src="../commun/outils.js"></script>
     <script src="../commun/theme.js"></script>
     <script src="../commun/marque.js"></script>
     <script src="../commun/socle.js"></script>
@@ -454,7 +455,7 @@
         { key: "nbVersions", label: "Nb versions", type: "int", defaut: false },
       ];
 
-      const $ = (id) => document.getElementById(id);
+      const { esc, $ } = Outils;
       $("version").textContent = VERSION;
 
       // ---------- État ----------
@@ -858,9 +859,9 @@
           .map(
             (f, i) => `<div class="ligne" data-i="${i}">
     <span class="num-f">F${i + 1}</span>
-    <select class="col" data-champ="col" aria-label="Colonne du filtre ${i + 1}"><option value="">— colonne —</option>${cols.map((c) => `<option value="${echapper(c.id)}"${c.id === f.col ? " selected" : ""}>${echapper(c.label)}</option>`).join("")}</select>
+    <select class="col" data-champ="col" aria-label="Colonne du filtre ${i + 1}"><option value="">— colonne —</option>${cols.map((c) => `<option value="${esc(c.id)}"${c.id === f.col ? " selected" : ""}>${esc(c.label)}</option>`).join("")}</select>
     <select class="op" data-champ="op" aria-label="Opérateur du filtre ${i + 1}">${OPERATEURS.map((o) => `<option value="${o.id}"${o.id === f.op ? " selected" : ""}>${o.label}</option>`).join("")}</select>
-    <input type="text" data-champ="texte" value="${echapper(f.texte || "")}" placeholder="valeur (a ; b = l'un ou l'autre)" aria-label="Valeur du filtre ${i + 1}"${sansTexte(f.op) ? " hidden" : ""}>
+    <input type="text" data-champ="texte" value="${esc(f.texte || "")}" placeholder="valeur (a ; b = l'un ou l'autre)" aria-label="Valeur du filtre ${i + 1}"${sansTexte(f.op) ? " hidden" : ""}>
     <button type="button" class="icone" data-retirer="${i}" title="Retirer ce filtre" aria-label="Retirer le filtre ${i + 1}">✕</button>
   </div>`,
           )
@@ -1147,7 +1148,7 @@
           resultat.colonnes
             .map(
               (c) =>
-                `<th data-key="${c.key}">${echapper(c.label)} <span class="fleche">${tri.key === c.key ? (tri.sens > 0 ? "▲" : "▼") : ""}</span></th>`,
+                `<th data-key="${c.key}">${esc(c.label)} <span class="fleche">${tri.key === c.key ? (tri.sens > 0 ? "▲" : "▼") : ""}</span></th>`,
             )
             .join("") +
           "</tr></thead>";
@@ -1162,14 +1163,14 @@
                   if (c.type === "int") return `<td class="num">${v ?? ""}</td>`;
                   if (c.type === "num") {
                     const n = enNombre(v);
-                    return `<td class="num">${n === null ? echapper(v ?? "") : n.toLocaleString("fr-FR")}</td>`;
+                    return `<td class="num">${n === null ? esc(v ?? "") : n.toLocaleString("fr-FR")}</td>`;
                   }
                   if (c.type === "date") return `<td class="num">${jourFr(v)}</td>`;
                   if (c.type === "qual" && v) {
                     const co = qc.choiceOptions[v] || {};
-                    return `<td><span class="qual" style="background:${co.fillColor || "transparent"};color:${co.textColor || "inherit"}">${echapper(v)}</span></td>`;
+                    return `<td><span class="qual" style="background:${co.fillColor || "transparent"};color:${co.textColor || "inherit"}">${esc(v)}</span></td>`;
                   }
-                  return `<td>${echapper(v ?? "")}</td>`;
+                  return `<td>${esc(v ?? "")}</td>`;
                 })
                 .join("") +
               "</tr>",
@@ -1183,9 +1184,6 @@
             majResultat();
           }),
         );
-      }
-      function echapper(s) {
-        return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
       }
 
       // ---------- Export Excel ----------
@@ -1315,12 +1313,12 @@
       }
       function exporterCSV() {
         const cols = resultat.colonnes;
-        const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
-        const lignesCsv = [cols.map((c) => esc(c.label)).join(";")].concat(
+        const celluleCsv = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`; // cellule CSV entre guillemets
+        const lignesCsv = [cols.map((c) => celluleCsv(c.label)).join(";")].concat(
           resultat.lignes.map((o) =>
             cols
               .map((c) =>
-                esc(
+                celluleCsv(
                   c.type === "date"
                     ? jourFr(o[c.key])
                     : c.type === "num" && enNombre(o[c.key]) !== null

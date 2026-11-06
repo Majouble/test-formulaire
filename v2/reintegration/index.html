@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Réintégration du mode secours</title>
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+    <script src="../commun/outils.js"></script>
     <script src="../commun/theme.js"></script>
     <script src="../commun/marque.js"></script>
     <script src="../commun/socle.js"></script>
@@ -223,12 +224,7 @@
       /* Réintégration dans Grist des saisies du kit de secours (v2/secours).
    Réglage dans Config, clé « secours » : { entrees: { idSaisie: { t, agent, le } }, correspondances: { n° secours: n° Grist }, sessions: [...] } */
       const BASE_HORS_LIGNE = 1e12;
-      const $ = (id) => document.getElementById(id);
-      const esc = (s) =>
-        String(s == null ? "" : s).replace(
-          /[&<>"']/g,
-          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
-        );
+      const { esc, $ } = Outils;
       const dateHeure = (d) =>
         d
           ? new Date(d).toLocaleString("fr-FR", {

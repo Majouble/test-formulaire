@@ -17,12 +17,7 @@
   "use strict";
   const S = window.Socle,
     R = window.Repartition;
-  const $ = (id) => document.getElementById(id);
-  const esc = (s) =>
-    String(s == null ? "" : s).replace(
-      /[&<>"']/g,
-      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
-    );
+  const { esc, $ } = Outils;
   const COULEURS_PRIO = { Haute: "#ce0500", Moyenne: "#d68a00", Basse: "#6a6af4" };
   const ORDRE_PRIO = { Haute: 0, Moyenne: 1, Basse: 2 };
   const TRIS = [

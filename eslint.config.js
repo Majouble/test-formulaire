@@ -11,7 +11,7 @@ const PARTAGES = [
   // API Grist (grist-plugin-api.js) et bibliothèques tierces
   "grist", "L", "PizZip", "docxtemplater", "initSqlJs",
   // modules du socle et des widgets (window.*)
-  "Socle", "SocleTheme", "SocleMarque", "Geo", "FicheEtab", "QualiteMoteur", "QualiteEdition", "PointMoteur",
+  "Outils", "Socle", "SocleTheme", "SocleMarque", "Geo", "FicheEtab", "QualiteMoteur", "QualiteEdition", "PointMoteur",
   "Repartition", "PagesAgents", "TableauDeBord", "CarteSecours", "CarteConfiguration", "Atlas",
   "OngletAcces", "OngletActions", "OngletCampagnes", "OngletEffectifs", "OngletEquipe", "OngletEquipeGroupe",
   "OngletFormulaires", "OngletLiens", "OngletPlanning", "OngletPointSituation", "OngletQualite",

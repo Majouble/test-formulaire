@@ -12,12 +12,7 @@
 (function () {
   "use strict";
   const S = window.Socle;
-  const $ = (id) => document.getElementById(id);
-  const esc = (s) =>
-    String(s == null ? "" : s).replace(
-      /[&<>"']/g,
-      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
-    );
+  const { esc, $ } = Outils;
   const statut = (t, type) => {
     const e = $("sec-statut");
     if (e) {

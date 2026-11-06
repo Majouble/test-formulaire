@@ -7,6 +7,7 @@
     <!-- API des widgets Grist. Sur une instance auto-hébergée, vous pouvez remplacer
      cette adresse par https://VOTRE-GRIST/grist-plugin-api.js -->
     <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+    <script src="../commun/outils.js"></script>
     <script src="../commun/theme.js"></script>
     <script src="../commun/marque.js"></script>
     <!-- Socle v2 : rôles des colonnes (établissement, coordonnées du référentiel, dernière version, qualification) -->
@@ -1107,12 +1108,7 @@
       // ---------------------------------------------------------------------------
       // Encodeurs
       // ---------------------------------------------------------------------------
-      const esc = (s) =>
-        String(s ?? "")
-          .replace(/&/g, "&amp;")
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;");
+      const { esc, $ } = Outils;
 
       function toKML(features, docName) {
         const coords = (a) => a.map((c) => `${c[0]},${c[1]}`).join(" ");
@@ -1204,7 +1200,6 @@
       // ---------------------------------------------------------------------------
       // Interface
       // ---------------------------------------------------------------------------
-      const $ = (id) => document.getElementById(id);
       let state = { features: [], problems: [], total: 0, mode: null };
 
       function renderMessages() {

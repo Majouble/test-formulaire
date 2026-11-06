@@ -61,11 +61,7 @@
       .replace(/[^a-z0-9]+/g, " ")
       .trim();
   const slug = (s) => norm(s).replace(/ /g, "-").slice(0, 40) || "agent";
-  const esc = (s) =>
-    String(s == null ? "" : s).replace(
-      /[&<>"']/g,
-      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
-    );
+  const { esc } = Outils;
   const uuid = () =>
     crypto.randomUUID
       ? crypto.randomUUID()

@@ -14,12 +14,7 @@
   "use strict";
   const S = window.Socle,
     R = window.Repartition;
-  const $ = (id) => document.getElementById(id);
-  const esc = (s) =>
-    String(s == null ? "" : s).replace(
-      /[&<>"']/g,
-      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
-    );
+  const { esc, $ } = Outils;
   const { cle: CLE, lien: LIEN } = R.LIEN;
   const MAX_LIGNES = 200;
   const MESSAGE_DEFAUT = {
