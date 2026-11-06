@@ -1,3 +1,4 @@
+/* global creerSource, creerLecteur, analyserCondition, assemblerPoint, sectionsHTML -- commun/point-moteur.js */
 /* =====================================================================
    Administration v2 — onglet « Point de situation »
    Éditeur guidé (tableaux et conditions, colonnes et leurs lignes, tris) avec aperçu en direct, calculé par le
@@ -539,10 +540,6 @@
         .join("")
     );
   }
-  const libelleChamp = (ch) => {
-    const c = champs.find((x) => x.chemin === ch);
-    return c ? (c.groupe === "Signalement" ? c.libelle : `${c.groupe} › ${c.libelle}`) : ch;
-  };
   const outils = (liste, i, n) => `<span class="ps-outils">
       <button type="button" class="ps-mini" data-act="haut" data-liste="${liste}" data-i="${i}" title="Monter" ${i === 0 ? "disabled" : ""}>↑</button>
       <button type="button" class="ps-mini" data-act="bas" data-liste="${liste}" data-i="${i}" title="Descendre" ${i === n - 1 ? "disabled" : ""}>↓</button>

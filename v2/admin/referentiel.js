@@ -141,7 +141,7 @@
       return;
     }
     $("ref-etape1").hidden = false;
-    const { g, table, roles, reglages } = ctx;
+    const { table, roles, reglages } = ctx;
     const manquants = ["UAI", "Nom", "Academie"].filter((r) => !(roles[r] && roles[r].col));
     $("ref-contexte").innerHTML = `
       <p>Table cible : <strong>${esc(table)}</strong>.</p>

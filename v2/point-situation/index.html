@@ -297,6 +297,7 @@
     <main id="apercu" aria-label="Aperçu du point de situation"></main>
 
     <script>
+      /* global creerSource, DEFAUT_COLONNES, DEFAUT_SECTIONS, lireRegles, DEFAUT_TRI, assemblerPoint, echap, sectionsHTML, sectionsXML -- commun/point-moteur.js */
       /* ======================= widget Grist ======================= */
       const $ = (id) => document.getElementById(id);
       const etat = (t, cls) => {
@@ -657,17 +658,16 @@
         try {
           etat("Préparation du document…");
           const zip = new PizZip(await modele());
-          const styleTitre = ((zip.file("word/styles.xml") || { asText: () => "" })
-            .asText()
-            .match(/<w:style [^>]*w:styleId="(Titre1|Heading1)"/) || [, "Titre1"])[1];
+          const styleTitre =
+            (zip.file("word/styles.xml") || { asText: () => "" })
+              .asText()
+              .match(/<w:style [^>]*w:styleId="(Titre1|Heading1)"/)?.[1] ?? "Titre1";
           const doc = new docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
           doc.render({ ...entete(), corps: sectionsXML(point, styleTitre) });
-          const blob = doc
-            .getZip()
-            .generate({
-              type: "blob",
-              mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            });
+          const blob = doc.getZip().generate({
+            type: "blob",
+            mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          });
           const n = new Date($("maintenant").value || Date.now()),
             p2 = (x) => String(x).padStart(2, "0");
           const nom = `${n.getFullYear()}_${p2(n.getMonth() + 1)}_${p2(n.getDate())}_Point_de_situation_n${p2($("numero").value || 0)}${$("academie").value ? "_" + $("academie").value : ""}.docx`;

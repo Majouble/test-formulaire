@@ -715,7 +715,7 @@
       $("li-csv-voir").addEventListener("click", () => {
         const o = $("li-sortie"),
           { texte, n } = csv();
-        o.value = texte.replace(/^﻿/, "");
+        o.value = texte.replace(/^\uFEFF/, "");
         o.hidden = false;
         o.select();
         dire("li-statut", `${n} ligne(s) : copiez le texte dans un fichier .csv.`);

@@ -33,7 +33,6 @@
   let liste = (() => {
     try {
       return {
-        q: "",
         equipe: "",
         fonction: "",
         inactifs: true,

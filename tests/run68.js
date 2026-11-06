@@ -32,7 +32,7 @@ const { chromium } = require('playwright'); const fs = require('fs');
   console.log('PUCES visibles (replié) :', await page.$$eval('.pl-aff .eq-puce', p => p.length));
   await page.click('.pl-aff [data-deplier]'); await page.waitForTimeout(200);
   console.log('PUCES après « modifier » :', await page.$$eval('.pl-aff .eq-puce', p => p.length));
-  await page.screenshot({ path: 'pl-68.png', fullPage: false }); await page.locator('#pl-edition').screenshot({ path: __C.sorties + '/pl-68-edition.png' });
+  await page.screenshot({ path: __C.sorties + '/pl-68.png', fullPage: false }); await page.locator('#pl-edition').screenshot({ path: __C.sorties + '/pl-68-edition.png' });
   const avant = await page.evaluate(() => window.__DOC__.__data.Affectations.id.length);
   await page.click('#pl-enregistrer'); await page.waitForTimeout(500);
   console.log('ENREGISTRÉ :', await page.textContent('#pl-statut'), '| affectations', avant, '→', await page.evaluate(() => window.__DOC__.__data.Affectations.id.length));

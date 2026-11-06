@@ -1,3 +1,6 @@
+/* exported creerLecteur, creerSource, analyserCondition, assemblerPoint, sectionsHTML, sectionsXML, DEFAUT_COLONNES,
+   DEFAUT_SECTIONS, DEFAUT_TRI, lireRegles, echap, xmlEsc, LARGEUR_TABLE -- fonctions partagées : point de situation,
+   administration, kit de secours */
 /* =====================================================================
    Moteur du point de situation (v2) : lecture des champs, conditions, tri, assemblage, rendu HTML et Word.
    Partagé par le widget du point de situation et l'aperçu de l'administration. Fonctions globales.
@@ -455,7 +458,7 @@ function lireRegles(texte, table) {
         };
       });
   const regles = [],
-    re = /\s*([^,\[]+?)\s*(\[([^\]]*)\])?\s*(desc)?\s*(?:,|$)/gi;
+    re = /\s*([^,[]+?)\s*(\[([^\]]*)\])?\s*(desc)?\s*(?:,|$)/gi;
   let m;
   while ((m = re.exec(String(texte))) && m[0]) {
     const [c, sens] = m[1].trim().split(/\s+/);

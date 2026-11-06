@@ -823,6 +823,7 @@
     </main>
 
     <script>
+      /* global initAtlas, construireAtlas -- atlas.js, chargé en fin de page */
       "use strict";
       // ---------------------------------------------------------------------------
       // Conversion des valeurs Grist
@@ -1049,7 +1050,6 @@
       // ---------------------------------------------------------------------------
       // Construction de la FeatureCollection
       // ---------------------------------------------------------------------------
-      const MAPPED = ["Latitude", "Longitude", "Geometrie", "Nom"];
 
       function buildCollection(records, mapped, opts) {
         const features = [],
@@ -1543,7 +1543,6 @@
       let lastRecords = [],
         lastMappings = null;
       let savedCols = null; // null = toutes les colonnes ; sinon tableau des colonnes cochées
-      let optionsLoaded = false;
       let accessLevel = null,
         diagSource = "-",
         diagError = "";
@@ -2599,7 +2598,6 @@
             accessLevel = settings && settings.accessLevel;
             if (opts && typeof opts.derniereVersion === "boolean") dvOnly = opts.derniereVersion;
             if (opts && typeof opts.couleur === "string") colorBy = opts.couleur;
-            optionsLoaded = true;
             renderColumns();
             renderFilters();
             renderGroup();

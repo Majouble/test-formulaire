@@ -115,7 +115,6 @@
       .join("");
   const cleOrdre = (a) => (a.ordre != null ? a.ordre : a.id);
   const statutParDefaut = () => (reglages.statuts.find((x) => !x.clos) || reglages.statuts[0]).nom;
-  const statutClos = () => (reglages.statuts.find((x) => x.clos) || reglages.statuts[reglages.statuts.length - 1]).nom;
 
   async function charger() {
     config = await S.lireConfig();

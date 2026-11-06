@@ -324,8 +324,7 @@
     // Fond de carte embarqué : départements et académies (Lambert-93 ; Outre-mer et petite couronne en encarts)
     // =============================================================================
     // fond, noms et correspondances : socle (commun/geo.js)
-    const { GEO, geoNorm, DEP_NAMES, DEP_ACA, ACA_NAMES, DEP_BY_NAME, ACA_BY_NAME, depKey, acaKey, depFromUai } =
-      window.Geo;
+    const { GEO, geoNorm, DEP_NAMES, DEP_ACA, ACA_NAMES, ACA_BY_NAME, depKey, acaKey, depFromUai } = window.Geo;
     const UNKNOWN = "(non reconnu)";
     // libellé des lignes d'un tableau croisé : « Département », « Académie » quand la valeur est rattachée
     const GEO_HEAD = {
@@ -1029,8 +1028,9 @@
     }
 
     // -----------------------------------------------------------------------------
-    // Copie de sécurité de la configuration dans une table du document.
-    // Elle survit au remplacement du code du widget (qui peut effacer les réglages du widget).
+    // Ancienne copie de sécurité de la configuration (table Config_tableau_de_bord, avant la v2) :
+    // elle n'est plus écrite (la configuration est dans Config, clé tableau_de_bord) mais reste lue
+    // pour reprendre un ancien tableau de bord.
     // -----------------------------------------------------------------------------
     const CFG_TABLE = "Config_tableau_de_bord";
     const dashName = () => (config.name || "Tableau de bord").trim() || "Tableau de bord";
@@ -1042,86 +1042,6 @@
       } catch (e) {
         return null;
       } // la table n'existe pas encore
-    }
-    async function ensureCfgTable() {
-      const t = await readCfgTable();
-      if (t) return t;
-      await grist.docApi.applyUserActions([
-        ["AddRawTable", CFG_TABLE], // table sans page (visible dans « Données brutes »)
-        ["AddColumn", CFG_TABLE, "Nom", { type: "Text", isFormula: false }],
-        ["AddColumn", CFG_TABLE, "Configuration", { type: "Text", isFormula: false }],
-        ["AddColumn", CFG_TABLE, "Mise_a_jour", { type: "DateTime:Europe/Paris", isFormula: false }],
-        ["RemoveColumn", CFG_TABLE, "A"],
-        ["RemoveColumn", CFG_TABLE, "B"],
-        ["RemoveColumn", CFG_TABLE, "C"],
-      ]);
-      return await readCfgTable();
-    }
-    async function saveToTable() {
-      return; // v2 : la configuration est dans Config (clé tableau_de_bord)
-      if (!window.grist || !grist.docApi || (accessLevel && accessLevel !== "full")) return;
-      try {
-        const t = await ensureCfgTable();
-        if (!t) throw new Error("table introuvable");
-        const json = JSON.stringify(config),
-          now = Date.now() / 1000;
-        const k = (t.Nom || []).findIndex((n) => n === dashName());
-        if (k >= 0) {
-          if (t.Configuration[k] !== json)
-            await grist.docApi.applyUserActions([
-              ["UpdateRecord", CFG_TABLE, t.id[k], { Configuration: json, Mise_a_jour: now }],
-            ]);
-        } else
-          await grist.docApi.applyUserActions([
-            ["AddRecord", CFG_TABLE, null, { Nom: dashName(), Configuration: json, Mise_a_jour: now }],
-          ]);
-        tableState = "à jour";
-      } catch (e) {
-        tableState = "erreur : " + (e && e.message ? e.message : e);
-      }
-      renderDiagOnly();
-    }
-    // Au chargement : si le widget n'a plus de configuration, on la reprend dans la table
-    async function syncWithTable() {
-      tableState = "Config (clé tableau_de_bord)";
-      return;
-      if (!window.grist || !grist.docApi) return;
-      const t = await readCfgTable();
-      if (!t || !t.id || !t.id.length) {
-        tableState = "absente";
-        if (configLoaded) await saveToTable(); // première utilisation : on crée la copie de sécurité
-        return;
-      }
-      const names = t.Nom || [];
-      if (!configLoaded) {
-        let k = names.findIndex((n) => n === dashName());
-        if (k < 0 && names.length === 1) k = 0;
-        if (k >= 0) {
-          try {
-            const cfg = JSON.parse(t.Configuration[k]);
-            if (cfg && Array.isArray(cfg.blocks)) {
-              config = cfg;
-              configLoaded = true;
-              tableState = "à jour";
-              showMsg(
-                "ok",
-                `Configuration « ${names[k]} » rechargée depuis la table ${CFG_TABLE} (${cfg.blocks.length} bloc(s)).`,
-              );
-              try {
-                await grist.setOption("tableau_de_bord", config);
-              } catch (e) {}
-              return;
-            }
-          } catch (e) {
-            tableState = "erreur : configuration illisible";
-          }
-        } else if (names.length > 1) {
-          showMsg(
-            "warn",
-            `Plusieurs tableaux de bord sont enregistrés dans la table ${CFG_TABLE} (${names.join(", ")}). Utilisez « Récupérer… » pour choisir.`,
-          );
-        }
-      } else await saveToTable(); // la configuration du widget fait foi : on met la table à jour
     }
 
     // =============================================================================
@@ -1638,7 +1558,6 @@
     function renderTile(b, i, base) {
       const t = tileNumbers(b, base),
         v = t.v;
-      const conds = condsText(b.conds, b.logic);
       const unit = shareUnit(b);
       const hasShare = (b.showShare || isCover(b)) && !isNaN(t.share);
       const main = hasShare && b.shareMain ? `${fmtNum(t.share)} %` : fmtNum(v);
@@ -1829,7 +1748,6 @@
 
     function renderCross(b, i, base) {
       const d = crossData(b, base);
-      const conds = condsText(b.conds, b.logic);
       const head = `<div class="card-head"><div class="t"><h2>${rich(b.title || measureText(b.measure))}</h2>
       ${b.hideDesc ? "" : `<div class="desc">${rich(blockDesc(b))}</div>`}</div>
       ${exportTools(i)}${blockTools(i)}</div>`;
@@ -2541,8 +2459,7 @@
         });
       const pts = [];
       let sansRef = 0,
-        sansCoord = 0,
-        valSans = 0;
+        sansCoord = 0;
       d.rowKeys.forEach((rk) => {
         if (rk === EMPTY) return;
         const v = d.rowVal.get(rk) || 0;
@@ -2550,13 +2467,11 @@
         const j = idx.get(refNorm(rk));
         if (j === undefined) {
           sansRef++;
-          valSans += v;
           return;
         }
         const pos = G.placer(data[P.lat][j], data[P.lon][j]);
         if (!pos) {
           sansCoord++;
-          valSans += v;
           return;
         }
         pts.push({ rk, v, pos, nom: (P.name && textOf(data[P.name][j])) || rk });
@@ -3268,7 +3183,7 @@
       return {
         icone: ICONES[c] || "▦",
         nom:
-          (CHART_TYPES.find((x) => x[0] === c) || [, "Graphique"])[1] +
+          (CHART_TYPES.find((x) => x[0] === c)?.[1] ?? "Graphique") +
           ((b.view || "both") === "both" ? " et tableau" : ""),
       };
     }
@@ -5211,12 +5126,15 @@
     });
 
     // ---- Fonctions de bloc exécutées dans la table source du bloc
+    // Les fonctions d'affichage, écrites pour la table principale, sont ici remplacées par des versions qui
+    // basculent d'abord sur la table source du bloc (inSrc). Procédé à remplacer lors du découpage du tableau
+    // de bord : passer la source en paramètre plutôt que de redéfinir les fonctions.
+    /* eslint-disable no-func-assign -- remplacement voulu des fonctions de bloc, voir ci-dessus */
     {
       const withB =
         (f) =>
         (b, ...a) =>
           inSrc(b, () => f(b, ...a));
-      const withBase = (f) => (b, x, base) => inSrc(b, () => f(b, x, isMainSrc(b) ? base : undefined)); // (b, i, base)
       const withBase2 = (f) => (b, base) => inSrc(b, () => f(b, isMainSrc(b) && base ? base : baseRows()));
       const withI =
         (f) =>
@@ -5263,6 +5181,7 @@
         inSrc(null, _render);
       }; // tableau de bord démonté (autre tableau choisi) : plus d'affichage
     }
+    /* eslint-enable no-func-assign */
     // autres tables : relues au retour sur l'onglet et toutes les 2 minutes (hors mode modification)
     function refreshSources() {
       if (editing || document.hidden || !config.blocks.some((b) => !isMainSrc(b))) return;

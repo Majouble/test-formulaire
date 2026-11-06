@@ -226,14 +226,12 @@
       const tid = M.tables.get(C.parentId[i]);
       if (!tid) return;
       if (!M.cols.has(tid)) M.cols.set(tid, new Map());
-      M.cols
-        .get(tid)
-        .set(C.colId[i], {
-          type: C.type[i] || "Any",
-          isFormula: !!(C.isFormula && C.isFormula[i]),
-          formula: (C.formula && C.formula[i]) || "",
-          visible: C.visibleCol ? nomCol.get(C.visibleCol[i]) || null : null,
-        });
+      M.cols.get(tid).set(C.colId[i], {
+        type: C.type[i] || "Any",
+        isFormula: !!(C.isFormula && C.isFormula[i]),
+        formula: (C.formula && C.formula[i]) || "",
+        visible: C.visibleCol ? nomCol.get(C.visibleCol[i]) || null : null,
+      });
     });
   }
   const typeBase = (t) => String(t || "Any").split(":")[0];

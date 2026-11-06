@@ -4676,13 +4676,6 @@ Cordialement,`,
           return [];
         }
       }
-      function formulairePage() {
-        try {
-          return grist.getOption ? null : null;
-        } catch (_) {
-          return null;
-        }
-      }
       async function choisirFormulaire() {
         formulairesDispo = (await lireFormulaires()).filter((f) => f.table === tableId);
         let voulu = null;
@@ -7523,9 +7516,6 @@ Cordialement,`,
         if (bloc.scrollIntoView) bloc.scrollIntoView({ block: "center" });
       }
       // Nouveau signalement : on repart du haut du formulaire
-      function remonterEnHaut() {
-        if ($("titre").scrollIntoView) $("titre").scrollIntoView({ block: "start" });
-      }
 
       $("btn-nouveau").addEventListener("click", () => allerNouveau());
 
@@ -8699,8 +8689,7 @@ Cordialement,`,
       /* ---------- Barre de recherche des signalements ----------
    Cherche dans tous les dossiers visibles : établissement, commune, UAI, académie, n° de dossier, et le texte
    de la version initiale comme de la dernière version. Tous les mots tapés doivent être présents (sans accents). */
-      let indexRecherche = null,
-        rechercheActive = -1;
+      let indexRecherche = null;
       function construireIndexRecherche() {
         const cD = col("Dossier"),
           dernieres = new Map();
@@ -8763,15 +8752,6 @@ Cordialement,`,
       function fermerRecherche() {
         $("resultats-signalements").hidden = true;
         $("recherche-signalements").setAttribute("aria-expanded", "false");
-        rechercheActive = -1;
-      }
-      function activerResultat(i) {
-        const opts = [...$("resultats-signalements").querySelectorAll('[role="option"]')];
-        if (!opts.length) return;
-        rechercheActive = Math.max(0, Math.min(i, opts.length - 1));
-        opts.forEach((o, k) => o.setAttribute("aria-selected", String(k === rechercheActive)));
-        opts[rechercheActive].scrollIntoView({ block: "nearest" });
-        $("recherche-signalements").setAttribute("aria-activedescendant", opts[rechercheActive].id);
       }
       function ouvrirResultat(li) {
         const id = +li.dataset.id;
@@ -10864,11 +10844,6 @@ Cordialement,`,
             : noms.join(" ou ");
         return `${champ ? champ.libelle : "?"} : ${val}`;
       }
-      const texteFiltre = () =>
-        filtres
-          .filter(filtreEffectif)
-          .map((f) => resumeFiltre(f, true))
-          .join(" ET ");
       function sauverFiltre() {
         try {
           localStorage.setItem(`signalements-filtres:${tableId || ""}`, JSON.stringify(filtres));
@@ -10983,7 +10958,6 @@ Cordialement,`,
         const f = filtreOuvert,
           champ = f && champDe(f);
         if (!champ) return;
-        const p = $("panneau-filtre");
         const { entrees, vides, renseignes, trop } = valeursDisponibles(f);
         const t = typeChamp(champ);
         const texteLibre = t === "Text" || t === "Any";
@@ -12415,8 +12389,7 @@ Cordialement,`,
       /* =========================================================
    Visas : portent sur la dernière version, jamais recopiés dans les suivis
    ========================================================= */
-      let monProfil = null,
-        monNiveau = null; // niveau : "departement" | "academie" | "region" | null
+      let monNiveau = null; // niveau : "departement" | "academie" | "region" | null
       const sansAccentBas = (s) =>
         String(s ?? "")
           .normalize("NFD")
@@ -12430,7 +12403,6 @@ Cordialement,`,
         return null;
       }
       async function chargerProfil() {
-        monProfil = null;
         monNiveau = null;
         try {
           const t = await grist.docApi.fetchTable(UTILISATEURS.table);
@@ -12439,7 +12411,6 @@ Cordialement,`,
           if (!cols.includes(U.mail) || !cols.includes(U.niveau) || t.id.length !== 1) return;
           const l = {};
           cols.forEach((c) => (l[c] = t[c][0]));
-          monProfil = l;
           monNiveau = classerNiveau(l[U.niveau]);
         } catch (e) {
           console.warn("Table Utilisateurs illisible", e);
@@ -12468,7 +12439,6 @@ Cordialement,`,
             niveau = ech === "Départemental" ? "departement" : ech === "Académique" ? "academie" : null;
           if (!niveau) return;
           monNiveau = niveau;
-          monProfil = { source: "agent", nom: String((t.Nom || [])[i] || "") };
           monPerimetreVisa = {
             echelon: ech,
             departements: window.Socle.listeChoix((t.Visa_departements || [])[i]),
@@ -12892,20 +12862,18 @@ Cordialement,`,
           trouves.sort((a, b) => note(b) - note(a));
         const dedans = perimetreActif() ? trouves.filter(dansPerimetre) : trouves;
         const retenus = dedans.length ? dedans : trouves;
-        return retenus
-          .slice(0, NB_RESULTATS)
-          .map((e) => ({
-            source: "local",
-            ligne: e,
-            nom: e[E.nom] ?? libelleEtabDeRepli(e),
-            uai: e[E.uai],
-            type: e[E.type],
-            academie: e[E.academie],
-            departement: e[E.departement],
-            commune: e[E.commune],
-            mail: e[E.mail],
-            hors: perimetreActif() && !dedans.length,
-          }));
+        return retenus.slice(0, NB_RESULTATS).map((e) => ({
+          source: "local",
+          ligne: e,
+          nom: e[E.nom] ?? libelleEtabDeRepli(e),
+          uai: e[E.uai],
+          type: e[E.type],
+          academie: e[E.academie],
+          departement: e[E.departement],
+          commune: e[E.commune],
+          mail: e[E.mail],
+          hors: perimetreActif() && !dedans.length,
+        }));
       }
 
       // Sans colonne de nom reconnue : première valeur texte de la ligne
@@ -13079,7 +13047,7 @@ Cordialement,`,
       const ESPACE_MILLIERS = " ";
       const PROTO_VALEUR = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
       function formaterSaisieNombre(s, entier) {
-        s = String(s ?? "").replace(/[^\d,.\-]/g, "");
+        s = String(s ?? "").replace(/[^\d,.-]/g, "");
         const negatif = s.startsWith("-");
         s = s.replace(/-/g, "");
         const [ent, ...dec] = s.split(/[.,]/);
@@ -13088,7 +13056,7 @@ Cordialement,`,
       }
       function nombreBrut(affiche) {
         const s = String(affiche ?? "")
-          .replace(/[\s  ]/g, "")
+          .replace(/\s/g, "")
           .replace(",", ".");
         return /^-?(\d+(\.\d*)?|\.\d+)$/.test(s) ? s.replace(/\.$/, "") : "";
       }
@@ -13120,14 +13088,14 @@ Cordialement,`,
           () => {
             const avant = PROTO_VALEUR.get.call(el),
               pos = el.selectionStart ?? avant.length;
-            const utiles = avant.slice(0, pos).replace(/[^\d,.\-]/g, "").length; // caractères utiles avant le curseur
+            const utiles = avant.slice(0, pos).replace(/[^\d,.-]/g, "").length; // caractères utiles avant le curseur
             const apres = formaterSaisieNombre(avant, entier);
             if (apres === avant) return;
             PROTO_VALEUR.set.call(el, apres);
             let k = 0,
               i = 0;
             while (i < apres.length && k < utiles) {
-              if (/[\d,\-]/.test(apres[i])) k++;
+              if (/[\d,-]/.test(apres[i])) k++;
               i++;
             }
             el.setSelectionRange(i, i);

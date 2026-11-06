@@ -311,7 +311,6 @@
     const perimetre = (v) => {
       const dep = v.echelon === "Départemental",
         liste = dep ? v.departements : v.academies,
-        toutes = dep ? deps : acas,
         cle = dep ? "Visa_departements" : "Visa_academies";
       return `<div class="va-puces">${
         liste.length

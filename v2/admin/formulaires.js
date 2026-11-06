@@ -834,9 +834,6 @@
   /* =========================================================
    Aperçu
    ========================================================= */
-  function valeurParDefaut() {
-    return null;
-  }
   function champHtml(b) {
     const r = b.reglages || {},
       c = meta[b.colonne];
@@ -3477,11 +3474,9 @@
   }
   $("nf-table").addEventListener("change", majChoixTable);
   $("nf-etab").addEventListener("change", majInfoReferentiel);
-  let analyseRef = null;
   async function majInfoReferentiel() {
     const info = $("nf-etab-info"),
       t = $("nf-table").value;
-    analyseRef = null;
     if (t === "__nouvelle__" || duplication) {
       info.hidden = true;
       return;
@@ -3491,7 +3486,6 @@
     info.textContent = "Vérification…";
     const a = await analyserReferentiel(t, $("nf-etab").value);
     if ($("nf-table").value !== t) return;
-    analyseRef = a;
     info.textContent = a.erreur || a.texte;
     info.classList.toggle("avert", !!a.erreur);
   }
@@ -4148,7 +4142,6 @@
         });
         return r;
       });
-      const m = colonnesDe(te);
       devinerColsEtab();
     } catch (_) {
       etabsTest = [];
@@ -4886,22 +4879,11 @@
    ========================================================= */
   let pagesSaisie = null; // vues personnalisées du document qui affichent un formulaire de saisie
   const R = window.Repartition;
-  const optionsVue = R.optionsVue;
   async function lirePagesSaisie() {
     pagesSaisie = await R.lirePages();
   }
   const estEsr = () => !!meta.Site || (!!tableEtab() && tableEtab() !== "Etablissements");
   // Adresse proposée pour le widget de saisie : la v2, à côté de cette administration (…/v2/saisie/)
-  const URL_SAISIE_V2 = R.URL_SAISIE_V2;
-  function urlWidgetProposee() {
-    const deja = (pagesSaisie || []).map((x) => x.url).find((u) => URL_SAISIE_V2.test(u || ""));
-    if (deja) return deja;
-    try {
-      return new URL("../saisie/", location.href).href;
-    } catch (_) {
-      return "https://majouble.github.io/test-formulaire/v2/saisie/";
-    }
-  }
   // Pages de saisie des agents : gérées dans Équipe › Pages de saisie (admin/pages-agents.js, une page par agent et par
   // formulaire publié) ; ici, un résumé pour le formulaire affiché et un raccourci.
   const allerPagesAgents = () => {

@@ -873,7 +873,7 @@
         let t = String(q ?? "")
           .normalize("NFC")
           .replace(/[\u0000-\u001f\u00a0\u2000-\u200b]+/g, " ")
-          .replace(/[«»"“”„<>{}\[\]|\\^`~*#@$%=+_]+/g, " ")
+          .replace(/[«»"“”„<>{}[\]|\\^`~*#@$%=+_]+/g, " ")
           .replace(/[;:!?]+/g, " ")
           .replace(/\s+/g, " ")
           .trim()
@@ -1101,7 +1101,7 @@
         ctx.meta = await S.lireMeta();
         const tm = ctx.meta[ctx.tSites],
           acts = [];
-        for (const [k, d] of Object.entries(COLS_SITES)) {
+        for (const d of Object.values(COLS_SITES)) {
           if (!d.id || Object.values(tm.colonnes).some((x) => d.re.test(x.colId))) continue;
           acts.push([
             "AddColumn",
@@ -1594,7 +1594,6 @@
         } catch (_) {
           /* stockage indisponible */
         }
-        const p = choisi && parentDe(choisi);
         $("fiche").innerHTML = choisi ? `<div class="fiche">${enteteEtab(choisi)}</div>` : "";
         if (choisi) lierEntete(document.querySelector(".fiche"));
         if (choisi && window.FicheEtab) {

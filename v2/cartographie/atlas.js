@@ -1,4 +1,7 @@
 "use strict";
+/* global socle, lastRecords, metaT, metaC, mainTableId, colTypes, loadMeta, toNumber, refIdOf, lastMappings, filteredRecords,
+   dvOnly, $ -- état et outils du widget de cartographie (cartographie/index.html), qui charge ce fichier */
+/* exported initAtlas, construireAtlas -- appelés par cartographie/index.html */
 /* ---------------------------------------------------------------------------
    Atlas QGIS (format « Atlas QGIS par académie » du widget de cartographie)
 
@@ -784,7 +787,7 @@ function signalementsAtlas(profil) {
   // sous-table des marques : lignes rattachées à chaque réponse (par son identifiant ou celui de son dossier)
   const M = { table: "", colonne: "", titre: "", inclure: true, ...(P.marques || {}) };
   const ST = M.table ? sousTablesAtlas.find((t) => t.table === M.table) : null;
-  const { sousDe, uniques, avecVersions } = indexSous(ST, R);
+  const { sousDe, uniques } = indexSous(ST, R);
   // point par site : sous-table des sites (choisie dans le profil, sinon la première reconnue)
   const SS =
     sousTablesAtlas.find((t) => t.table === ((P.sites || {}).table || "") && t.estSites) ||
@@ -1754,7 +1757,6 @@ function placerEtiquettes(features, academies, zones, taille, protege) {
    des établissements retenus), et ses pages sont refaites. « departement » : découpage de toutes les académies de
    métropole qui ont plusieurs départements concernés. Chaque établissement reçoit le champ Page (clé de sa page) et son
    rang dans la page ; pages.geojson (Lambert-93) est la couverture de l'atlas. */
-const nomAcad = (a) => `Académie ${/^[AEIOUÉ]/.test(a) ? "d'" : "de "}${a}`;
 function preparerPages(features, acasJson, depsJson, P, lignes) {
   const cmp =
     {

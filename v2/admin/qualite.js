@@ -23,22 +23,6 @@
       /[&<>"']/g,
       (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
     );
-  const refId = (v) =>
-    typeof v === "number"
-      ? v
-      : v && typeof v === "object" && "rowId" in v
-        ? v.rowId
-        : Array.isArray(v) && v[0] === "R"
-          ? v[2]
-          : null;
-  const texte = (v) => (v == null ? "" : Array.isArray(v) ? (v[0] === "L" ? v.slice(1) : v).join(", ") : String(v));
-  const MAJ = (s) =>
-    String(s || "")
-      .normalize("NFD")
-      .replace(/[̀-ͯ]/g, "")
-      .toUpperCase()
-      .replace(/[^A-Z0-9]+/g, " ")
-      .trim();
 
   const Q = window.QualiteMoteur,
     TYPES = Q.TYPES,
