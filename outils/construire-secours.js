@@ -32,7 +32,7 @@ function vue(chemin) {
   }; })();</script>`,
   );
   html = html.replace(
-    /<script src="(\.\.?\/[^"]+|[\w.-]+\.js)"\s*><\/script>/g,
+    /<script src="((?!https?:)[^"]+\.js)"\s*><\/script>/g,
     (_, src) => `<script>\n${enScript(lire(path.join(dossier, src)))}\n</script>`,
   );
   html = html.replace(

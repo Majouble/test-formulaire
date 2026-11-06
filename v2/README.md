@@ -39,7 +39,7 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 ├── commun/marque.js     logo PRISME en haut à gauche de tous les widgets (variantes bloc, compact, spectre, centre)
 ├── commun/geo-fond.js   données du fond de carte : départements et académies (Lambert-93, encarts)
 ├── commun/geo.js        fond de carte commun : correspondances département / académie, placement d'un point latitude / longitude
-├── saisie/              formulaire de saisie
+├── saisie/              formulaire de saisie : index.html (structure de la page), saisie.css, modules/ (code en 31 fichiers numérotés, chargés dans l'ordre ; voir l'en-tête de chaque module)
 ├── admin/               administration : installation.js, configuration.js, referentiel.js, equipe.js, planning.js, pages-agents.js (onglet Équipe, Pages de saisie), actions.js, acces.js, liens.js, campagnes.js (onglet Établissements, carte Campagnes), effectifs.js (onglet Référentiel, carte Effectifs), veille.js (onglet Veille), validation.js (onglet Validation), repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css), secours.js (carte « Mode secours » : kit, relais, page de réintégration)
 ├── point-situation/     production du point de situation
 ├── cartographie/        carte et export cartographique (reprise du widget « Export cartographique ») ; atlas/ : projet QGIS de l'atlas par académie et contours
