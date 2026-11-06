@@ -81,76 +81,19 @@ Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pou
 | `run83` | Widget « Référentiel des sites » : établissement, carte, candidats IGN / OpenStreetMap / adresse (réponses simulées), ajout, placement, mots-clés, désactivation |
 | `run82` | Admin : tableau des sites sans colonne vers le référentiel des sites, bouton « Relier au référentiel des sites » |
 | `run81` | Référentiel : import du classeur du référentiel ESR (donnees/referentiel_esr_essai.xlsx, fictif, refait par donnees/fabriquer_referentiel_esr.py ; `CLASSEUR=…` pour essayer un vrai classeur), puis recherche et sites d'une composante dans le formulaire par site |
-
-## Scénarios plus anciens
-
-Écrits pour des versions antérieures (jusqu'à 2.0) : certains visent des écrans qui ont changé depuis et peuvent échouer. Utiles comme exemples de mise en place (documents d'essai, faux Grist).
-
-| Scénario | Ce qu'il vérifiait |
-|---|---|
-| `run2` | — |
-| `run3` | — |
-| `run4` | — |
-| `run5` | — |
-| `run6` | — |
-| `run7` | — |
-| `run8` | — |
-| `run9` | — |
-| `run10` | — |
-| `run11` | — |
 | `run116` | 2.46.1 : tableau de bord — abscisse et séries inversées (une courbe par ligne du tableau), comptes sans ligne à 0 (courbes continues), détail de la bonne case au clic sur un point |
 | `run117` | 2.47 : « À vérifier » — rattacher un dossier à un autre (blocage le matin, occupation l'après-midi) : saisies devenues versions de la cible, une seule « Nouveau signalement », sites déplacés, doublon résolu |
 | `run118` | 2.50 : formulaire par site — reprise limitée aux sites du dernier dossier (ou du signalement choisi) ; suppression d'un site saisi à tort (🗑, annulable) : effacé de toutes les étapes et de la table dédiée, plus repris le lendemain |
 | `run119` | 2.51 : Extractions — colonnes d'identification numériques (Entier, Numérique, formule « Nombre de sites ») et dates en nombres et dates dans l'Excel ; tri numérique ; CSV à virgule décimale |
 | `run120` | 2.52 : Extractions — filtres sur plusieurs colonnes (opérateurs), combinaison en cascade ou autonomes (sans doublon, colonne « Filtres vérifiés »), focus gardé à la saisie, reprise de l'ancien filtre unique, paramètres de l'Excel |
-| `run12` | — |
-| `run13` | — |
-| `run14` | — |
-| `run15` | — |
-| `run16` | — |
-| `run17` | — |
-| `run18` | — |
-| `run19` | — |
-| `run20` | — |
-| `run21` | — |
-| `run22` | — |
-| `run23` | — |
-| `run24` | — |
-| `run25` | — |
-| `run26` | — |
-| `run27` | — |
-| `run28` | — |
-| `run29` | — |
-| `run30` | — |
-| `run31` | — |
-| `run32` | — |
-| `run33` | — |
-| `run34` | — |
-| `run35` | — |
-| `run36` | — |
-| `run37` | — |
-| `run38` | — |
-| `run39` | — |
-| `run40` | — |
-| `run41` | — |
-| `run42` | — |
-| `run43` | — |
-| `run44` | — |
-| `run45` | — |
-| `run46` | — |
-| `run47` | — |
-| `run48` | — |
-| `run49` | — |
-| `run50` | — |
-| `run51` | 2.0.1 : temps des onglets Équipe / Planning (référentiel de 68 000 lignes), installation (Auteur, Administration), |
-| `run52` | — |
-| `run53` | 2.0.2 : académies dans l'onglet Référentiel ; règles d'accès (anciennes règles à condition vide → bandeau, remplacement) |
-| `run54` | — |
-| `run55` | — |
-| `run56` | 2.0.4 : second champ (MESRE) dans le même document |
-| `run57` | — |
-| `run58` | — |
-| `run59` | — |
-| `run60` | Onglet Équipe fusionné : sous-onglets Agents, Planning, Pages de saisie |
-| `run61` | — |
-| `run62` | Export « Atlas QGIS » du widget de cartographie |
+
+## Fichiers d'appui
+
+| Fichier | Rôle |
+|---|---|
+| `chemins.js` | Chemins du dépôt, des données d'essai, des sorties et du navigateur |
+| `mock.js`, `fakeapi.js`, `mock-saisie.js` | Faux Grist en mémoire (API des widgets) |
+| `faux-grist-api.js`, `relais-local.js` | Faux Grist côté serveur et relais n8n exécuté localement (mode veille) |
+| `dossier-simule.js` | Dossier partagé simulé (kit de secours) |
+| `esr_essai.js` | Établissements d'enseignement supérieur fictifs (atlas) |
+| `run27.js` | Ancien scénario de l'atlas : les scénarios run63 à run77 y prennent la fonction `mkDoc` (document d'essai) |
