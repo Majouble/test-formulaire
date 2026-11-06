@@ -8,7 +8,7 @@
 
    Usage, depuis tests/ :
      node fuseaux.js                       toute la suite
-     node fuseaux.js run88 run108          quelques scénarios
+     node fuseaux.js saisie-segpa pieces-jointes          quelques scénarios
      FUSEAU=America/Cayenne node fuseaux.js
    Variables : CHROMIUM, PARALLELE (paires de scénarios simultanées, 3 par défaut). */
 "use strict";
@@ -28,10 +28,10 @@ const SEQUENTIELS = new Set(
     .readdirSync(ICI)
     .filter(
       (f) =>
-        /^run\d+\.js$/.test(f) &&
+        /\.spec\.js$/.test(f) &&
         /\b(87|88)\d\d\b|relais-local|faux-grist-api|createServer/.test(fs.readFileSync(path.join(ICI, f), "utf8")),
     )
-    .map((f) => f.slice(0, -3)),
+    .map((f) => f.slice(0, -8)),
 );
 
 // ce qui varie entre deux exécutions simultanées, sans rapport avec le fuseau
@@ -64,7 +64,7 @@ function lancer(scenario, fuseau, dossier) {
       FUSEAU_NAVIGATEUR: fuseau,
       SORTIES: path.join(dossier, "fichiers"),
     };
-    const p = spawn(process.execPath, ["-r", "./fuseau-navigateur.js", `${scenario}.js`], { cwd: ICI, env });
+    const p = spawn(process.execPath, ["-r", "./fuseau-navigateur.js", `${scenario}.spec.js`], { cwd: ICI, env });
     const minuterie = setTimeout(() => p.kill("SIGKILL"), 300000);
     p.stdout.pipe(sortie);
     p.stderr.pipe(sortie);

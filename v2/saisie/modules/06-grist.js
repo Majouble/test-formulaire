@@ -63,7 +63,6 @@ const COLONNES = [
 // Pas de onEditOptions ni d'options de widget : dans le Custom Widget Builder, ce bouton ouvre
 // l'éditeur de code et les options du widget contiennent le code lui-même. Les réglages sont
 // donc stockés dans la table Parametres (voir PARAMETRES).
-grist.ready({ requiredAccess: "full", columns: COLONNES });
 
 let file = Promise.resolve(); // sérialise les traitements asynchrones
 // une erreur pendant le chargement (référentiel pas encore prêt) est affichée ; ensuite, seulement dans la console
@@ -104,32 +103,6 @@ const ACTIVITE = {
 })();
 // Envois rapprochés de Grist (plusieurs enregistrements à la suite) : seul le plus récent est traité
 let envoiEnAttente = null;
-grist.onRecords((recs, m) => {
-  const arrive = {
-    t: Date.now(),
-    lignes: (recs || []).length,
-    colonnes: recs && recs[0] ? Object.keys(recs[0]).length : 0,
-    ms: null,
-  };
-  ACTIVITE.envois.push(arrive);
-  if (ACTIVITE.envois.length > 300) ACTIVITE.envois.shift();
-  const dejaPrevu = !!envoiEnAttente;
-  envoiEnAttente = { recs, m, arrive };
-  if (dejaPrevu) {
-    ACTIVITE.regroupes++;
-    return;
-  }
-  return enFile(async () => {
-    const { recs, m, arrive } = envoiEnAttente;
-    envoiEnAttente = null;
-    const t0 = performance.now();
-    try {
-      await traiterEnvoi(recs, m);
-    } finally {
-      arrive.ms = performance.now() - t0;
-    }
-  });
-}, OPTIONS);
 async function traiterEnvoi(recs, m) {
   mappings = m;
   enregistrements = recs || [];
@@ -149,62 +122,6 @@ async function traiterEnvoi(recs, m) {
 // changer le signalement affiché : un simple renvoi ne fait que rafraîchir le signalement déjà ouvert,
 // et ne touche jamais à un formulaire en cours de saisie.
 let dernierCurseur = null; // identifiant de la dernière ligne reçue, ou "new" pour la ligne d'ajout
-
-grist.onRecord(
-  (rec) =>
-    enFile(async () => {
-      ACTIVITE.curseur++;
-      if (!rec || (!mappings && !Object.keys(colsParDefaut).length)) return;
-      const premiereSelection = !curseurInitialVu;
-      curseurInitialVu = true;
-      const r = enregistrements.find((x) => x.id === rec.id) || rec;
-      const d = refId(col("Dossier") && r[col("Dossier")]) || r.id;
-      const renvoi = rec.id === dernierCurseur;
-      dernierCurseur = rec.id;
-      // même signalement : un simple renvoi (après une modification de la table) est déjà traité par onRecords,
-      // qui rafraîchit le dossier ouvert ; seul un clic sur une autre ligne du même dossier le relit
-      if (d === dossierId) {
-        if (renvoi) {
-          ACTIVITE.curseurIgnores++;
-          return;
-        }
-        await ouvrirDossier(d);
-        return;
-      }
-      // Ligne tout juste créée par une autre vue : Grist a pu y décaler le curseur lors de l'insertion.
-      const creeeAilleurs =
-        (idsNouveaux.has(rec.id) || !enregistrements.some((x) => x.id === rec.id)) && !idsCreesIci.has(rec.id);
-      if (creeeAilleurs) return;
-      if (renvoi) return; // curseur inchangé, mais le widget affiche autre chose (nouveau signalement, menu)
-      // Vrai déplacement du curseur : on ne l'applique pas si une saisie est en cours, pour ne rien perdre
-      if (modifie) {
-        statut(
-          "statut-signalement",
-          "Saisie en cours non enregistrée : enregistrez-la ou cliquez sur « " +
-            $("btn-effacer").textContent +
-            " » avant d'ouvrir un autre signalement.",
-          "err",
-        );
-        return;
-      }
-      await ouvrirDossier(d);
-      if (!premiereSelection && dossierId === d) {
-        cacherConfirmation();
-        montrerVue("saisie");
-      }
-    }),
-  OPTIONS,
-);
-
-grist.onNewRecord(() =>
-  enFile(async () => {
-    const renvoi = dernierCurseur === "new";
-    dernierCurseur = "new";
-    if (!dossierId) return; // déjà sur un nouveau signalement : rien à réinitialiser
-    if (renvoi || modifie) return; // simple renvoi, ou saisie en cours à préserver
-    await passerEnCreation();
-  }),
-);
 
 /* =========================================================
    Configuration : lue une fois, relue si les associations changent
@@ -455,3 +372,90 @@ const defsDe = (cle) =>
         .filter(Boolean)
         .map(avecRegles)
     : [];
+
+/* Branchement sur Grist : appelé par le dernier module (31-parcours.js), une fois TOUS les modules chargés.
+   Grist peut envoyer les lignes dès ce branchement ; le navigateur traiterait alors cet envoi entre deux fichiers
+   si le branchement était fait ici, avant que les modules suivants (visas, parcours…) soient définis. */
+function brancherGrist() {
+  grist.ready({ requiredAccess: "full", columns: COLONNES });
+  grist.onRecords((recs, m) => {
+    const arrive = {
+      t: Date.now(),
+      lignes: (recs || []).length,
+      colonnes: recs && recs[0] ? Object.keys(recs[0]).length : 0,
+      ms: null,
+    };
+    ACTIVITE.envois.push(arrive);
+    if (ACTIVITE.envois.length > 300) ACTIVITE.envois.shift();
+    const dejaPrevu = !!envoiEnAttente;
+    envoiEnAttente = { recs, m, arrive };
+    if (dejaPrevu) {
+      ACTIVITE.regroupes++;
+      return;
+    }
+    return enFile(async () => {
+      const { recs, m, arrive } = envoiEnAttente;
+      envoiEnAttente = null;
+      const t0 = performance.now();
+      try {
+        await traiterEnvoi(recs, m);
+      } finally {
+        arrive.ms = performance.now() - t0;
+      }
+    });
+  }, OPTIONS);
+  grist.onRecord(
+    (rec) =>
+      enFile(async () => {
+        ACTIVITE.curseur++;
+        if (!rec || (!mappings && !Object.keys(colsParDefaut).length)) return;
+        const premiereSelection = !curseurInitialVu;
+        curseurInitialVu = true;
+        const r = enregistrements.find((x) => x.id === rec.id) || rec;
+        const d = refId(col("Dossier") && r[col("Dossier")]) || r.id;
+        const renvoi = rec.id === dernierCurseur;
+        dernierCurseur = rec.id;
+        // même signalement : un simple renvoi (après une modification de la table) est déjà traité par onRecords,
+        // qui rafraîchit le dossier ouvert ; seul un clic sur une autre ligne du même dossier le relit
+        if (d === dossierId) {
+          if (renvoi) {
+            ACTIVITE.curseurIgnores++;
+            return;
+          }
+          await ouvrirDossier(d);
+          return;
+        }
+        // Ligne tout juste créée par une autre vue : Grist a pu y décaler le curseur lors de l'insertion.
+        const creeeAilleurs =
+          (idsNouveaux.has(rec.id) || !enregistrements.some((x) => x.id === rec.id)) && !idsCreesIci.has(rec.id);
+        if (creeeAilleurs) return;
+        if (renvoi) return; // curseur inchangé, mais le widget affiche autre chose (nouveau signalement, menu)
+        // Vrai déplacement du curseur : on ne l'applique pas si une saisie est en cours, pour ne rien perdre
+        if (modifie) {
+          statut(
+            "statut-signalement",
+            "Saisie en cours non enregistrée : enregistrez-la ou cliquez sur « " +
+              $("btn-effacer").textContent +
+              " » avant d'ouvrir un autre signalement.",
+            "err",
+          );
+          return;
+        }
+        await ouvrirDossier(d);
+        if (!premiereSelection && dossierId === d) {
+          cacherConfirmation();
+          montrerVue("saisie");
+        }
+      }),
+    OPTIONS,
+  );
+  grist.onNewRecord(() =>
+    enFile(async () => {
+      const renvoi = dernierCurseur === "new";
+      dernierCurseur = "new";
+      if (!dossierId) return; // déjà sur un nouveau signalement : rien à réinitialiser
+      if (renvoi || modifie) return; // simple renvoi, ou saisie en cours à préserver
+      await passerEnCreation();
+    }),
+  );
+}

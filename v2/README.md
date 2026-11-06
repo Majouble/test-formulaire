@@ -43,7 +43,7 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 ├── admin/               administration : installation.js, configuration.js, referentiel.js, equipe.js, planning.js, pages-agents.js (onglet Équipe, Pages de saisie), actions.js, acces.js, liens.js, campagnes.js (onglet Établissements, carte Campagnes), effectifs.js (onglet Référentiel, carte Effectifs), veille.js (onglet Veille), validation.js (onglet Validation), repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css), secours.js (carte « Mode secours » : kit, relais, page de réintégration)
 ├── point-situation/     production du point de situation
 ├── cartographie/        carte et export cartographique (reprise du widget « Export cartographique ») ; atlas/ : projet QGIS de l'atlas par académie et contours
-├── tableau-de-bord/     tableau de bord : tableau.js (module partagé, édition dans l'administration, lecture dans le widget)
+├── tableau-de-bord/     tableau de bord : tableau.js (monte un tableau de bord : crée l'objet « tableau », état du tableau affiché, puis construit les modules dans l'ordre), modules/ (15 modules numérotés qui reçoivent « tableau » et y ajoutent leurs fonctions), tableau.css, index.html (widget)
 ├── secours/             mode secours sans réseau : grist-hors-ligne.js (Grist simulé, mode veille), relais-n8n.json (relais à importer dans n8n), kit-secours.html (assemblé par outils/construire-secours.js), liste.html (tableau des signalements de A à Z), demo.json
 ├── reintegration/       réintégration dans Grist des saisies du mode secours
 ├── extractions/        widget « Extractions » : une ligne par établissement, filtres, export Excel (page créée depuis l'onglet Tableau de bord)

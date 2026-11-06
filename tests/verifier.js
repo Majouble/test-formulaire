@@ -6,7 +6,7 @@
 
    Usage, depuis tests/ :
      node verifier.js                 toute la suite
-     node verifier.js run74 run76     quelques scénarios
+     node verifier.js saisie-segpa pieces-jointes     quelques scénarios
      node verifier.js --maj           enregistre les journaux actuels comme nouvelle référence
                                       (après avoir vérifié que les différences sont voulues)
    Variables : CHROMIUM (chemin d'un Chromium déjà installé), PARALLELE (scénarios simultanés, 4 par défaut). */
@@ -28,15 +28,15 @@ const SEQUENTIELS = new Set(
     .readdirSync(ICI)
     .filter(
       (f) =>
-        /^run\d+\.js$/.test(f) &&
+        /\.spec\.js$/.test(f) &&
         /\b(87|88)\d\d\b|relais-local|faux-grist-api|createServer/.test(fs.readFileSync(path.join(ICI, f), "utf8")),
     )
-    .map((f) => f.slice(0, -3)),
+    .map((f) => f.slice(0, -8)),
 );
 
 // scénarios dont le déroulé dépend de minuteries qui se chevauchent : un écart y est signalé sans compter comme échec
-// (run99, mode veille : à réécrire avec des attentes explicites)
-const INSTABLES = new Set(["run99"]);
+// (secours-mode-veille, mode veille : à réécrire avec des attentes explicites)
+const INSTABLES = new Set(["secours-mode-veille"]);
 
 /* ---------- Normalisation : ce qui varie d'une exécution à l'autre ---------- */
 // numéro de version du socle (« 2.53.0 ») : change à chaque publication, sans changer le comportement
@@ -78,7 +78,7 @@ function normaliser(texte) {
 function lancer(scenario) {
   return new Promise((fin) => {
     const sortie = fs.createWriteStream(path.join(JOURNAUX, `${scenario}.txt`));
-    const p = spawn(process.execPath, [`${scenario}.js`], { cwd: ICI, env: process.env });
+    const p = spawn(process.execPath, [`${scenario}.spec.js`], { cwd: ICI, env: process.env });
     const minuterie = setTimeout(() => p.kill("SIGKILL"), 300000);
     p.stdout.pipe(sortie);
     p.stderr.pipe(sortie);

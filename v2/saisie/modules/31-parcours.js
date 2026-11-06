@@ -490,3 +490,6 @@ $("confirmation").addEventListener("click", (ev) => {
 });
 
 montrerVue("accueil");
+
+// tout le code du widget est chargé : branchement sur Grist (voir 06-grist.js)
+brancherGrist();
