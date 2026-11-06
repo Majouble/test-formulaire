@@ -7,62 +7,69 @@
 
 /* Section d'établissement (SEGPA, SEP, SGT, SES) choisie à la création : le signalement doit porter sur
    l'établissement ; celui de rattachement probable (même adresse ou presque) est proposé en un clic. */
-function infoSection(e) {
-  if (!e) return null;
-  const c = (re) => (etatSaisie.colsEtab || []).find((k) => re.test(k));
-  const cNat = c(/libelle_?nature|^nature/i),
-    cLat = c(/^(etab_)?lat(itude)?$/i),
-    cLon = c(/^(etab_)?(lon|lng|longitude)$/i);
-  const txt = (v) => (v == null || typeof v === "object" ? "" : String(v));
-  const lat = cLat ? +e[cLat] : NaN,
-    lon = cLon ? +e[cLon] : NaN;
+function infoSection(etablissement) {
+  if (!etablissement) return null;
+  const trouverColonneParMotif = (motif) => (etatSaisie.colsEtab || []).find((k) => motif.test(k));
+  const cNat = trouverColonneParMotif(/libelle_?nature|^nature/i),
+    cLat = trouverColonneParMotif(/^(etab_)?lat(itude)?$/i),
+    cLon = trouverColonneParMotif(/^(etab_)?(lon|lng|longitude)$/i);
+  const texteSimple = (valeur) => (valeur == null || typeof valeur === "object" ? "" : String(valeur));
+  const lat = cLat ? +etablissement[cLat] : NaN,
+    lon = cLon ? +etablissement[cLon] : NaN;
   return {
-    id: e.id,
-    ligne: e,
-    nom: txt(e[E.nom]),
-    type: txt(e[E.type]),
-    nature: cNat ? txt(e[cNat]) : "",
-    commune: txt(e[E.commune]),
+    id: etablissement.id,
+    ligne: etablissement,
+    nom: texteSimple(etablissement[colonnesEtab.nom]),
+    type: texteSimple(etablissement[colonnesEtab.type]),
+    nature: cNat ? texteSimple(etablissement[cNat]) : "",
+    commune: texteSimple(etablissement[colonnesEtab.commune]),
     lat: isFinite(lat) && lat ? lat : null,
     lon: isFinite(lon) && lon ? lon : null,
   };
 }
-function alerterSection(e) {
+function alerterSection(etablissement) {
   const bloc = $("alerte-section");
-  const x = e && Socle && Socle.genreSection ? infoSection(e) : null,
-    genre = x ? Socle.genreSection(x.nature, x.type, x.nom) : null;
-  if (!genre || etatSaisie.sectionGardee === x.id) {
-    bloc.hidden = !(genre && etatSaisie.sectionGardee === x.id);
+  const section = etablissement && Socle && Socle.genreSection ? infoSection(etablissement) : null,
+    genre = section ? Socle.genreSection(section.nature, section.type, section.nom) : null;
+  if (!genre || etatSaisie.sectionGardee === section.id) {
+    bloc.hidden = !(genre && etatSaisie.sectionGardee === section.id);
     if (bloc.hidden) bloc.innerHTML = "";
     return;
   }
-  if (etatSaisie.sectionCalculee.id !== x.id) {
+  if (etatSaisie.sectionCalculee.id !== section.id) {
     const cLat = (etatSaisie.colsEtab || []).find((k) => /^(etab_)?lat(itude)?$/i.test(k));
     const proches = etatSaisie.etabs
-      .filter((y) => y.id !== x.id && (x.lat == null || !cLat || Math.abs(+y[cLat] - x.lat) < 0.01))
+      .filter(
+        (autreEtablissement) =>
+          autreEtablissement.id !== section.id &&
+          (section.lat == null || !cLat || Math.abs(+autreEtablissement[cLat] - section.lat) < 0.01),
+      )
       .map(infoSection);
-    etatSaisie.sectionCalculee = { id: x.id, r: Socle.rattachementSection({ ...x, section: genre }, proches) };
+    etatSaisie.sectionCalculee = {
+      id: section.id,
+      r: Socle.rattachementSection({ ...section, section: genre }, proches),
+    };
   }
-  const r = etatSaisie.sectionCalculee.r;
+  const rattachementPropose = etatSaisie.sectionCalculee.r;
   bloc.innerHTML = `<strong>⚠ Vous avez choisi une ${esc(genre)}</strong>, section rattachée à un ${genre === "SEP" || genre === "SGT" ? "lycée" : "collège"} :
     le signalement doit porter sur l'établissement, sinon il est compté à part (et souvent deux fois).
     ${
-      r
-        ? `<div class="actions-doublon"><button type="button" class="lien-texte" id="btn-choisir-rattachement">Choisir ${esc(r.etab.nom || "l'établissement")}${r.etab.commune ? ` (${esc(r.etab.commune)})` : ""} à la place</button>
+      rattachementPropose
+        ? `<div class="actions-doublon"><button type="button" class="lien-texte" id="btn-choisir-rattachement">Choisir ${esc(rattachementPropose.etab.nom || "l'établissement")}${rattachementPropose.etab.commune ? ` (${esc(rattachementPropose.etab.commune)})` : ""} à la place</button>
       <button type="button" class="lien-texte" id="btn-garder-section">Garder la ${esc(genre)}</button></div>`
         : `<div class="extrait">Établissement de rattachement introuvable à proximité : recherchez-le par son nom. <button type="button" class="lien-texte" id="btn-garder-section">Garder la ${esc(genre)}</button></div>`
     }`;
   bloc.classList.remove("confirme");
   bloc.hidden = false;
-  if (r)
+  if (rattachementPropose)
     $("btn-choisir-rattachement").addEventListener("click", () => {
-      etatSaisie.etabCourant = r.etab.ligne;
+      etatSaisie.etabCourant = rattachementPropose.etab.ligne;
       etatSaisie.ligneAnnuaire = null;
       etatSaisie.modifie = true;
       afficherEtablissement();
     });
   $("btn-garder-section").addEventListener("click", () => {
-    etatSaisie.sectionGardee = x.id;
+    etatSaisie.sectionGardee = section.id;
     bloc.classList.add("confirme");
     bloc.innerHTML = `${esc(genre)} conservée à votre demande.`;
   });
@@ -71,53 +78,58 @@ const colRattachement = () =>
   (etatSaisie.colsEtab || []).find((k) =>
     /^(rattachement|etablissement_de_rattachement|etablissement_parent)$/i.test(k),
   ) || null;
-function rattachementDe(e) {
-  const c = colRattachement();
-  if (!e || !c) return null;
-  const vus = new Set([e.id]);
-  let p = etabDe(refId(e[c]));
-  while (p && !vus.has(p.id) && refId(p[c]) && etabDe(refId(p[c]))) {
-    vus.add(p.id);
-    p = etabDe(refId(p[c]));
+function rattachementDe(composante) {
+  const colonneRattachement = colRattachement();
+  if (!composante || !colonneRattachement) return null;
+  const vus = new Set([composante.id]);
+  let etablissementParent = etabDe(refId(composante[colonneRattachement]));
+  while (
+    etablissementParent &&
+    !vus.has(etablissementParent.id) &&
+    refId(etablissementParent[colonneRattachement]) &&
+    etabDe(refId(etablissementParent[colonneRattachement]))
+  ) {
+    vus.add(etablissementParent.id);
+    etablissementParent = etabDe(refId(etablissementParent[colonneRattachement]));
   } // composante d'une composante
-  return p && p.id !== e.id ? p : null;
+  return etablissementParent && etablissementParent.id !== composante.id ? etablissementParent : null;
 }
-function versEtablissement(e) {
-  const p = rattachementDe(e);
-  etatSaisie.composanteChoisie = p ? e : null;
-  return p || e;
+function versEtablissement(composante) {
+  const etablissementParent = rattachementDe(composante);
+  etatSaisie.composanteChoisie = etablissementParent ? composante : null;
+  return etablissementParent || composante;
 }
 const nomEtabId = (id) => {
-  const x = etabDe(id);
-  return x ? String(x[E.nom] ?? "") : "";
+  const etablissement = etabDe(id);
+  return etablissement ? String(etablissement[colonnesEtab.nom] ?? "") : "";
 };
 function alerterRattachement() {
-  const b = $("alerte-rattachement");
-  if (!b) return;
-  const x = etatSaisie.composanteChoisie,
-    p = x && rattachementDe(x);
+  const bandeau = $("alerte-rattachement");
+  if (!bandeau) return;
+  const composante = etatSaisie.composanteChoisie,
+    etablissementParent = composante && rattachementDe(composante);
   if (
-    !x ||
-    !p ||
+    !composante ||
+    !etablissementParent ||
     !etatSaisie.etabCourant ||
-    p.id !== etatSaisie.etabCourant.id ||
+    etablissementParent.id !== etatSaisie.etabCourant.id ||
     etatSaisie.dossierId ||
     etatSaisie.modeEtab
   ) {
-    b.hidden = true;
-    b.innerHTML = "";
+    bandeau.hidden = true;
+    bandeau.innerHTML = "";
     return;
   }
-  const niveau = String(x.Niveau || ""),
+  const niveau = String(composante.Niveau || ""),
     quoi = /site|campus/i.test(niveau) ? "un site rattaché" : "une composante rattachée";
-  b.innerHTML = `<strong>${esc(x[E.nom])}</strong> est ${quoi} à <strong>${esc(p[E.nom])}</strong> : le dossier est ouvert sur l'établissement,
+  bandeau.innerHTML = `<strong>${esc(composante[colonnesEtab.nom])}</strong> est ${quoi} à <strong>${esc(etablissementParent[colonnesEtab.nom])}</strong> : le dossier est ouvert sur l'établissement,
     pour qu'il ne soit pas compté deux fois. Précisez la composante ou son site dans le signalement.`;
-  b.hidden = false;
-  const cs = col("Site"),
-    q = cs && $(`q-${cs}`);
-  if (q && /^(INPUT|TEXTAREA)$/.test(q.tagName) && !q.value.trim()) {
-    q.value = String(x[E.nom] ?? "");
-    q.dispatchEvent(new Event("input", { bubbles: true }));
+  bandeau.hidden = false;
+  const colonneSite = colonneDe("Site"),
+    champSite = colonneSite && $(`q-${colonneSite}`);
+  if (champSite && /^(INPUT|TEXTAREA)$/.test(champSite.tagName) && !champSite.value.trim()) {
+    champSite.value = String(composante[colonnesEtab.nom] ?? "");
+    champSite.dispatchEvent(new Event("input", { bubbles: true }));
   }
 }
 function afficherEtablissement() {
@@ -138,9 +150,9 @@ function afficherEtablissement() {
   // Contact et lien : réservés aux agents
   $("bloc-contact").hidden = etatSaisie.modeEtab || !(connu || etatSaisie.ligneAnnuaire || $("nom").value.trim());
   if (etatSaisie.modeEtab) return;
-  const mailEnregistre = connu ? nettoieMail(etatSaisie.etabCourant[E.mail]) : "";
+  const mailEnregistre = connu ? nettoieMail(etatSaisie.etabCourant[colonnesEtab.mail]) : "";
   const mailAnnuaire = connu
-    ? nettoieMail(etatSaisie.etabCourant[E.mailAnnuaire])
+    ? nettoieMail(etatSaisie.etabCourant[colonnesEtab.mailAnnuaire])
     : nettoieMail($("mail").dataset.saisi);
   if (document.activeElement !== $("mail"))
     $("mail").value = connu ? mailEnregistre || mailAnnuaire : $("mail").dataset.saisi || "";
@@ -162,10 +174,13 @@ function afficherEtablissement() {
   } else aide.hidden = true;
   $("btn-mail").hidden = !connu;
   if (connu) completerLienEtab(etatSaisie.etabCourant);
-  const lien = connu && lisible(etatSaisie.etabCourant[E.lien]) ? extraireUrl(etatSaisie.etabCourant[E.lien]) : "";
+  const lien =
+    connu && lisible(etatSaisie.etabCourant[colonnesEtab.lien])
+      ? extraireUrl(etatSaisie.etabCourant[colonnesEtab.lien])
+      : "";
   $("lien").value = lien;
   $("lien").placeholder = connu
-    ? `Lien absent : vérifiez les formules des colonnes ${E.cle} et ${E.lien}`
+    ? `Lien absent : vérifiez les formules des colonnes ${colonnesEtab.cle} et ${colonnesEtab.lien}`
     : "Disponible après l'enregistrement du signalement";
   $("btn-copier").disabled = !lien;
   majBoutonEnvoi();
@@ -175,39 +190,42 @@ function afficherEtablissement() {
 }
 
 // SELF_HYPERLINK renvoie « URL » ou « libellé URL » : on garde l'adresse
-const extraireUrl = (v) => {
-  const m = String(v ?? "").match(/https?:\/\/\S+/g);
-  return m ? m[m.length - 1] : "";
+const extraireUrl = (texte) => {
+  const adresses = String(texte ?? "").match(/https?:\/\/\S+/g);
+  return adresses ? adresses[adresses.length - 1] : "";
 };
-const nettoieMail = (v) => (typeof v === "string" ? v.trim() : "");
+const nettoieMail = (valeur) => (typeof valeur === "string" ? valeur.trim() : "");
 
-function carteHtml(e) {
-  return S()
-    .fiche.map((f) => [f.lib || libelleChampFiche(f.col), valeurChampFiche(e, f.col)])
-    .filter(([, v]) => v != null && v !== "")
-    .map(([lib, v]) => `<dt>${esc(lib)}</dt><dd>${esc(v)}</dd>`)
+function carteHtml(etablissement) {
+  return reglagesSaisie()
+    .fiche.map((champFiche) => [
+      champFiche.lib || libelleChampFiche(champFiche.col),
+      valeurChampFiche(etablissement, champFiche.col),
+    ])
+    .filter(([, valeur]) => valeur != null && valeur !== "")
+    .map(([libelle, valeur]) => `<dt>${esc(libelle)}</dt><dd>${esc(valeur)}</dd>`)
     .join("");
 }
 
 function majBoutonEnvoi() {
-  const a = $("btn-envoyer");
+  const boutonEnvoi = $("btn-envoyer");
   const lien = $("lien").value,
     mail = $("mail").value.trim();
-  const nomEtab = etatSaisie.etabCourant ? etatSaisie.etabCourant[E.nom] : $("nom").value.trim();
+  const nomEtab = etatSaisie.etabCourant ? etatSaisie.etabCourant[colonnesEtab.nom] : $("nom").value.trim();
   if (!lien || !mail) {
-    a.setAttribute("aria-disabled", "true");
-    a.removeAttribute("href");
-    a.title = !mail ? "Renseignez le mail de l'établissement" : "Le lien n'est pas encore disponible";
+    boutonEnvoi.setAttribute("aria-disabled", "true");
+    boutonEnvoi.removeAttribute("href");
+    boutonEnvoi.title = !mail ? "Renseignez le mail de l'établissement" : "Le lien n'est pas encore disponible";
     return;
   }
-  a.removeAttribute("aria-disabled");
-  a.title = "";
+  boutonEnvoi.removeAttribute("aria-disabled");
+  boutonEnvoi.title = "";
   // message réglé dans l'administration (onglet Établissements, clé « liens » de Config), sinon message par défaut
-  const m =
+  const messageConfigure =
       etatSaisie.socleConfig && etatSaisie.socleConfig.valeurs.liens && etatSaisie.socleConfig.valeurs.liens.message,
-    e = etatSaisie.etabCourant || {};
-  const remplir = (t) =>
-    String(t).replace(/\{(nom|uai|commune|lien|situation)\}/g, (_, k) =>
+    etablissement = etatSaisie.etabCourant || {};
+  const remplir = (modele) =>
+    String(modele).replace(/\{(nom|uai|commune|lien|situation)\}/g, (_, k) =>
       k === "nom"
         ? nomEtab || ""
         : k === "lien"
@@ -217,11 +235,11 @@ function majBoutonEnvoi() {
                 etatSaisie.socleConfig.valeurs.general &&
                 etatSaisie.socleConfig.valeurs.general.situation) ||
               ""
-            : String(e[E[k]] ?? ""),
+            : String(etablissement[colonnesEtab[k]] ?? ""),
     );
-  const objet = m && m.objet ? remplir(m.objet) : MESSAGE.objet(nomEtab),
-    corps = m && m.corps ? remplir(m.corps) : MESSAGE.corps(nomEtab, lien);
-  a.href = `mailto:${encodeURIComponent(mail)}?subject=${encodeURIComponent(objet)}&body=${encodeURIComponent(corps)}`;
+  const objet = messageConfigure && messageConfigure.objet ? remplir(messageConfigure.objet) : MESSAGE.objet(nomEtab),
+    corps = messageConfigure && messageConfigure.corps ? remplir(messageConfigure.corps) : MESSAGE.corps(nomEtab, lien);
+  boutonEnvoi.href = `mailto:${encodeURIComponent(mail)}?subject=${encodeURIComponent(objet)}&body=${encodeURIComponent(corps)}`;
 }
 
 $("mail").addEventListener("input", () => {
@@ -237,11 +255,11 @@ $("btn-mail").addEventListener("click", async () => {
     return;
   }
   try {
-    await grist.getTable(ETAB.table).update({ id: etatSaisie.etabCourant.id, fields: { [E.mail]: mail } });
-    etatSaisie.etabCourant[E.mail] = mail;
+    await grist.getTable(ETAB.table).update({ id: etatSaisie.etabCourant.id, fields: { [colonnesEtab.mail]: mail } });
+    etatSaisie.etabCourant[colonnesEtab.mail] = mail;
     statut("statut-signalement", "Mail de l'établissement enregistré.", "ok");
-  } catch (e) {
-    statut("statut-signalement", `Échec : ${e.message || e}`, "err");
+  } catch (erreur) {
+    statut("statut-signalement", `Échec : ${erreur.message || erreur}`, "err");
   }
 });
 
@@ -272,8 +290,12 @@ $("btn-changer-etab").addEventListener("click", () => {
 });
 
 function etabParUai(uai) {
-  const u = (uai || "").trim().toUpperCase();
-  return u ? etatSaisie.etabs.find((e) => String(e[E.uai] || "").toUpperCase() === u) || null : null;
+  const uaiNormalise = (uai || "").trim().toUpperCase();
+  return uaiNormalise
+    ? etatSaisie.etabs.find(
+        (etablissement) => String(etablissement[colonnesEtab.uai] || "").toUpperCase() === uaiNormalise,
+      ) || null
+    : null;
 }
 
 // Retourne l'identifiant de l'établissement du signalement, en le créant si besoin
@@ -293,19 +315,22 @@ async function etablissementPourCreation() {
     etatSaisie.ligneAnnuaire.uai &&
     String(etatSaisie.ligneAnnuaire.uai).toUpperCase() === uai;
   const candidats = {
-    [E.nom]: $("nom").value.trim(),
-    [E.uai]: uai,
-    [E.type]: $("type").value.trim(),
-    [E.academie]: $("academie").value.trim(),
-    [E.departement]: $("departement").value.trim(),
-    [E.mail]: $("mail").value.trim(),
-    [E.commune]: depuisAnnuaire ? etatSaisie.ligneAnnuaire.commune || "" : "",
-    [E.origine]: depuisAnnuaire ? ORIGINE[etatSaisie.ligneAnnuaire.source] || ORIGINE.manuel : ORIGINE.manuel,
-    [E.present]: depuisAnnuaire ? true : null,
-    [E.mailAnnuaire]: depuisAnnuaire ? etatSaisie.ligneAnnuaire.mail || "" : "",
+    [colonnesEtab.nom]: $("nom").value.trim(),
+    [colonnesEtab.uai]: uai,
+    [colonnesEtab.type]: $("type").value.trim(),
+    [colonnesEtab.academie]: $("academie").value.trim(),
+    [colonnesEtab.departement]: $("departement").value.trim(),
+    [colonnesEtab.mail]: $("mail").value.trim(),
+    [colonnesEtab.commune]: depuisAnnuaire ? etatSaisie.ligneAnnuaire.commune || "" : "",
+    [colonnesEtab.origine]: depuisAnnuaire
+      ? ORIGINE[etatSaisie.ligneAnnuaire.source] || ORIGINE.manuel
+      : ORIGINE.manuel,
+    [colonnesEtab.present]: depuisAnnuaire ? true : null,
+    [colonnesEtab.mailAnnuaire]: depuisAnnuaire ? etatSaisie.ligneAnnuaire.mail || "" : "",
   };
   const fields = {};
-  for (const [c, v] of Object.entries(candidats)) if (etatSaisie.colsEtab.includes(c) && v !== null) fields[c] = v;
+  for (const [colonne, valeur] of Object.entries(candidats))
+    if (etatSaisie.colsEtab.includes(colonne) && valeur !== null) fields[colonne] = valeur;
   const id = idDe(
     await etape("Création de l'établissement dans le référentiel", ETAB.table, () =>
       grist.getTable(ETAB.table).create({ fields }),

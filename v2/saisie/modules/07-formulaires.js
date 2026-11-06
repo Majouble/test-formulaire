@@ -25,19 +25,21 @@ async function lireSocleSaisie() {
 const reglagesDansConfig = () => !!etatSaisie.socleConfig;
 async function lireFormulaires() {
   try {
-    const t = await Donnees.lire(etatSaisie.TABLE_FORMULAIRES);
-    return t.id.map((id, i) => ({
+    const tableFormulaires = await Donnees.lire(etatSaisie.TABLE_FORMULAIRES);
+    return tableFormulaires.id.map((id, i) => ({
       id,
-      nom: String(t.Nom ? (t.Nom[i] ?? "") : ""),
-      table: String(t.Table ? (t.Table[i] ?? "") : ""),
-      publie: t.Publie ? t.Publie[i] : null,
+      nom: String(tableFormulaires.Nom ? (tableFormulaires.Nom[i] ?? "") : ""),
+      table: String(tableFormulaires.Table ? (tableFormulaires.Table[i] ?? "") : ""),
+      publie: tableFormulaires.Publie ? tableFormulaires.Publie[i] : null,
     }));
   } catch (_) {
     return [];
   }
 }
 async function choisirFormulaire() {
-  etatSaisie.formulairesDispo = (await lireFormulaires()).filter((f) => f.table === etatSaisie.tableId);
+  etatSaisie.formulairesDispo = (await lireFormulaires()).filter(
+    (formulaire) => formulaire.table === etatSaisie.tableId,
+  );
   let voulu = null;
   try {
     voulu = grist.getOption ? await grist.getOption("formulaire") : null;
@@ -71,70 +73,81 @@ async function choisirFormulaire() {
   if (etatSaisie.agentPage != null && typeof etatSaisie.agentPage !== "number")
     etatSaisie.agentPage = Number(etatSaisie.agentPage) || null;
   etatSaisie.perimetreFiche = etatSaisie.perimetreBrut;
-  const publies = etatSaisie.formulairesDispo.filter((f) => typeof f.publie === "string" && f.publie.trim());
-  const f = (voulu && publies.find((x) => x.nom === voulu)) || publies[0] || null;
-  let conf = null;
-  if (f) {
+  const publies = etatSaisie.formulairesDispo.filter(
+    (formulaire) => typeof formulaire.publie === "string" && formulaire.publie.trim(),
+  );
+  const formulaireRetenu = (voulu && publies.find((formulaire) => formulaire.nom === voulu)) || publies[0] || null;
+  let configuration = null;
+  if (formulaireRetenu) {
     try {
-      conf = JSON.parse(f.publie);
+      configuration = JSON.parse(formulaireRetenu.publie);
     } catch (_) {
-      conf = null;
+      configuration = null;
     }
   }
-  etatSaisie.formulaireActif = f && conf && Array.isArray(conf.blocs) ? { ...f, conf } : null;
-  etatSaisie.signatureFormulaire = f ? `${f.nom}|${f.publie}` : "";
+  etatSaisie.formulaireActif =
+    formulaireRetenu && configuration && Array.isArray(configuration.blocs)
+      ? { ...formulaireRetenu, conf: configuration }
+      : null;
+  etatSaisie.signatureFormulaire = formulaireRetenu ? `${formulaireRetenu.nom}|${formulaireRetenu.publie}` : "";
   await majCreneau(false);
   return etatSaisie.formulaireActif;
 }
 // Réglages d'une question → repères de description (même syntaxe que la saisie manuelle)
-function reperesDepuisReglages(r) {
-  const p = [];
-  if (r.obligatoire) p.push("*");
-  const c = r.condition;
-  if (c && c.ref) {
-    const vals = (c.valeurs || []).join(", ");
-    if (c.op === "rempli") p.push(`[si ${c.ref} n'est pas vide]`);
-    else if (c.op === "vide") p.push(`[si ${c.ref} est vide]`);
-    else if (vals) p.push(`[si ${c.ref} ${c.op || "="} ${vals}]`);
+function reperesDepuisReglages(reglages) {
+  const reperes = [];
+  if (reglages.obligatoire) reperes.push("*");
+  const condition = reglages.condition;
+  if (condition && condition.ref) {
+    const valeursCondition = (condition.valeurs || []).join(", ");
+    if (condition.op === "rempli") reperes.push(`[si ${condition.ref} n'est pas vide]`);
+    else if (condition.op === "vide") reperes.push(`[si ${condition.ref} est vide]`);
+    else if (valeursCondition) reperes.push(`[si ${condition.ref} ${condition.op || "="} ${valeursCondition}]`);
   }
-  if (r.affichage === "liste") p.push("[liste]");
-  if (r.affichage === "boutons") p.push("[boutons]");
-  if (r.affichage === "case") p.push("[case]");
-  if (r.min != null && r.min !== "") p.push(`[min ${r.min}]`);
-  if (r.max != null && r.max !== "") p.push(`[max ${r.max}]`);
-  if (r.confidentiel) p.push("[confidentiel]");
-  if (r.tableau && r.tableau.table)
-    p.push(`[tableau ${r.tableau.table}${r.tableau.lignes ? " lignes=" + r.tableau.lignes : ""}]`);
-  if (r.couleur === "choix") p.push("[couleur]");
-  else if (Array.isArray(r.couleur) && r.couleur.length)
-    p.push(
-      `[couleur ${r.couleur
-        .filter((x) => x && x.cle && x.couleur)
-        .map((x) => `${x.cle}=${x.couleur}`)
+  if (reglages.affichage === "liste") reperes.push("[liste]");
+  if (reglages.affichage === "boutons") reperes.push("[boutons]");
+  if (reglages.affichage === "case") reperes.push("[case]");
+  if (reglages.min != null && reglages.min !== "") reperes.push(`[min ${reglages.min}]`);
+  if (reglages.max != null && reglages.max !== "") reperes.push(`[max ${reglages.max}]`);
+  if (reglages.confidentiel) reperes.push("[confidentiel]");
+  if (reglages.tableau && reglages.tableau.table)
+    reperes.push(
+      `[tableau ${reglages.tableau.table}${reglages.tableau.lignes ? " lignes=" + reglages.tableau.lignes : ""}]`,
+    );
+  if (reglages.couleur === "choix") reperes.push("[couleur]");
+  else if (Array.isArray(reglages.couleur) && reglages.couleur.length)
+    reperes.push(
+      `[couleur ${reglages.couleur
+        .filter((couleurChoix) => couleurChoix && couleurChoix.cle && couleurChoix.couleur)
+        .map((couleurChoix) => `${couleurChoix.cle}=${couleurChoix.couleur}`)
         .join(", ")}]`,
     );
-  if (r.aide) p.push(r.aide);
-  return p.join(" ");
+  if (reglages.aide) reperes.push(reglages.aide);
+  return reperes.join(" ");
 }
-function defDepuisBloc(b) {
-  const meta = etatSaisie.metaSig[b.colonne];
+function defDepuisBloc(bloc) {
+  const meta = etatSaisie.metaSig[bloc.colonne];
   if (!meta) return null;
-  const r = b.reglages || {};
-  const def = avecRegles({ ...meta, libelle: r.libelle || meta.libelle, description: reperesDepuisReglages(r) });
-  def.court = !!r.court;
-  if (def.tableau && r.tableau && r.tableau.sites) def.tableau.sites = r.tableau.sites; // tableau des sites (formulaire par site)
-  if (r.format && r.format !== "defaut") def.formatDescription = r.format;
+  const reglages = bloc.reglages || {};
+  const question = avecRegles({
+    ...meta,
+    libelle: reglages.libelle || meta.libelle,
+    description: reperesDepuisReglages(reglages),
+  });
+  question.court = !!reglages.court;
+  if (question.tableau && reglages.tableau && reglages.tableau.sites) question.tableau.sites = reglages.tableau.sites; // tableau des sites (formulaire par site)
+  if (reglages.format && reglages.format !== "defaut") question.formatDescription = reglages.format;
   // pièces jointes compatibles avec les liens d'établissement : colonne Pièces jointes en formule, calculée à partir
   // d'une colonne texte d'envoi (« numéro:empreinte ») que le formulaire remplit (voir PJ)
-  if (typeBase(def.type) === "Attachments" && def.formule) {
-    const m = /\(\$(\w+) or ""\)\.split\(\)/.exec(def.texteFormule || "");
-    if (m && etatSaisie.metaSig[m[1]]) {
-      def.pjEnvoi = m[1];
-      def.formule = false;
+  if (typeBase(question.type) === "Attachments" && question.formule) {
+    const correspondance = /\(\$(\w+) or ""\)\.split\(\)/.exec(question.texteFormule || "");
+    if (correspondance && etatSaisie.metaSig[correspondance[1]]) {
+      question.pjEnvoi = correspondance[1];
+      question.formule = false;
     }
   }
-  def.depuisFormulaire = true;
-  return def;
+  question.depuisFormulaire = true;
+  return question;
 }
 // Parties du formulaire : { id, nom, role: q | vd | va, titre (affiché en tête de partie) }
 const PARTIES_DEFAUT = [
@@ -142,60 +155,63 @@ const PARTIES_DEFAUT = [
   { id: "vd", nom: "Visa départemental", role: "vd" },
   { id: "va", nom: "Visa académique", role: "va" },
 ];
-const partiesDe = (conf) =>
-  conf && Array.isArray(conf.parties) && conf.parties.length ? conf.parties : PARTIES_DEFAUT;
+const partiesDe = (configurationFormulaire) =>
+  configurationFormulaire && Array.isArray(configurationFormulaire.parties) && configurationFormulaire.parties.length
+    ? configurationFormulaire.parties
+    : PARTIES_DEFAUT;
 const NOMS_VISA = {};
 function appliquerNomsParties() {
   for (const [role, id] of [
     ["vd", "form-visa-dep"],
     ["va", "form-visa-aca"],
   ]) {
-    const f = $(id);
-    if (!f) continue;
-    const h = f.querySelector("h2"),
-      btn = f.querySelector('button[type="submit"]');
-    if (!NOMS_VISA[role]) NOMS_VISA[role] = { titre: h.textContent, bouton: btn.textContent };
-    const p = etatSaisie.formulaireActif
-      ? partiesDe(etatSaisie.formulaireActif.conf).find((x) => x.role === role)
+    const formulaireVisa = $(id);
+    if (!formulaireVisa) continue;
+    const titre = formulaireVisa.querySelector("h2"),
+      boutonEnvoi = formulaireVisa.querySelector('button[type="submit"]');
+    if (!NOMS_VISA[role]) NOMS_VISA[role] = { titre: titre.textContent, bouton: boutonEnvoi.textContent };
+    const partie = etatSaisie.formulaireActif
+      ? partiesDe(etatSaisie.formulaireActif.conf).find((partieCandidate) => partieCandidate.role === role)
       : null;
-    h.textContent = p && p.nom ? p.nom : NOMS_VISA[role].titre;
-    btn.textContent = p && p.nom ? `Enregistrer : ${p.nom}` : NOMS_VISA[role].bouton;
+    titre.textContent = partie && partie.nom ? partie.nom : NOMS_VISA[role].titre;
+    boutonEnvoi.textContent = partie && partie.nom ? `Enregistrer : ${partie.nom}` : NOMS_VISA[role].bouton;
   }
 }
 // Questions d'une section (q, vd, va) selon le formulaire publié ; null = pas de formulaire
 function defsDepuisFormulaire(section, cleMapping, alertes) {
   if (!etatSaisie.formulaireActif) return null;
-  const parties = partiesDe(etatSaisie.formulaireActif.conf).filter((p) => p.role === section);
-  const roleDe = (b) =>
-    (partiesDe(etatSaisie.formulaireActif.conf).find((p) => p.id === (b.section || "q")) || {}).role || "q";
+  const parties = partiesDe(etatSaisie.formulaireActif.conf).filter((partie) => partie.role === section);
+  const roleDe = (bloc) =>
+    (partiesDe(etatSaisie.formulaireActif.conf).find((partie) => partie.id === (bloc.section || "q")) || {}).role ||
+    "q";
   const blocs = [];
-  for (const p of parties) {
+  for (const partie of parties) {
     const dans = etatSaisie.formulaireActif.conf.blocs.filter(
-      (b) => (b.section || "q") === p.id && roleDe(b) === section,
+      (bloc) => (bloc.section || "q") === partie.id && roleDe(bloc) === section,
     );
-    if (section === "q" && p.titre && p.nom) blocs.push({ genre: "titre", texte: p.nom });
+    if (section === "q" && partie.titre && partie.nom) blocs.push({ genre: "titre", texte: partie.nom });
     blocs.push(...dans);
   }
-  let defs = [];
+  let questionsSection = [];
   const decors = { avant: {}, fin: [] };
   let enAttente = [];
-  for (const b of blocs) {
-    if (b.genre === "titre" || b.genre === "info") {
-      enAttente.push(b);
+  for (const bloc of blocs) {
+    if (bloc.genre === "titre" || bloc.genre === "info") {
+      enAttente.push(bloc);
       continue;
     }
-    const def = defDepuisBloc(b);
-    if (!def) {
+    const question = defDepuisBloc(bloc);
+    if (!question) {
       alertes.push(
-        `Formulaire « ${etatSaisie.formulaireActif.nom} » : la colonne « ${b.colonne} » n'existe plus dans la table ${etatSaisie.tableId}.`,
+        `Formulaire « ${etatSaisie.formulaireActif.nom} » : la colonne « ${bloc.colonne} » n'existe plus dans la table ${etatSaisie.tableId}.`,
       );
       continue;
     }
     if (enAttente.length) {
-      decors.avant[def.colId] = enAttente;
+      decors.avant[question.colId] = enAttente;
       enAttente = [];
     }
-    defs.push(def);
+    questionsSection.push(question);
   }
   decors.fin = enAttente;
   // Association « Questions supplémentaires » remplie sur cette page : seulement ces questions, dans cet ordre
@@ -204,19 +220,23 @@ function defsDepuisFormulaire(section, cleMapping, alertes) {
       ? etatSaisie.mappings[cleMapping]
       : null;
   if (restreint) {
-    defs = restreint
-      .map((c) => defs.find((d) => d.colId === c) || (etatSaisie.metaSig[c] ? avecRegles(etatSaisie.metaSig[c]) : null))
+    questionsSection = restreint
+      .map(
+        (colonne) =>
+          questionsSection.find((question) => question.colId === colonne) ||
+          (etatSaisie.metaSig[colonne] ? avecRegles(etatSaisie.metaSig[colonne]) : null),
+      )
       .filter(Boolean);
     decors.avant = {};
     decors.fin = [];
   }
   if (section === "q") etatSaisie.decorsQ = decors;
-  return defs;
+  return questionsSection;
 }
-function decorHtml(b) {
-  return b.genre === "titre"
-    ? `<h3 class="titre-section">${esc(b.texte || "")}</h3>`
-    : `<p class="info-formulaire">${esc(b.texte || "").replace(/\n/g, "<br>")}</p>`;
+function decorHtml(bloc) {
+  return bloc.genre === "titre"
+    ? `<h3 class="titre-section">${esc(bloc.texte || "")}</h3>`
+    : `<p class="info-formulaire">${esc(bloc.texte || "").replace(/\n/g, "<br>")}</p>`;
 }
 // Publication d'une nouvelle version pendant que le widget est ouvert : relue au plus toutes les 30 s
 async function verifierFormulairePublie() {
@@ -229,14 +249,14 @@ async function verifierFormulairePublie() {
     return;
   etatSaisie.dernierControleFormulaire = Date.now();
   const avant = etatSaisie.signatureFormulaire;
-  const liste = (await lireFormulaires()).filter((f) => f.table === etatSaisie.tableId);
+  const liste = (await lireFormulaires()).filter((formulaire) => formulaire.table === etatSaisie.tableId);
   let voulu = null;
   try {
     voulu = grist.getOption ? await grist.getOption("formulaire") : null;
   } catch (_) {}
-  const publies = liste.filter((f) => typeof f.publie === "string" && f.publie.trim());
-  const f = (voulu && publies.find((x) => x.nom === voulu)) || publies[0] || null;
-  const sig = f ? `${f.nom}|${f.publie}` : "";
+  const publies = liste.filter((formulaire) => typeof formulaire.publie === "string" && formulaire.publie.trim());
+  const formulaireRetenu = (voulu && publies.find((formulaire) => formulaire.nom === voulu)) || publies[0] || null;
+  const sig = formulaireRetenu ? `${formulaireRetenu.nom}|${formulaireRetenu.publie}` : "";
   if (sig !== avant)
     enFile(async () => {
       await chargerConfiguration();
@@ -259,57 +279,68 @@ document.addEventListener("visibilitychange", () => {
    du même identifiant, sinon une colonne d'identifiant ou de libellé approchant et de type compatible :
    « Etablissement_ESR » (référence), « Date des faits », « Qualification du signalement »… */
 const ROLES_SIGNALEMENT = [
-  ["Dossier", [/(^|_)dossier(_|$)/, /signalement_?initial/], (c, t) => c.type === `Ref:${t}`],
+  ["Dossier", [/(^|_)dossier(_|$)/, /signalement_?initial/], (colonne, idTable) => colonne.type === `Ref:${idTable}`],
   [
     "Etablissement",
     [/etablissement/, /(^|_)etab(_|$)/, /structure|universite|ecole|college|lycee/],
-    (c, t) => /^Ref:/.test(c.type) && c.type !== `Ref:${t}`,
+    (colonne, idTable) => /^Ref:/.test(colonne.type) && colonne.type !== `Ref:${idTable}`,
   ],
-  ["Date_faits", [/faits?(_|$)/, /date_?(de_?l_?)?evenement/], (c) => /^(Date|DateTime)/.test(c.type) && !c.formule],
+  [
+    "Date_faits",
+    [/faits?(_|$)/, /date_?(de_?l_?)?evenement/],
+    (colonne) => /^(Date|DateTime)/.test(colonne.type) && !colonne.formule,
+  ],
   [
     "Date",
     [/^date_?(de_?)?(saisie|creation|version)/, /cree_?le|horodat|creation/, /^date$/],
-    (c) => /^(DateTime|Date)/.test(c.type),
+    (colonne) => /^(DateTime|Date)/.test(colonne.type),
   ],
   [
     "Qualification",
     [/qualif/, /categorie_?(du_?)?(signalement|evenement)/, /type_?(d_?)?evenement/],
-    (c) => /^(Choice|ChoiceList|Text)/.test(c.type) && !c.formule,
+    (colonne) => /^(Choice|ChoiceList|Text)/.test(colonne.type) && !colonne.formule,
   ],
   [
     "Description",
     [/^description/, /description/, /recit|resume_?des_?faits/],
-    (c) => /^Text/.test(c.type) && !c.formule,
+    (colonne) => /^Text/.test(colonne.type) && !colonne.formule,
   ],
   [
     "Nature",
     [/^nature$/, /nature_?(du_?)?(signalement|version|saisie)/],
-    (c) => /^(Choice|Text)/.test(c.type) && !c.formule,
+    (colonne) => /^(Choice|Text)/.test(colonne.type) && !colonne.formule,
   ],
-  ["Commentaire", [/^commentaire/, /commentaire/], (c) => /^Text/.test(c.type) && !c.formule],
+  ["Commentaire", [/^commentaire/, /commentaire/], (colonne) => /^Text/.test(colonne.type) && !colonne.formule],
   ["Auteur", [/^auteur/, /saisi_?par|redacteur|createur/], () => true],
-  ["Site", [/^site/, /batiment|campus/], (c) => /^(Text|Choice)/.test(c.type) && !c.formule],
-  ["Clos", [/^clos/, /cloture|termine/], (c) => c.type === "Bool" && !c.formule],
+  ["Site", [/^site/, /batiment|campus/], (colonne) => /^(Text|Choice)/.test(colonne.type) && !colonne.formule],
+  ["Clos", [/^clos/, /cloture|termine/], (colonne) => colonne.type === "Bool" && !colonne.formule],
 ];
 // Cellule renseignée (une référence vide arrive sous la forme ["R", table, 0])
-const celluleRemplie = (v) =>
-  v != null &&
-  v !== "" &&
-  v !== 0 &&
-  v !== false &&
-  !(Array.isArray(v) && (v[0] === "L" ? v.length <= 1 : v[0] === "R" ? !v[2] : !v.length));
+const celluleRemplie = (valeur) =>
+  valeur != null &&
+  valeur !== "" &&
+  valeur !== 0 &&
+  valeur !== false &&
+  !(
+    Array.isArray(valeur) && (valeur[0] === "L" ? valeur.length <= 1 : valeur[0] === "R" ? !valeur[2] : !valeur.length)
+  );
 function reconnaitreColonnesSignalement(meta, tid = etatSaisie.tableId, lignes = etatSaisie.enregistrements) {
-  const res = {},
+  const colonnesParRole = {},
     pris = new Set(),
-    cols = Object.values(meta || {}).filter(
-      (c) => c && c.colId && c.colId !== "id" && c.colId !== "manualSort" && !c.colId.startsWith("gristHelper"),
+    colonnes = Object.values(meta || {}).filter(
+      (colonne) =>
+        colonne &&
+        colonne.colId &&
+        colonne.colId !== "id" &&
+        colonne.colId !== "manualSort" &&
+        !colonne.colId.startsWith("gristHelper"),
     );
-  const noms = (c) => [normColonne(c.colId), normColonne(c.libelle)].filter(Boolean);
-  const remplie = (colId) => (lignes || []).some((l) => celluleRemplie(l[colId]));
+  const noms = (colonne) => [normColonne(colonne.colId), normColonne(colonne.libelle)].filter(Boolean);
+  const remplie = (colId) => (lignes || []).some((ligne) => celluleRemplie(ligne[colId]));
   // colonnes des questions du formulaire publié (tableau « Détail des sites »…) : jamais prises pour un rôle par approximation
   const questions = new Set(
     etatSaisie.formulaireActif && tid === etatSaisie.tableId
-      ? (etatSaisie.formulaireActif.conf.blocs || []).map((b) => b.colonne).filter(Boolean)
+      ? (etatSaisie.formulaireActif.conf.blocs || []).map((bloc) => bloc.colonne).filter(Boolean)
       : [],
   );
   // 1) identifiant exact et type compatible ; 2) identifiant ou libellé approchant (premier motif qui trouve une colonne,
@@ -317,26 +348,30 @@ function reconnaitreColonnesSignalement(meta, tid = etatSaisie.tableId, lignes =
   //    les signalements sont saisis ailleurs (« Etablissement » vide à côté de « Etablissement_ESR »), cède la place à
   //    une colonne approchante remplie.
   const exacts = new Set();
-  for (const [role, , ok] of ROLES_SIGNALEMENT) {
-    const c = (meta || {})[role];
-    if (c && ok(c, tid)) {
-      res[role] = role;
+  for (const [role, , estCompatible] of ROLES_SIGNALEMENT) {
+    const colonne = (meta || {})[role];
+    if (colonne && estCompatible(colonne, tid)) {
+      colonnesParRole[role] = role;
       pris.add(role);
       exacts.add(role);
     }
   }
-  for (const [role, motifs, ok] of ROLES_SIGNALEMENT) {
-    if (res[role] && (!lignes || !lignes.length || remplie(res[role]))) continue;
+  for (const [role, motifs, estCompatible] of ROLES_SIGNALEMENT) {
+    if (colonnesParRole[role] && (!lignes || !lignes.length || remplie(colonnesParRole[role]))) continue;
     let choix = null;
-    for (const m of motifs) {
-      const cands = cols.filter(
-        (c) => !pris.has(c.colId) && !questions.has(c.colId) && ok(c, tid) && noms(c).some((n) => m.test(n)),
+    for (const motif of motifs) {
+      const cands = colonnes.filter(
+        (colonne) =>
+          !pris.has(colonne.colId) &&
+          !questions.has(colonne.colId) &&
+          estCompatible(colonne, tid) &&
+          noms(colonne).some((nomNormalise) => motif.test(nomNormalise)),
       );
       if (!cands.length) continue;
       // date de saisie : la colonne remplie par Grist (NOW()) d'abord
       if (role === "Date")
         cands.sort((a, b) => (/NOW\(\)/.test(b.texteFormule) ? 1 : 0) - (/NOW\(\)/.test(a.texteFormule) ? 1 : 0));
-      const pleine = cands.find((c) => remplie(c.colId));
+      const pleine = cands.find((colonne) => remplie(colonne.colId));
       if (exacts.has(role)) {
         if (pleine) {
           choix = pleine;
@@ -348,46 +383,47 @@ function reconnaitreColonnesSignalement(meta, tid = etatSaisie.tableId, lignes =
       break;
     }
     if (choix) {
-      if (res[role]) pris.delete(res[role]);
-      res[role] = choix.colId;
+      if (colonnesParRole[role]) pris.delete(colonnesParRole[role]);
+      colonnesParRole[role] = choix.colId;
       pris.add(choix.colId);
     }
   }
-  return res;
+  return colonnesParRole;
 }
 
 // ⚙ : ce que le widget utilise réellement (utile pour comprendre un affichage inattendu)
 const VERSION_WIDGET = `v2 · ${window.Socle.VERSION}`;
 function remplirActivite() {
-  const A = ACTIVITE,
-    min = Math.max(1, (Date.now() - A.debut) / 60000),
-    fait = A.envois.filter((e) => e.ms != null);
-  const recents = A.envois.filter((e) => Date.now() - e.t < 60000).length,
-    dernier = A.envois[A.envois.length - 1];
-  const moy = fait.length ? fait.reduce((s, e) => s + e.ms, 0) / fait.length : 0,
-    max = fait.reduce((m, e) => Math.max(m, e.ms), 0);
-  const ms = (v) => `${Math.round(v)} ms`;
+  const activite = ACTIVITE,
+    min = Math.max(1, (Date.now() - activite.debut) / 60000),
+    fait = activite.envois.filter((envoi) => envoi.ms != null);
+  const recents = activite.envois.filter((envoi) => Date.now() - envoi.t < 60000).length,
+    dernier = activite.envois[activite.envois.length - 1];
+  const moy = fait.length ? fait.reduce((somme, envoi) => somme + envoi.ms, 0) / fait.length : 0,
+    max = fait.reduce((maximum, envoi) => Math.max(maximum, envoi.ms), 0);
+  const formaterDuree = (millisecondes) => `${Math.round(millisecondes)} ms`;
   const lectures = Donnees.compteurs()
     .lectures.map(
-      (l) => `<li>${esc(l.table)} : ${l.nombre} fois, ${ms(l.ms / l.nombre)} en moyenne (au plus ${ms(l.max)})</li>`,
+      (lecture) =>
+        `<li>${esc(lecture.table)} : ${lecture.nombre} fois, ${formaterDuree(lecture.ms / lecture.nombre)} en moyenne (au plus ${formaterDuree(lecture.max)})</li>`,
     )
     .join("");
   $("cfg-activite").innerHTML =
     `<p style="margin:0 0 4px">Depuis l'ouverture du widget (${Math.round(min)} min) :</p><ul style="margin:0;padding-left:18px">
-    <li>Grist a envoyé la table <b>${A.envois.length}</b> fois (${recents} dans la dernière minute, ${(A.envois.length / min).toFixed(1)} par minute en moyenne)${dernier ? `, la dernière fois <b>${dernier.lignes}</b> lignes × ${dernier.colonnes} colonnes` : ""}${A.regroupes ? ` ; ${A.regroupes} envoi(s) rapprochés regroupés` : ""}.</li>
-    <li>Traitement de ces envois par le widget : <b>${ms(moy)}</b> en moyenne, au plus ${ms(max)}.</li>
-    <li>Ligne sélectionnée renvoyée par Grist : ${A.curseur} fois (${A.curseurIgnores} simples renvois sans effet).</li>
-    <li>Tâches longues du widget (plus de 50 ms) : ${A.longues}, ${ms(A.dureeLongues)} au total${A.longues ? ` (${ms(A.dureeLongues / min)} par minute)` : ""}.</li>
+    <li>Grist a envoyé la table <b>${activite.envois.length}</b> fois (${recents} dans la dernière minute, ${(activite.envois.length / min).toFixed(1)} par minute en moyenne)${dernier ? `, la dernière fois <b>${dernier.lignes}</b> lignes × ${dernier.colonnes} colonnes` : ""}${activite.regroupes ? ` ; ${activite.regroupes} envoi(s) rapprochés regroupés` : ""}.</li>
+    <li>Traitement de ces envois par le widget : <b>${formaterDuree(moy)}</b> en moyenne, au plus ${formaterDuree(max)}.</li>
+    <li>Ligne sélectionnée renvoyée par Grist : ${activite.curseur} fois (${activite.curseurIgnores} simples renvois sans effet).</li>
+    <li>Tâches longues du widget (plus de 50 ms) : ${activite.longues}, ${formaterDuree(activite.dureeLongues)} au total${activite.longues ? ` (${formaterDuree(activite.dureeLongues / min)} par minute)` : ""}.</li>
     <li>Référentiel : ${etatSaisie.referentielDuCache ? `copie conservée dans ce navigateur (lue sur le serveur le ${Outils.dates.dateHeure(etatSaisie.referentielDuCache, { dateStyle: "short", timeStyle: "short" })}, relue automatiquement après 24 h) <button type="button" class="lien-texte" id="btn-relire-ref">Relire le référentiel maintenant</button>` : "lu sur le serveur à l'ouverture"}.</li>
     ${etatSaisie.sqlRefuse ? `<li>Lecture rapide (SQL) indisponible : ${esc(etatSaisie.sqlRefuse)} ; lecture habituelle utilisée.</li>` : ""}
     ${lectures ? `<li>Lectures dans Grist :<ul style="margin:0;padding-left:16px">${lectures}</ul></li>` : ""}</ul>
     <p style="margin:4px 0 0">Si la page est lente alors que ces temps restent faibles, le temps passe dans Grist (préparation et envoi de la table, calcul des formules) plutôt que dans le widget.</p>`;
 }
 $("btn-activite").addEventListener("click", remplirActivite);
-$("cfg-activite").addEventListener("click", async (ev) => {
-  if (ev.target.id !== "btn-relire-ref") return;
-  ev.target.disabled = true;
-  ev.target.textContent = "Lecture en cours…";
+$("cfg-activite").addEventListener("click", async (evenement) => {
+  if (evenement.target.id !== "btn-relire-ref") return;
+  evenement.target.disabled = true;
+  evenement.target.textContent = "Lecture en cours…";
   await oublierCacheReferentiel();
   await chargerEtabs(false);
   enFile(async () => {
@@ -413,8 +449,8 @@ function remplirDiagnostic() {
   };
   const rempli = celluleRemplie;
   const ligne = (k) => {
-    const c = col(k),
-      m = c && etatSaisie.metaSig[c],
+    const colonne = colonneDe(k),
+      metaColonne = colonne && etatSaisie.metaSig[colonne],
       origine =
         etatSaisie.mappings && typeof etatSaisie.mappings[k] === "string"
           ? "associée dans le panneau de Grist"
@@ -422,38 +458,52 @@ function remplirDiagnostic() {
             ? "associée dans l'administration"
             : "reconnue d'après son nom";
     // lignes renseignées et exemple de valeur reçue (une référence invalide arrive sous forme de texte, par exemple)
-    const vals = c ? etatSaisie.enregistrements.map((l) => l[c]).filter(rempli) : [];
-    const ex = vals.length ? JSON.stringify(vals[vals.length - 1]).slice(0, 60) : "";
-    const refsInvalides = k === "Etablissement" && vals.length ? vals.filter((v) => refId(v) == null).length : 0;
+    const valeursRecues = colonne
+      ? etatSaisie.enregistrements.map((enregistrement) => enregistrement[colonne]).filter(rempli)
+      : [];
+    const exemple = valeursRecues.length ? JSON.stringify(valeursRecues[valeursRecues.length - 1]).slice(0, 60) : "";
+    const refsInvalides =
+      k === "Etablissement" && valeursRecues.length
+        ? valeursRecues.filter((valeur) => refId(valeur) == null).length
+        : 0;
     return `<li>${LIB[k]} : ${
-      c
-        ? `<b>${esc(c)}</b>${m ? ` <span class="note">(${esc(String(m.type).replace(/^Ref:/, "référence vers "))}, ${origine})</span>` : ""}` +
-          ` — renseignée sur ${vals.length} ligne${vals.length > 1 ? "s" : ""} sur ${etatSaisie.enregistrements.length}${ex ? `, par exemple ${esc(ex)}` : ""}` +
+      colonne
+        ? `<b>${esc(colonne)}</b>${metaColonne ? ` <span class="note">(${esc(String(metaColonne.type).replace(/^Ref:/, "référence vers "))}, ${origine})</span>` : ""}` +
+          ` — renseignée sur ${valeursRecues.length} ligne${valeursRecues.length > 1 ? "s" : ""} sur ${etatSaisie.enregistrements.length}${exemple ? `, par exemple ${esc(exemple)}` : ""}` +
           (refsInvalides
             ? ` <span style="color:var(--erreur)">· ${refsInvalides} valeur(s) qui ne sont pas des références valides (cellules en rouge dans Grist)</span>`
             : "")
         : `<span style="color:var(--erreur)">non trouvée</span>`
     }</li>`;
   };
-  const avec = etatSaisie.enregistrements.filter((l) => refId(val(l, "Etablissement")) || texteEtabBrut(l)),
-    perdus = avec.filter((l) => !etabDeLigne(l));
+  const avec = etatSaisie.enregistrements.filter(
+      (enregistrement) => refId(valeurLigne(enregistrement, "Etablissement")) || texteEtabBrut(enregistrement),
+    ),
+    perdus = avec.filter((enregistrement) => !etabDeLigne(enregistrement));
   const ecartees = Object.keys(LIB).filter(
     (k) =>
-      col(k) &&
-      col(k) !== k &&
+      colonneDe(k) &&
+      colonneDe(k) !== k &&
       etatSaisie.metaSig[k] &&
       !(etatSaisie.mappings && typeof etatSaisie.mappings[k] === "string") &&
-      !etatSaisie.enregistrements.some((l) => celluleRemplie(l[k])),
+      !etatSaisie.enregistrements.some((enregistrement) => celluleRemplie(enregistrement[k])),
   );
-  const cE = col("Etablissement"),
-    refOk = cE && etatSaisie.metaSig[cE] && etatSaisie.metaSig[cE].type === `Ref:${ETAB.table}`;
-  const aRattacher = refOk ? etatSaisie.enregistrements.filter((l) => texteEtabBrut(l) && etabDeLigne(l)) : [];
-  const textes = etatSaisie.enregistrements.filter((l) => texteEtabBrut(l)).length;
+  const colonneEtablissement = colonneDe("Etablissement"),
+    refOk =
+      colonneEtablissement &&
+      etatSaisie.metaSig[colonneEtablissement] &&
+      etatSaisie.metaSig[colonneEtablissement].type === `Ref:${ETAB.table}`;
+  const aRattacher = refOk
+    ? etatSaisie.enregistrements.filter(
+        (enregistrement) => texteEtabBrut(enregistrement) && etabDeLigne(enregistrement),
+      )
+    : [];
+  const textes = etatSaisie.enregistrements.filter((enregistrement) => texteEtabBrut(enregistrement)).length;
   $("cfg-diagnostic").innerHTML =
     `<p style="margin:0 0 4px">Widget : version du ${esc(VERSION_WIDGET)} · table des réponses <b>${esc(etatSaisie.tableId || "?")}</b> · formulaire ${etatSaisie.formulaireActif ? `« ${esc(etatSaisie.formulaireActif.nom)} » (publié)` : "<b>aucun formulaire publié</b> pour cette table"}.</p>
     <p style="margin:0 0 4px">Référentiel : <b>${esc(ETAB.table)}</b> (${esc(ETAB.origineTable || "table par défaut")}), ${etatSaisie.etabs.length} établissement(s) lus${avec.length ? ` ; ${avec.length - perdus.length} signalement(s) sur ${avec.length} y retrouvent leur établissement` : ` ; <span style="color:var(--erreur)">aucune des ${etatSaisie.enregistrements.length} ligne(s) reçues par le widget ne porte un établissement valide</span>`}.</p>
     <ul style="margin:0;padding-left:18px">${Object.keys(LIB).map(ligne).join("")}</ul>
-    ${ecartees.length ? `<p style="margin:8px 0 4px">Colonne${ecartees.length > 1 ? "s" : ""} ${ecartees.map((k) => `« ${esc(k)} »`).join(", ")} de la table « ${esc(etatSaisie.tableId)} » ignorée${ecartees.length > 1 ? "s" : ""} car vide${ecartees.length > 1 ? "s" : ""} : les signalements sont lus dans ${ecartees.map((k) => `« ${esc(col(k))} »`).join(", ")}. Vous pouvez ${ecartees.length > 1 ? "les" : "la"} supprimer dans Grist si personne ne s'en sert.</p>` : ""}
+    ${ecartees.length ? `<p style="margin:8px 0 4px">Colonne${ecartees.length > 1 ? "s" : ""} ${ecartees.map((k) => `« ${esc(k)} »`).join(", ")} de la table « ${esc(etatSaisie.tableId)} » ignorée${ecartees.length > 1 ? "s" : ""} car vide${ecartees.length > 1 ? "s" : ""} : les signalements sont lus dans ${ecartees.map((k) => `« ${esc(colonneDe(k))} »`).join(", ")}. Vous pouvez ${ecartees.length > 1 ? "les" : "la"} supprimer dans Grist si personne ne s'en sert.</p>` : ""}
     ${
       textes
         ? `<p style="margin:8px 0 4px">${textes} signalement(s) portent l'établissement sous forme de texte (cellules en rouge dans Grist) : le widget affiche ce texte, mais ces signalements ne sont pas reliés à la fiche de l'établissement (point de situation, filtres).
@@ -463,65 +513,70 @@ function remplirDiagnostic() {
       <button type="button" class="secondaire" id="btn-rattacher-etabs">Rattacher ${aRattacher.length} signalement(s) à leur établissement</button>`
           : refOk
             ? "Aucun ne correspond exactement à un nom ou un UAI du référentiel : corrigez-les dans Grist.</p>"
-            : `La colonne « ${esc(cE || "?")} » doit être une référence vers « ${esc(ETAB.table)} » pour les rattacher.</p>`
+            : `La colonne « ${esc(colonneEtablissement || "?")} » doit être une référence vers « ${esc(ETAB.table)} » pour les rattacher.</p>`
       }`
         : ""
     }`;
-  const b = $("btn-rattacher-etabs");
-  if (b)
-    b.addEventListener("click", async () => {
+  const boutonRattacher = $("btn-rattacher-etabs");
+  if (boutonRattacher)
+    boutonRattacher.addEventListener("click", async () => {
       if (
         !confirm(
-          `Remplacer le texte de ${aRattacher.length} cellule(s) « ${cE} » par la référence vers l'établissement correspondant de « ${ETAB.table} » ?`,
+          `Remplacer le texte de ${aRattacher.length} cellule(s) « ${colonneEtablissement} » par la référence vers l'établissement correspondant de « ${ETAB.table} » ?`,
         )
       )
         return;
-      b.disabled = true;
-      b.textContent = "Rattachement…";
+      boutonRattacher.disabled = true;
+      boutonRattacher.textContent = "Rattachement…";
       try {
-        const acts = aRattacher.map((l) => ["UpdateRecord", etatSaisie.tableId, l.id, { [cE]: etabDeLigne(l).id }]);
+        const acts = aRattacher.map((enregistrement) => [
+          "UpdateRecord",
+          etatSaisie.tableId,
+          enregistrement.id,
+          { [colonneEtablissement]: etabDeLigne(enregistrement).id },
+        ]);
         for (let k = 0; k < acts.length; k += 400) await Donnees.ecrire(acts.slice(k, k + 400));
-        b.textContent = `${aRattacher.length} signalement(s) rattachés`;
-      } catch (e) {
-        b.disabled = false;
-        b.textContent = "Réessayer le rattachement";
-        alert(`Rattachement impossible : ${e.message || e}`);
+        boutonRattacher.textContent = `${aRattacher.length} signalement(s) rattachés`;
+      } catch (erreur) {
+        boutonRattacher.disabled = false;
+        boutonRattacher.textContent = "Réessayer le rattachement";
+        alert(`Rattachement impossible : ${erreur.message || erreur}`);
       }
     });
 }
 
-function signalerErreurChargement(e, ou) {
-  const msg = `${ou} : ${(e && e.message) || e}${
-    e && e.stack
-      ? ` [${String(e.stack)
+function signalerErreurChargement(erreur, contexte) {
+  const message = `${contexte} : ${(erreur && erreur.message) || erreur}${
+    erreur && erreur.stack
+      ? ` [${String(erreur.stack)
           .split("\n")
           .slice(0, 3)
-          .map((x) => x.trim())
+          .map((ligneTrace) => ligneTrace.trim())
           .join(" ← ")}]`
       : ""
   }`;
-  console.error("Formulaire :", ou, e);
-  if (etatSaisie.erreursChargement.includes(msg)) return;
-  etatSaisie.erreursChargement.push(msg);
-  const z = $("alerte");
-  if (z) {
-    z.textContent = `${z.hidden ? "" : z.textContent + " "}Le formulaire n'a pas pu se charger entièrement (${msg}). Copiez ce message pour l'administrateur du document ; « ⚙ Réglages » reste accessible.`;
-    z.hidden = false;
+  console.error("Formulaire :", contexte, erreur);
+  if (etatSaisie.erreursChargement.includes(message)) return;
+  etatSaisie.erreursChargement.push(message);
+  const zoneAlerte = $("alerte");
+  if (zoneAlerte) {
+    zoneAlerte.textContent = `${zoneAlerte.hidden ? "" : zoneAlerte.textContent + " "}Le formulaire n'a pas pu se charger entièrement (${message}). Copiez ce message pour l'administrateur du document ; « ⚙ Réglages » reste accessible.`;
+    zoneAlerte.hidden = false;
   }
-  const b = $("btn-config");
-  if (b && !etatSaisie.modeEtab) b.hidden = false;
+  const boutonConfig = $("btn-config");
+  if (boutonConfig && !etatSaisie.modeEtab) boutonConfig.hidden = false;
 }
-window.addEventListener("error", (ev) => {
-  if (ev.error && !etatSaisie.referentielLu) signalerErreurChargement(ev.error, "erreur");
+window.addEventListener("error", (evenement) => {
+  if (evenement.error && !etatSaisie.referentielLu) signalerErreurChargement(evenement.error, "erreur");
 });
-window.addEventListener("unhandledrejection", (ev) => {
-  if (!etatSaisie.referentielLu) signalerErreurChargement(ev.reason, "erreur");
+window.addEventListener("unhandledrejection", (evenement) => {
+  if (!etatSaisie.referentielLu) signalerErreurChargement(evenement.reason, "erreur");
 });
 async function chargerConfiguration() {
   try {
     await chargerConfigurationEtapes();
-  } catch (e) {
-    signalerErreurChargement(e, "chargement de la configuration");
+  } catch (erreur) {
+    signalerErreurChargement(erreur, "chargement de la configuration");
   }
 }
 async function chargerConfigurationEtapes() {
@@ -546,12 +601,16 @@ async function chargerConfigurationEtapes() {
     // Aucun formulaire publié pour la table liée : on indique ceux qui existent, et la table à choisir
     if (!etatSaisie.formulaireActif) {
       const autres = (await lireFormulaires()).filter(
-        (f) => f.table && f.table !== etatSaisie.tableId && typeof f.publie === "string" && f.publie.trim(),
+        (formulaire) =>
+          formulaire.table &&
+          formulaire.table !== etatSaisie.tableId &&
+          typeof formulaire.publie === "string" &&
+          formulaire.publie.trim(),
       );
       if (autres.length)
         alertes.unshift(
           `Ce widget est relié à la table « ${etatSaisie.tableId} », pour laquelle aucun formulaire n'est publié. ` +
-            `Formulaire${autres.length > 1 ? "s" : ""} publié${autres.length > 1 ? "s" : ""} : ${autres.map((f) => `« ${f.nom} » (table ${f.table})`).join(", ")}. ` +
+            `Formulaire${autres.length > 1 ? "s" : ""} publié${autres.length > 1 ? "s" : ""} : ${autres.map((formulaire) => `« ${formulaire.nom} » (table ${formulaire.table})`).join(", ")}. ` +
             `Dans le panneau de droite de Grist, onglet « Données source », choisissez la table du formulaire voulu.`,
         );
     }
@@ -559,48 +618,50 @@ async function chargerConfigurationEtapes() {
     etatSaisie.colsParDefaut = reconnaitreColonnesSignalement(etatSaisie.metaSig);
     // Colonnes associées dans l'administration (« Colonnes de la table des réponses ») : elles priment sur la reconnaissance
     etatSaisie.rolesAdmin = {};
-    const rc = etatSaisie.formulaireActif && etatSaisie.formulaireActif.conf.roles;
-    if (rc && typeof rc === "object") {
-      for (const [r, c] of Object.entries(rc)) {
-        if (c === "") {
-          etatSaisie.rolesAdmin[r] = "";
-          delete etatSaisie.colsParDefaut[r];
-        } else if (typeof c === "string" && etatSaisie.metaSig[c]) {
-          etatSaisie.rolesAdmin[r] = c;
-          etatSaisie.colsParDefaut[r] = c;
-        } else if (typeof c === "string")
+    const rolesAssocies = etatSaisie.formulaireActif && etatSaisie.formulaireActif.conf.roles;
+    if (rolesAssocies && typeof rolesAssocies === "object") {
+      for (const [role, colonne] of Object.entries(rolesAssocies)) {
+        if (colonne === "") {
+          etatSaisie.rolesAdmin[role] = "";
+          delete etatSaisie.colsParDefaut[role];
+        } else if (typeof colonne === "string" && etatSaisie.metaSig[colonne]) {
+          etatSaisie.rolesAdmin[role] = colonne;
+          etatSaisie.colsParDefaut[role] = colonne;
+        } else if (typeof colonne === "string")
           alertes.push(
-            `La colonne « ${c} » associée dans l'administration des formulaires n'existe plus dans la table « ${etatSaisie.tableId} » : choisissez-en une autre (panneau « Formulaire » › « Colonnes de la table des réponses »), puis publiez.`,
+            `La colonne « ${colonne} » associée dans l'administration des formulaires n'existe plus dans la table « ${etatSaisie.tableId} » : choisissez-en une autre (panneau « Formulaire » › « Colonnes de la table des réponses »), puis publiez.`,
           );
       }
       // une colonne associée à un rôle n'en joue pas un autre par reconnaissance
       const imposees = new Set(Object.values(etatSaisie.rolesAdmin).filter(Boolean));
-      for (const r of Object.keys(etatSaisie.colsParDefaut))
-        if (!(r in etatSaisie.rolesAdmin) && imposees.has(etatSaisie.colsParDefaut[r]))
-          delete etatSaisie.colsParDefaut[r];
+      for (const role of Object.keys(etatSaisie.colsParDefaut))
+        if (!(role in etatSaisie.rolesAdmin) && imposees.has(etatSaisie.colsParDefaut[role]))
+          delete etatSaisie.colsParDefaut[role];
     }
     // Associations du socle (clé « roles » de Config) pour les rôles que le formulaire ne règle pas
     if (etatSaisie.tableId === etatSaisie.socleGeneral.reponses) {
-      const rs =
+      const rolesSocle =
         (etatSaisie.socleConfig &&
           etatSaisie.socleConfig.valeurs.roles &&
           etatSaisie.socleConfig.valeurs.roles.reponses) ||
         {};
-      for (const [r0, c] of Object.entries(rs)) {
-        const r = r0 === "Cree_le" ? "Date" : r0;
-        if (r in etatSaisie.rolesAdmin || typeof c !== "string" || !etatSaisie.metaSig[c]) continue;
+      for (const [roleBrut, colonne] of Object.entries(rolesSocle)) {
+        const role = roleBrut === "Cree_le" ? "Date" : roleBrut;
+        if (role in etatSaisie.rolesAdmin || typeof colonne !== "string" || !etatSaisie.metaSig[colonne]) continue;
         for (const k of Object.keys(etatSaisie.colsParDefaut))
-          if (k !== r && etatSaisie.colsParDefaut[k] === c && !(k in etatSaisie.rolesAdmin))
+          if (k !== role && etatSaisie.colsParDefaut[k] === colonne && !(k in etatSaisie.rolesAdmin))
             delete etatSaisie.colsParDefaut[k];
-        etatSaisie.colsParDefaut[r] = c;
+        etatSaisie.colsParDefaut[role] = colonne;
       }
     }
     trouverColNomReponses();
     // Formulaire de cette table encore jamais publié : le dire plutôt que d'afficher l'ancien fonctionnement sans explication
     if (!etatSaisie.formulaireActif) {
-      const brouillons = etatSaisie.formulairesDispo.filter((f) => !(typeof f.publie === "string" && f.publie.trim()));
+      const brouillons = etatSaisie.formulairesDispo.filter(
+        (formulaire) => !(typeof formulaire.publie === "string" && formulaire.publie.trim()),
+      );
       if (brouillons.length) {
-        const i = alertes.findIndex((a) => a.startsWith("Ce widget est relié à la table"));
+        const i = alertes.findIndex((alerte) => alerte.startsWith("Ce widget est relié à la table"));
         if (i >= 0) alertes.splice(i, 1);
       }
       if (brouillons.length)
@@ -612,10 +673,12 @@ async function chargerConfigurationEtapes() {
       ["Etablissement", "l'établissement (référence vers le référentiel)"],
       ["Description", "la description"],
       ["Qualification", "la qualification"],
-    ].filter(([k]) => !col(k));
-    if (!col("Etablissement")) {
+    ].filter(([k]) => !colonneDe(k));
+    if (!colonneDe("Etablissement")) {
       const proche = Object.values(etatSaisie.metaSig).find(
-        (c) => /etablissement|(^|_)etab(_|$)|uai/.test(normColonne(`${c.colId} ${c.libelle}`)) && !/^Ref:/.test(c.type),
+        (colonne) =>
+          /etablissement|(^|_)etab(_|$)|uai/.test(normColonne(`${colonne.colId} ${colonne.libelle}`)) &&
+          !/^Ref:/.test(colonne.type),
       );
       if (proche) essentiels = essentiels.filter(([k]) => k !== "Etablissement");
       if (proche)
@@ -625,42 +688,42 @@ async function chargerConfigurationEtapes() {
     }
     if (essentiels.length)
       alertes.push(
-        `Colonne${essentiels.length > 1 ? "s" : ""} introuvable${essentiels.length > 1 ? "s" : ""} dans la table « ${etatSaisie.tableId} » : ${essentiels.map((x) => x[1]).join(", ")}. ` +
+        `Colonne${essentiels.length > 1 ? "s" : ""} introuvable${essentiels.length > 1 ? "s" : ""} dans la table « ${etatSaisie.tableId} » : ${essentiels.map((colonneEssentielle) => colonneEssentielle[1]).join(", ")}. ` +
           `Associez-la${essentiels.length > 1 ? "s" : ""} dans l'administration des formulaires (panneau « Formulaire » › « Colonnes de la table des réponses »), puis publiez.`,
       );
-  } catch (e) {
-    console.warn("Métadonnées illisibles", e);
+  } catch (erreur) {
+    console.warn("Métadonnées illisibles", erreur);
   }
   await determinerTableEtab(); // après les rôles : la colonne de l'établissement désigne le référentiel
   const pEtabs = chargerEtabs(true).then(
     () => null,
-    (e) => e,
+    (erreur) => erreur,
   );
 
-  document.querySelectorAll("[data-libelle]").forEach((el) => {
-    if (!el.dataset.defaut) el.dataset.defaut = el.textContent;
-    const m = etatSaisie.metaSig[col(el.dataset.libelle)];
-    el.textContent = (m && m.libelle) || el.dataset.defaut;
+  document.querySelectorAll("[data-libelle]").forEach((elementLibelle) => {
+    if (!elementLibelle.dataset.defaut) elementLibelle.dataset.defaut = elementLibelle.textContent;
+    const metaColonne = etatSaisie.metaSig[colonneDe(elementLibelle.dataset.libelle)];
+    elementLibelle.textContent = (metaColonne && metaColonne.libelle) || elementLibelle.dataset.defaut;
   });
-  etatSaisie.metaDate = etatSaisie.metaSig[col("Date")] || null;
+  etatSaisie.metaDate = etatSaisie.metaSig[colonneDe("Date")] || null;
   etatSaisie.alerteHorloge = "";
-  if (col("Date") && etatSaisie.metaDate && !dateParGrist())
+  if (colonneDe("Date") && etatSaisie.metaDate && !dateParGrist())
     etatSaisie.alerteHorloge =
-      `La date de saisie (« ${etatSaisie.metaDate.libelle || col("Date")} ») est fournie par l'horloge de chaque ordinateur : si l'une est déréglée, les dates seront fausses. ` +
+      `La date de saisie (« ${etatSaisie.metaDate.libelle || colonneDe("Date")} ») est fournie par l'horloge de chaque ordinateur : si l'une est déréglée, les dates seront fausses. ` +
       `Donnez-lui plutôt la formule d'initialisation NOW(), appliquée aux nouveaux enregistrements (Grist utilisera l'heure de son serveur).`;
-  $("bloc-commentaire").hidden = !(afficherCommentaire() && col("Commentaire"));
-  etatSaisie.metaFaits = etatSaisie.metaSig[col("Date_faits")] || null;
-  $("bloc-date-faits").hidden = !col("Date_faits");
-  $("bloc-site").hidden = !col("Site");
+  $("bloc-commentaire").hidden = !(afficherCommentaire() && colonneDe("Commentaire"));
+  etatSaisie.metaFaits = etatSaisie.metaSig[colonneDe("Date_faits")] || null;
+  $("bloc-date-faits").hidden = !colonneDe("Date_faits");
+  $("bloc-site").hidden = !colonneDe("Site");
   appliquerVersion();
   $("date-faits").type =
     etatSaisie.metaFaits && (etatSaisie.metaFaits.type || "").startsWith("DateTime") ? "datetime-local" : "date";
-  $("bloc-plusieurs-jours").hidden = !(col("Date_faits") && S().plusieursJours && !faitsAvecHeure());
+  $("bloc-plusieurs-jours").hidden = !(colonneDe("Date_faits") && reglagesSaisie().plusieursJours && !faitsAvecHeure());
   if (!$("aide-date-faits").dataset.base) $("aide-date-faits").textContent = aideFaitsDefaut();
-  const q = etatSaisie.metaSig[col("Qualification")];
-  etatSaisie.choix = (q && q.opts.choices) || [];
-  etatSaisie.couleurs = (q && q.opts.choiceOptions) || {};
-  etatSaisie.qualifMultiple = !!(q && (q.type || "").split(":")[0] === "ChoiceList");
+  const metaQualification = etatSaisie.metaSig[colonneDe("Qualification")];
+  etatSaisie.choix = (metaQualification && metaQualification.opts.choices) || [];
+  etatSaisie.couleurs = (metaQualification && metaQualification.opts.choiceOptions) || {};
+  etatSaisie.qualifMultiple = !!(metaQualification && (metaQualification.type || "").split(":")[0] === "ChoiceList");
   afficherChoix("qualifs-initiales", "qualif-initiale");
 
   etatSaisie.decorsQ = { avant: {}, fin: [] };
@@ -671,24 +734,24 @@ async function chargerConfigurationEtapes() {
   etatSaisie.defsAca = defsDepuisFormulaire("va", "Questions_aca", alertes) || defsDe("Questions_aca");
   // Champs versionnés : ce dont l'historique retrace l'évolution d'une version à l'autre.
   etatSaisie.champsVersion = [];
-  if (col("Description") && etatSaisie.metaSig[col("Description")])
-    etatSaisie.champsVersion.push({ ...etatSaisie.metaSig[col("Description")], obligatoire: true, aide: "" });
-  if (col("Site") && etatSaisie.metaSig[col("Site")])
+  if (colonneDe("Description") && etatSaisie.metaSig[colonneDe("Description")])
+    etatSaisie.champsVersion.push({ ...etatSaisie.metaSig[colonneDe("Description")], obligatoire: true, aide: "" });
+  if (colonneDe("Site") && etatSaisie.metaSig[colonneDe("Site")])
     etatSaisie.champsVersion.push({
-      ...etatSaisie.metaSig[col("Site")],
-      libelle: etatSaisie.metaSig[col("Site")].libelle || "Site / bâtiment",
+      ...etatSaisie.metaSig[colonneDe("Site")],
+      libelle: etatSaisie.metaSig[colonneDe("Site")].libelle || "Site / bâtiment",
       obligatoire: false,
       aide: "",
     });
   // Le type réel (Choice ou ChoiceList) est conservé, pour que le suivi propose le même mode de sélection.
-  if (q)
+  if (metaQualification)
     etatSaisie.champsVersion.push({
-      ...q,
+      ...metaQualification,
       obligatoire: true,
       aide: "",
-      type: etatSaisie.choix.length ? q.type : "Text",
+      type: etatSaisie.choix.length ? metaQualification.type : "Text",
     });
-  etatSaisie.defsQuestions.forEach((d) => etatSaisie.champsVersion.push(d));
+  etatSaisie.defsQuestions.forEach((question) => etatSaisie.champsVersion.push(question));
   construireReglesCouleur(alertes);
   restaurerFiltre();
 
@@ -714,13 +777,17 @@ async function chargerConfigurationEtapes() {
   appliquerOptions(etatSaisie.optionsParametres);
   appliquerBornes();
   // Conditions qui désignent une colonne introuvable : la question ne pourrait jamais s'afficher
-  for (const d of [...etatSaisie.defsQuestions, ...etatSaisie.defsDep, ...etatSaisie.defsAca]) {
+  for (const question of [...etatSaisie.defsQuestions, ...etatSaisie.defsDep, ...etatSaisie.defsAca]) {
     if (
-      d.condition &&
-      !resoudreColonne(d.condition.ref, [...etatSaisie.defsQuestions, ...etatSaisie.defsDep, ...etatSaisie.defsAca])
+      question.condition &&
+      !resoudreColonne(question.condition.ref, [
+        ...etatSaisie.defsQuestions,
+        ...etatSaisie.defsDep,
+        ...etatSaisie.defsAca,
+      ])
     )
       alertes.push(
-        `La question « ${d.libelle} » dépend de « ${d.condition.ref} », qui ne correspond à aucune colonne (identifiant ou libellé) : elle ne s'affichera jamais.`,
+        `La question « ${question.libelle} » dépend de « ${question.condition.ref} », qui ne correspond à aucune colonne (identifiant ou libellé) : elle ne s'affichera jamais.`,
       );
   }
   $("alerte").textContent = alertes.join(" ");
@@ -729,13 +796,16 @@ async function chargerConfigurationEtapes() {
   // Référentiel : si la lecture est rapide (cas d'un établissement venu par son lien, une seule ligne),
   // on l'attend brièvement pour éviter tout clignotement ; sinon le formulaire s'affiche sans lui
   // et se complète à son arrivée.
-  const rapide = await Promise.race([pEtabs.then(() => true), new Promise((r) => setTimeout(() => r(false), 250))]);
+  const rapide = await Promise.race([
+    pEtabs.then(() => true),
+    new Promise((resoudre) => setTimeout(() => resoudre(false), 250)),
+  ]);
   if (rapide) finaliserReferentiel(await pEtabs, alertes);
   else {
     $("sous-titre").textContent = "Chargement du référentiel des établissements…";
-    pEtabs.then((err) =>
+    pEtabs.then((erreurReferentiel) =>
       enFile(async () => {
-        finaliserReferentiel(err, alertes);
+        finaliserReferentiel(erreurReferentiel, alertes);
         await apresChargementEtabs();
       }),
     );
@@ -748,18 +818,24 @@ async function determinerTableEtab() {
   etatSaisie.alerteTableRef = "";
   let choisie = null,
     cible = null,
-    c = null;
+    colonneEtablissement = null;
   try {
     const tid = await grist.getTable().getTableId(),
-      m = await metaColonnes(tid);
-    c = col("Etablissement") || reconnaitreColonnesSignalement(m, tid).Etablissement || null; // sans association : colonne reconnue (Etablissement, Etablissement_ESR…)
-    cible = (m && c && m[c] && ((m[c].type || "").match(/^Ref:(.+)$/) || [])[1]) || null;
+      metaTable = await metaColonnes(tid);
+    colonneEtablissement =
+      colonneDe("Etablissement") || reconnaitreColonnesSignalement(metaTable, tid).Etablissement || null; // sans association : colonne reconnue (Etablissement, Etablissement_ESR…)
+    cible =
+      (metaTable &&
+        colonneEtablissement &&
+        metaTable[colonneEtablissement] &&
+        ((metaTable[colonneEtablissement].type || "").match(/^Ref:(.+)$/) || [])[1]) ||
+      null;
   } catch (_) {
     /* métadonnées illisibles */
   }
   if (reglagesDansConfig()) {
-    const r = etatSaisie.socleConfig.valeurs.resume_auto;
-    choisie = (r && r[CLE_TABLE_ETAB]) || null;
+    const reglagesResume = etatSaisie.socleConfig.valeurs.resume_auto;
+    choisie = (reglagesResume && reglagesResume[CLE_TABLE_ETAB]) || null;
     if (
       !choisie &&
       etatSaisie.socleGeneral.referentiel &&
@@ -768,8 +844,8 @@ async function determinerTableEtab() {
       choisie = etatSaisie.socleGeneral.referentiel;
   } else
     try {
-      const t = await Donnees.lire(PARAMETRES.table);
-      const brut = (t[PARAMETRES.colonne] || [])[0];
+      const tableParametres = await Donnees.lire(PARAMETRES.table);
+      const brut = (tableParametres[PARAMETRES.colonne] || [])[0];
       if (typeof brut === "string" && brut.trim()) choisie = JSON.parse(brut)[CLE_TABLE_ETAB] || null;
     } catch (_) {
       /* pas de réglage lisible */
@@ -779,13 +855,13 @@ async function determinerTableEtab() {
     ETAB.origineTable = "choisie dans les réglages";
     if (cible && cible !== choisie)
       etatSaisie.alerteTableRef =
-        `La recherche porte sur la table « ${choisie} », mais la colonne « ${c} » renvoie vers la table « ${cible} » : ` +
-        `les signalements seraient rattachés à la mauvaise ligne. Dans Grist, faites pointer la colonne « ${c} » vers « ${choisie} » (type Référence), ou revenez au réglage automatique.`;
+        `La recherche porte sur la table « ${choisie} », mais la colonne « ${colonneEtablissement} » renvoie vers la table « ${cible} » : ` +
+        `les signalements seraient rattachés à la mauvaise ligne. Dans Grist, faites pointer la colonne « ${colonneEtablissement} » vers « ${choisie} » (type Référence), ou revenez au réglage automatique.`;
     return;
   }
   if (cible) {
     ETAB.table = cible;
-    ETAB.origineTable = `table visée par la colonne « ${c} »`;
+    ETAB.origineTable = `table visée par la colonne « ${colonneEtablissement} »`;
     return;
   }
   ETAB.table = TABLE_ETAB_DEFAUT;
@@ -794,40 +870,42 @@ async function determinerTableEtab() {
 
 // Signalements dont la référence ne correspond à aucune ligne du référentiel lu (autre table visée, réglage ⚙ forcé…)
 function alerteLiensEtab() {
-  if (!col("Etablissement") || !etatSaisie.etabs.length || !etatSaisie.enregistrements.length) return "";
-  const avec = etatSaisie.enregistrements.filter((l) => refId(val(l, "Etablissement")) || texteEtabBrut(l));
-  const perdus = avec.filter((l) => !etabDeLigne(l));
+  if (!colonneDe("Etablissement") || !etatSaisie.etabs.length || !etatSaisie.enregistrements.length) return "";
+  const avec = etatSaisie.enregistrements.filter(
+    (enregistrement) => refId(valeurLigne(enregistrement, "Etablissement")) || texteEtabBrut(enregistrement),
+  );
+  const perdus = avec.filter((enregistrement) => !etabDeLigne(enregistrement));
   return perdus.length > avec.length / 2
-    ? `${perdus.length} signalement(s) sur ${avec.length} renvoient à des établissements absents de la table « ${ETAB.table} » : la colonne « ${col("Etablissement")} » vise sans doute une autre table. Vérifiez ⚙ Réglages › « Colonnes et référentiel utilisés ».`
+    ? `${perdus.length} signalement(s) sur ${avec.length} renvoient à des établissements absents de la table « ${ETAB.table} » : la colonne « ${colonneDe("Etablissement")} » vise sans doute une autre table. Vérifiez ⚙ Réglages › « Colonnes et référentiel utilisés ».`
     : "";
 }
 // Page des établissements ouverte par un compte de la cellule (propriétaire, agent) : tout le référentiel est visible,
 // pas de préremplissage ; un établissement, lui, arrive par son lien et ne voit que sa ligne.
 function majAlertePageEtab() {
-  const z = $("alerte-page-etab");
-  if (!z) return;
+  const alerte = $("alerte-page-etab");
+  if (!alerte) return;
   if (!etatSaisie.pageEtab || !etatSaisie.referentielLu || etatSaisie.modeEtab) {
-    z.hidden = true;
+    alerte.hidden = true;
     return;
   }
-  const sansCle = !(etatSaisie.colsEtab || []).includes(E.cle);
-  z.innerHTML = `<strong>Page des établissements, vue avec votre compte</strong> : vous voyez tous les établissements, le formulaire n'est donc pas prérempli.
+  const sansCle = !(etatSaisie.colsEtab || []).includes(colonnesEtab.cle);
+  alerte.innerHTML = `<strong>Page des établissements, vue avec votre compte</strong> : vous voyez tous les établissements, le formulaire n'est donc pas prérempli.
     Un établissement arrive par son lien personnel et ne voit que sa fiche. Pour le vérifier, ouvrez un lien dans une <strong>fenêtre de navigation privée</strong> (sans être connecté à Grist).
-    ${sansCle ? `<br><span style="color:var(--erreur)">Les liens n'existent pas encore dans ${esc(ETAB.table)} (colonne « ${esc(E.cle)} » absente) : administration, onglet Établissements, terminer la mise en place.</span>` : ""}`;
-  z.hidden = false;
+    ${sansCle ? `<br><span style="color:var(--erreur)">Les liens n'existent pas encore dans ${esc(ETAB.table)} (colonne « ${esc(colonnesEtab.cle)} » absente) : administration, onglet Établissements, terminer la mise en place.</span>` : ""}`;
+  alerte.hidden = false;
 }
-function finaliserReferentiel(err, alertes) {
+function finaliserReferentiel(erreur, alertes) {
   etatSaisie.referentielLu = true;
   majAlertePageEtab();
   const liste = [...alertes];
   const liens = alerteLiensEtab();
   if (liens && !etatSaisie.modeEtab) liste.push(liens);
   if (etatSaisie.alerteTableRef && !etatSaisie.modeEtab) liste.push(etatSaisie.alerteTableRef);
-  if (err)
+  if (erreur)
     liste.push(
-      /access|acc[eè]s|blocked|denied|refus|permission/i.test(String(err.message || err))
+      /access|acc[eè]s|blocked|denied|refus|permission/i.test(String(erreur.message || erreur))
         ? `Accès refusé à la table « ${ETAB.table} ». Si vous êtes arrivé par un lien personnel, il n'est plus valable (lien renouvelé ou expiré, agent retiré de l'équipe) : demandez un nouveau lien à la cellule.`
-        : `Table « ${ETAB.table} » inaccessible (${err.message || err}).`,
+        : `Table « ${ETAB.table} » inaccessible (${erreur.message || erreur}).`,
     );
   $("alerte").textContent = liste.join(" ");
   $("alerte").hidden = !liste.length;
@@ -835,9 +913,9 @@ function finaliserReferentiel(err, alertes) {
   // Points techniques (horloge, structure du référentiel) : utiles à l'administrateur seulement, dans les réglages
   const techniques = etatSaisie.modeEtab
     ? []
-    : [etatSaisie.alerteHorloge, !err && etatSaisie.alerteStructure].filter(Boolean);
+    : [etatSaisie.alerteHorloge, !erreur && etatSaisie.alerteStructure].filter(Boolean);
   $("cfg-alertes").innerHTML = techniques.length
-    ? `<strong>Points techniques à vérifier</strong>${techniques.map((t) => `<p style="margin:6px 0 0">${esc(t)}</p>`).join("")}`
+    ? `<strong>Points techniques à vérifier</strong>${techniques.map((texte) => `<p style="margin:6px 0 0">${esc(texte)}</p>`).join("")}`
     : "";
   $("cfg-alertes").hidden = !techniques.length;
   $("btn-config").classList.toggle("a-signaler", techniques.length > 0);
@@ -879,73 +957,84 @@ async function lireTableSQL(tid) {
   }
   const meta = await metaColonnes(tid);
   if (!meta) throw new Error("table inconnue");
-  const cols = Object.keys(meta).filter((c) => c !== "id" && c !== "manualSort" && !c.startsWith("gristHelper"));
-  const sql = `SELECT id${cols.map((c) => `, "${c.replace(/"/g, '""')}"`).join("")} FROM "${tid.replace(/"/g, '""')}"`;
-  const t0 = performance.now();
-  const r = await fetch(
+  const colonnes = Object.keys(meta).filter(
+    (colonne) => colonne !== "id" && colonne !== "manualSort" && !colonne.startsWith("gristHelper"),
+  );
+  const sql = `SELECT id${colonnes.map((colonne) => `, "${colonne.replace(/"/g, '""')}"`).join("")} FROM "${tid.replace(/"/g, '""')}"`;
+  const debut = performance.now();
+  const reponse = await fetch(
     `${etatSaisie.jetonSQL.baseUrl}/sql?q=${encodeURIComponent(sql)}&auth=${encodeURIComponent(etatSaisie.jetonSQL.token)}`,
   );
-  if (r.status === 401 || r.status === 403) {
-    etatSaisie.sqlRefuse = `lecture SQL refusée (${r.status})`;
+  if (reponse.status === 401 || reponse.status === 403) {
+    etatSaisie.sqlRefuse = `lecture SQL refusée (${reponse.status})`;
     throw new Error(etatSaisie.sqlRefuse);
   }
-  if (!r.ok) throw new Error(`lecture SQL : erreur ${r.status}`);
-  const recs = (await r.json()).records || [];
+  if (!reponse.ok) throw new Error(`lecture SQL : erreur ${reponse.status}`);
+  const recs = (await reponse.json()).records || [];
   // valeurs telles que les donnerait fetchTable : cases à cocher en booléens, listes au format ["L", …]
-  const conv = cols.map((c) => {
-    const ty = typeBase(meta[c].type);
-    if (ty === "Bool") return (v) => (v == null ? v : !!v);
-    if (ty === "ChoiceList" || ty === "RefList" || ty === "Attachments")
-      return (v) => {
-        if (typeof v !== "string" || !v.startsWith("[")) return v;
+  const conv = colonnes.map((colonne) => {
+    const typeColonne = typeBase(meta[colonne].type);
+    if (typeColonne === "Bool") return (valeur) => (valeur == null ? valeur : !!valeur);
+    if (typeColonne === "ChoiceList" || typeColonne === "RefList" || typeColonne === "Attachments")
+      return (valeur) => {
+        if (typeof valeur !== "string" || !valeur.startsWith("[")) return valeur;
         try {
-          return ["L", ...JSON.parse(v)];
+          return ["L", ...JSON.parse(valeur)];
         } catch (_) {
-          return v;
+          return valeur;
         }
       };
-    return (v) => v;
+    return (valeur) => valeur;
   });
-  const t = { id: recs.map((x) => x.fields.id) };
-  cols.forEach((c, k) => {
-    t[c] = recs.map((x) => conv[k](x.fields[c]));
+  const tableLue = { id: recs.map((enregistrement) => enregistrement.fields.id) };
+  colonnes.forEach((colonne, k) => {
+    tableLue[colonne] = recs.map((enregistrement) => conv[k](enregistrement.fields[colonne]));
   });
-  Donnees.noterLecture(`${tid} (SQL)`, t0);
-  return t;
+  Donnees.noterLecture(`${tid} (SQL)`, debut);
+  return tableLue;
 }
 const lireTableRapide = (tid) =>
-  lireTableSQL(tid).catch((e) => {
-    if (!etatSaisie.sqlRefuse) console.warn(`Lecture SQL de ${tid} impossible`, e);
+  lireTableSQL(tid).catch((erreur) => {
+    if (!etatSaisie.sqlRefuse) console.warn(`Lecture SQL de ${tid} impossible`, erreur);
     return Donnees.lire(tid);
   });
 function lireTableReference(tid) {
-  const c = cacheTables.get(tid);
-  if (c && Date.now() - c.t < 600000) return c.p;
+  const entreeCache = cacheTables.get(tid);
+  if (entreeCache && Date.now() - entreeCache.t < 600000) return entreeCache.p;
   // la table des réponses est déjà reçue du widget : pas de relecture
-  const p =
+  const promesseTable =
     tid === etatSaisie.tableId && etatSaisie.enregistrements.length
       ? Promise.resolve(tableDepuisEnregistrements())
       : lireTableRapide(tid);
-  cacheTables.set(tid, { t: Date.now(), p });
-  p.catch(() => cacheTables.delete(tid));
-  return p;
+  cacheTables.set(tid, { t: Date.now(), p: promesseTable });
+  promesseTable.catch(() => cacheTables.delete(tid));
+  return promesseTable;
 }
 function tableDepuisEnregistrements() {
-  const cols = new Set(["id"]);
-  for (const l of etatSaisie.enregistrements.slice(0, 50)) Object.keys(l).forEach((k) => cols.add(k));
-  const t = {};
-  for (const c of cols) t[c] = etatSaisie.enregistrements.map((l) => l[c]);
-  return t;
+  const colonnes = new Set(["id"]);
+  for (const enregistrement of etatSaisie.enregistrements.slice(0, 50))
+    Object.keys(enregistrement).forEach((k) => colonnes.add(k));
+  const table = {};
+  for (const colonne of colonnes)
+    table[colonne] = etatSaisie.enregistrements.map((enregistrement) => enregistrement[colonne]);
+  return table;
 }
 async function libellesTable(tid, colAffichee) {
-  const t = await lireTableReference(tid);
-  const cols = Object.keys(t).filter((c) => c !== "id" && c !== "manualSort" && !c.startsWith("gristHelper"));
-  const texte = (c) => (t[c] || []).some((v) => typeof v === "string" && v.trim());
-  const c =
-    cols.find((x) => /^(nom|libelle|intitule)(_|$)/.test(normaliser(x).replace(/ /g, "_")) && texte(x)) ||
-    (colAffichee && t[colAffichee] ? colAffichee : null) ||
-    cols.find(texte);
-  return new Map(t.id.map((id, i) => [id, c ? String(t[c][i] ?? "") : ""]));
+  const tableReference = await lireTableReference(tid);
+  const colonnes = Object.keys(tableReference).filter(
+    (colonne) => colonne !== "id" && colonne !== "manualSort" && !colonne.startsWith("gristHelper"),
+  );
+  const texte = (colonne) =>
+    (tableReference[colonne] || []).some((valeur) => typeof valeur === "string" && valeur.trim());
+  const colonneLibelle =
+    colonnes.find(
+      (colonne) => /^(nom|libelle|intitule)(_|$)/.test(normaliser(colonne).replace(/ /g, "_")) && texte(colonne),
+    ) ||
+    (colAffichee && tableReference[colAffichee] ? colAffichee : null) ||
+    colonnes.find(texte);
+  return new Map(
+    tableReference.id.map((id, i) => [id, colonneLibelle ? String(tableReference[colonneLibelle][i] ?? "") : ""]),
+  );
 }
 async function resoudreRefsEtab() {
   let meta = null;
@@ -956,21 +1045,24 @@ async function resoudreRefsEtab() {
   const colsPerimetre =
     etatSaisie.perimetreBrut && !Array.isArray(etatSaisie.perimetreBrut) ? Object.keys(etatSaisie.perimetreBrut) : [];
   for (const colId of new Set(
-    [...Object.values(E), colonneRegion(), ...S().fiche.map((f) => colonneChampFiche(f.col)), ...colsPerimetre].filter(
-      Boolean,
-    ),
+    [
+      ...Object.values(colonnesEtab),
+      colonneRegion(),
+      ...reglagesSaisie().fiche.map((champFiche) => colonneChampFiche(champFiche.col)),
+      ...colsPerimetre,
+    ].filter(Boolean),
   )) {
-    const def = meta[colId];
-    if (!def || typeBase(def.type) !== "Ref") continue;
+    const metaColonne = meta[colId];
+    if (!metaColonne || typeBase(metaColonne.type) !== "Ref") continue;
     let libelles;
     try {
-      libelles = await libellesTable(def.type.split(":")[1], def.colAffichee);
+      libelles = await libellesTable(metaColonne.type.split(":")[1], metaColonne.colAffichee);
     } catch (_) {
       continue;
     } // table illisible : numéro conservé
-    for (const e of etatSaisie.etabs) {
-      const v = e[colId];
-      if (typeof v === "number") e[colId] = v ? libelles.get(v) || "" : "";
+    for (const etablissement of etatSaisie.etabs) {
+      const valeur = etablissement[colId];
+      if (typeof valeur === "number") etablissement[colId] = valeur ? libelles.get(valeur) || "" : "";
     }
   }
 }
@@ -981,7 +1073,7 @@ async function rafraichirEtabs(forcer) {
     return; // copie du navigateur encore valable
   try {
     await chargerEtabs();
-  } catch (e) {
-    console.warn("Référentiel illisible", e);
+  } catch (erreur) {
+    console.warn("Référentiel illisible", erreur);
   }
 }

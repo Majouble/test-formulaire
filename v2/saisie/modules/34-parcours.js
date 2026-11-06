@@ -6,14 +6,14 @@
    étapes, marques « modifié », proposition du signalement en cours, confirmation
    ========================================================= */
 const JOURS_EN_COURS = 7; // un signalement dont les faits datent de moins de 7 jours est « en cours » (sauf s'il est clos)
-function montrerVue(v) {
-  etatSaisie.vue = v;
-  $("accueil").hidden = v !== "accueil";
-  $("vue-saisie").hidden = v !== "saisie";
-  document.body.classList.toggle("vue-accueil", v === "accueil");
-  document.body.classList.toggle("vue-saisie", v === "saisie");
+function montrerVue(vue) {
+  etatSaisie.vue = vue;
+  $("accueil").hidden = vue !== "accueil";
+  $("vue-saisie").hidden = vue !== "saisie";
+  document.body.classList.toggle("vue-accueil", vue === "accueil");
+  document.body.classList.toggle("vue-saisie", vue === "saisie");
   fermerMenuActions();
-  if (v === "accueil") {
+  if (vue === "accueil") {
     cacherConfirmation();
     afficherCartes();
   }
@@ -68,8 +68,8 @@ $("btn-retour-liste").addEventListener("click", () => {
 
 // ---------- Liste des signalements de l'accueil (cartes)
 function afficherCartes() {
-  const ul = $("cartes-signalements");
-  if (!ul) return;
+  const listeCartes = $("cartes-signalements");
+  if (!listeCartes) return;
   if (!etatSaisie.indexRecherche) construireIndexRecherche();
   $("titre-liste").textContent = etatSaisie.modeEtab ? "Vos signalements" : "Signalements";
   $("porte-nouveau-texte").textContent = etatSaisie.modeEtab
@@ -81,20 +81,20 @@ function afficherCartes() {
   majBandeauVisa();
   majBandeauCampagne();
   majBandeauVeille();
-  const q = $("recherche-signalements").value.trim(),
-    mots = sansAccent(q).split(/\s+/).filter(Boolean);
+  const recherche = $("recherche-signalements").value.trim(),
+    mots = sansAccent(recherche).split(/\s+/).filter(Boolean);
   const base0 = etatSaisie.fileVisa
-    ? etatSaisie.indexRecherche.filter((x) => aViserParMoi(x.l))
+    ? etatSaisie.indexRecherche.filter((entree) => aViserParMoi(entree.l))
     : etatSaisie.indexRecherche;
-  const base = filtreActif() ? base0.filter((x) => passeFiltre(x.l)) : base0;
-  const trouves = mots.length ? base.filter((x) => mots.every((m) => x.cle.includes(m))) : base;
-  const activite = (x) => secondes(val(x.der, "Date")) ?? jourDesFaits(x.der) ?? 0;
+  const base = filtreActif() ? base0.filter((entree) => passeFiltre(entree.l)) : base0;
+  const trouves = mots.length ? base.filter((entree) => mots.every((mot) => entree.cle.includes(mot))) : base;
+  const activite = (entree) => secondes(valeurLigne(entree.der, "Date")) ?? jourDesFaits(entree.der) ?? 0;
   const tries = [...trouves].sort((a, b) => activite(b) - activite(a) || b.l.id - a.l.id);
-  const cD = col("Dossier"),
-    nb = new Map();
-  for (const l of etatSaisie.enregistrements) {
-    const d = refId(cD && l[cD]) || l.id;
-    nb.set(d, (nb.get(d) || 0) + 1);
+  const colonneDossier = colonneDe("Dossier"),
+    nombreVersionsParDossier = new Map();
+  for (const ligne of etatSaisie.enregistrements) {
+    const dossierId = refId(colonneDossier && ligne[colonneDossier]) || ligne.id;
+    nombreVersionsParDossier.set(dossierId, (nombreVersionsParDossier.get(dossierId) || 0) + 1);
   }
   const total = base0.length;
   $("titre-liste").textContent = etatSaisie.fileVisa ? "Dossiers à viser" : $("titre-liste").textContent;
@@ -103,71 +103,75 @@ function afficherCartes() {
     : trouves.length === total
       ? `${total} signalement${total > 1 ? "s" : ""}`
       : `${trouves.length} sur ${total}`;
-  const styleQ = (v) => {
-    const c = (etatSaisie.couleurs || {})[v] || {};
-    return c.fillColor ? ` style="--c:${c.textColor || "#161616"};--c-bg:${c.fillColor}"` : "";
+  const styleQ = (qualification) => {
+    const couleur = (etatSaisie.couleurs || {})[qualification] || {};
+    return couleur.fillColor ? ` style="--c:${couleur.textColor || "#161616"};--c-bg:${couleur.fillColor}"` : "";
   };
-  ul.innerHTML =
+  listeCartes.innerHTML =
     tries
       .slice(0, etatSaisie.nbCartes)
-      .map((x) => {
+      .map((entree) => {
         const titre = etatSaisie.modeEtab
-          ? `Signalement n° ${x.l.id}`
-          : x.e[E.nom] || texteEtabBrut(x.l) || `Signalement n° ${x.l.id}`;
-        const n = nb.get(x.l.id) || 1,
-          clos = !!(col("Clos") && val(x.der, "Clos"));
-        const site = col("Site") ? String(val(x.der, "Site") || "").trim() : "";
-        const d =
-          secondes(val(x.der, "Date")) != null
-            ? dateFr(val(x.der, "Date"), { ...(etatSaisie.metaDate || {}), type: "Date" })
+          ? `Signalement n° ${entree.l.id}`
+          : entree.e[colonnesEtab.nom] || texteEtabBrut(entree.l) || `Signalement n° ${entree.l.id}`;
+        const nombreVersions = nombreVersionsParDossier.get(entree.l.id) || 1,
+          clos = !!(colonneDe("Clos") && valeurLigne(entree.der, "Clos"));
+        const site = colonneDe("Site") ? String(valeurLigne(entree.der, "Site") || "").trim() : "";
+        const dateSaisie =
+          secondes(valeurLigne(entree.der, "Date")) != null
+            ? dateFr(valeurLigne(entree.der, "Date"), { ...(etatSaisie.metaDate || {}), type: "Date" })
             : "";
-        const jf =
-          !d && secondes(val(x.der, "Date_faits")) != null ? dateFr(val(x.der, "Date_faits"), { type: "Date" }) : "";
+        const dateFaitsTexte =
+          !dateSaisie && secondes(valeurLigne(entree.der, "Date_faits")) != null
+            ? dateFr(valeurLigne(entree.der, "Date_faits"), { type: "Date" })
+            : "";
         const meta = [
-          !etatSaisie.modeEtab && x.e[E.commune],
-          `n° ${x.l.id}`,
+          !etatSaisie.modeEtab && entree.e[colonnesEtab.commune],
+          `n° ${entree.l.id}`,
           site && `site « ${site} »`,
-          d ? `dernière saisie le ${d}` : jf && `faits du ${jf}`,
-          n > 1 ? `${n - 1} mise${n > 2 ? "s" : ""} à jour` : "aucune mise à jour",
-        ].filter((v) => v && typeof v !== "object");
-        const extrait = String(val(x.der, "Description") || "")
+          dateSaisie ? `dernière saisie le ${dateSaisie}` : dateFaitsTexte && `faits du ${dateFaitsTexte}`,
+          nombreVersions > 1
+            ? `${nombreVersions - 1} mise${nombreVersions > 2 ? "s" : ""} à jour`
+            : "aucune mise à jour",
+        ].filter((morceau) => morceau && typeof morceau !== "object");
+        const extrait = String(valeurLigne(entree.der, "Description") || "")
           .replace(/\*\*|==/g, "")
           .replace(/\s+/g, " ")
           .slice(0, 140);
-        const stC = !etatSaisie.modeEtab ? statutDe(x.der) : "",
-          svC = stC && (window.Socle.STATUTS_VALIDATION || []).find((y) => y.nom === stC);
+        const stC = !etatSaisie.modeEtab ? statutDe(entree.der) : "",
+          svC = stC && (window.Socle.STATUTS_VALIDATION || []).find((statutValidation) => statutValidation.nom === stC);
         const qualifs =
-          listeQualif(val(x.der, "Qualification"))
-            .map((v) => `<span class="pastille"${styleQ(v)}>${esc(v)}</span>`)
+          listeQualif(valeurLigne(entree.der, "Qualification"))
+            .map((qualification) => `<span class="pastille"${styleQ(qualification)}>${esc(qualification)}</span>`)
             .join("") +
           (stC
             ? `<span class="pastille pastille-statut"${svC ? ` style="--c:${svC.texte};--c-bg:${svC.fond}"` : ""} title="Statut de validation">${esc(stC)}</span>`
             : "");
-        return `<li><button type="button" class="carte-sig" data-id="${x.l.id}"${bandeCouleur(x.l)}>
+        return `<li><button type="button" class="carte-sig" data-id="${entree.l.id}"${bandeCouleur(entree.l)}>
       <span class="carte-corps"><span class="carte-titre"><strong>${surligneMots(titre, mots)}</strong>${qualifs}${clos ? '<span class="badge-clos">Clos</span>' : ""}</span>
       <span class="carte-meta">${esc(meta.join(" · "))}</span>${extrait ? `<span class="carte-extrait">${surligneMots(extrait, mots)}</span>` : ""}</span>
       <span class="carte-fleche" aria-hidden="true">›</span></button></li>`;
       })
       .join("") ||
-    `<li class="vide">${total ? `Aucun signalement ne correspond${q ? ` à « ${esc(q)} »` : " au filtre"}.` : etatSaisie.fileVisa ? "Aucun dossier à viser dans votre périmètre." : "Aucun signalement pour l'instant."}</li>`;
+    `<li class="vide">${total ? `Aucun signalement ne correspond${recherche ? ` à « ${esc(recherche)} »` : " au filtre"}.` : etatSaisie.fileVisa ? "Aucun dossier à viser dans votre périmètre." : "Aucun signalement pour l'instant."}</li>`;
   $("plus-cartes").hidden = tries.length <= etatSaisie.nbCartes;
 }
-$("cartes-signalements").addEventListener("click", (ev) => {
-  const b = ev.target.closest(".carte-sig");
-  if (b) ouvrirDepuisListe(+b.dataset.id);
+$("cartes-signalements").addEventListener("click", (evenement) => {
+  const carte = evenement.target.closest(".carte-sig");
+  if (carte) ouvrirDepuisListe(+carte.dataset.id);
 });
-$("cartes-signalements").addEventListener("keydown", (ev) => {
-  if (ev.key !== "ArrowDown" && ev.key !== "ArrowUp") return;
+$("cartes-signalements").addEventListener("keydown", (evenement) => {
+  if (evenement.key !== "ArrowDown" && evenement.key !== "ArrowUp") return;
   const cartes = [...$("cartes-signalements").querySelectorAll(".carte-sig")],
     i = cartes.indexOf(document.activeElement);
   if (i < 0) return;
-  ev.preventDefault();
-  if (ev.key === "ArrowUp" && i === 0) {
+  evenement.preventDefault();
+  if (evenement.key === "ArrowUp" && i === 0) {
     $("recherche-signalements").focus();
     return;
   }
-  const c = cartes[Math.max(0, Math.min(cartes.length - 1, i + (ev.key === "ArrowDown" ? 1 : -1)))];
-  if (c) c.focus();
+  const carteVoisine = cartes[Math.max(0, Math.min(cartes.length - 1, i + (evenement.key === "ArrowDown" ? 1 : -1)))];
+  if (carteVoisine) carteVoisine.focus();
 });
 $("plus-cartes").addEventListener("click", () => {
   etatSaisie.nbCartes += 30;
@@ -176,14 +180,14 @@ $("plus-cartes").addEventListener("click", () => {
 
 // ---------- Bandeau de mode (nouveau / mise à jour / clos) et menu « Autres actions »
 const dossierClos = () =>
-  !!(col("Clos") && etatSaisie.dossierId && etatSaisie.derniere && val(etatSaisie.derniere, "Clos"));
+  !!(colonneDe("Clos") && etatSaisie.dossierId && etatSaisie.derniere && valeurLigne(etatSaisie.derniere, "Clos"));
 function majModeSaisie() {
   const maj = !!(etatSaisie.dossierId && etatSaisie.initiale),
     clos = maj && dossierClos(),
-    b = document.body;
-  b.classList.toggle("mode-nouveau", !maj);
-  b.classList.toggle("mode-maj", maj);
-  b.classList.toggle("mode-clos", clos);
+    corpsDocument = document.body;
+  corpsDocument.classList.toggle("mode-nouveau", !maj);
+  corpsDocument.classList.toggle("mode-maj", maj);
+  corpsDocument.classList.toggle("mode-clos", clos);
   $("etiquette-mode").hidden = !maj;
   $("etiquette-mode").textContent = maj
     ? `Mise à jour · dossier n° ${etatSaisie.dossierId}${clos ? " · clos" : ""}`
@@ -197,8 +201,8 @@ function majModeSaisie() {
       : "Trois étapes : l'établissement, les faits, puis la description. Un dossier sera créé à l'enregistrement.";
   $("libelle-etape-etab").textContent =
     maj || etatSaisie.modeEtab ? "Établissement" : "Quel établissement est concerné ?";
-  $("act-clore").hidden = !(maj && col("Clos"));
-  $("act-reporter").hidden = !(maj && col("Date_faits") && S().plusieursJours && !faitsAvecHeure());
+  $("act-clore").hidden = !(maj && colonneDe("Clos"));
+  $("act-reporter").hidden = !(maj && colonneDe("Date_faits") && reglagesSaisie().plusieursJours && !faitsAvecHeure());
   $("act-clore-titre").textContent = clos ? "Rouvrir le signalement" : "Clore le signalement";
   $("act-clore-texte").textContent = clos ? "La situation reprend" : "La situation est terminée";
   majMarquesModif();
@@ -215,20 +219,22 @@ $("btn-autres").addEventListener("click", () => {
   $("btn-autres").setAttribute("aria-expanded", String(ouvrir));
   if (ouvrir) $("act-corriger").focus();
 });
-$("liste-actions").addEventListener("keydown", (ev) => {
-  const items = [...$("liste-actions").querySelectorAll('[role="menuitem"]')].filter((x) => !x.hidden),
+$("liste-actions").addEventListener("keydown", (evenement) => {
+  const items = [...$("liste-actions").querySelectorAll('[role="menuitem"]')].filter(
+      (elementMenu) => !elementMenu.hidden,
+    ),
     i = items.indexOf(document.activeElement);
-  if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
-    ev.preventDefault();
-    const k = (i + (ev.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+  if (evenement.key === "ArrowDown" || evenement.key === "ArrowUp") {
+    evenement.preventDefault();
+    const k = (i + (evenement.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
     items[k].focus();
-  } else if (ev.key === "Escape") {
-    ev.preventDefault();
+  } else if (evenement.key === "Escape") {
+    evenement.preventDefault();
     fermerMenuActions(true);
-  } else if (ev.key === "Tab") fermerMenuActions(false);
+  } else if (evenement.key === "Tab") fermerMenuActions(false);
 });
-document.addEventListener("click", (ev) => {
-  if (!$("menu-actions").contains(ev.target)) fermerMenuActions(false);
+document.addEventListener("click", (evenement) => {
+  if (!$("menu-actions").contains(evenement.target)) fermerMenuActions(false);
 });
 $("act-corriger").addEventListener("click", () => {
   fermerMenuActions(false);
@@ -247,7 +253,7 @@ $("act-clore").addEventListener("click", () => {
   enFile(basculerClos);
 });
 async function basculerClos() {
-  if (!col("Clos") || !etatSaisie.derniere) return;
+  if (!colonneDe("Clos") || !etatSaisie.derniere) return;
   const clore = !dossierClos();
   if (
     clore &&
@@ -257,8 +263,8 @@ async function basculerClos() {
   )
     return;
   try {
-    await grist.getTable().update({ id: etatSaisie.derniere.id, fields: { [col("Clos")]: clore } });
-    etatSaisie.derniere[col("Clos")] = clore;
+    await grist.getTable().update({ id: etatSaisie.derniere.id, fields: { [colonneDe("Clos")]: clore } });
+    etatSaisie.derniere[colonneDe("Clos")] = clore;
     etatSaisie.indexRecherche = null;
     afficherDossier();
     confirmer(
@@ -267,8 +273,8 @@ async function basculerClos() {
         ? `Le dossier n° ${etatSaisie.dossierId} est clos. Un prochain événement dans cet établissement fera l'objet d'un nouveau signalement.`
         : `Le dossier n° ${etatSaisie.dossierId} est de nouveau en cours.`,
     );
-  } catch (e) {
-    statut("statut-signalement", `Échec : ${e.message || e}.`, "err");
+  } catch (erreur) {
+    statut("statut-signalement", `Échec : ${erreur.message || erreur}.`, "err");
   }
 }
 
@@ -277,40 +283,45 @@ function planifierMarques() {
   etatSaisie.minuterieMarques = setTimeout(majMarquesModif, 0);
 }
 function majMarquesModif() {
-  document.querySelectorAll("#form-signalement .modifie").forEach((el) => el.classList.remove("modifie"));
+  document
+    .querySelectorAll("#form-signalement .modifie")
+    .forEach((champModifie) => champModifie.classList.remove("modifie"));
   const recap = $("recap-modifs");
   if (!etatSaisie.dossierId || !etatSaisie.derniere) {
     recap.hidden = true;
     return;
   }
   const noms = [],
-    marquer = (el, nom) => {
-      if (el) el.classList.add("modifie");
+    marquer = (cible, nom) => {
+      if (cible) cible.classList.add("modifie");
       noms.push(nom);
     };
-  const tri = (v) => listeQualif(v).map(String).sort().join("|");
-  if (col("Qualification") && tri(lireQualificationInitiale()) !== tri(val(etatSaisie.derniere, "Qualification")))
+  const tri = (valeur) => listeQualif(valeur).map(String).sort().join("|");
+  if (
+    colonneDe("Qualification") &&
+    tri(lireQualificationInitiale()) !== tri(valeurLigne(etatSaisie.derniere, "Qualification"))
+  )
     marquer(
       $("qualifs-initiales").closest("fieldset"),
-      (etatSaisie.metaSig[col("Qualification")] || {}).libelle || "Qualification",
+      (etatSaisie.metaSig[colonneDe("Qualification")] || {}).libelle || "Qualification",
     );
-  if (col("Site") && $("site").value.trim() !== String(val(etatSaisie.derniere, "Site") || "").trim())
+  if (colonneDe("Site") && $("site").value.trim() !== String(valeurLigne(etatSaisie.derniere, "Site") || "").trim())
     marquer($("bloc-site"), "Site / bâtiment");
-  for (const def of etatSaisie.defsQuestions) {
-    if (def.formule) continue;
-    const bloc = document.querySelector(`[data-champ="q-${def.colId}"]`);
+  for (const question of etatSaisie.defsQuestions) {
+    if (question.formule) continue;
+    const bloc = document.querySelector(`[data-champ="q-${question.colId}"]`);
     if (!bloc || bloc.hidden) continue;
-    if (!memeReponse(def, lireUnChamp("q", def), etatSaisie.derniere[def.colId]))
-      marquer(bloc, def.libelle || def.colId);
+    if (!memeReponse(question, lireUnChamp("q", question), etatSaisie.derniere[question.colId]))
+      marquer(bloc, question.libelle || question.colId);
   }
-  const sansMention = (t) =>
-    String(t || "")
+  const sansMention = (texte) =>
+    String(texte || "")
       .replace(MOTIF_MOBILISATION, "")
       .replace(/\s+/g, " ")
       .trim();
   if (
-    col("Description") &&
-    sansMention($("description").value) !== sansMention(val(etatSaisie.derniere, "Description"))
+    colonneDe("Description") &&
+    sansMention($("description").value) !== sansMention(valeurLigne(etatSaisie.derniere, "Description"))
   )
     marquer($("description").closest(".champ"), "Description");
   recap.hidden = false;
@@ -319,20 +330,24 @@ function majMarquesModif() {
     ? `${noms.length} modification${noms.length > 1 ? "s" : ""} depuis l'étape précédente : ${noms.join(", ")}.`
     : "Aucune modification pour l'instant : modifiez ce qui a changé.";
 }
-["input", "change", "click"].forEach((t) =>
-  $("form-signalement").addEventListener(t, (ev) => {
+["input", "change", "click"].forEach((typeEvenement) =>
+  $("form-signalement").addEventListener(typeEvenement, (evenement) => {
     planifierMarques();
-    if (t !== "click" && ev.isTrusted) cacherConfirmation();
+    if (typeEvenement !== "click" && evenement.isTrusted) cacherConfirmation();
   }),
 );
 
 // ---------- Établissement : résumé d'une ligne, fiche dépliable, création sur demande, signalement en cours
-function resumeEtabHtml(e) {
-  const reste = [e[E.type], e[E.commune], e[E.uai]]
-    .filter((v) => v && typeof v !== "object")
-    .map((v) => esc(v))
+function resumeEtabHtml(ligneEtablissement) {
+  const reste = [
+    ligneEtablissement[colonnesEtab.type],
+    ligneEtablissement[colonnesEtab.commune],
+    ligneEtablissement[colonnesEtab.uai],
+  ]
+    .filter((valeur) => valeur && typeof valeur !== "object")
+    .map((valeur) => esc(valeur))
     .join(" · ");
-  return `<strong>${esc(e[E.nom] || "")}</strong>${reste ? ` <span class="meta">· ${reste}</span>` : ""}`;
+  return `<strong>${esc(ligneEtablissement[colonnesEtab.nom] || "")}</strong>${reste ? ` <span class="meta">· ${reste}</span>` : ""}`;
 }
 function majResumeEtab() {
   const connu = !!etatSaisie.etabCourant;
@@ -365,24 +380,29 @@ $("btn-creer-etab").addEventListener("click", () => {
 });
 function dossiersEnCours(etabId) {
   if (!etabId) return [];
-  const cD = col("Dossier"),
+  const colonneDossier = colonneDe("Dossier"),
     dern = new Map(),
-    nb = new Map();
-  for (const l of etatSaisie.enregistrements) {
-    if (refId(val(l, "Etablissement")) !== etabId) continue;
-    const d = refId(cD && l[cD]) || l.id;
-    nb.set(d, (nb.get(d) || 0) + 1);
-    const p = dern.get(d);
-    if (!p || comparerVersions(p, l) < 0) dern.set(d, l);
+    nombreVersionsParDossier = new Map();
+  for (const ligne of etatSaisie.enregistrements) {
+    if (refId(valeurLigne(ligne, "Etablissement")) !== etabId) continue;
+    const dossierId = refId(colonneDossier && ligne[colonneDossier]) || ligne.id;
+    nombreVersionsParDossier.set(dossierId, (nombreVersionsParDossier.get(dossierId) || 0) + 1);
+    const derniereConnue = dern.get(dossierId);
+    if (!derniereConnue || comparerVersions(derniereConnue, ligne) < 0) dern.set(dossierId, ligne);
   }
   const limite = Date.now() / 1000 - JOURS_EN_COURS * 86400;
   return [...dern]
     .filter(
-      ([, l]) =>
-        !(col("Clos") && val(l, "Clos")) &&
-        ((jourDesFaits(l) ?? 0) >= limite || (secondes(val(l, "Date")) ?? 0) >= limite),
+      ([, ligne]) =>
+        !(colonneDe("Clos") && valeurLigne(ligne, "Clos")) &&
+        ((jourDesFaits(ligne) ?? 0) >= limite || (secondes(valeurLigne(ligne, "Date")) ?? 0) >= limite),
     )
-    .map(([d, l]) => ({ d, l, n: nb.get(d) || 1, initiale: etatSaisie.enregistrements.find((x) => x.id === d) || l }))
+    .map(([dossierId, ligne]) => ({
+      d: dossierId,
+      l: ligne,
+      n: nombreVersionsParDossier.get(dossierId) || 1,
+      initiale: etatSaisie.enregistrements.find((enregistrement) => enregistrement.id === dossierId) || ligne,
+    }))
     .sort((a, b) => comparerVersions(b.l, a.l));
 }
 function majProposition() {
@@ -399,15 +419,17 @@ function majProposition() {
     bloc.innerHTML = "";
     return;
   }
-  const ligne = (x) => {
-    const debut = jourDesFaits(x.initiale),
-      q = listeQualif(val(x.l, "Qualification")).join(", ");
-    return `Dossier n° ${x.d}${q ? " · " + q : ""}${debut != null ? " · du " + jourFaits(debut) : ""} · ${x.n > 1 ? `${x.n - 1} mise${x.n > 2 ? "s" : ""} à jour` : "aucune mise à jour"}`;
+  const ligne = (dossierPropose) => {
+    const debut = jourDesFaits(dossierPropose.initiale),
+      qualificationsTexte = listeQualif(valeurLigne(dossierPropose.l, "Qualification")).join(", ");
+    return `Dossier n° ${dossierPropose.d}${qualificationsTexte ? " · " + qualificationsTexte : ""}${debut != null ? " · du " + jourFaits(debut) : ""} · ${dossierPropose.n > 1 ? `${dossierPropose.n - 1} mise${dossierPropose.n > 2 ? "s" : ""} à jour` : "aucune mise à jour"}`;
   };
   // Un dossier par jour : celui du même jour s'actualise ; celui d'un jour précédent sert de point de départ
   const jour = jourDuFormulaire(),
-    memeJour = liste.filter((x) => versionsDe(x.d).some((l) => jourDeLaVersion(l) === jour)),
-    avant = liste.filter((x) => !memeJour.includes(x));
+    memeJour = liste.filter((dossierPropose) =>
+      versionsDe(dossierPropose.d).some((version) => jourDeLaVersion(version) === jour),
+    ),
+    avant = liste.filter((dossierPropose) => !memeJour.includes(dossierPropose));
   // formulaire par site, reprise désactivée : rien à reprendre des jours précédents (seul le signalement du même jour est proposé)
   if (!memeJour.length && formulaireParSite() && modeRepriseSites() === "non") {
     bloc.hidden = true;
@@ -420,8 +442,8 @@ function majProposition() {
       <ul>${memeJour
         .slice(0, 3)
         .map(
-          (x) => `<li><span>${esc(ligne(x))}</span>
-        <button type="button" class="maj-plein petit" data-actualiser="${x.d}">Actualiser ce signalement</button></li>`,
+          (dossierPropose) => `<li><span>${esc(ligne(dossierPropose))}</span>
+        <button type="button" class="maj-plein petit" data-actualiser="${dossierPropose.d}">Actualiser ce signalement</button></li>`,
         )
         .join("")}</ul>
       <p class="note">S'il s'agit des mêmes faits, actualisez-le plutôt que d'en créer un nouveau.</p>
@@ -430,8 +452,8 @@ function majProposition() {
       <ul>${avant
         .slice(0, 3)
         .map(
-          (x) => `<li><span>${esc(ligne(x))}</span>
-        <button type="button" class="maj-plein petit" data-reprendre="${x.d}">${formulaireParSite() ? "Reprendre ses sites" : "Reprendre ses réponses"}</button></li>`,
+          (dossierPropose) => `<li><span>${esc(ligne(dossierPropose))}</span>
+        <button type="button" class="maj-plein petit" data-reprendre="${dossierPropose.d}">${formulaireParSite() ? "Reprendre ses sites" : "Reprendre ses réponses"}</button></li>`,
         )
         .join("")}</ul>
       <p class="note">Un signalement par jour : celui du ${esc(jour)} sera un nouveau dossier. ${
@@ -441,14 +463,14 @@ function majProposition() {
       }</p>
       <button type="button" class="maj-contour petit" data-autre-evenement="1">Partir d'un formulaire vide</button>`;
 }
-$("proposition-encours").addEventListener("click", (ev) => {
-  const b = ev.target.closest("button");
-  if (!b) return;
-  if (b.dataset.actualiser) {
+$("proposition-encours").addEventListener("click", (evenement) => {
+  const bouton = evenement.target.closest("button");
+  if (!bouton) return;
+  if (bouton.dataset.actualiser) {
     etatSaisie.modifie = etatSaisie.modifieVisa = false;
-    ouvrirDepuisListe(+b.dataset.actualiser);
-  } else if (b.dataset.reprendre) enFile(() => reprendreReponses(+b.dataset.reprendre));
-  else if (b.dataset.autreEvenement) {
+    ouvrirDepuisListe(+bouton.dataset.actualiser);
+  } else if (bouton.dataset.reprendre) enFile(() => reprendreReponses(+bouton.dataset.reprendre));
+  else if (bouton.dataset.autreEvenement) {
     etatSaisie.propositionMasquee = etatSaisie.etabCourant ? etatSaisie.etabCourant.id : null;
     // vaut confirmation qu'il s'agit de faits distincts : l'alerte « même jour » ne redemande pas
     if (typeof cleDoublon === "function") {
@@ -462,34 +484,34 @@ $("proposition-encours").addEventListener("click", (ev) => {
 
 // ---------- Confirmation après enregistrement
 function confirmer(titre, texte, avecLien) {
-  const c = $("confirmation");
-  c.innerHTML = `<div class="conf-tete"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M7 12.5l3.2 3.2L17 9"></path></svg>
+  const blocConfirmation = $("confirmation");
+  blocConfirmation.innerHTML = `<div class="conf-tete"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M7 12.5l3.2 3.2L17 9"></path></svg>
     <strong>${esc(titre)}</strong></div><p>${esc(texte)}</p>
     <div class="conf-actions"><button type="button" class="primaire petit" data-conf="liste">Revenir à la liste</button>
       <button type="button" class="secondaire petit" data-conf="nouveau">Nouveau signalement</button>
       ${avecLien ? `<button type="button" class="secondaire petit" data-conf="lien">Transmettre le lien à l'établissement</button>` : ""}
       <button type="button" class="lien-texte" data-conf="fermer">Continuer sur ce signalement</button></div>`;
-  c.hidden = false;
+  blocConfirmation.hidden = false;
   if (etatSaisie.vue === "saisie") {
-    c.scrollIntoView({ block: "start" });
-    c.focus({ preventScroll: true });
+    blocConfirmation.scrollIntoView({ block: "start" });
+    blocConfirmation.focus({ preventScroll: true });
   }
 }
 function cacherConfirmation() {
-  const c = $("confirmation");
-  if (c && !c.hidden) {
-    c.hidden = true;
-    c.innerHTML = "";
+  const blocConfirmation = $("confirmation");
+  if (blocConfirmation && !blocConfirmation.hidden) {
+    blocConfirmation.hidden = true;
+    blocConfirmation.innerHTML = "";
   }
 }
-$("confirmation").addEventListener("click", (ev) => {
-  const b = ev.target.closest("[data-conf]");
-  if (!b) return;
-  const a = b.dataset.conf;
-  if (a === "liste") {
+$("confirmation").addEventListener("click", (evenement) => {
+  const bouton = evenement.target.closest("[data-conf]");
+  if (!bouton) return;
+  const action = bouton.dataset.conf;
+  if (action === "liste") {
     if (abandonAccepte()) montrerVue("accueil");
-  } else if (a === "nouveau") allerNouveau();
-  else if (a === "lien") {
+  } else if (action === "nouveau") allerNouveau();
+  else if (action === "lien") {
     cacherConfirmation();
     $("bloc-contact").open = true;
     $("bloc-contact").scrollIntoView({ block: "center" });

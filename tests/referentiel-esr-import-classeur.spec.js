@@ -76,7 +76,7 @@ if (require.main === module) (async () => {
   const optionsSite = async () => { await p2.click('[data-action=ajouter]'); await p2.waitForTimeout(300);
     await p2.focus('.ligne-rep:last-child .site-txt'); await p2.waitForTimeout(200);
     return p2.$$eval('.ligne-rep:last-child .site-sugg li', l => l.map(x => x.textContent.replace(/\s+/g, ' ').trim()).join(', ')); };
-  const etabChoisi = () => p2.evaluate(() => etatSaisie.etabCourant ? etatSaisie.etabCourant[E.nom] : null);
+  const etabChoisi = () => p2.evaluate(() => etatSaisie.etabCourant ? etatSaisie.etabCourant[colonnesEtab.nom] : null);
   console.log('IUT CHOISI → DOSSIER SUR :', await etabChoisi(), '|', await texteP2('#alerte-rattachement'));
   console.log('SITES PROPOSÉS (IUT → université, sites de l\'IUT d\'abord) :', await optionsSite());
   await p2.fill('.ligne-rep:last-child .site-txt', 'halle'); await p2.waitForTimeout(200);

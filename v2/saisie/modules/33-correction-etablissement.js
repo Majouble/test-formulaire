@@ -55,47 +55,47 @@ $("btn-reaffectation-annuler").addEventListener("click", () => {
   $("btn-rattacher").focus();
 });
 // Choix dans la liste en mode rattachement : demande de confirmation
-function proposerRattachement(e) {
+function proposerRattachement(resultat) {
   fermer();
-  const existant = (e.ligne && etabDe(e.ligne.id)) || e.ligne || etabParUai(e.uai);
+  const existant = (resultat.ligne && etabDe(resultat.ligne.id)) || resultat.ligne || etabParUai(resultat.uai);
   if (existant && etatSaisie.etabCourant && existant.id === etatSaisie.etabCourant.id) {
     statut("statut-rattacher", "C'est déjà l'établissement de ce signalement.", "err");
     $("bloc-rattacher").hidden = false;
     $("btn-rattacher-ok").hidden = true;
     return;
   }
-  etatSaisie.etabPropose = existant || { suggestion: e };
-  const nomNouveau = existant ? existant[E.nom] : e.nom,
-    uaiNouveau = existant ? existant[E.uai] : e.uai;
-  const n = etatSaisie.versions.length;
+  etatSaisie.etabPropose = existant || { suggestion: resultat };
+  const nomNouveau = existant ? existant[colonnesEtab.nom] : resultat.nom,
+    uaiNouveau = existant ? existant[colonnesEtab.uai] : resultat.uai;
+  const nombreVersions = etatSaisie.versions.length;
   $("rattacher-texte").innerHTML =
-    `Rattacher le dossier n° ${etatSaisie.dossierId} (${n} version${n > 1 ? "s" : ""}) à <strong>${esc(nomNouveau || "")}</strong>${uaiNouveau ? ` (${esc(uaiNouveau)})` : ""}` +
-    ` au lieu de <strong>${esc(etatSaisie.etabCourant ? etatSaisie.etabCourant[E.nom] : "")}</strong> ?` +
+    `Rattacher le dossier n° ${etatSaisie.dossierId} (${nombreVersions} version${nombreVersions > 1 ? "s" : ""}) à <strong>${esc(nomNouveau || "")}</strong>${uaiNouveau ? ` (${esc(uaiNouveau)})` : ""}` +
+    ` au lieu de <strong>${esc(etatSaisie.etabCourant ? etatSaisie.etabCourant[colonnesEtab.nom] : "")}</strong> ?` +
     (existant ? "" : " Cet établissement sera ajouté au référentiel.");
   $("btn-rattacher-ok").hidden = false;
   statut("statut-rattacher", "");
   $("bloc-rattacher").hidden = false;
   $("btn-rattacher-ok").focus();
 }
-async function creerEtabDepuisSuggestion(e) {
+async function creerEtabDepuisSuggestion(suggestion) {
   await chargerEtabs();
-  const deja = etabParUai(e.uai);
+  const deja = etabParUai(suggestion.uai);
   if (deja) return deja.id;
   const candidats = {
-    [E.nom]: e.nom || "",
-    [E.uai]: String(e.uai || "").toUpperCase(),
-    [E.type]: e.type || "",
-    [E.academie]: e.academie || "",
-    [E.departement]: e.departement || "",
-    [E.commune]: e.commune || "",
-    [E.mail]: e.mail || "",
-    [E.mailAnnuaire]: e.mail || "",
-    [E.origine]: (typeof ORIGINE !== "undefined" && (ORIGINE[e.source] || ORIGINE.manuel)) || "",
-    [E.present]: e.source && e.source !== "local" ? true : null,
+    [colonnesEtab.nom]: suggestion.nom || "",
+    [colonnesEtab.uai]: String(suggestion.uai || "").toUpperCase(),
+    [colonnesEtab.type]: suggestion.type || "",
+    [colonnesEtab.academie]: suggestion.academie || "",
+    [colonnesEtab.departement]: suggestion.departement || "",
+    [colonnesEtab.commune]: suggestion.commune || "",
+    [colonnesEtab.mail]: suggestion.mail || "",
+    [colonnesEtab.mailAnnuaire]: suggestion.mail || "",
+    [colonnesEtab.origine]: (typeof ORIGINE !== "undefined" && (ORIGINE[suggestion.source] || ORIGINE.manuel)) || "",
+    [colonnesEtab.present]: suggestion.source && suggestion.source !== "local" ? true : null,
   };
   const fields = {};
-  for (const [c, v] of Object.entries(candidats))
-    if (etatSaisie.colsEtab.includes(c) && v !== null && v !== "") fields[c] = v;
+  for (const [colonne, valeur] of Object.entries(candidats))
+    if (etatSaisie.colsEtab.includes(colonne) && valeur !== null && valeur !== "") fields[colonne] = valeur;
   const id = idDe(await grist.getTable(ETAB.table).create({ fields }));
   await chargerEtabs();
   return id;
@@ -108,16 +108,20 @@ $("btn-rattacher-annuler").addEventListener("click", () => {
 $("btn-rattacher-ok").addEventListener("click", () =>
   enFile(async () => {
     if (!etatSaisie.etabPropose || !etatSaisie.dossierId) return;
-    const btn = $("btn-rattacher-ok");
-    btn.disabled = true;
+    const boutonConfirmer = $("btn-rattacher-ok");
+    boutonConfirmer.disabled = true;
     try {
       const nouvelId = etatSaisie.etabPropose.suggestion
         ? await creerEtabDepuisSuggestion(etatSaisie.etabPropose.suggestion)
         : etatSaisie.etabPropose.id;
       if (!nouvelId) throw new Error("établissement introuvable");
-      const cE = col("Etablissement");
-      await grist.getTable().update(etatSaisie.versions.map((v) => ({ id: v.id, fields: { [cE]: nouvelId } })));
-      for (const v of etatSaisie.versions) v[cE] = nouvelId; // en attendant le retour de Grist
+      const colonneEtablissement = colonneDe("Etablissement");
+      await grist
+        .getTable()
+        .update(
+          etatSaisie.versions.map((version) => ({ id: version.id, fields: { [colonneEtablissement]: nouvelId } })),
+        );
+      for (const version of etatSaisie.versions) version[colonneEtablissement] = nouvelId; // en attendant le retour de Grist
       etatSaisie.etabCourant = etabDe(nouvelId);
       quitterReaffectation();
       afficherDossier();
@@ -127,14 +131,14 @@ $("btn-rattacher-ok").addEventListener("click", () =>
         "Signalement rattaché au nouvel établissement. Si la description cite l'ancien nom, corrigez-la puis enregistrez.",
         "ok",
       );
-    } catch (e) {
+    } catch (erreur) {
       statut(
         "statut-rattacher",
-        `Échec : ${e.message || e}. Vos droits ne permettent peut-être pas de modifier ce signalement.`,
+        `Échec : ${erreur.message || erreur}. Vos droits ne permettent peut-être pas de modifier ce signalement.`,
         "err",
       );
     } finally {
-      btn.disabled = false;
+      boutonConfirmer.disabled = false;
     }
   }),
 );
@@ -146,14 +150,21 @@ $("btn-corriger-fiche").addEventListener("click", async () => {
     meta = (await metaColonnes(ETAB.table)) || {};
   } catch (_) {}
   const vus = new Set();
-  etatSaisie.champsFiche = [["@nom", "Nom"], ...S().fiche.map((f) => [f.col, f.lib || libelleChampFiche(f.col)])]
-    .map(([k, lib]) => [k.replace(/^@/, "").replace(/[^\w-]/g, "_"), lib, colonneChampFiche(k)])
-    .filter(([, , c]) => {
-      if (!c || vus.has(c)) return false;
-      vus.add(c);
-      const m = meta[c];
+  etatSaisie.champsFiche = [
+    ["@nom", "Nom"],
+    ...reglagesSaisie().fiche.map((champFiche) => [
+      champFiche.col,
+      champFiche.lib || libelleChampFiche(champFiche.col),
+    ]),
+  ]
+    .map(([k, libelle]) => [k.replace(/^@/, "").replace(/[^\w-]/g, "_"), libelle, colonneChampFiche(k)])
+    .filter(([, , colonne]) => {
+      if (!colonne || vus.has(colonne)) return false;
+      vus.add(colonne);
+      const metaColonne = meta[colonne];
       return (
-        etatSaisie.colsEtab.includes(c) && (!m || (!m.formule && ["Text", "Choice", "Any"].includes(typeBase(m.type))))
+        etatSaisie.colsEtab.includes(colonne) &&
+        (!metaColonne || (!metaColonne.formule && ["Text", "Choice", "Any"].includes(typeBase(metaColonne.type))))
       );
     });
   if (!etatSaisie.champsFiche.length) {
@@ -163,8 +174,8 @@ $("btn-corriger-fiche").addEventListener("click", async () => {
   }
   $("fiche-champs").innerHTML = etatSaisie.champsFiche
     .map(
-      ([k, lib, c]) =>
-        `<div class="champ"><label for="fiche-${k}">${esc(lib)}</label><input type="text" id="fiche-${k}" value="${esc(etatSaisie.etabCourant[c] ?? "")}"${c === E.uai ? ' maxlength="8"' : ""}></div>`,
+      ([k, libelle, colonne]) =>
+        `<div class="champ"><label for="fiche-${k}">${esc(libelle)}</label><input type="text" id="fiche-${k}" value="${esc(etatSaisie.etabCourant[colonne] ?? "")}"${colonne === colonnesEtab.uai ? ' maxlength="8"' : ""}></div>`,
     )
     .join("");
   statut("statut-fiche", "");
@@ -182,23 +193,27 @@ $("btn-fiche-ok").addEventListener("click", () =>
   enFile(async () => {
     if (!etatSaisie.etabCourant) return;
     const fields = {};
-    for (const [k, , c] of etatSaisie.champsFiche) {
-      let v = $(`fiche-${k}`).value.trim();
-      if (c === E.uai) v = v.toUpperCase();
-      if (v !== String(etatSaisie.etabCourant[c] ?? "")) fields[c] = v;
+    for (const [k, , colonne] of etatSaisie.champsFiche) {
+      let valeur = $(`fiche-${k}`).value.trim();
+      if (colonne === colonnesEtab.uai) valeur = valeur.toUpperCase();
+      if (valeur !== String(etatSaisie.etabCourant[colonne] ?? "")) fields[colonne] = valeur;
     }
     if (!Object.keys(fields).length) {
       statut("statut-fiche", "Aucune modification.", "err");
       return;
     }
-    if (E.nom in fields && !fields[E.nom]) {
+    if (colonnesEtab.nom in fields && !fields[colonnesEtab.nom]) {
       statut("statut-fiche", "Le nom ne peut pas être vide.", "err");
       return;
     }
-    if (E.uai in fields && fields[E.uai]) {
-      const autre = etabParUai(fields[E.uai]);
+    if (colonnesEtab.uai in fields && fields[colonnesEtab.uai]) {
+      const autre = etabParUai(fields[colonnesEtab.uai]);
       if (autre && autre.id !== etatSaisie.etabCourant.id) {
-        statut("statut-fiche", `L'UAI ${fields[E.uai]} est déjà celui de « ${autre[E.nom]} ».`, "err");
+        statut(
+          "statut-fiche",
+          `L'UAI ${fields[colonnesEtab.uai]} est déjà celui de « ${autre[colonnesEtab.nom]} ».`,
+          "err",
+        );
         return;
       }
     }
@@ -210,10 +225,10 @@ $("btn-fiche-ok").addEventListener("click", () =>
       else afficherEtablissement();
       majDescriptionAuto();
       statut("statut-signalement", "Fiche de l'établissement corrigée (pour tous ses signalements).", "ok");
-    } catch (e) {
+    } catch (erreur) {
       statut(
         "statut-fiche",
-        `Échec : ${e.message || e}. Vos droits ne permettent peut-être pas de modifier le référentiel.`,
+        `Échec : ${erreur.message || erreur}. Vos droits ne permettent peut-être pas de modifier le référentiel.`,
         "err",
       );
     }

@@ -9,12 +9,12 @@
    l'établissement affiché. Jamais utilisé en accès par lien d'établissement (une seule ligne visible). */
 const DUREE_CACHE_REFERENTIEL = 24 * 3600 * 1000;
 function ouvrirBaseCache() {
-  return new Promise((ok, ko) => {
-    if (!window.indexedDB) return ko(new Error("IndexedDB indisponible"));
-    const r = indexedDB.open("signalements-grist", 1);
-    r.onupgradeneeded = () => r.result.createObjectStore("referentiels");
-    r.onsuccess = () => ok(r.result);
-    r.onerror = () => ko(r.error);
+  return new Promise((resoudre, rejeter) => {
+    if (!window.indexedDB) return rejeter(new Error("IndexedDB indisponible"));
+    const requete = indexedDB.open("signalements-grist", 1);
+    requete.onupgradeneeded = () => requete.result.createObjectStore("referentiels");
+    requete.onsuccess = () => resoudre(requete.result);
+    requete.onerror = () => rejeter(requete.error);
   });
 }
 async function cleCacheReferentiel() {
@@ -33,34 +33,35 @@ async function lireCacheReferentiel() {
   try {
     const cle = await cleCacheReferentiel();
     if (!cle) return null;
-    const db = await ouvrirBaseCache();
-    const v = await new Promise((ok, ko) => {
-      const r = db.transaction("referentiels").objectStore("referentiels").get(cle);
-      r.onsuccess = () => ok(r.result);
-      r.onerror = () => ko(r.error);
+    const base = await ouvrirBaseCache();
+    const copie = await new Promise((resoudre, rejeter) => {
+      const requete = base.transaction("referentiels").objectStore("referentiels").get(cle);
+      requete.onsuccess = () => resoudre(requete.result);
+      requete.onerror = () => rejeter(requete.error);
     });
-    db.close();
-    return v && v.table && Date.now() - v.t < DUREE_CACHE_REFERENTIEL ? v : null;
+    base.close();
+    return copie && copie.table && Date.now() - copie.t < DUREE_CACHE_REFERENTIEL ? copie : null;
   } catch (_) {
     return null;
   }
 }
-async function ecrireCacheReferentiel(t, sensibles) {
+async function ecrireCacheReferentiel(table, sensibles) {
   try {
     const cle = await cleCacheReferentiel();
     if (!cle) return;
     const copie = {};
-    for (const [c, v] of Object.entries(t)) copie[c] = sensibles.includes(c) ? v.map(() => null) : v;
-    const db = await ouvrirBaseCache();
-    await new Promise((ok, ko) => {
-      const tx = db.transaction("referentiels", "readwrite");
-      tx.objectStore("referentiels").put({ t: Date.now(), table: copie, sensibles }, cle);
-      tx.oncomplete = ok;
-      tx.onerror = () => ko(tx.error);
+    for (const [colonne, valeurs] of Object.entries(table))
+      copie[colonne] = sensibles.includes(colonne) ? valeurs.map(() => null) : valeurs;
+    const base = await ouvrirBaseCache();
+    await new Promise((resoudre, rejeter) => {
+      const transaction = base.transaction("referentiels", "readwrite");
+      transaction.objectStore("referentiels").put({ t: Date.now(), table: copie, sensibles }, cle);
+      transaction.oncomplete = resoudre;
+      transaction.onerror = () => rejeter(transaction.error);
     });
-    db.close();
-  } catch (e) {
-    console.warn("Référentiel non conservé dans le navigateur", e);
+    base.close();
+  } catch (erreur) {
+    console.warn("Référentiel non conservé dans le navigateur", erreur);
   }
 }
 // La copie du navigateur n'est reprise que si elle correspond encore à ce que ce compte peut lire :
@@ -70,14 +71,14 @@ async function copieEncoreValable(copie) {
   try {
     if (!grist.docApi.getAccessToken) return true;
     const j = await grist.docApi.getAccessToken({ readOnly: true });
-    const r = await fetch(
+    const reponse = await fetch(
       `${j.baseUrl}/tables/${encodeURIComponent(ETAB.table)}/records?limit=2&auth=${encodeURIComponent(j.token)}`,
     );
-    if (!r.ok) return false;
-    const recs = (await r.json()).records || [];
+    if (!reponse.ok) return false;
+    const recs = (await reponse.json()).records || [];
     if (recs.length < 2) return false;
-    const cols = new Set(Object.keys(copie.table || {}));
-    return recs.every((x) => Object.keys(x.fields || {}).every((k) => cols.has(k)));
+    const colonnesCopie = new Set(Object.keys(copie.table || {}));
+    return recs.every((enregistrement) => Object.keys(enregistrement.fields || {}).every((k) => colonnesCopie.has(k)));
   } catch (_) {
     return false;
   }
@@ -85,44 +86,46 @@ async function copieEncoreValable(copie) {
 async function oublierCacheReferentiel() {
   try {
     const cle = await cleCacheReferentiel();
-    const db = await ouvrirBaseCache();
-    db.transaction("referentiels", "readwrite").objectStore("referentiels").delete(cle);
-    db.close();
+    const base = await ouvrirBaseCache();
+    base.transaction("referentiels", "readwrite").objectStore("referentiels").delete(cle);
+    base.close();
   } catch (_) {}
 }
 // Clé et lien d'accès de l'établissement affiché, quand le référentiel vient du navigateur (non conservés)
 const liensDemandes = new Set();
-async function completerLienEtab(e) {
+async function completerLienEtab(etablissement) {
   if (
     !etatSaisie.referentielDuCache ||
-    !e ||
-    liensDemandes.has(e.id) ||
-    !(E.lien in e) ||
-    (e[E.lien] != null && e[E.lien] !== "")
+    !etablissement ||
+    liensDemandes.has(etablissement.id) ||
+    !(colonnesEtab.lien in etablissement) ||
+    (etablissement[colonnesEtab.lien] != null && etablissement[colonnesEtab.lien] !== "")
   )
     return;
-  liensDemandes.add(e.id);
+  liensDemandes.add(etablissement.id);
   try {
     const j = await grist.docApi.getAccessToken({ readOnly: true });
     const lire = async (filtre) => {
-      const r = await fetch(
+      const reponse = await fetch(
         `${j.baseUrl}/tables/${encodeURIComponent(ETAB.table)}/records?filter=${encodeURIComponent(JSON.stringify(filtre))}&auth=${encodeURIComponent(j.token)}`,
       );
-      if (!r.ok) throw new Error(`erreur ${r.status}`);
-      return ((await r.json()).records || []).find((x) => x.id === e.id);
+      if (!reponse.ok) throw new Error(`erreur ${reponse.status}`);
+      return ((await reponse.json()).records || []).find((enregistrement) => enregistrement.id === etablissement.id);
     };
     // filtre sur le numéro de ligne, sinon sur l'UAI
     let rec = null;
     try {
-      rec = await lire({ id: [e.id] });
+      rec = await lire({ id: [etablissement.id] });
     } catch (_) {}
-    if (!rec && E.uai && e[E.uai]) rec = await lire({ [E.uai]: [e[E.uai]] });
-    const f = (rec && rec.fields) || {};
-    for (const c of [E.cle, E.lien]) if (c && c in f) e[c] = f[c];
-    if (etatSaisie.etabCourant && etatSaisie.etabCourant.id === e.id) afficherEtablissement();
-  } catch (err) {
-    console.warn("Lien d'accès non lu", err);
-    liensDemandes.delete(e.id);
+    if (!rec && colonnesEtab.uai && etablissement[colonnesEtab.uai])
+      rec = await lire({ [colonnesEtab.uai]: [etablissement[colonnesEtab.uai]] });
+    const champsLus = (rec && rec.fields) || {};
+    for (const colonne of [colonnesEtab.cle, colonnesEtab.lien])
+      if (colonne && colonne in champsLus) etablissement[colonne] = champsLus[colonne];
+    if (etatSaisie.etabCourant && etatSaisie.etabCourant.id === etablissement.id) afficherEtablissement();
+  } catch (erreur) {
+    console.warn("Lien d'accès non lu", erreur);
+    liensDemandes.delete(etablissement.id);
   }
 }
 
@@ -143,10 +146,10 @@ async function lireEtabs(avecCache) {
   etatSaisie.dernierChargementEtabs = Date.now();
   // tables visées par les colonnes Référence du référentiel (académies…) : lues en parallèle, pas après lui
   metaColonnes(ETAB.table)
-    .then((m) => {
-      for (const c of Object.values(m || {})) {
-        const x = String(c.type || "").match(/^Ref:(.+)$/);
-        if (x && x[1] !== ETAB.table) lireTableReference(x[1]).catch(() => {});
+    .then((metaTable) => {
+      for (const metaColonne of Object.values(metaTable || {})) {
+        const correspondance = String(metaColonne.type || "").match(/^Ref:(.+)$/);
+        if (correspondance && correspondance[1] !== ETAB.table) lireTableReference(correspondance[1]).catch(() => {});
       }
     })
     .catch(() => {});
@@ -157,37 +160,40 @@ async function lireEtabs(avecCache) {
   }
   etatSaisie.referentielDuCache = copie ? copie.t : null;
   liensDemandes.clear();
-  const t = copie ? copie.table : await lireTableRapide(ETAB.table);
-  cacheTables.set(ETAB.table, { t: Date.now(), p: Promise.resolve(t) }); // réutilisée par les listes de choix qui visent le référentiel
-  const cols = Object.keys(t);
-  etatSaisie.etabs = t.id.map((id, i) => {
-    const l = {};
-    cols.forEach((c) => (l[c] = t[c][i]));
-    return l;
+  const tableReferentiel = copie ? copie.table : await lireTableRapide(ETAB.table);
+  cacheTables.set(ETAB.table, { t: Date.now(), p: Promise.resolve(tableReferentiel) }); // réutilisée par les listes de choix qui visent le référentiel
+  const colonnes = Object.keys(tableReferentiel);
+  etatSaisie.etabs = tableReferentiel.id.map((id, i) => {
+    const ligne = {};
+    colonnes.forEach((colonne) => (ligne[colonne] = tableReferentiel[colonne][i]));
+    return ligne;
   });
-  etatSaisie.indexEtabs = new Map(etatSaisie.etabs.map((e) => [e.id, e]));
-  etatSaisie.idEtabMax = etatSaisie.etabs.reduce((m, e) => Math.max(m, e.id), 0);
-  etatSaisie.colsEtab = cols;
-  await reconnaitreColonnesEtab(t);
+  etatSaisie.indexEtabs = new Map(etatSaisie.etabs.map((etablissement) => [etablissement.id, etablissement]));
+  etatSaisie.idEtabMax = etatSaisie.etabs.reduce((idMax, etablissement) => Math.max(idMax, etablissement.id), 0);
+  etatSaisie.colsEtab = colonnes;
+  await reconnaitreColonnesEtab(tableReferentiel);
   appliquerColonnesForcees();
   await resoudreRefsEtab();
   // Mode établissement : une seule ligne est visible (celle de l'établissement du lien), et sa clé
   // n'est pas lisible — soit la colonne est absente du schéma transmis, soit sa valeur est censurée
   // par une règle d'accès de colonne (cas le plus courant : le rôle « colonne » sur UUID/Lien).
   const uneSeuleLigne = etatSaisie.etabs.length === 1;
-  const cleLisible = uneSeuleLigne && cols.includes(E.cle) && lisible(etatSaisie.etabs[0][E.cle]);
+  const cleLisible =
+    uneSeuleLigne && colonnes.includes(colonnesEtab.cle) && lisible(etatSaisie.etabs[0][colonnesEtab.cle]);
   etatSaisie.modeEtab = uneSeuleLigne && !cleLisible;
-  const colsLisibles = cols.filter((c) => c !== "id" && c !== "manualSort" && !c.startsWith("gristHelper")).join(", ");
+  const colsLisibles = colonnes
+    .filter((colonne) => colonne !== "id" && colonne !== "manualSort" && !colonne.startsWith("gristHelper"))
+    .join(", ");
   const devinees = [...etatSaisie.colonnesParContenu].filter((k) => ["nom", "uai"].includes(k));
   etatSaisie.alerteStructure = [
     !etatSaisie.modeEtab && devinees.length
-      ? `Dans la table « ${ETAB.table} », ${devinees.map((k) => `la colonne « ${E[k]} » est utilisée comme ${k === "nom" ? "nom de l'établissement" : "UAI"}`).join(" et ")}, d'après son contenu. Renommez-la « ${devinees.map((k) => (k === "nom" ? "Nom" : "UAI")).join(" » / « ")} » si ce n'est pas la bonne.`
+      ? `Dans la table « ${ETAB.table} », ${devinees.map((k) => `la colonne « ${colonnesEtab[k]} » est utilisée comme ${k === "nom" ? "nom de l'établissement" : "UAI"}`).join(" et ")}, d'après son contenu. Renommez-la « ${devinees.map((k) => (k === "nom" ? "Nom" : "UAI")).join(" » / « ")} » si ce n'est pas la bonne.`
       : "",
-    !etatSaisie.modeEtab && !cols.includes(E.nom)
-      ? `Aucune colonne de nom d'établissement reconnue dans la table « ${ETAB.table} »${cols.includes(E.uai) ? "" : " (ni d'UAI)"} : la recherche porte sur toutes ses colonnes texte. Nommez la colonne du nom « Nom »${cols.includes(E.uai) ? "" : " et celle de l'UAI « UAI »"} pour une recherche fiable. Colonnes trouvées : ${colsLisibles}.`
+    !etatSaisie.modeEtab && !colonnes.includes(colonnesEtab.nom)
+      ? `Aucune colonne de nom d'établissement reconnue dans la table « ${ETAB.table} »${colonnes.includes(colonnesEtab.uai) ? "" : " (ni d'UAI)"} : la recherche porte sur toutes ses colonnes texte. Nommez la colonne du nom « Nom »${colonnes.includes(colonnesEtab.uai) ? "" : " et celle de l'UAI « UAI »"} pour une recherche fiable. Colonnes trouvées : ${colsLisibles}.`
       : "",
-    !etatSaisie.modeEtab && !cols.includes(E.cle)
-      ? `Colonne « ${E.cle} » introuvable dans ${ETAB.table} : les liens d'accès des établissements n'existent pas encore. Mise en place : administration, onglet Établissements.${cols.includes(E.nom) ? ` Colonnes trouvées : ${colsLisibles}.` : ""}`
+    !etatSaisie.modeEtab && !colonnes.includes(colonnesEtab.cle)
+      ? `Colonne « ${colonnesEtab.cle} » introuvable dans ${ETAB.table} : les liens d'accès des établissements n'existent pas encore. Mise en place : administration, onglet Établissements.${colonnes.includes(colonnesEtab.nom) ? ` Colonnes trouvées : ${colsLisibles}.` : ""}`
       : "",
   ]
     .filter(Boolean)
@@ -195,9 +201,9 @@ async function lireEtabs(avecCache) {
   // copie conservée dans le navigateur (jamais en accès par lien d'établissement), sans clé ni lien d'accès
   if (!copie && !etatSaisie.modeEtab && etatSaisie.etabs.length > 1)
     ecrireCacheReferentiel(
-      t,
-      [E.cle, E.lien]
-        .filter((c) => c && cols.includes(c))
-        .concat(cols.filter((c) => /uuid|lien_?(d_?)?acces|link_?key|cle_?(d_?)?acces|token/i.test(c))),
+      tableReferentiel,
+      [colonnesEtab.cle, colonnesEtab.lien]
+        .filter((colonne) => colonne && colonnes.includes(colonne))
+        .concat(colonnes.filter((colonne) => /uuid|lien_?(d_?)?acces|link_?key|cle_?(d_?)?acces|token/i.test(colonne))),
     );
 }

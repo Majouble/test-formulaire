@@ -29,7 +29,7 @@ const PRESETS = {
     entete: "**{nom}**, **{commune}**",
     pastilles: "auto",
     commentaire: false,
-    fiche: FICHE_DEFAUT.map(([col, lib]) => ({ col, lib })),
+    fiche: FICHE_DEFAUT.map(([colonne, libelle]) => ({ col: colonne, lib: libelle })),
     recherche: [],
     colonnes: {},
     faitsFuturs: true,
@@ -42,10 +42,12 @@ const PRESETS = {
     entete: "**{nom}** ({site})",
     pastilles: "toujours",
     commentaire: false,
-    fiche: [...FICHE_DEFAUT.slice(0, 5), ["@region", "Région académique"], FICHE_DEFAUT[5]].map(([col, lib]) => ({
-      col,
-      lib,
-    })),
+    fiche: [...FICHE_DEFAUT.slice(0, 5), ["@region", "Région académique"], FICHE_DEFAUT[5]].map(
+      ([colonne, libelle]) => ({
+        col: colonne,
+        lib: libelle,
+      }),
+    ),
     recherche: [],
     colonnes: {},
     faitsFuturs: true,
@@ -59,51 +61,68 @@ const confSaisie = () =>
     etatSaisie.formulaireActif.conf.saisie) ||
   {};
 function versionSaisie() {
-  const c = confSaisie();
-  if (PRESETS[c.version]) return c.version;
+  const configurationFormulaire = confSaisie();
+  if (PRESETS[configurationFormulaire.version]) return configurationFormulaire.version;
   if (PRESETS[etatSaisie.versionPage]) return etatSaisie.versionPage;
-  const f = decodeURIComponent(location.pathname || "").toLowerCase();
-  if (/signalement-esr/.test(f)) return "esr";
-  if (/signalement-sans-commentaire|widget-signalement\.html$/.test(f)) return "en";
+  const chemin = decodeURIComponent(location.pathname || "").toLowerCase();
+  if (/signalement-esr/.test(chemin)) return "esr";
+  if (/signalement-sans-commentaire|widget-signalement\.html$/.test(chemin)) return "en";
   // document à deux champs (MEN et MESRE) : la table de réponses dit le champ
   try {
-    const e = window.Socle.espaceDeTable(etatSaisie.socleGeneral, etatSaisie.tableId);
-    if (e && window.Socle.espaces(etatSaisie.socleGeneral).length > 1) return e.version;
+    const espace = window.Socle.espaceDeTable(etatSaisie.socleGeneral, etatSaisie.tableId);
+    if (espace && window.Socle.espaces(etatSaisie.socleGeneral).length > 1) return espace.version;
   } catch (_) {
     /* socle indisponible */
   }
-  return col("Site") || (ETAB.table && ETAB.table !== TABLE_ETAB_DEFAUT) ? "esr" : "en";
+  return colonneDe("Site") || (ETAB.table && ETAB.table !== TABLE_ETAB_DEFAUT) ? "esr" : "en";
 }
-function S() {
-  const v = versionSaisie(),
-    c = confSaisie(),
-    r = { ...PRESETS[v], version: v };
-  if (typeof c.marque === "string" && c.marque.trim()) r.marque = c.marque.trim();
-  if (Array.isArray(c.annuaires)) r.annuaires = c.annuaires.filter((x) => SOURCES.some((y) => y.cle === x));
-  if (typeof c.entete === "string" && c.entete.trim()) r.entete = c.entete;
-  if (c.pastilles === "toujours" || c.pastilles === "auto") r.pastilles = c.pastilles;
-  if (typeof c.commentaire === "boolean") r.commentaire = c.commentaire;
-  if (typeof c.faitsFuturs === "boolean") r.faitsFuturs = c.faitsFuturs;
-  if (typeof c.plusieursJours === "boolean") r.plusieursJours = c.plusieursJours;
-  if (Array.isArray(c.fiche) && c.fiche.length) r.fiche = c.fiche.filter((x) => x && x.col);
-  if (Array.isArray(c.recherche)) r.recherche = c.recherche.filter(Boolean);
-  if (c.colonnes && typeof c.colonnes === "object") r.colonnes = c.colonnes;
-  if (typeof c.qualificationEnBas === "boolean") r.qualificationEnBas = c.qualificationEnBas; // formulaire par site : qualification déduite, en bas
-  return r;
+function reglagesSaisie() {
+  const versionActive = versionSaisie(),
+    configurationFormulaire = confSaisie(),
+    reglages = { ...PRESETS[versionActive], version: versionActive };
+  if (typeof configurationFormulaire.marque === "string" && configurationFormulaire.marque.trim())
+    reglages.marque = configurationFormulaire.marque.trim();
+  if (Array.isArray(configurationFormulaire.annuaires))
+    reglages.annuaires = configurationFormulaire.annuaires.filter((cleAnnuaire) =>
+      SOURCES.some((source) => source.cle === cleAnnuaire),
+    );
+  if (typeof configurationFormulaire.entete === "string" && configurationFormulaire.entete.trim())
+    reglages.entete = configurationFormulaire.entete;
+  if (configurationFormulaire.pastilles === "toujours" || configurationFormulaire.pastilles === "auto")
+    reglages.pastilles = configurationFormulaire.pastilles;
+  if (typeof configurationFormulaire.commentaire === "boolean")
+    reglages.commentaire = configurationFormulaire.commentaire;
+  if (typeof configurationFormulaire.faitsFuturs === "boolean")
+    reglages.faitsFuturs = configurationFormulaire.faitsFuturs;
+  if (typeof configurationFormulaire.plusieursJours === "boolean")
+    reglages.plusieursJours = configurationFormulaire.plusieursJours;
+  if (Array.isArray(configurationFormulaire.fiche) && configurationFormulaire.fiche.length)
+    reglages.fiche = configurationFormulaire.fiche.filter((champFiche) => champFiche && champFiche.col);
+  if (Array.isArray(configurationFormulaire.recherche))
+    reglages.recherche = configurationFormulaire.recherche.filter(Boolean);
+  if (configurationFormulaire.colonnes && typeof configurationFormulaire.colonnes === "object")
+    reglages.colonnes = configurationFormulaire.colonnes;
+  if (typeof configurationFormulaire.qualificationEnBas === "boolean")
+    reglages.qualificationEnBas = configurationFormulaire.qualificationEnBas; // formulaire par site : qualification déduite, en bas
+  return reglages;
 }
 // Bandeau, liseré de la version, colonnes du référentiel imposées par le formulaire
 function appliquerVersion() {
-  const o = S();
-  $("marque-app").textContent = o.marque;
-  document.body.classList.toggle("version-esr", o.version === "esr");
+  const reglages = reglagesSaisie();
+  $("marque-app").textContent = reglages.marque;
+  document.body.classList.toggle("version-esr", reglages.version === "esr");
   appliquerColonnesForcees();
 }
 function appliquerColonnesForcees() {
-  const c = S().colonnes || {};
+  const colonnesForcees = reglagesSaisie().colonnes || {};
   for (const k of ["nom", "uai", "commune", "type", "academie", "departement", "mail"]) {
-    if (c[k] && etatSaisie.colsEtab.includes(c[k]) && E[k] !== c[k]) {
-      E[k] = c[k];
-      etatSaisie.colonnesReconnues[k] = c[k];
+    if (
+      colonnesForcees[k] &&
+      etatSaisie.colsEtab.includes(colonnesForcees[k]) &&
+      colonnesEtab[k] !== colonnesForcees[k]
+    ) {
+      colonnesEtab[k] = colonnesForcees[k];
+      etatSaisie.colonnesReconnues[k] = colonnesForcees[k];
       etatSaisie.colonnesParContenu.delete(k);
     }
   }
@@ -122,53 +141,54 @@ const ROLES_FICHE = {
 function colonneChampFiche(cle) {
   cle = String(cle || "");
   if (cle === "@region") return colonneRegion();
-  return cle.startsWith("@") ? E[cle.slice(1)] || null : cle;
+  return cle.startsWith("@") ? colonnesEtab[cle.slice(1)] || null : cle;
 }
-function valeurChampFiche(e, cle) {
-  if (cle === "@region") return regionAcademique(e);
-  const c = colonneChampFiche(cle),
-    v = c ? e[c] : null;
-  if (v == null || typeof v === "object") return "";
-  if (typeof v === "boolean") return v ? "Oui" : "Non";
-  return typeof v === "number" ? v.toLocaleString("fr-FR") : v;
+function valeurChampFiche(etablissement, cle) {
+  if (cle === "@region") return regionAcademique(etablissement);
+  const colonne = colonneChampFiche(cle),
+    valeur = colonne ? etablissement[colonne] : null;
+  if (valeur == null || typeof valeur === "object") return "";
+  if (typeof valeur === "boolean") return valeur ? "Oui" : "Non";
+  return typeof valeur === "number" ? valeur.toLocaleString("fr-FR") : valeur;
 }
 const libelleChampFiche = (cle) => (String(cle).startsWith("@") ? ROLES_FICHE[cle.slice(1)] || cle.slice(1) : cle);
 // Valeurs disponibles pour le modèle d'en-tête : rôles (nom, commune, uai…), région, et toute colonne du référentiel
-function valeursEtab(e) {
-  const v = {};
-  for (const c of etatSaisie.colsEtab) {
-    const x = e[c];
-    if (x != null && typeof x !== "object") v[c] = x;
+function valeursEtab(etablissement) {
+  const valeurs = {};
+  for (const colonne of etatSaisie.colsEtab) {
+    const valeur = etablissement[colonne];
+    if (valeur != null && typeof valeur !== "object") valeurs[colonne] = valeur;
   }
   for (const k of Object.keys(ROLES_FICHE)) {
-    const c = E[k];
-    if (k !== "region" && c && e[c] != null && typeof e[c] !== "object") v[k] = e[c];
+    const colonne = colonnesEtab[k];
+    if (k !== "region" && colonne && etablissement[colonne] != null && typeof etablissement[colonne] !== "object")
+      valeurs[k] = etablissement[colonne];
   }
-  v.region = regionAcademique(e);
-  return v;
+  valeurs.region = regionAcademique(etablissement);
+  return valeurs;
 }
 // « **{nom}**, **{commune}** » → « **Collège Jean Rostand**, **Draguignan** » ; les morceaux vides disparaissent
 // (gras vide, parenthèses vides, virgule ou tiret orphelins)
-function appliquerModele(modele, v) {
-  let t = String(modele || "").replace(/\{([\w-]+)\}/g, (_, k) =>
-    String(v[k] ?? "")
+function appliquerModele(modele, valeurs) {
+  let texteModele = String(modele || "").replace(/\{([\w-]+)\}/g, (_, k) =>
+    String(valeurs[k] ?? "")
       .replace(/\s+/g, " ")
       .trim(),
   );
   for (let i = 0; i < 3; i++)
-    t = t
+    texteModele = texteModele
       .replace(/\*\*\s*\*\*/g, "")
       .replace(/\(\s*\)|\[\s*\]/g, "")
       .replace(/\s*[,;·]\s*(?=$|[,;·])/g, "")
       .replace(/\s+[–—-]\s*(?=$|[,;·–—-])/g, "")
       .replace(/^\s*[,;·–—-]\s*/, "");
-  return t
+  return texteModele
     .replace(/\s+([,;])/g, "$1")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
 const identiteExemple = () =>
-  S().version === "esr"
+  reglagesSaisie().version === "esr"
     ? {
         nom: "Université de Rennes",
         commune: "Rennes",
@@ -189,15 +209,15 @@ const identiteExemple = () =>
       };
 // ⚙ : version de la page
 function remplirVersionConfig() {
-  const c = confSaisie(),
-    sel = $("cfg-version");
-  sel.value = PRESETS[etatSaisie.versionPage] ? etatSaisie.versionPage : "";
-  sel.disabled = !!PRESETS[c.version];
-  $("cfg-version-info").textContent = PRESETS[c.version]
-    ? `Fixée par le formulaire « ${etatSaisie.formulaireActif.nom} » dans l'administration des formulaires : ${PRESETS[c.version].libelle}.`
-    : `Version appliquée : ${PRESETS[S().version].libelle}. « Automatique » la déduit de la table (colonne Site, ou référentiel autre que « Etablissements » : enseignement supérieur). Enregistré avec la page.`;
+  const configurationFormulaire = confSaisie(),
+    selecteurVersion = $("cfg-version");
+  selecteurVersion.value = PRESETS[etatSaisie.versionPage] ? etatSaisie.versionPage : "";
+  selecteurVersion.disabled = !!PRESETS[configurationFormulaire.version];
+  $("cfg-version-info").textContent = PRESETS[configurationFormulaire.version]
+    ? `Fixée par le formulaire « ${etatSaisie.formulaireActif.nom} » dans l'administration des formulaires : ${PRESETS[configurationFormulaire.version].libelle}.`
+    : `Version appliquée : ${PRESETS[reglagesSaisie().version].libelle}. « Automatique » la déduit de la table (colonne Site, ou référentiel autre que « Etablissements » : enseignement supérieur). Enregistré avec la page.`;
   $("cfg-entete-texte").textContent =
-    `Commencer par l'établissement, par exemple « ${appliquerModele(S().entete, identiteExemple())} : »`;
+    `Commencer par l'établissement, par exemple « ${appliquerModele(reglagesSaisie().entete, identiteExemple())} : »`;
 }
 $("cfg-version").addEventListener("change", async () => {
   try {
@@ -209,8 +229,8 @@ $("cfg-version").addEventListener("change", async () => {
       await rafraichir();
       remplirVersionConfig();
     });
-  } catch (e) {
-    statut("cfg-statut", `Choix non enregistré : ${e.message || e}`, "err");
+  } catch (erreur) {
+    statut("cfg-statut", `Choix non enregistré : ${erreur.message || erreur}`, "err");
   }
 });
 
@@ -236,8 +256,8 @@ const REGIONS_ACADEMIQUES = {
   "La Réunion": ["La Réunion", "Réunion"],
   Mayotte: ["Mayotte"],
 };
-const cleAcademie = (a) =>
-  String(a || "")
+const cleAcademie = (academie) =>
+  String(academie || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
@@ -245,52 +265,57 @@ const cleAcademie = (a) =>
     .replace(/[^a-z]+/g, " ")
     .trim();
 const REGION_PAR_ACADEMIE = new Map(
-  Object.entries(REGIONS_ACADEMIQUES).flatMap(([r, l]) => l.map((a) => [cleAcademie(a), r])),
+  Object.entries(REGIONS_ACADEMIQUES).flatMap(([region, academies]) =>
+    academies.map((academie) => [cleAcademie(academie), region]),
+  ),
 );
 function colonneRegion() {
-  const n = (c) =>
-    String(c)
+  const minusculesSansAccents = (colonne) =>
+    String(colonne)
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase();
   return (
-    etatSaisie.colsEtab.find((c) => /^region_?academique/.test(n(c))) ||
-    etatSaisie.colsEtab.find((c) => /region/.test(n(c))) ||
+    etatSaisie.colsEtab.find((colonne) => /^region_?academique/.test(minusculesSansAccents(colonne))) ||
+    etatSaisie.colsEtab.find((colonne) => /region/.test(minusculesSansAccents(colonne))) ||
     null
   );
 }
-function regionAcademique(e) {
-  if (!e) return "";
-  const c = colonneRegion(),
-    v = c ? e[c] : null;
-  if (v != null && v !== "" && typeof v !== "object") return String(v);
-  return REGION_PAR_ACADEMIE.get(cleAcademie(e[E.academie])) || "";
+function regionAcademique(etablissement) {
+  if (!etablissement) return "";
+  const colonne = colonneRegion(),
+    valeur = colonne ? etablissement[colonne] : null;
+  if (valeur != null && valeur !== "" && typeof valeur !== "object") return String(valeur);
+  return REGION_PAR_ACADEMIE.get(cleAcademie(etablissement[colonnesEtab.academie])) || "";
 }
 const CHAMPS_NOUVEL_ETAB = ["type", "uai", "academie", "departement"];
-function statut(id, txt, type) {
-  const el = $(id);
-  el.textContent = txt;
-  el.className = "statut " + (type || "");
+function statut(id, texte, type) {
+  const zoneStatut = $(id);
+  zoneStatut.textContent = texte;
+  zoneStatut.className = "statut " + (type || "");
 }
-const lisible = (v) => v !== undefined && !(Array.isArray(v) && v[0] === "C"); // cellule non censurée par les règles d'accès
+const lisible = (valeur) => valeur !== undefined && !(Array.isArray(valeur) && valeur[0] === "C"); // cellule non censurée par les règles d'accès
 // keepEncoded transforme une Référence simple en ['R', tableId, rowId] : on en extrait l'identifiant numérique.
-const refId = (v) => (Array.isArray(v) && v[0] === "R" ? v[2] : typeof v === "number" ? v : null);
-const idDe = (res) => res && (res.id ?? (Array.isArray(res) ? res[0]?.id : null));
+const refId = (valeur) =>
+  Array.isArray(valeur) && valeur[0] === "R" ? valeur[2] : typeof valeur === "number" ? valeur : null;
+const idDe = (resultat) => resultat && (resultat.id ?? (Array.isArray(resultat) ? resultat[0]?.id : null));
 // Exécute une écriture en précisant, en cas de refus, quelle étape et quelle table sont en cause
 async function etape(libelle, table, action) {
   try {
     return await action();
-  } catch (e) {
-    const msg = (e && e.message) || String(e);
-    const acl = /access rules|blocked/i.test(msg);
+  } catch (erreur) {
+    const message = (erreur && erreur.message) || String(erreur);
+    const acl = /access rules|blocked/i.test(message);
     // pièces jointes : structure vue par le lien d'établissement pas à jour (copie des colonnes) ou question non adaptée
-    const pj = /formula column|cannot access attachment/i.test(msg)
+    const indicationPiecesJointes = /formula column|cannot access attachment/i.test(message)
       ? " — Pièces jointes : la responsable ou le responsable du document doit ouvrir l'administration, onglet « Formulaires », vérifier que la question Pièces jointes est « adaptée aux liens d'établissement », puis republier le formulaire ; rechargez ensuite cette page."
       : "";
-    const err = new Error(`${libelle} (table « ${table} ») : ${acl ? "refusé par les règles d'accès" : msg}${pj}`);
-    err.acl = acl;
-    err.table = table;
-    throw err;
+    const erreurEtape = new Error(
+      `${libelle} (table « ${table} ») : ${acl ? "refusé par les règles d'accès" : message}${indicationPiecesJointes}`,
+    );
+    erreurEtape.acl = acl;
+    erreurEtape.table = table;
+    throw erreurEtape;
   }
 }
 

@@ -26,101 +26,101 @@ const SEPARATEURS = { ligne: "\n", pv: " ; ", virgule: ", ", barre: " / ", espac
 
 // Assemble les éléments avec le séparateur choisi. Avec le point, chaque élément devient une phrase :
 // son éventuel point final est retiré avant l'assemblage (pas de « .. »), et le texte se termine par un point.
-function joindre(elements, o = etatSaisie.optionsAuto) {
-  const liste = elements.filter((e) => String(e).trim());
-  if (o.separateur !== "point") return liste.join(SEPARATEURS[o.separateur] ?? "\n");
+function joindre(elements, options = etatSaisie.optionsAuto) {
+  const liste = elements.filter((fragment) => String(fragment).trim());
+  if (options.separateur !== "point") return liste.join(SEPARATEURS[options.separateur] ?? "\n");
   if (!liste.length) return "";
-  const texte = liste.map((e) => String(e).trim().replace(/\.+$/, "")).join(". ");
+  const texte = liste.map((fragment) => String(fragment).trim().replace(/\.+$/, "")).join(". ");
   return /[.!?…]$/.test(texte) ? texte : texte + ".";
 }
 etatSaisie.optionsAuto = { ...OPTIONS_DEFAUT };
 
 // Comparaison tolérante aux écarts de forme sans changement réel de valeur
-function memeReponse(def, a, b) {
-  const t = typeBase(def.type);
-  const n = (v) => {
-    v = norm(def, v);
-    if (v == null) return t === "Bool" ? false : null;
-    if (Array.isArray(v) && v[0] === "L") return ["L", ...v.slice(1).map(String).sort()];
-    if (t === "DateTime") {
-      const s = secondes(v);
-      return s == null ? null : Math.floor(s / 60);
+function memeReponse(question, reponseA, reponseB) {
+  const typeColonne = typeBase(question.type);
+  const normaliserReponse = (valeur) => {
+    valeur = norm(question, valeur);
+    if (valeur == null) return typeColonne === "Bool" ? false : null;
+    if (Array.isArray(valeur) && valeur[0] === "L") return ["L", ...valeur.slice(1).map(String).sort()];
+    if (typeColonne === "DateTime") {
+      const nombreSecondes = secondes(valeur);
+      return nombreSecondes == null ? null : Math.floor(nombreSecondes / 60);
     }
-    if (t === "Date") {
-      const s = secondes(v);
-      return s == null ? null : Math.floor(s / 86400);
+    if (typeColonne === "Date") {
+      const nombreSecondes = secondes(valeur);
+      return nombreSecondes == null ? null : Math.floor(nombreSecondes / 86400);
     }
-    if (typeof v === "string") return v.trim();
-    return v;
+    if (typeof valeur === "string") return valeur.trim();
+    return valeur;
   };
-  return egal(n(a), n(b));
+  return egal(normaliserReponse(reponseA), normaliserReponse(reponseB));
 }
 
 // Met une valeur au format choisi : sur une seule ligne, abrégée si une longueur maximale est fixée
-function mettreEnForme(texte, o = etatSaisie.optionsAuto) {
-  let t = String(texte ?? "")
+function mettreEnForme(texte, options = etatSaisie.optionsAuto) {
+  let texteFormate = String(texte ?? "")
     .replace(/\s+/g, " ")
     .trim();
-  const max = +o.longueur || 0;
-  if (max > 0 && t.length > max) t = t.slice(0, max - 1) + "…";
-  return t;
+  const max = +options.longueur || 0;
+  if (max > 0 && texteFormate.length > max) texteFormate = texteFormate.slice(0, max - 1) + "…";
+  return texteFormate;
 }
-function element(libelle, valeur, o = etatSaisie.optionsAuto) {
-  const v = mettreEnForme(valeur, o);
-  return `${o.puce || ""}${o.format === "valeur" ? v : `${libelle} : ${v}`}`;
+function element(libelle, valeur, options = etatSaisie.optionsAuto) {
+  const valeurFormatee = mettreEnForme(valeur, options);
+  return `${options.puce || ""}${options.format === "valeur" ? valeurFormatee : `${libelle} : ${valeurFormatee}`}`;
 }
 
 // Réponses modifiées par rapport à la version précédente : [{ libelle, valeur }]
 function modificationsSaisies() {
-  const ref = etatSaisie.derniere || etatSaisie.initiale;
-  const res = [];
-  const defQ = etatSaisie.metaSig[col("Qualification")];
+  const ligneReference = etatSaisie.derniere || etatSaisie.initiale;
+  const modifications = [];
+  const defQ = etatSaisie.metaSig[colonneDe("Qualification")];
   if (defQ && etatSaisie.optionsAuto.qualification) {
     const saisie = lireQualificationInitiale();
     const apres = Array.isArray(saisie) ? saisie : saisie ? [saisie] : [];
-    const avant = listeQualif(ref ? val(ref, "Qualification") : "");
+    const avant = listeQualif(ligneReference ? valeurLigne(ligneReference, "Qualification") : "");
     if (apres.length && JSON.stringify([...apres].map(String).sort()) !== JSON.stringify([...avant].map(String).sort()))
-      res.push({ libelle: defQ.libelle || "Qualification", valeur: apres.join(", ") });
+      modifications.push({ libelle: defQ.libelle || "Qualification", valeur: apres.join(", ") });
   }
-  const defD = etatSaisie.metaSig[col("Description")];
+  const defD = etatSaisie.metaSig[colonneDe("Description")];
   if (defD && etatSaisie.optionsAuto.description) {
     const nouvelle = $("description").value.trim();
-    const avant = String((ref ? val(ref, "Description") : "") ?? "").trim();
+    const avant = String((ligneReference ? valeurLigne(ligneReference, "Description") : "") ?? "").trim();
     if (nouvelle.replace(/\s+/g, " ") !== avant.replace(/\s+/g, " "))
-      res.push({ libelle: defD.libelle || "Description", valeur: nouvelle || "(vide)" });
+      modifications.push({ libelle: defD.libelle || "Description", valeur: nouvelle || "(vide)" });
   }
   if (etatSaisie.optionsAuto.questions) {
     const valeurs = lireChamps("q", etatSaisie.defsQuestions, []); // questions visibles uniquement
-    for (const def of etatSaisie.defsQuestions) {
-      if (def.formule && formuleConnue(def) && !def.confidentiel && questionVisible("q", def)) {
-        const v = valeurFormuleEnDirect(def),
-          avant = ref ? ref[def.colId] : null;
-        if (v != null && v !== "" && String(v) !== String(avant ?? ""))
-          res.push({ libelle: def.libelle, valeur: formatValeur(def, v) });
+    for (const question of etatSaisie.defsQuestions) {
+      if (question.formule && formuleConnue(question) && !question.confidentiel && questionVisible("q", question)) {
+        const valeurDirecte = valeurFormuleEnDirect(question),
+          avant = ligneReference ? ligneReference[question.colId] : null;
+        if (valeurDirecte != null && valeurDirecte !== "" && String(valeurDirecte) !== String(avant ?? ""))
+          modifications.push({ libelle: question.libelle, valeur: formatValeur(question, valeurDirecte) });
         continue;
       }
-      if (def.formule || def.confidentiel || !(def.colId in valeurs)) continue;
-      const nouvelle = valeurs[def.colId];
-      if (memeReponse(def, nouvelle, ref ? ref[def.colId] : null)) continue;
-      res.push({
-        libelle: def.libelle,
+      if (question.formule || question.confidentiel || !(question.colId in valeurs)) continue;
+      const nouvelle = valeurs[question.colId];
+      if (memeReponse(question, nouvelle, ligneReference ? ligneReference[question.colId] : null)) continue;
+      modifications.push({
+        libelle: question.libelle,
         valeur:
-          estVide(def, nouvelle) && typeBase(def.type) !== "Bool"
+          estVide(question, nouvelle) && typeBase(question.type) !== "Bool"
             ? "(vide)"
-            : def.tableau
-              ? texteTableauDescription(def, lireTableauJson(nouvelle))
-              : formatValeur(def, nouvelle),
+            : question.tableau
+              ? texteTableauDescription(question, lireTableauJson(nouvelle))
+              : formatValeur(question, nouvelle),
       });
     }
   }
-  return res;
+  return modifications;
 }
 
-function texteAutomatique(o = etatSaisie.optionsAuto, modifs = modificationsSaisies()) {
-  if (!o.actif) return "";
+function texteAutomatique(options = etatSaisie.optionsAuto, modifs = modificationsSaisies()) {
+  if (!options.actif) return "";
   return joindre(
-    modifs.map((m) => element(m.libelle, m.valeur, o)),
-    o,
+    modifs.map((modification) => element(modification.libelle, modification.valeur, options)),
+    options,
   );
 }
 
@@ -142,69 +142,74 @@ const FAMILLES = {
   reference: "Références",
   texte: "Textes",
 };
-function famille(def) {
-  const t = typeBase(def && def.type);
-  if (t === "Numeric" || t === "Int") return "nombre";
-  if (t === "Date" || t === "DateTime") return "date";
-  if (t === "Choice" || t === "ChoiceList") return "choix";
-  if (t === "Bool") return "case";
-  if (t === "Ref" || t === "RefList") return "reference";
+function famille(definition) {
+  const typeColonne = typeBase(definition && definition.type);
+  if (typeColonne === "Numeric" || typeColonne === "Int") return "nombre";
+  if (typeColonne === "Date" || typeColonne === "DateTime") return "date";
+  if (typeColonne === "Choice" || typeColonne === "ChoiceList") return "choix";
+  if (typeColonne === "Bool") return "case";
+  if (typeColonne === "Ref" || typeColonne === "RefList") return "reference";
   return "texte";
 }
-function formatPour(def, o = etatSaisie.optionsAuto) {
-  if (def && def.formatDescription) return def.formatDescription;
-  const parQuestion = def && (o.formatsQuestion || {})[def.colId];
+function formatPour(definition, options = etatSaisie.optionsAuto) {
+  if (definition && definition.formatDescription) return definition.formatDescription;
+  const parQuestion = definition && (options.formatsQuestion || {})[definition.colId];
   if (parQuestion && parQuestion !== "defaut") return parQuestion;
-  const parType = def && !def.tableau && (o.formatsType || {})[famille(def)];
+  const parType = definition && !definition.tableau && (options.formatsType || {})[famille(definition)];
   if (parType && parType !== "defaut") return parType;
-  return o.format;
+  return options.format;
 }
 // Questions concernées par la description : qualification puis questions supplémentaires
 function questionsDescription() {
-  const q = etatSaisie.metaSig[col("Qualification")];
+  const definitionQualification = etatSaisie.metaSig[colonneDe("Qualification")];
   return [
-    ...(q ? [{ ...q, libelle: q.libelle || "Qualification" }] : []),
-    ...etatSaisie.defsQuestions.filter((d) => !d.formule || formuleConnue(d)),
+    ...(definitionQualification
+      ? [{ ...definitionQualification, libelle: definitionQualification.libelle || "Qualification" }]
+      : []),
+    ...etatSaisie.defsQuestions.filter((question) => !question.formule || formuleConnue(question)),
   ];
 }
 
-function elementsDescription(o = etatSaisie.optionsAuto) {
+function elementsDescription(options = etatSaisie.optionsAuto) {
   const items = [];
-  const defQ = etatSaisie.metaSig[col("Qualification")];
-  if (o.qualification && defQ) {
-    const q = lireQualificationInitiale();
-    const l = Array.isArray(q) ? q : q ? [q] : [];
-    const avecFleche = etatSaisie.defsQuestions.some((d) => d.tableau && (d._sousDefs || []).some(estQualifSous));
-    const avant = avecFleche && versionDuJour() ? listeQualif(val(etatSaisie.derniere, "Qualification")) : [];
+  const defQ = etatSaisie.metaSig[colonneDe("Qualification")];
+  if (options.qualification && defQ) {
+    const qualification = lireQualificationInitiale();
+    const qualifications = Array.isArray(qualification) ? qualification : qualification ? [qualification] : [];
+    const avecFleche = etatSaisie.defsQuestions.some(
+      (question) => question.tableau && (question._sousDefs || []).some(estQualifSous),
+    );
+    const avant = avecFleche && versionDuJour() ? listeQualif(valeurLigne(etatSaisie.derniere, "Qualification")) : [];
     const change =
       avant.length &&
-      l.length &&
-      JSON.stringify([...avant].map(String).sort()) !== JSON.stringify([...l].map(String).sort());
-    if (l.length)
+      qualifications.length &&
+      JSON.stringify([...avant].map(String).sort()) !== JSON.stringify([...qualifications].map(String).sort());
+    if (qualifications.length)
       items.push({
         libelle: defQ.libelle || "Qualification",
-        valeur: change ? `${avant.join(", ")} → ==${l.join(", ")}==` : l.join(", "),
+        valeur: change ? `${avant.join(", ")} → ==${qualifications.join(", ")}==` : qualifications.join(", "),
         def: defQ,
       });
   }
-  if (o.questions) {
+  if (options.questions) {
     const valeurs = lireChamps("q", etatSaisie.defsQuestions, []); // questions visibles uniquement
-    for (const def of etatSaisie.defsQuestions) {
-      if (def.formule && formuleConnue(def) && !def.confidentiel && questionVisible("q", def)) {
-        const v = valeurFormuleEnDirect(def);
-        if (v != null && v !== "") items.push({ libelle: def.libelle, valeur: formatValeur(def, v), def });
+    for (const question of etatSaisie.defsQuestions) {
+      if (question.formule && formuleConnue(question) && !question.confidentiel && questionVisible("q", question)) {
+        const valeurDirecte = valeurFormuleEnDirect(question);
+        if (valeurDirecte != null && valeurDirecte !== "")
+          items.push({ libelle: question.libelle, valeur: formatValeur(question, valeurDirecte), def: question });
         continue;
       }
-      if (def.formule || def.confidentiel || !(def.colId in valeurs)) continue;
-      const v = valeurs[def.colId];
-      if (estVide(def, v)) continue; // question sans réponse : ignorée
-      if (typeBase(def.type) === "Bool" && !v) continue; // case non cochée : ignorée
+      if (question.formule || question.confidentiel || !(question.colId in valeurs)) continue;
+      const valeurSaisie = valeurs[question.colId];
+      if (estVide(question, valeurSaisie)) continue; // question sans réponse : ignorée
+      if (typeBase(question.type) === "Bool" && !valeurSaisie) continue; // case non cochée : ignorée
       items.push({
-        libelle: def.libelle,
-        valeur: def.tableau
-          ? texteTableauDescription(def, lireTableauJson(v), o, lignesPrecedentes(def))
-          : formatValeur(def, v),
-        def,
+        libelle: question.libelle,
+        valeur: question.tableau
+          ? texteTableauDescription(question, lireTableauJson(valeurSaisie), options, lignesPrecedentes(question))
+          : formatValeur(question, valeurSaisie),
+        def: question,
       });
     }
   }
@@ -217,59 +222,80 @@ function elementsDescription(o = etatSaisie.optionsAuto) {
    Le jour est déterminé dans le fuseau horaire de la colonne Date. Seules les lignes visibles par
    l'utilisateur sont prises en compte (règles d'accès). */
 const MOTIF_MOBILISATION = /\s*\(\d+(?:er|e) jour de mobilisation\)\s*$/;
-const ordinal = (n) => (n === 1 ? "1er" : `${n}e`);
+const ordinal = (rang) => (rang === 1 ? "1er" : `${rang}e`);
 function jourCalendaire(sec) {
-  const tz = /^Date$/.test((etatSaisie.metaDate && etatSaisie.metaDate.type) || "") ? "UTC" : Outils.dates.FUSEAU;
-  return formateur(`jour|${tz || ""}`, {
+  const fuseauHoraire = /^Date$/.test((etatSaisie.metaDate && etatSaisie.metaDate.type) || "")
+    ? "UTC"
+    : Outils.dates.FUSEAU;
+  return formateur(`jour|${fuseauHoraire || ""}`, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-    timeZone: tz,
+    timeZone: fuseauHoraire,
   }).format(new Date(sec * 1000));
 }
 /* Colonne Référence vers un référentiel des sites (table qui renvoie elle-même vers le référentiel des établissements) :
    rattachement de chaque site à son établissement et à sa composante, commune, mots-clés, sites désactivés, et
    établissement de rattachement des composantes. Renvoie true si la colonne désigne bien un site. */
-async function preparerRefSite(ds) {
+async function preparerRefSite(definitionSite) {
   try {
-    const cible = ds.type.split(":")[1];
+    const cible = definitionSite.type.split(":")[1];
     if (!cible || cible === ETAB.table || cible === etatSaisie.tableId) return false;
     // référentiel des établissements : celui de la recherche, ou celui que vise la colonne Établissement du formulaire
-    const mr = col("Etablissement") && etatSaisie.metaSig[col("Etablissement")],
-      visee = mr && ((mr.type || "").match(/^Ref:(.+)$/) || [])[1];
-    const m = Object.values((await metaColonnes(cible)) || {}),
-      versEtab = m.filter((c) => c.type === `Ref:${ETAB.table}` || (visee && c.type === `Ref:${visee}`));
-    const ce = versEtab.find((c) => c.colId === "Etablissement") || versEtab.find((c) => !/compos/i.test(c.colId)),
-      cc = versEtab.find((c) => c !== ce && /compos/i.test(c.colId));
-    if (!ce) return false;
-    const t = await lireTableReference(cible);
-    ds._siteEtab = new Map(t.id.map((id, i) => [id, refId(t[ce.colId][i])]));
-    if (cc) ds._siteComp = new Map(t.id.map((id, i) => [id, refId(t[cc.colId][i])]));
+    const metaEtablissement = colonneDe("Etablissement") && etatSaisie.metaSig[colonneDe("Etablissement")],
+      visee = metaEtablissement && ((metaEtablissement.type || "").match(/^Ref:(.+)$/) || [])[1];
+    const colonnesCible = Object.values((await metaColonnes(cible)) || {}),
+      versEtab = colonnesCible.filter(
+        (colonne) => colonne.type === `Ref:${ETAB.table}` || (visee && colonne.type === `Ref:${visee}`),
+      );
+    const colonneEtablissement =
+        versEtab.find((colonne) => colonne.colId === "Etablissement") ||
+        versEtab.find((colonne) => !/compos/i.test(colonne.colId)),
+      colonneComposante = versEtab.find((colonne) => colonne !== colonneEtablissement && /compos/i.test(colonne.colId));
+    if (!colonneEtablissement) return false;
+    const tableReference = await lireTableReference(cible);
+    definitionSite._siteEtab = new Map(
+      tableReference.id.map((id, i) => [id, refId(tableReference[colonneEtablissement.colId][i])]),
+    );
+    if (colonneComposante)
+      definitionSite._siteComp = new Map(
+        tableReference.id.map((id, i) => [id, refId(tableReference[colonneComposante.colId][i])]),
+      );
     // mots-clés des sites (Mots_cles, Autres_noms…) : retrouvent le site quand l'agent tape un autre nom
-    const cm = m
-      .filter((c) => /^Text/.test(c.type || "") && /^(mots?_?cles?|autres?_noms?|alias)/i.test(c.colId))
-      .map((c) => c.colId);
-    ds._motsSite = new Map(
-      t.id.map((id, i) => [
+    const colonnesMotsCles = colonnesCible
+      .filter(
+        (colonne) => /^Text/.test(colonne.type || "") && /^(mots?_?cles?|autres?_noms?|alias)/i.test(colonne.colId),
+      )
+      .map((colonne) => colonne.colId);
+    definitionSite._motsSite = new Map(
+      tableReference.id.map((id, i) => [
         id,
-        cm
-          .map((c) => t[c] && t[c][i])
-          .filter((x) => typeof x === "string" && x.trim())
+        colonnesMotsCles
+          .map((identifiantColonne) => tableReference[identifiantColonne] && tableReference[identifiantColonne][i])
+          .filter((motCle) => typeof motCle === "string" && motCle.trim())
           .join(" | "),
       ]),
     );
-    const cv = m.find((c) => /^commune$/i.test(c.colId));
-    if (cv) ds._communeSite = new Map(t.id.map((id, i) => [id, String(t[cv.colId][i] ?? "")]));
+    const colonneCommune = colonnesCible.find((colonne) => /^commune$/i.test(colonne.colId));
+    if (colonneCommune)
+      definitionSite._communeSite = new Map(
+        tableReference.id.map((id, i) => [id, String(tableReference[colonneCommune.colId][i] ?? "")]),
+      );
     // sites désactivés (colonne Actif décochée) : plus proposés, sauf sur une ligne qui y renvoie déjà
-    const ca = m.find((c) => /^actif$/i.test(c.colId) && c.type === "Bool");
-    if (ca) ds._inactifs = new Set(t.id.filter((id, i) => t[ca.colId][i] === false));
+    const colonneActif = colonnesCible.find((colonne) => /^actif$/i.test(colonne.colId) && colonne.type === "Bool");
+    if (colonneActif)
+      definitionSite._inactifs = new Set(
+        tableReference.id.filter((id, i) => tableReference[colonneActif.colId][i] === false),
+      );
     // composante (IUT, école interne…) : ses propres sites, sinon ceux de son établissement de rattachement
-    const me = Object.values((await metaColonnes(ETAB.table)) || {}).find(
-      (c) => c.type === `Ref:${ETAB.table}` && /rattach|parent/i.test(c.colId),
+    const colonneParent = Object.values((await metaColonnes(ETAB.table)) || {}).find(
+      (colonne) => colonne.type === `Ref:${ETAB.table}` && /rattach|parent/i.test(colonne.colId),
     );
-    if (me) {
-      const te = await lireTableReference(ETAB.table);
-      ds._parent = new Map(te.id.map((id, i) => [id, refId(te[me.colId][i])]));
+    if (colonneParent) {
+      const tableEtablissements = await lireTableReference(ETAB.table);
+      definitionSite._parent = new Map(
+        tableEtablissements.id.map((id, i) => [id, refId(tableEtablissements[colonneParent.colId][i])]),
+      );
     }
     return true;
   } catch (_) {
@@ -278,20 +304,32 @@ async function preparerRefSite(ds) {
 }
 /* Sites proposés pour un établissement : les siens (ou, pour une composante, ceux qui la concernent) ; une composante ou un
    site sans site propre au référentiel reprend ceux de son établissement de rattachement. Le site déjà choisi reste. */
-function sitesDeLEtablissement(d, e, opts, choisi) {
-  if (d._inactifs && d._inactifs.size) opts = opts.filter((o) => !d._inactifs.has(o.id) || o.id === choisi);
-  const a = opts.filter(
-    (o) => d._siteEtab.get(o.id) === e || (d._siteComp && d._siteComp.get(o.id) === e) || o.id === choisi,
+function sitesDeLEtablissement(definitionSite, idEtablissement, optionsSites, choisi) {
+  if (definitionSite._inactifs && definitionSite._inactifs.size)
+    optionsSites = optionsSites.filter((option) => !definitionSite._inactifs.has(option.id) || option.id === choisi);
+  const sitesEtablissement = optionsSites.filter(
+    (option) =>
+      definitionSite._siteEtab.get(option.id) === idEtablissement ||
+      (definitionSite._siteComp && definitionSite._siteComp.get(option.id) === idEtablissement) ||
+      option.id === choisi,
   );
-  const p = d._parent && d._parent.get(e);
-  const r =
-    !p || a.some((o) => o.id !== choisi) ? a : opts.filter((o) => d._siteEtab.get(o.id) === p || o.id === choisi);
+  const idParent = definitionSite._parent && definitionSite._parent.get(idEtablissement);
+  const sitesRetenus =
+    !idParent || sitesEtablissement.some((option) => option.id !== choisi)
+      ? sitesEtablissement
+      : optionsSites.filter((option) => definitionSite._siteEtab.get(option.id) === idParent || option.id === choisi);
   // dossier ouvert depuis une composante : ses sites d'abord
-  const c = etatSaisie.composanteChoisie && d._siteComp ? etatSaisie.composanteChoisie.id : null;
-  return c ? [...r.filter((o) => d._siteComp.get(o.id) === c), ...r.filter((o) => d._siteComp.get(o.id) !== c)] : r;
+  const idComposante =
+    etatSaisie.composanteChoisie && definitionSite._siteComp ? etatSaisie.composanteChoisie.id : null;
+  return idComposante
+    ? [
+        ...sitesRetenus.filter((option) => definitionSite._siteComp.get(option.id) === idComposante),
+        ...sitesRetenus.filter((option) => definitionSite._siteComp.get(option.id) !== idComposante),
+      ]
+    : sitesRetenus;
 }
 function etablissementDuFormulaire() {
-  if (etatSaisie.initiale) return refId(val(etatSaisie.initiale, "Etablissement"));
+  if (etatSaisie.initiale) return refId(valeurLigne(etatSaisie.initiale, "Etablissement"));
   if (etatSaisie.modeEtab) return etatSaisie.etabs[0] ? etatSaisie.etabs[0].id : null;
   return etatSaisie.etabCourant ? etatSaisie.etabCourant.id : null; // établissement pas encore dans le référentiel : aucune ligne
 }
@@ -302,76 +340,78 @@ function etablissementDuFormulaire() {
 const dateParGrist = () => !!(etatSaisie.metaDate && String(etatSaisie.metaDate.texteFormule || "").trim());
 
 function jourFaits(sec) {
-  const tz =
+  const fuseauHoraire =
     etatSaisie.metaFaits && (etatSaisie.metaFaits.type || "").startsWith("DateTime") ? Outils.dates.FUSEAU : "UTC";
-  return formateur(`jour|${tz || ""}`, {
+  return formateur(`jour|${fuseauHoraire || ""}`, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-    timeZone: tz,
+    timeZone: fuseauHoraire,
   }).format(new Date(sec * 1000));
 }
 function jourDuFormulaire() {
-  return col("Date_faits") && lireDateFaits() != null ? jourFaits(lireDateFaits()) : jourCalendaire(Date.now() / 1000);
+  return colonneDe("Date_faits") && lireDateFaits() != null
+    ? jourFaits(lireDateFaits())
+    : jourCalendaire(Date.now() / 1000);
 }
-function jourDeLaVersion(l) {
-  const f = col("Date_faits") ? secondes(val(l, "Date_faits")) : null;
-  if (f != null) return jourFaits(f);
-  const s = secondes(val(l, "Date"));
-  return s != null ? jourCalendaire(s) : null;
+function jourDeLaVersion(ligne) {
+  const secondesFaits = colonneDe("Date_faits") ? secondes(valeurLigne(ligne, "Date_faits")) : null;
+  if (secondesFaits != null) return jourFaits(secondesFaits);
+  const secondesSaisie = secondes(valeurLigne(ligne, "Date"));
+  return secondesSaisie != null ? jourCalendaire(secondesSaisie) : null;
 }
 // Site comparé sans accents, majuscules, ponctuation ni mots « bâtiment / bât. / site / campus »
-const cleSite = (s) =>
-  normaliser(s)
+const cleSite = (texteSite) =>
+  normaliser(texteSite)
     .replace(/[^a-z0-9 ]+/g, " ")
     .replace(/\b(batiment|bat|site|campus|le|la|les|de|du|des)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-function memeSite(a, b) {
-  const x = cleSite(a),
-    y = cleSite(b);
-  if (!x || !y) return true; // site non renseigné d'un côté : l'établissement suffit pour alerter
+function memeSite(siteA, siteB) {
+  const cleA = cleSite(siteA),
+    cleB = cleSite(siteB);
+  if (!cleA || !cleB) return true; // site non renseigné d'un côté : l'établissement suffit pour alerter
   // mêmes mots significatifs, dans n'importe quel ordre (« bât. 12, campus de Beaulieu » = « Campus de Beaulieu, bâtiment 12 »)
-  const mx = x.split(" "),
-    my = y.split(" "),
-    [court, long] = mx.length <= my.length ? [mx, my] : [my, mx];
-  return x === y || court.every((m) => long.includes(m));
+  const motsA = cleA.split(" "),
+    motsB = cleB.split(" "),
+    [court, long] = motsA.length <= motsB.length ? [motsA, motsB] : [motsB, motsA];
+  return cleA === cleB || court.every((mot) => long.includes(mot));
 }
 function doublonsDuJour() {
   if (etatSaisie.dossierId) return [];
   const etabId = etablissementDuFormulaire();
   if (!etabId) return [];
   const jour = jourDuFormulaire(),
-    cD = col("Dossier"),
+    colonneDossier = colonneDe("Dossier"),
     parDossier = new Map();
-  for (const l of etatSaisie.enregistrements) {
-    if (refId(val(l, "Etablissement")) !== etabId) continue;
-    const d = refId(cD && l[cD]) || l.id;
-    if (!parDossier.has(d)) parDossier.set(d, []);
-    parDossier.get(d).push(l);
+  for (const ligne of etatSaisie.enregistrements) {
+    if (refId(valeurLigne(ligne, "Etablissement")) !== etabId) continue;
+    const idDossierLigne = refId(colonneDossier && ligne[colonneDossier]) || ligne.id;
+    if (!parDossier.has(idDossierLigne)) parDossier.set(idDossierLigne, []);
+    parDossier.get(idDossierLigne).push(ligne);
   }
-  const res = [];
-  for (const [d, lignes] of parDossier) {
-    if (!lignes.some((l) => jourDeLaVersion(l) === jour)) continue;
+  const doublons = [];
+  for (const [idDossier, lignes] of parDossier) {
+    if (!lignes.some((ligne) => jourDeLaVersion(ligne) === jour)) continue;
     const derniere = [...lignes].sort(comparerVersions).pop();
-    if (col("Site") && !memeSite($("site").value, val(derniere, "Site"))) continue; // autre site du même établissement
-    res.push({ dossier: d, derniere, nb: lignes.length });
+    if (colonneDe("Site") && !memeSite($("site").value, valeurLigne(derniere, "Site"))) continue; // autre site du même établissement
+    doublons.push({ dossier: idDossier, derniere, nb: lignes.length });
   }
-  return res;
+  return doublons;
 }
 const cleDoublon = () =>
-  `${etablissementDuFormulaire()}|${jourDuFormulaire()}|${col("Site") ? cleSite($("site").value) : ""}`;
-function extraitDescription(l) {
-  const t = String(val(l, "Description") || "")
+  `${etablissementDuFormulaire()}|${jourDuFormulaire()}|${colonneDe("Site") ? cleSite($("site").value) : ""}`;
+function extraitDescription(ligne) {
+  const texte = String(valeurLigne(ligne, "Description") || "")
     .replace(/\*\*|==/g, "")
     .replace(/^[^:]{0,120}:\s*/, "")
     .replace(/\s+/g, " ")
     .trim();
-  return t.length > 140 ? t.slice(0, 140) + "…" : t;
+  return texte.length > 140 ? texte.slice(0, 140) + "…" : texte;
 }
 const lieuDoublon = () => {
-  const s = col("Site") ? $("site").value.trim() : "";
-  return s ? ` (site « ${esc(s)} »)` : "";
+  const site = colonneDe("Site") ? $("site").value.trim() : "";
+  return site ? ` (site « ${esc(site)} »)` : "";
 };
 function verifierDoublons() {
   const bloc = $("alerte-doublon");
@@ -386,13 +426,13 @@ function verifierDoublons() {
   bloc.hidden = false;
   bloc.classList.toggle("confirme", confirme);
   const items = liste
-    .map((x) => {
-      const q = listeQualif(val(x.derniere, "Qualification")).join(", ");
-      const suivis = x.nb > 1 ? ` — ${x.nb - 1} mise${x.nb > 2 ? "s" : ""} à jour` : "";
-      const s = col("Site") ? String(val(x.derniere, "Site") || "").trim() : "";
-      return `<li><strong>Dossier n° ${x.dossier}</strong>${s ? ` — site « ${esc(s)} »` : ""}${q ? ` (${esc(q)})` : ""}${suivis}<br>
-      <span class="extrait">${esc(extraitDescription(x.derniere))}</span><br>
-      <button type="button" class="secondaire petit" data-ouvrir-dossier="${x.dossier}">Ouvrir ce signalement pour le mettre à jour</button></li>`;
+    .map((doublon) => {
+      const qualifications = listeQualif(valeurLigne(doublon.derniere, "Qualification")).join(", ");
+      const suivis = doublon.nb > 1 ? ` — ${doublon.nb - 1} mise${doublon.nb > 2 ? "s" : ""} à jour` : "";
+      const site = colonneDe("Site") ? String(valeurLigne(doublon.derniere, "Site") || "").trim() : "";
+      return `<li><strong>Dossier n° ${doublon.dossier}</strong>${site ? ` — site « ${esc(site)} »` : ""}${qualifications ? ` (${esc(qualifications)})` : ""}${suivis}<br>
+      <span class="extrait">${esc(extraitDescription(doublon.derniere))}</span><br>
+      <button type="button" class="secondaire petit" data-ouvrir-dossier="${doublon.dossier}">Ouvrir ce signalement pour le mettre à jour</button></li>`;
     })
     .join("");
   bloc.innerHTML = confirme
@@ -403,11 +443,11 @@ function verifierDoublons() {
        <ul>${items}</ul>
        <div class="actions-doublon"><button type="button" class="lien-texte" id="btn-confirmer-doublon">Non, il s'agit de faits distincts : créer un nouveau signalement</button></div>`;
 }
-$("alerte-doublon").addEventListener("click", (ev) => {
-  const b = ev.target.closest("button");
-  if (!b) return;
-  if (b.dataset.ouvrirDossier) {
-    const id = +b.dataset.ouvrirDossier;
+$("alerte-doublon").addEventListener("click", (evenement) => {
+  const bouton = evenement.target.closest("button");
+  if (!bouton) return;
+  if (bouton.dataset.ouvrirDossier) {
+    const id = +bouton.dataset.ouvrirDossier;
     enFile(async () => {
       try {
         await grist.setCursorPos({ rowId: id });
@@ -415,11 +455,11 @@ $("alerte-doublon").addEventListener("click", (ev) => {
       await ouvrirDossier(id, true);
       verifierDoublons();
     });
-  } else if (b.id === "btn-confirmer-doublon") {
+  } else if (bouton.id === "btn-confirmer-doublon") {
     etatSaisie.doublonConfirme = cleDoublon();
     verifierDoublons();
     statut("statut-signalement", "");
-  } else if (b.id === "btn-annuler-doublon") {
+  } else if (bouton.id === "btn-annuler-doublon") {
     etatSaisie.doublonConfirme = null;
     verifierDoublons();
   }
@@ -428,7 +468,7 @@ $("alerte-doublon").addEventListener("click", (ev) => {
 function jourDeMobilisation(cible, serie) {
   // cible : jour (secondes) d'une étape reprise ; serie : jours repris en même temps
   const etabId = etablissementDuFormulaire();
-  const avecFaits = !!col("Date_faits");
+  const avecFaits = !!colonneDe("Date_faits");
   // jour du signalement en cours : la date des faits saisie, sinon aujourd'hui
   const courant =
     cible != null
@@ -445,48 +485,54 @@ function jourDeMobilisation(cible, serie) {
     if (cle(j) <= limite) jours.add(j);
   };
   if (etabId)
-    for (const l of etatSaisie.enregistrements) {
-      if (refId(val(l, "Etablissement")) !== etabId) continue;
-      if (col("Qualification") && qualificationRas(val(l, "Qualification"))) continue; // jour « RAS » : non compté
-      const f = avecFaits ? secondes(val(l, "Date_faits")) : null;
-      if (f != null) {
-        ajouter(jourFaits(f));
+    for (const ligne of etatSaisie.enregistrements) {
+      if (refId(valeurLigne(ligne, "Etablissement")) !== etabId) continue;
+      if (colonneDe("Qualification") && qualificationRas(valeurLigne(ligne, "Qualification"))) continue; // jour « RAS » : non compté
+      const secondesFaits = avecFaits ? secondes(valeurLigne(ligne, "Date_faits")) : null;
+      if (secondesFaits != null) {
+        ajouter(jourFaits(secondesFaits));
         continue;
       }
-      const sec = secondes(val(l, "Date")); // versions antérieures sans date des faits
+      const sec = secondes(valeurLigne(ligne, "Date")); // versions antérieures sans date des faits
       if (sec != null) ajouter(jourCalendaire(sec));
     }
   if (serie && !signalementEnCoursRas())
-    for (const t of [lireDateFaits(), ...serie]) if (t != null) ajouter(jourFaits(t));
+    for (const secondesJour of [lireDateFaits(), ...serie]) if (secondesJour != null) ajouter(jourFaits(secondesJour));
   return jours.size;
 }
-const mentionMobilisation = (n) => `(${ordinal(n)} jour de mobilisation)`;
+const mentionMobilisation = (rang) => `(${ordinal(rang)} jour de mobilisation)`;
 // Qualification « RAS » (rien à signaler) : la ligne ne compte pas comme jour de mobilisation.
 // Choix multiples : écartée seulement si « RAS » est son seul choix.
-function qualificationRas(q) {
-  const l = Array.isArray(q) ? q.filter((x) => x !== "L") : q == null || q === "" ? [] : [q];
+function qualificationRas(qualification) {
+  const choixSaisis = Array.isArray(qualification)
+    ? qualification.filter((valeur) => valeur !== "L")
+    : qualification == null || qualification === ""
+      ? []
+      : [qualification];
   const retour = new Set(
     (etatSaisie.socleGeneral.retour_normale && etatSaisie.socleGeneral.retour_normale.length
       ? etatSaisie.socleGeneral.retour_normale
       : ["RAS"]
-    ).map((x) => String(x).trim().toUpperCase()),
+    ).map((motRetour) => String(motRetour).trim().toUpperCase()),
   );
-  return l.length > 0 && l.every((x) => retour.has(String(x).trim().toUpperCase()));
+  return (
+    choixSaisis.length > 0 && choixSaisis.every((choixSaisi) => retour.has(String(choixSaisi).trim().toUpperCase()))
+  );
 }
-const signalementEnCoursRas = () => !!col("Qualification") && qualificationRas(lireQualificationInitiale());
-function ajouterMobilisation(texte, o = etatSaisie.optionsAuto, n = jourDeMobilisation()) {
+const signalementEnCoursRas = () => !!colonneDe("Qualification") && qualificationRas(lireQualificationInitiale());
+function ajouterMobilisation(texte, options = etatSaisie.optionsAuto, rang = jourDeMobilisation()) {
   const base = String(texte || "").replace(MOTIF_MOBILISATION, "");
-  if (!o.mobilisation || signalementEnCoursRas()) return base; // signalement « RAS » : pas de mention
-  const sep = o.separateur === "ligne" && base ? "\n" : base ? " " : "";
-  return `${base}${sep}${mentionMobilisation(n)}`;
+  if (!options.mobilisation || signalementEnCoursRas()) return base; // signalement « RAS » : pas de mention
+  const sep = options.separateur === "ligne" && base ? "\n" : base ? " " : "";
+  return `${base}${sep}${mentionMobilisation(rang)}`;
 }
 
 // Établissement et commune du formulaire : établissement connu, ou établissement choisi dans l'annuaire
 // (ou saisi à la main) en cours de création
 function identiteDuFormulaire() {
-  const e = etatSaisie.etabCourant || (etatSaisie.modeEtab ? etatSaisie.etabs[0] : null);
-  const site = col("Site") ? $("site").value.trim() : "";
-  if (e) return { ...valeursEtab(e), site };
+  const etablissement = etatSaisie.etabCourant || (etatSaisie.modeEtab ? etatSaisie.etabs[0] : null);
+  const site = colonneDe("Site") ? $("site").value.trim() : "";
+  if (etablissement) return { ...valeursEtab(etablissement), site };
   return {
     nom: $("nom").value.trim(),
     commune: (etatSaisie.ligneAnnuaire && etatSaisie.ligneAnnuaire.commune) || "",
@@ -499,37 +545,42 @@ function identiteDuFormulaire() {
 }
 // En-tête : modèle du formulaire (« **{nom}**, **{commune}** », « **{nom}** ({site})»…), en gras au format Markdown
 function enTeteDescription(ident) {
-  return String(ident.nom || "").trim() ? appliquerModele(S().entete, ident) : "";
+  return String(ident.nom || "").trim() ? appliquerModele(reglagesSaisie().entete, ident) : "";
 }
 
-function elementsTableau(m, fmt, o) {
+function elementsTableau(entree, fmt, options) {
   // Question « tableau » : l'en-tête (nombre et décomptes), puis une ligne par élément saisi ; chacun est un
   // élément de la description, séparé comme les autres questions. « Ne pas inclure » ne retire que l'en-tête.
-  const [tete = "", ...lignes] = String(m.valeur ?? "")
+  const [tete = "", ...lignes] = String(entree.valeur ?? "")
     .split(/\s*\n\s*/)
     .filter(Boolean);
   let enTete = "";
   if (fmt === "exclure")
     enTete = tete.replace(/^\d+\s*(—\s*)?/, "").replace(/^\((.*)\)$/, "$1"); // décomptes seuls
-  else if (tete) enTete = fmt === "valeur" ? tete : `${m.libelle} : ${tete}`;
-  return [enTete, ...lignes].filter(Boolean).map((x) => `${o.puce || ""}${x}`);
+  else if (tete) enTete = fmt === "valeur" ? tete : `${entree.libelle} : ${tete}`;
+  return [enTete, ...lignes].filter(Boolean).map((ligneTexte) => `${options.puce || ""}${ligneTexte}`);
 }
-function descriptionGeneree(o = etatSaisie.optionsAuto, items = elementsDescription(o), n, ident) {
+function descriptionGeneree(
+  options = etatSaisie.optionsAuto,
+  items = elementsDescription(options),
+  rangMobilisation,
+  ident,
+) {
   const corps = joindre(
-    items.flatMap((m) => {
-      const fmt = formatPour(m.def, o);
-      if (m.def && m.def.tableau) return elementsTableau(m, fmt, o);
+    items.flatMap((entree) => {
+      const fmt = formatPour(entree.def, options);
+      if (entree.def && entree.def.tableau) return elementsTableau(entree, fmt, options);
       if (fmt === "exclure") return [];
-      const v = String(m.valeur ?? "")
+      const valeurUneLigne = String(entree.valeur ?? "")
         .replace(/\s*\n\s*/g, " ")
         .trim();
-      return [`${o.puce || ""}${fmt === "valeur" ? v : `${m.libelle} : ${v}`}`];
+      return [`${options.puce || ""}${fmt === "valeur" ? valeurUneLigne : `${entree.libelle} : ${valeurUneLigne}`}`];
     }),
-    o,
+    options,
   );
-  const tete = o.entete ? enTeteDescription(ident || identiteDuFormulaire()) : "";
+  const tete = options.entete ? enTeteDescription(ident || identiteDuFormulaire()) : "";
   const texte = tete && corps ? `${tete} : ${corps}` : tete || corps;
-  return ajouterMobilisation(texte, o, n);
+  return ajouterMobilisation(texte, options, rangMobilisation);
 }
 
 function majEtatDescription() {
@@ -565,12 +616,15 @@ function majDescriptionAuto() {
   if (!etatSaisie.optionsAuto.actif) return;
   if (etatSaisie.descriptionManuelle) {
     // Texte modifié à la main : on ne touche qu'à la mention de mobilisation si elle y figure déjà
-    const t = $("description").value;
-    if (etatSaisie.optionsAuto.mobilisation && MOTIF_MOBILISATION.test(t)) {
+    const texteManuel = $("description").value;
+    if (etatSaisie.optionsAuto.mobilisation && MOTIF_MOBILISATION.test(texteManuel)) {
       const maj = signalementEnCoursRas()
-        ? t.replace(MOTIF_MOBILISATION, "")
-        : t.replace(/\(\d+(?:er|e) jour de mobilisation\)(\s*)$/, `${mentionMobilisation(jourDeMobilisation())}$1`);
-      if (maj !== t) $("description").value = maj;
+        ? texteManuel.replace(MOTIF_MOBILISATION, "")
+        : texteManuel.replace(
+            /\(\d+(?:er|e) jour de mobilisation\)(\s*)$/,
+            `${mentionMobilisation(jourDeMobilisation())}$1`,
+          );
+      if (maj !== texteManuel) $("description").value = maj;
     }
     return;
   }
@@ -581,7 +635,7 @@ function majDescriptionAuto() {
 // exactement à ce que produiraient les réponses, et comme modifiée à la main sinon.
 function evaluerDescriptionManuelle() {
   const actuelle = $("description").value.trim();
-  const sansMention = (t) => t.replace(MOTIF_MOBILISATION, "").trim();
+  const sansMention = (texte) => texte.replace(MOTIF_MOBILISATION, "").trim();
   etatSaisie.descriptionManuelle =
     !!actuelle && etatSaisie.optionsAuto.actif && sansMention(actuelle) !== sansMention(descriptionGeneree().trim());
   majDescriptionAuto();
@@ -599,7 +653,7 @@ $("btn-regenerer").addEventListener("click", () => {
 });
 
 function majApercuAuto() {
-  if (!etatSaisie.dossierId || !col("Commentaire")) {
+  if (!etatSaisie.dossierId || !colonneDe("Commentaire")) {
     $("apercu-auto").hidden = true;
     return;
   }
@@ -613,8 +667,8 @@ function majApercuAuto() {
       : "Résumé automatique désactivé (bouton « ⚙ Réglages »).");
 }
 ["input", "change"].forEach((evt) =>
-  $("form-signalement").addEventListener(evt, (ev) => {
-    const id = ev.target && ev.target.id;
+  $("form-signalement").addEventListener(evt, (evenement) => {
+    const id = evenement.target && evenement.target.id;
     if (id === "commentaire") return;
     if (id !== "description") majDescriptionAuto();
     majApercuAuto();

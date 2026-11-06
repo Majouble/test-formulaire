@@ -8,52 +8,58 @@ async function afficherHistorique() {
   await Promise.all(Object.values(cheminsRef));
   if (!etatSaisie.initiale) return;
   const etat = {};
-  etatSaisie.champsVersion.forEach((d) => (etat[d.colId] = norm(d, etatSaisie.initiale[d.colId])));
-  const entrees = etatSaisie.versions.map((l) => {
+  etatSaisie.champsVersion.forEach(
+    (champVersion) => (etat[champVersion.colId] = norm(champVersion, etatSaisie.initiale[champVersion.colId])),
+  );
+  const entrees = etatSaisie.versions.map((version) => {
     const changements = [];
-    if (l !== etatSaisie.initiale)
-      for (const d of etatSaisie.champsVersion) {
-        const v = norm(d, l[d.colId]);
-        if (egal(v, etat[d.colId])) continue;
+    if (version !== etatSaisie.initiale)
+      for (const champVersion of etatSaisie.champsVersion) {
+        const valeur = norm(champVersion, version[champVersion.colId]);
+        if (egal(valeur, etat[champVersion.colId])) continue;
         changements.push({
-          libelle: d.libelle,
-          avant: formatValeur(d, etat[d.colId]),
-          apres: formatValeur(d, v),
+          libelle: champVersion.libelle,
+          avant: formatValeur(champVersion, etat[champVersion.colId]),
+          apres: formatValeur(champVersion, valeur),
         });
-        etat[d.colId] = v;
+        etat[champVersion.colId] = valeur;
       }
     return {
-      date: val(l, "Date"),
-      faits: col("Date_faits") ? val(l, "Date_faits") : null,
-      qualification: listeQualif(val(l, "Qualification")),
-      auteur: lisible(val(l, "Auteur")) ? val(l, "Auteur") : null,
+      date: valeurLigne(version, "Date"),
+      faits: colonneDe("Date_faits") ? valeurLigne(version, "Date_faits") : null,
+      qualification: listeQualif(valeurLigne(version, "Qualification")),
+      auteur: lisible(valeurLigne(version, "Auteur")) ? valeurLigne(version, "Auteur") : null,
       changements,
       commentaire:
-        l === etatSaisie.initiale
-          ? ["Signalement initial", val(l, "Commentaire")].filter(Boolean).join("\n")
-          : val(l, "Commentaire"),
+        version === etatSaisie.initiale
+          ? ["Signalement initial", valeurLigne(version, "Commentaire")].filter(Boolean).join("\n")
+          : valeurLigne(version, "Commentaire"),
     };
   });
-  const ol = $("chrono");
-  ol.innerHTML = "";
-  entrees.reverse().forEach((it) => {
-    const li = document.createElement("li");
-    if (it.qualification.length) styleChoix(li, it.qualification[0]); // couleur du repère : première valeur
+  const listeChronologie = $("chrono");
+  listeChronologie.innerHTML = "";
+  entrees.reverse().forEach((entree) => {
+    const elementListe = document.createElement("li");
+    if (entree.qualification.length) styleChoix(elementListe, entree.qualification[0]); // couleur du repère : première valeur
     const pastille =
-      it.qualification.map((q) => `<span class="pastille" style="${estiloPastille(q)}">${esc(q)}</span>`).join(" ") +
-      (it.qualification.length ? " " : "");
-    const qui = it.auteur ? `, ${esc(it.auteur)}` : "";
-    const chg = it.changements.length
-      ? `<ul class="changements">${it.changements
+      entree.qualification
+        .map(
+          (qualification) =>
+            `<span class="pastille" style="${estiloPastille(qualification)}">${esc(qualification)}</span>`,
+        )
+        .join(" ") + (entree.qualification.length ? " " : "");
+    const qui = entree.auteur ? `, ${esc(entree.auteur)}` : "";
+    const chg = entree.changements.length
+      ? `<ul class="changements">${entree.changements
           .map(
-            (c) =>
-              `<li><strong>${esc(c.libelle)}</strong> : <span class="avant">${esc(c.avant)}</span> → ${esc(c.apres)}</li>`,
+            (changement) =>
+              `<li><strong>${esc(changement.libelle)}</strong> : <span class="avant">${esc(changement.avant)}</span> → ${esc(changement.apres)}</li>`,
           )
           .join("")}</ul>`
       : "";
-    li.innerHTML = `<div>${pastille}<span class="quand">${secondes(it.faits) != null ? `Faits du ${esc(dateFr(it.faits, { ...(etatSaisie.metaFaits || {}), type: (etatSaisie.metaFaits && etatSaisie.metaFaits.type) || "Date" }))} — saisi le ` : ""}${esc(dateFr(it.date, etatSaisie.metaDate) || "date inconnue")}${qui}</span></div>
-                    ${chg}${it.commentaire ? `<div class="texte">${esc(it.commentaire)}</div>` : ""}`;
-    ol.appendChild(li);
+    elementListe.innerHTML = `<div>${pastille}<span class="quand">${secondes(entree.faits) != null ? `Faits du ${esc(dateFr(entree.faits, { ...(etatSaisie.metaFaits || {}), type: (etatSaisie.metaFaits && etatSaisie.metaFaits.type) || "Date" }))} — saisi le ` : ""}${esc(dateFr(entree.date, etatSaisie.metaDate) || "date inconnue")}${qui}</span></div>
+                    ${chg}${entree.commentaire ? `<div class="texte">${esc(entree.commentaire)}</div>` : ""}`;
+    listeChronologie.appendChild(elementListe);
   });
 }
 

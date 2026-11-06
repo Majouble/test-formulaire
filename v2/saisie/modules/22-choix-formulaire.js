@@ -2,21 +2,21 @@
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 async function remplirChoixFormulaire() {
-  const sel = $("cfg-formulaire");
+  const selecteurFormulaire = $("cfg-formulaire");
   let voulu = null;
   try {
     voulu = grist.getOption ? await grist.getOption("formulaire") : null;
   } catch (_) {}
-  const liste = (await lireFormulaires()).filter((f) => f.table === etatSaisie.tableId);
-  sel.innerHTML =
+  const liste = (await lireFormulaires()).filter((formulaire) => formulaire.table === etatSaisie.tableId);
+  selecteurFormulaire.innerHTML =
     `<option value="">Automatique (premier formulaire publié pour la table ${esc(etatSaisie.tableId || "")})</option>` +
     liste
       .map(
-        (f) =>
-          `<option value="${esc(f.nom)}"${f.nom === voulu ? " selected" : ""}${f.publie ? "" : " disabled"}>${esc(f.nom)}${f.publie ? "" : " (jamais publié)"}</option>`,
+        (formulaire) =>
+          `<option value="${esc(formulaire.nom)}"${formulaire.nom === voulu ? " selected" : ""}${formulaire.publie ? "" : " disabled"}>${esc(formulaire.nom)}${formulaire.publie ? "" : " (jamais publié)"}</option>`,
       )
       .join("");
-  sel.value = voulu || "";
+  selecteurFormulaire.value = voulu || "";
   $("cfg-formulaire-info").textContent =
     (etatSaisie.formulaireActif
       ? `Affiché actuellement : « ${etatSaisie.formulaireActif.nom} ». `
@@ -31,7 +31,7 @@ $("cfg-formulaire").addEventListener("change", async () => {
       await chargerConfiguration();
       await rafraichir();
     });
-  } catch (e) {
-    statut("cfg-statut", `Choix non enregistré : ${e.message || e}`, "err");
+  } catch (erreur) {
+    statut("cfg-statut", `Choix non enregistré : ${erreur.message || erreur}`, "err");
   }
 });

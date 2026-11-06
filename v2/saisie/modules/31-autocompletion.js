@@ -4,106 +4,128 @@
 /* =========================================================
    Autocomplétion (agents, création)
    ========================================================= */
-const nom = $("nom"),
+const champNom = $("nom"),
   liste = $("liste");
 // Recherche dans le référentiel du document (sans accents, tous les mots doivent être présents)
-const sansAccent = (s) =>
-  String(s ?? "")
+const sansAccent = (texte) =>
+  String(texte ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-const odsq = (s) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-function clauses(src, q) {
-  const f = src.champs;
-  if (/^\d{7}[a-z]$/i.test(q)) return [`${f.uai}="${q.toUpperCase()}"`];
-  const texte = odsq(q);
-  return [`search(${f.nom}, ${f.commune}, "${texte}")`, `search(*, "${texte}")`];
+const odsq = (texte) => texte.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+function clauses(src, recherche) {
+  const champsSource = src.champs;
+  if (/^\d{7}[a-z]$/i.test(recherche)) return [`${champsSource.uai}="${recherche.toUpperCase()}"`];
+  const texte = odsq(recherche);
+  return [`search(${champsSource.nom}, ${champsSource.commune}, "${texte}")`, `search(*, "${texte}")`];
 }
 async function appeler(src, where) {
-  const r = await fetch(`${src.url}?${new URLSearchParams({ where, limit: NB_RESULTATS_ANNUAIRE })}`);
-  if (!r.ok) {
+  const reponse = await fetch(`${src.url}?${new URLSearchParams({ where, limit: NB_RESULTATS_ANNUAIRE })}`);
+  if (!reponse.ok) {
     let detail = "";
     try {
-      detail = (await r.json()).message || "";
+      detail = (await reponse.json()).message || "";
     } catch (_) {}
-    throw new Error(`${src.etiquette} : HTTP ${r.status} ${detail}`);
+    throw new Error(`${src.etiquette} : HTTP ${reponse.status} ${detail}`);
   }
-  return r.json();
+  return reponse.json();
 }
-async function interroger(src, q) {
-  const f = src.champs;
+async function interroger(src, recherche) {
+  const champsSource = src.champs;
   let data = { results: [] };
-  for (const where of clauses(src, q)) {
+  for (const where of clauses(src, recherche)) {
     data = await appeler(src, where);
     if (data.results && data.results.length) break;
   }
   return (data.results || []).map((rec) => ({
     source: src.etiquette,
-    nom: rec[f.nom],
-    uai: rec[f.uai],
-    type: rec[f.type],
-    academie: rec[f.academie],
-    departement: rec[f.departement],
-    commune: rec[f.commune],
-    mail: f.mail ? rec[f.mail] : "",
+    nom: rec[champsSource.nom],
+    uai: rec[champsSource.uai],
+    type: rec[champsSource.type],
+    academie: rec[champsSource.academie],
+    departement: rec[champsSource.departement],
+    commune: rec[champsSource.commune],
+    mail: champsSource.mail ? rec[champsSource.mail] : "",
   }));
 }
-const sourcesActives = () => SOURCES.filter((x) => S().annuaires.includes(x.cle));
-function rechercheLocale(q) {
-  const mots = sansAccent(q).split(/\s+/).filter(Boolean);
+const sourcesActives = () => SOURCES.filter((source) => reglagesSaisie().annuaires.includes(source.cle));
+function rechercheLocale(recherche) {
+  const mots = sansAccent(recherche).split(/\s+/).filter(Boolean);
   if (!mots.length) return [];
-  const colsRecherche = etatSaisie.colsEtab.includes(E.nom)
-    ? [...new Set([E.nom, E.commune, E.uai, ...COLONNES_RECHERCHE_EN_PLUS, ...S().recherche])]
+  const colsRecherche = etatSaisie.colsEtab.includes(colonnesEtab.nom)
+    ? [
+        ...new Set([
+          colonnesEtab.nom,
+          colonnesEtab.commune,
+          colonnesEtab.uai,
+          ...COLONNES_RECHERCHE_EN_PLUS,
+          ...reglagesSaisie().recherche,
+        ]),
+      ]
     : etatSaisie.colsEtab.filter(
-        (c) => c !== "id" && c !== "manualSort" && !c.startsWith("gristHelper") && c !== E.cle && c !== E.lien,
+        (colonne) =>
+          colonne !== "id" &&
+          colonne !== "manualSort" &&
+          !colonne.startsWith("gristHelper") &&
+          colonne !== colonnesEtab.cle &&
+          colonne !== colonnesEtab.lien,
       );
   // lignes fusionnées dans un autre établissement (référentiel ESR, colonne Etat) : plus proposées
-  const trouves = etatSaisie.etabs.filter((e) => {
-    if (typeof e.Etat === "string" && /^fusionn/i.test(e.Etat.trim())) return false;
+  const trouves = etatSaisie.etabs.filter((ligneEtablissement) => {
+    if (typeof ligneEtablissement.Etat === "string" && /^fusionn/i.test(ligneEtablissement.Etat.trim())) return false;
     const texte = sansAccent(
       colsRecherche
-        .map((c) => e[c])
-        .filter((v) => v != null && typeof v !== "object")
+        .map((colonne) => ligneEtablissement[colonne])
+        .filter((valeur) => valeur != null && typeof valeur !== "object")
         .join(" "),
     );
-    return mots.every((m) => texte.includes(m));
+    return mots.every((mot) => texte.includes(mot));
   });
   // le nom (ou le sigle, le libellé consolidé) d'abord ; les mots-clés de recherche (anciens noms, villes…) ensuite
-  const titre = (e) =>
-    sansAccent([e[E.nom], e.Sigle, e.Libelle_consolide].filter((v) => typeof v === "string").join(" "));
-  const note = (e) => {
-    const t = titre(e);
-    return mots.filter((m) => t.includes(m)).length * 2 + (t.startsWith(mots[0]) ? 1 : 0);
+  const titre = (ligneEtablissement) =>
+    sansAccent(
+      [ligneEtablissement[colonnesEtab.nom], ligneEtablissement.Sigle, ligneEtablissement.Libelle_consolide]
+        .filter((valeur) => typeof valeur === "string")
+        .join(" "),
+    );
+  const note = (ligneEtablissement) => {
+    const titreLigne = titre(ligneEtablissement);
+    return mots.filter((mot) => titreLigne.includes(mot)).length * 2 + (titreLigne.startsWith(mots[0]) ? 1 : 0);
   };
   if (colsRecherche.includes("Mots_cles") || colsRecherche.includes("Libelle_consolide"))
     trouves.sort((a, b) => note(b) - note(a));
   const dedans = perimetreActif() ? trouves.filter(dansPerimetre) : trouves;
   const retenus = dedans.length ? dedans : trouves;
-  return retenus.slice(0, NB_RESULTATS).map((e) => ({
+  return retenus.slice(0, NB_RESULTATS).map((ligneEtablissement) => ({
     source: "local",
-    ligne: e,
-    nom: e[E.nom] ?? libelleEtabDeRepli(e),
-    uai: e[E.uai],
-    type: e[E.type],
-    academie: e[E.academie],
-    departement: e[E.departement],
-    commune: e[E.commune],
-    mail: e[E.mail],
+    ligne: ligneEtablissement,
+    nom: ligneEtablissement[colonnesEtab.nom] ?? libelleEtabDeRepli(ligneEtablissement),
+    uai: ligneEtablissement[colonnesEtab.uai],
+    type: ligneEtablissement[colonnesEtab.type],
+    academie: ligneEtablissement[colonnesEtab.academie],
+    departement: ligneEtablissement[colonnesEtab.departement],
+    commune: ligneEtablissement[colonnesEtab.commune],
+    mail: ligneEtablissement[colonnesEtab.mail],
     hors: perimetreActif() && !dedans.length,
   }));
 }
 
 // Sans colonne de nom reconnue : première valeur texte de la ligne
-function libelleEtabDeRepli(e) {
-  const c = etatSaisie.colsEtab.find(
-    (c) => c !== "id" && c !== E.cle && c !== E.lien && typeof e[c] === "string" && e[c].trim(),
+function libelleEtabDeRepli(ligneEtablissement) {
+  const colonneTexte = etatSaisie.colsEtab.find(
+    (colonne) =>
+      colonne !== "id" &&
+      colonne !== colonnesEtab.cle &&
+      colonne !== colonnesEtab.lien &&
+      typeof ligneEtablissement[colonne] === "string" &&
+      ligneEtablissement[colonne].trim(),
   );
-  return c ? e[c] : `Ligne ${e.id}`;
+  return colonneTexte ? ligneEtablissement[colonneTexte] : `Ligne ${ligneEtablissement.id}`;
 }
-async function rechercher(q) {
+async function rechercher(recherche) {
   const id = ++etatSaisie.requete;
-  const locaux = rechercheLocale(q),
-    actives = q.length >= MIN_CARACTERES_ANNUAIRE ? sourcesActives() : [];
+  const locaux = rechercheLocale(recherche),
+    actives = recherche.length >= MIN_CARACTERES_ANNUAIRE ? sourcesActives() : [];
   if (!actives.length) {
     // référentiel seul
     etatSaisie.resultats = locaux;
@@ -119,28 +141,38 @@ async function rechercher(q) {
     afficherResultats();
   } else etat("Recherche…");
   // L'annuaire en ligne complète la recherche (établissements pas encore dans le référentiel)
-  const rep = await Promise.allSettled(actives.map((x) => interroger(x, q)));
+  const rep = await Promise.allSettled(actives.map((source) => interroger(source, recherche)));
   if (id !== etatSaisie.requete) return;
-  const connus = new Set(locaux.map((l) => String(l.uai || "").toUpperCase()));
+  const connus = new Set(locaux.map((resultatLocal) => String(resultatLocal.uai || "").toUpperCase()));
   // annuaire en ligne : filtré sur l'académie ou le département quand le périmètre en dépend
-  const p = perimetreActif() ? perimetre() : {},
+  const perimetreCourant = perimetreActif() ? perimetre() : {},
     filtres = [
-      ["academie", E.academie],
-      ["departement", E.departement],
-    ].filter(([, c]) => p[c]);
+      ["academie", colonnesEtab.academie],
+      ["departement", colonnesEtab.departement],
+    ].filter(([, colonnePerimetre]) => perimetreCourant[colonnePerimetre]);
   const distants = rep
-    .flatMap((r) => (r.status === "fulfilled" ? r.value : []))
-    .filter((e) => !connus.has(String(e.uai || "").toUpperCase()))
-    .filter((e) => filtres.every(([k, c]) => !e[k] || p[c].some((x) => sansAccent(x) === sansAccent(e[k]))));
+    .flatMap((reponseSource) => (reponseSource.status === "fulfilled" ? reponseSource.value : []))
+    .filter((resultatAnnuaire) => !connus.has(String(resultatAnnuaire.uai || "").toUpperCase()))
+    .filter((resultatAnnuaire) =>
+      filtres.every(
+        ([k, colonnePerimetre]) =>
+          !resultatAnnuaire[k] ||
+          perimetreCourant[colonnePerimetre].some(
+            (valeurPerimetre) => sansAccent(valeurPerimetre) === sansAccent(resultatAnnuaire[k]),
+          ),
+      ),
+    );
   etatSaisie.resultats = [...locaux, ...distants];
-  if (locaux.length && rep.every((r) => r.status === "rejected")) {
+  if (locaux.length && rep.every((reponseSource) => reponseSource.status === "rejected")) {
     afficherResultats();
     return;
   }
-  rep.filter((r) => r.status === "rejected").forEach((r) => console.warn("Autocomplétion :", r.reason));
+  rep
+    .filter((reponseSource) => reponseSource.status === "rejected")
+    .forEach((reponseSource) => console.warn("Autocomplétion :", reponseSource.reason));
   if (!etatSaisie.resultats.length) {
     etat(
-      rep.every((r) => r.status === "rejected")
+      rep.every((reponseSource) => reponseSource.status === "rejected")
         ? `Annuaire injoignable (${(rep[0].reason && rep[0].reason.message) || "erreur réseau"}). Saisissez les informations à la main.`
         : "Aucun établissement trouvé. Vérifiez l'orthographe ou saisissez l'UAI, ou cliquez sur « Établissement introuvable ? Le créer ».",
     );
@@ -152,97 +184,97 @@ function afficherResultats() {
   etatSaisie.index = -1;
   liste.innerHTML = etatSaisie.resultats
     .map(
-      (e, i) => `
+      (resultat, i) => `
     <li role="option" id="opt-${i}" data-i="${i}" aria-selected="false">
-      <div class="nom">${esc(e.nom)}${e.hors ? '<span class="source hors">hors périmètre</span>' : ""}${!sourcesActives().length ? "" : e.source === "local" ? '<span class="source connu">référentiel</span>' : `<span class="source">${esc(e.source)}</span>`}</div>
-      <div class="meta">${esc([e.uai, e.type, e.commune, e.academie].filter(Boolean).join(", "))}</div>
-      ${e.ligne && rattachementDe(e.ligne) ? `<div class="meta">→ dossier ouvert sur ${esc(rattachementDe(e.ligne)[E.nom])}</div>` : ""}
+      <div class="nom">${esc(resultat.nom)}${resultat.hors ? '<span class="source hors">hors périmètre</span>' : ""}${!sourcesActives().length ? "" : resultat.source === "local" ? '<span class="source connu">référentiel</span>' : `<span class="source">${esc(resultat.source)}</span>`}</div>
+      <div class="meta">${esc([resultat.uai, resultat.type, resultat.commune, resultat.academie].filter(Boolean).join(", "))}</div>
+      ${resultat.ligne && rattachementDe(resultat.ligne) ? `<div class="meta">→ dossier ouvert sur ${esc(rattachementDe(resultat.ligne)[colonnesEtab.nom])}</div>` : ""}
     </li>`,
     )
     .join("");
   ouvrir();
 }
-function etat(t) {
-  liste.innerHTML = `<li class="etat" aria-disabled="true">${esc(t)}</li>`;
+function etat(message) {
+  liste.innerHTML = `<li class="etat" aria-disabled="true">${esc(message)}</li>`;
   etatSaisie.resultats = [];
   etatSaisie.index = -1;
   ouvrir();
 }
 function ouvrir() {
   liste.hidden = false;
-  nom.setAttribute("aria-expanded", "true");
+  champNom.setAttribute("aria-expanded", "true");
 }
 function fermer() {
   liste.hidden = true;
-  nom.setAttribute("aria-expanded", "false");
+  champNom.setAttribute("aria-expanded", "false");
   etatSaisie.index = -1;
 }
 function surligner(i) {
-  [...liste.querySelectorAll("[role=option]")].forEach((li, k) => {
-    li.setAttribute("aria-selected", k === i);
-    if (k === i) li.scrollIntoView({ block: "nearest" });
+  [...liste.querySelectorAll("[role=option]")].forEach((elementOption, k) => {
+    elementOption.setAttribute("aria-selected", k === i);
+    if (k === i) elementOption.scrollIntoView({ block: "nearest" });
   });
   etatSaisie.index = i;
-  nom.setAttribute("aria-activedescendant", i >= 0 ? `opt-${i}` : "");
+  champNom.setAttribute("aria-activedescendant", i >= 0 ? `opt-${i}` : "");
 }
 function choisir(i) {
-  const e = etatSaisie.resultats[i];
-  if (!e) return;
+  const resultat = etatSaisie.resultats[i];
+  if (!resultat) return;
   if (etatSaisie.reaffectation) {
-    proposerRattachement(e);
+    proposerRattachement(resultat);
     return;
   }
   fermer();
-  const existant = (e.ligne && etabDe(e.ligne.id)) || e.ligne || etabParUai(e.uai);
+  const existant = (resultat.ligne && etabDe(resultat.ligne.id)) || resultat.ligne || etabParUai(resultat.uai);
   etatSaisie.composanteChoisie = null;
   if (existant) {
     etatSaisie.etabCourant = versEtablissement(existant);
     etatSaisie.ligneAnnuaire = null;
   } else {
-    etatSaisie.ligneAnnuaire = e;
-    nom.value = e.nom || "";
+    etatSaisie.ligneAnnuaire = resultat;
+    champNom.value = resultat.nom || "";
     CHAMPS_NOUVEL_ETAB.forEach((k) => {
-      $(k).value = e[k] || "";
-      $(k).classList.toggle("auto", !!e[k]);
+      $(k).value = resultat[k] || "";
+      $(k).classList.toggle("auto", !!resultat[k]);
     });
-    $("mail").dataset.saisi = e.mail || "";
+    $("mail").dataset.saisi = resultat.mail || "";
   }
   etatSaisie.modifie = true;
   afficherEtablissement();
   focusPremiereQuestion();
 }
-nom.addEventListener("input", () => {
+champNom.addEventListener("input", () => {
   clearTimeout(etatSaisie.minuterie);
   CHAMPS_NOUVEL_ETAB.forEach((k) => $(k).classList.remove("auto"));
   afficherEtablissement();
-  const q = nom.value.trim();
-  if (q.length < MIN_CARACTERES) {
+  const recherche = champNom.value.trim();
+  if (recherche.length < MIN_CARACTERES) {
     fermer();
     return;
   }
-  etatSaisie.minuterie = setTimeout(() => rechercher(q), sourcesActives().length ? 300 : 150);
+  etatSaisie.minuterie = setTimeout(() => rechercher(recherche), sourcesActives().length ? 300 : 150);
 });
-nom.addEventListener("keydown", (ev) => {
+champNom.addEventListener("keydown", (evenement) => {
   if (liste.hidden || !etatSaisie.resultats.length) return;
-  if (ev.key === "ArrowDown") {
-    ev.preventDefault();
+  if (evenement.key === "ArrowDown") {
+    evenement.preventDefault();
     surligner(Math.min(etatSaisie.index + 1, etatSaisie.resultats.length - 1));
-  } else if (ev.key === "ArrowUp") {
-    ev.preventDefault();
+  } else if (evenement.key === "ArrowUp") {
+    evenement.preventDefault();
     surligner(Math.max(etatSaisie.index - 1, 0));
-  } else if (ev.key === "Enter" && etatSaisie.index >= 0) {
-    ev.preventDefault();
+  } else if (evenement.key === "Enter" && etatSaisie.index >= 0) {
+    evenement.preventDefault();
     choisir(etatSaisie.index);
-  } else if (ev.key === "Escape") fermer();
+  } else if (evenement.key === "Escape") fermer();
 });
-liste.addEventListener("mousedown", (ev) => {
-  const li = ev.target.closest("[role=option]");
-  if (li) {
-    ev.preventDefault();
-    choisir(+li.dataset.i);
+liste.addEventListener("mousedown", (evenement) => {
+  const elementOption = evenement.target.closest("[role=option]");
+  if (elementOption) {
+    evenement.preventDefault();
+    choisir(+elementOption.dataset.i);
   }
 });
-nom.addEventListener("blur", () => setTimeout(fermer, 150));
+champNom.addEventListener("blur", () => setTimeout(fermer, 150));
 CHAMPS_NOUVEL_ETAB.forEach((k) => $(k).addEventListener("input", () => $(k).classList.remove("auto")));
 $("uai").addEventListener("change", () => {
   const existant = etabParUai($("uai").value);

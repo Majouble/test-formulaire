@@ -5,45 +5,47 @@
 /* ---------- Limites des nombres : description de la colonne > réglage de la question > réglage général ---------- */
 const questionsNumeriques = () =>
   [...etatSaisie.defsQuestions, ...etatSaisie.defsDep, ...etatSaisie.defsAca].filter(
-    (d) => !d.formule && ["Numeric", "Int"].includes(typeBase(d.type)),
+    (question) => !question.formule && ["Numeric", "Int"].includes(typeBase(question.type)),
   );
-const nombreOuNul = (x) =>
-  x === "" || x == null || isNaN(parseFloat(String(x).replace(",", ".")))
+const nombreOuNul = (valeur) =>
+  valeur === "" || valeur == null || isNaN(parseFloat(String(valeur).replace(",", ".")))
     ? null
-    : parseFloat(String(x).replace(",", "."));
-function bornesDe(def) {
-  const r = ((etatSaisie.optionsAuto && etatSaisie.optionsAuto.bornes) || {})[def.colId] || {};
+    : parseFloat(String(valeur).replace(",", "."));
+function bornesDe(question) {
+  const reglageBornes = ((etatSaisie.optionsAuto && etatSaisie.optionsAuto.bornes) || {})[question.colId] || {};
   const min =
-    def.min ?? nombreOuNul(r.min) ?? (etatSaisie.optionsAuto && etatSaisie.optionsAuto.nombresPositifs ? 0 : null);
-  return { min, max: def.max ?? nombreOuNul(r.max) };
+    question.min ??
+    nombreOuNul(reglageBornes.min) ??
+    (etatSaisie.optionsAuto && etatSaisie.optionsAuto.nombresPositifs ? 0 : null);
+  return { min, max: question.max ?? nombreOuNul(reglageBornes.max) };
 }
 // Reporte les limites sur les champs (attributs min / max des flèches du champ nombre)
 function appliquerBornes() {
-  for (const def of questionsNumeriques()) {
-    const { min, max } = bornesDe(def);
+  for (const question of questionsNumeriques()) {
+    const { min, max } = bornesDe(question);
     document
-      .querySelectorAll(`[data-champ$="-${def.colId}"] :is(input[type="number"], input.nombre-fr)`)
-      .forEach((el) => {
-        if (min != null) el.min = min;
-        else el.removeAttribute("min");
-        if (max != null) el.max = max;
-        else el.removeAttribute("max");
+      .querySelectorAll(`[data-champ$="-${question.colId}"] :is(input[type="number"], input.nombre-fr)`)
+      .forEach((champNombre) => {
+        if (min != null) champNombre.min = min;
+        else champNombre.removeAttribute("min");
+        if (max != null) champNombre.max = max;
+        else champNombre.removeAttribute("max");
       });
   }
 }
 function remplirBornesConfig() {
-  const o = etatSaisie.optionsAuto,
-    qs = questionsNumeriques();
+  const options = etatSaisie.optionsAuto,
+    questions = questionsNumeriques();
   $("cfg-bornes").innerHTML =
-    qs
-      .map((d) => {
-        const r = (o.bornes || {})[d.colId] || {};
+    questions
+      .map((question) => {
+        const reglageBornes = (options.bornes || {})[question.colId] || {};
         const cellule = (cle, fixe) =>
           fixe != null
             ? `<input type="number" value="${fixe}" disabled title="Fixé par la description de la colonne">`
-            : `<input type="number" step="any" data-col="${esc(d.colId)}" data-borne="${cle}" value="${r[cle] ?? ""}" aria-label="${cle === "min" ? "Minimum" : "Maximum"} de ${esc(d.libelle)}"` +
-              `${cle === "min" ? ` placeholder="${o.nombresPositifs ? "0" : "aucun"}"` : ` placeholder="aucun"`}>`;
-        return `<tr><td>${esc(d.libelle)}</td><td>${cellule("min", d.min)}</td><td>${cellule("max", d.max)}</td></tr>`;
+            : `<input type="number" step="any" data-col="${esc(question.colId)}" data-borne="${cle}" value="${reglageBornes[cle] ?? ""}" aria-label="${cle === "min" ? "Minimum" : "Maximum"} de ${esc(question.libelle)}"` +
+              `${cle === "min" ? ` placeholder="${options.nombresPositifs ? "0" : "aucun"}"` : ` placeholder="aucun"`}>`;
+        return `<tr><td>${esc(question.libelle)}</td><td>${cellule("min", question.min)}</td><td>${cellule("max", question.max)}</td></tr>`;
       })
       .join("") || `<tr><td class="note" colspan="3">Aucune question numérique associée.</td></tr>`;
 }
@@ -53,13 +55,13 @@ $("cfg-positifs").addEventListener("change", () => {
   });
 });
 function lireBornesConfig() {
-  const res = {};
+  const bornes = {};
   document.querySelectorAll("#cfg-bornes input[data-col]").forEach((i) => {
-    const v = nombreOuNul(i.value);
-    if (v == null) return;
-    (res[i.dataset.col] = res[i.dataset.col] || {})[i.dataset.borne] = v;
+    const nombre = nombreOuNul(i.value);
+    if (nombre == null) return;
+    (bornes[i.dataset.col] = bornes[i.dataset.col] || {})[i.dataset.borne] = nombre;
   });
-  return res;
+  return bornes;
 }
 /* Description réglée dans l'administration des formulaires (« Réglages propres à ce formulaire ») :
    ces réglages remplacent ceux de ⚙ (table Parametres) pour la description et le résumé des mises à jour.
@@ -78,31 +80,33 @@ const CLES_DESCRIPTION = [
   "formatsTableau",
 ];
 function descriptionDuFormulaire() {
-  const d =
+  const reglagesFormulaire =
     etatSaisie.formulaireActif && etatSaisie.formulaireActif.conf && etatSaisie.formulaireActif.conf.description;
-  if (!d || !d.perso) return null;
-  const res = { formatsQuestion: {}, formatsTableau: {} };
-  for (const k of CLES_DESCRIPTION) if (k in d && d[k] != null) res[k] = d[k];
-  for (const b of etatSaisie.formulaireActif.conf.blocs || []) {
-    const t = b.reglages && b.reglages.descTableau;
-    if (b.colonne && t && typeof t === "object" && Object.keys(t).length) res.formatsTableau[b.colonne] = t;
+  if (!reglagesFormulaire || !reglagesFormulaire.perso) return null;
+  const reglages = { formatsQuestion: {}, formatsTableau: {} };
+  for (const k of CLES_DESCRIPTION)
+    if (k in reglagesFormulaire && reglagesFormulaire[k] != null) reglages[k] = reglagesFormulaire[k];
+  for (const bloc of etatSaisie.formulaireActif.conf.blocs || []) {
+    const reglagesTableau = bloc.reglages && bloc.reglages.descTableau;
+    if (bloc.colonne && reglagesTableau && typeof reglagesTableau === "object" && Object.keys(reglagesTableau).length)
+      reglages.formatsTableau[bloc.colonne] = reglagesTableau;
   }
-  return res;
+  return reglages;
 }
 // Enregistrement de ⚙ : quand le formulaire a ses propres réglages, ceux de la description commune restent inchangés
-function garderDescriptionCommune(o) {
-  if (!descriptionDuFormulaire()) return o;
+function garderDescriptionCommune(options) {
+  if (!descriptionDuFormulaire()) return options;
   for (const k of CLES_DESCRIPTION) {
-    if (etatSaisie.optionsParametres && k in etatSaisie.optionsParametres) o[k] = etatSaisie.optionsParametres[k];
-    else delete o[k];
+    if (etatSaisie.optionsParametres && k in etatSaisie.optionsParametres) options[k] = etatSaisie.optionsParametres[k];
+    else delete options[k];
   }
-  return o;
+  return options;
 }
-function appliquerOptions(o) {
-  etatSaisie.optionsParametres = o || null;
+function appliquerOptions(options) {
+  etatSaisie.optionsParametres = options || null;
   etatSaisie.optionsAuto = {
     ...OPTIONS_DEFAUT,
-    ...(o || {}),
+    ...(options || {}),
     ...(descriptionDuFormulaire() || {}),
     description: false,
   };
@@ -119,44 +123,51 @@ async function chargerReglages() {
     } catch (_) {}
   }
   if (reglagesDansConfig()) {
-    const v = etatSaisie.socleConfig.valeurs.resume_auto;
-    etatSaisie.ligneParametres = { id: null, [PARAMETRES.colonne]: v ? JSON.stringify(v) : "" };
+    const reglageResume = etatSaisie.socleConfig.valeurs.resume_auto;
+    etatSaisie.ligneParametres = { id: null, [PARAMETRES.colonne]: reglageResume ? JSON.stringify(reglageResume) : "" };
     etatSaisie.colsParametres = [PARAMETRES.colonne];
-    appliquerOptions(v || null);
+    appliquerOptions(reglageResume || null);
     return;
   }
   try {
-    const t = await Donnees.lire(PARAMETRES.table);
-    etatSaisie.colsParametres = Object.keys(t);
-    if (t.id.length) {
+    const tableParametres = await Donnees.lire(PARAMETRES.table);
+    etatSaisie.colsParametres = Object.keys(tableParametres);
+    if (tableParametres.id.length) {
       etatSaisie.ligneParametres = {};
-      etatSaisie.colsParametres.forEach((c) => (etatSaisie.ligneParametres[c] = t[c][0]));
+      etatSaisie.colsParametres.forEach(
+        (colonne) => (etatSaisie.ligneParametres[colonne] = tableParametres[colonne][0]),
+      );
     }
   } catch (_) {
     /* table absente ou illisible (établissement) : réglages par défaut */
   }
-  let o = null;
+  let optionsLues = null;
   const brutReglages = etatSaisie.ligneParametres && etatSaisie.ligneParametres[PARAMETRES.colonne];
   if (typeof brutReglages === "string" && brutReglages.trim()) {
     try {
-      o = JSON.parse(brutReglages);
-    } catch (e) {
-      console.warn("Réglages du résumé illisibles", e);
+      optionsLues = JSON.parse(brutReglages);
+    } catch (erreur) {
+      console.warn("Réglages du résumé illisibles", erreur);
     }
   }
-  appliquerOptions(o);
+  appliquerOptions(optionsLues);
 }
 async function remplirChoixTable() {
-  const sel = $("cfg-table-etab");
+  const menuTable = $("cfg-table-etab");
   let tables = [];
   try {
-    tables = (await grist.docApi.listTables()).filter((t) => !t.startsWith("_grist"));
+    tables = (await grist.docApi.listTables()).filter((nomTable) => !nomTable.startsWith("_grist"));
   } catch (_) {}
   const choisie = etatSaisie.optionsAuto[CLE_TABLE_ETAB] || "";
-  sel.innerHTML =
+  menuTable.innerHTML =
     `<option value="">Automatique (table visée par la colonne Établissement)</option>` +
-    tables.map((t) => `<option value="${esc(t)}"${t === choisie ? " selected" : ""}>${esc(t)}</option>`).join("");
-  sel.value = choisie;
+    tables
+      .map(
+        (nomTable) =>
+          `<option value="${esc(nomTable)}"${nomTable === choisie ? " selected" : ""}>${esc(nomTable)}</option>`,
+      )
+      .join("");
+  menuTable.value = choisie;
   const LIB_COL = {
     nom: "nom",
     uai: "UAI",
@@ -167,25 +178,25 @@ async function remplirChoixTable() {
     mail: "mail",
   };
   const utilisees = Object.keys(LIB_COL)
-    .filter((k) => etatSaisie.colsEtab.includes(E[k]))
-    .map((k) => `${LIB_COL[k]} → ${E[k]}`);
-  const absentes = ["nom", "uai"].filter((k) => !etatSaisie.colsEtab.includes(E[k])).map((k) => LIB_COL[k]);
+    .filter((k) => etatSaisie.colsEtab.includes(colonnesEtab[k]))
+    .map((k) => `${LIB_COL[k]} → ${colonnesEtab[k]}`);
+  const absentes = ["nom", "uai"].filter((k) => !etatSaisie.colsEtab.includes(colonnesEtab[k])).map((k) => LIB_COL[k]);
   $("cfg-table-etab-info").textContent =
     `Table utilisée actuellement : ${ETAB.table} (${ETAB.origineTable || "table par défaut"}), ${etatSaisie.etabs.length} établissement(s).` +
     (utilisees.length ? ` Colonnes utilisées : ${utilisees.join(", ")}.` : "") +
     (absentes.length ? ` Non trouvée(s) : ${absentes.join(", ")}.` : "");
 }
 function ouvrirConfig() {
-  const o = etatSaisie.optionsAuto;
+  const options = etatSaisie.optionsAuto;
   remplirChoixTable();
-  $("cfg-actif").checked = !!o.actif;
-  $("cfg-format").value = o.format;
-  $("cfg-separateur").value = o.separateur;
-  $("cfg-puce").value = o.puce || "";
-  $("cfg-qualification").checked = !!o.qualification;
-  $("cfg-questions").checked = !!o.questions;
-  $("cfg-mobilisation").checked = !!o.mobilisation;
-  $("cfg-entete").checked = !!o.entete;
+  $("cfg-actif").checked = !!options.actif;
+  $("cfg-format").value = options.format;
+  $("cfg-separateur").value = options.separateur;
+  $("cfg-puce").value = options.puce || "";
+  $("cfg-qualification").checked = !!options.qualification;
+  $("cfg-questions").checked = !!options.questions;
+  $("cfg-mobilisation").checked = !!options.mobilisation;
+  $("cfg-entete").checked = !!options.entete;
   const choixFormat = (valeur, avecExclure) =>
     [
       ["defaut", "Par défaut"],
@@ -193,43 +204,46 @@ function ouvrirConfig() {
       ["libelle", "Libellé : valeur"],
       ...(avecExclure ? [["exclure", "Ne pas inclure"]] : []),
     ]
-      .map(([v, t]) => `<option value="${v}"${v === (valeur || "defaut") ? " selected" : ""}>${t}</option>`)
+      .map(
+        ([valeurOption, libelleOption]) =>
+          `<option value="${valeurOption}"${valeurOption === (valeur || "defaut") ? " selected" : ""}>${libelleOption}</option>`,
+      )
       .join("");
   const questions = questionsDescription();
   const familles = [...new Set(questions.map(famille))];
   $("cfg-types").innerHTML =
     familles
       .map(
-        (f) =>
-          `<tr><td>${FAMILLES[f]}</td><td><select data-famille="${f}" aria-label="Format des ${FAMILLES[f].toLowerCase()}">${choixFormat((o.formatsType || {})[f])}</select></td></tr>`,
+        (nomFamille) =>
+          `<tr><td>${FAMILLES[nomFamille]}</td><td><select data-famille="${nomFamille}" aria-label="Format des ${FAMILLES[nomFamille].toLowerCase()}">${choixFormat((options.formatsType || {})[nomFamille])}</select></td></tr>`,
       )
       .join("") || `<tr><td class="note">Aucune question associée.</td></tr>`;
   $("cfg-par-question").innerHTML =
     questions
       .map(
-        (d) =>
-          `<tr><td>${esc(d.libelle)} <small class="note">(${d.tableau ? "tableau" : FAMILLES[famille(d)].toLowerCase()})</small></td>
-     <td><select data-col="${esc(d.colId)}" aria-label="Format de ${esc(d.libelle)}">${
-       d.tableau
+        (question) =>
+          `<tr><td>${esc(question.libelle)} <small class="note">(${question.tableau ? "tableau" : FAMILLES[famille(question)].toLowerCase()})</small></td>
+     <td><select data-col="${esc(question.colId)}" aria-label="Format de ${esc(question.libelle)}">${
+       question.tableau
          ? [
              ["defaut", "En-tête : libellé et nombre"],
              ["valeur", "En-tête : nombre seul"],
              ["exclure", "Sans en-tête (lignes seules)"],
            ]
              .map(
-               ([v, t]) =>
-                 `<option value="${v}"${v === (((o.formatsQuestion || {})[d.colId] === "libelle" ? "defaut" : (o.formatsQuestion || {})[d.colId]) || "defaut") ? " selected" : ""}>${t}</option>`,
+               ([valeurOption, libelleOption]) =>
+                 `<option value="${valeurOption}"${valeurOption === (((options.formatsQuestion || {})[question.colId] === "libelle" ? "defaut" : (options.formatsQuestion || {})[question.colId]) || "defaut") ? " selected" : ""}>${libelleOption}</option>`,
              )
              .join("")
-         : choixFormat((o.formatsQuestion || {})[d.colId], true)
+         : choixFormat((options.formatsQuestion || {})[question.colId], true)
      }</select></td></tr>` +
-          (d.tableau
-            ? d._sousDefs
-              ? d._sousDefs
-                  .map((s) =>
-                    s.confidentiel
-                      ? `<tr class="sous-reglage"><td>↳ ${esc(s.libelle || s.colId)}</td><td class="note">Confidentiel : jamais inclus</td></tr>`
-                      : `<tr class="sous-reglage"><td>↳ ${esc(s.libelle || s.colId)}</td><td><select data-tableau="${esc(d.colId)}" data-sous="${esc(s.colId)}" aria-label="${esc(d.libelle)} : ${esc(s.libelle || s.colId)}, dans la ligne de chaque élément">${(s.auto
+          (question.tableau
+            ? question._sousDefs
+              ? question._sousDefs
+                  .map((sousColonne) =>
+                    sousColonne.confidentiel
+                      ? `<tr class="sous-reglage"><td>↳ ${esc(sousColonne.libelle || sousColonne.colId)}</td><td class="note">Confidentiel : jamais inclus</td></tr>`
+                      : `<tr class="sous-reglage"><td>↳ ${esc(sousColonne.libelle || sousColonne.colId)}</td><td><select data-tableau="${esc(question.colId)}" data-sous="${esc(sousColonne.colId)}" aria-label="${esc(question.libelle)} : ${esc(sousColonne.libelle || sousColonne.colId)}, dans la ligne de chaque élément">${(sousColonne.auto
                           ? [
                               ["defaut", "Reprendre ce texte pour chaque ligne"],
                               ["exclure", "Ne pas l'utiliser (ligne recomposée)"],
@@ -242,26 +256,28 @@ function ouvrirConfig() {
                             ]
                         )
                           .map(
-                            ([v, t]) =>
-                              `<option value="${v}"${v === modeSous(d, s, o).ligne ? " selected" : ""}>${t}</option>`,
+                            ([valeurOption, libelleOption]) =>
+                              `<option value="${valeurOption}"${valeurOption === modeSous(question, sousColonne, options).ligne ? " selected" : ""}>${libelleOption}</option>`,
                           )
                           .join("")}</select>${
-                          decomptable(s)
-                            ? ` <label class="case case-decompte"><input type="checkbox" data-tableau="${esc(d.colId)}" data-sous="${esc(s.colId)}"${modeSous(d, s, o).decompte ? " checked" : ""}> ${
-                                ["Numeric", "Int"].includes(typeBase(s.type)) ? "Somme en tête" : "Décompte en tête"
+                          decomptable(sousColonne)
+                            ? ` <label class="case case-decompte"><input type="checkbox" data-tableau="${esc(question.colId)}" data-sous="${esc(sousColonne.colId)}"${modeSous(question, sousColonne, options).decompte ? " checked" : ""}> ${
+                                ["Numeric", "Int"].includes(typeBase(sousColonne.type))
+                                  ? "Somme en tête"
+                                  : "Décompte en tête"
                               }</label>`
                             : ""
                         }</td></tr>`,
                   )
                   .join("")
-              : `<tr class="sous-reglage"><td colspan="2" class="note">↳ Colonnes de la table « ${esc(d.tableau.table)} » en cours de chargement : rouvrez les réglages.</td></tr>`
+              : `<tr class="sous-reglage"><td colspan="2" class="note">↳ Colonnes de la table « ${esc(question.tableau.table)} » en cours de chargement : rouvrez les réglages.</td></tr>`
             : ""),
       )
       .join("") || `<tr><td class="note">Aucune question associée.</td></tr>`;
   document
     .querySelectorAll("#cfg-types select, #cfg-par-question select, #cfg-par-question input")
-    .forEach((sel) => sel.addEventListener("change", majExempleConfig));
-  $("cfg-positifs").checked = !!o.nombresPositifs;
+    .forEach((menuFormat) => menuFormat.addEventListener("change", majExempleConfig));
+  $("cfg-positifs").checked = !!options.nombresPositifs;
   remplirChoixFormulaire();
   remplirVersionConfig();
   remplirDiagnostic();
@@ -291,18 +307,21 @@ function lireConfig() {
     mobilisation: $("cfg-mobilisation").checked,
     entete: $("cfg-entete").checked,
     formatsType: Object.fromEntries(
-      [...document.querySelectorAll("#cfg-types select")].map((s) => [s.dataset.famille, s.value]),
+      [...document.querySelectorAll("#cfg-types select")].map((menu) => [menu.dataset.famille, menu.value]),
     ),
     formatsQuestion: Object.fromEntries(
-      [...document.querySelectorAll("#cfg-par-question select[data-col]")].map((s) => [s.dataset.col, s.value]),
+      [...document.querySelectorAll("#cfg-par-question select[data-col]")].map((menu) => [
+        menu.dataset.col,
+        menu.value,
+      ]),
     ),
-    formatsTableau: [...document.querySelectorAll("#cfg-par-question select[data-tableau]")].reduce((acc, s) => {
-      const c = document.querySelector(
-        `#cfg-par-question input[data-tableau="${CSS.escape(s.dataset.tableau)}"][data-sous="${CSS.escape(s.dataset.sous)}"]`,
+    formatsTableau: [...document.querySelectorAll("#cfg-par-question select[data-tableau]")].reduce((acc, menu) => {
+      const caseDecompte = document.querySelector(
+        `#cfg-par-question input[data-tableau="${CSS.escape(menu.dataset.tableau)}"][data-sous="${CSS.escape(menu.dataset.sous)}"]`,
       );
-      (acc[s.dataset.tableau] = acc[s.dataset.tableau] || {})[s.dataset.sous] = {
-        ligne: s.value,
-        decompte: !!(c && c.checked),
+      (acc[menu.dataset.tableau] = acc[menu.dataset.tableau] || {})[menu.dataset.sous] = {
+        ligne: menu.value,
+        decompte: !!(caseDecompte && caseDecompte.checked),
       };
       return acc;
     }, {}),
@@ -313,29 +332,29 @@ function lireConfig() {
 }
 const dateCourteExemple = () => Outils.dates.date(Date.now());
 function majExempleConfig() {
-  const o = lireConfig();
-  const exemple = (d) =>
-    d.tableau
-      ? texteTableauDescription(d, lignesExemple(d), o) || "(aucune ligne)"
+  const options = lireConfig();
+  const exemple = (question) =>
+    question.tableau
+      ? texteTableauDescription(question, lignesExemple(question), options) || "(aucune ligne)"
       : {
           nombre: "20",
           date: dateCourteExemple(),
           case: "Oui",
           reference: "Collège Jean Rostand",
-          choix: (d.opts && (d.opts.choices || [])[0]) || "Oui",
+          choix: (question.opts && (question.opts.choices || [])[0]) || "Oui",
           texte: "texte saisi",
-        }[famille(d)];
-  const qDef = etatSaisie.metaSig[col("Qualification")];
+        }[famille(question)];
+  const qDef = etatSaisie.metaSig[colonneDe("Qualification")];
   let items = questionsDescription()
-    .filter((d) => (d.colId === (qDef && qDef.colId) ? o.qualification : o.questions))
-    .map((d) => ({ libelle: d.libelle, valeur: exemple(d), def: d }));
+    .filter((question) => (question.colId === (qDef && qDef.colId) ? options.qualification : options.questions))
+    .map((question) => ({ libelle: question.libelle, valeur: exemple(question), def: question }));
   if (!items.length)
     items = [
-      o.qualification && { libelle: "Qualification", valeur: "Intrusion" },
-      o.questions && { libelle: "Nombre d'élèves", valeur: "20" },
+      options.qualification && { libelle: "Qualification", valeur: "Intrusion" },
+      options.questions && { libelle: "Nombre d'élèves", valeur: "20" },
     ].filter(Boolean);
-  $("cfg-exemple").textContent = o.actif
-    ? descriptionGeneree(o, items, 3, identiteExemple()) || "(aucun élément inclus)"
+  $("cfg-exemple").textContent = options.actif
+    ? descriptionGeneree(options, items, 3, identiteExemple()) || "(aucun élément inclus)"
     : "(pré-remplissage désactivé : la description se saisit librement)";
 }
 [
@@ -363,8 +382,8 @@ $("cfg-enregistrer").addEventListener("click", async () => {
   try {
     anciens = JSON.parse((etatSaisie.ligneParametres && etatSaisie.ligneParametres[PARAMETRES.colonne]) || "{}") || {};
   } catch (_) {}
-  const o = garderDescriptionCommune({ ...anciens, ...lireConfig() });
-  if (!o[CLE_TABLE_ETAB]) delete o[CLE_TABLE_ETAB];
+  const options = garderDescriptionCommune({ ...anciens, ...lireConfig() });
+  if (!options[CLE_TABLE_ETAB]) delete options[CLE_TABLE_ETAB];
   const tableAvant = ETAB.table;
   if (!reglagesDansConfig() && !etatSaisie.colsParametres.includes(PARAMETRES.colonne)) {
     statut(
@@ -374,20 +393,20 @@ $("cfg-enregistrer").addEventListener("click", async () => {
     );
     return;
   }
-  const fields = { [PARAMETRES.colonne]: JSON.stringify(o) };
+  const fields = { [PARAMETRES.colonne]: JSON.stringify(options) };
   if (reglagesDansConfig()) {
     try {
-      await window.Socle.ecrireConfig("resume_auto", o);
+      await window.Socle.ecrireConfig("resume_auto", options);
       await lireSocleSaisie();
       await chargerReglages();
       statut("cfg-statut", "Réglages enregistrés (clé resume_auto de Config).", "ok");
-      if ((o[CLE_TABLE_ETAB] || null) !== (tableAvant === TABLE_ETAB_DEFAUT ? null : tableAvant)) {
+      if ((options[CLE_TABLE_ETAB] || null) !== (tableAvant === TABLE_ETAB_DEFAUT ? null : tableAvant)) {
         await determinerTableEtab();
         await rafraichirEtabs(true);
       }
       await rafraichir();
-    } catch (e) {
-      statut("cfg-statut", `Échec : ${e.message || e}`, "err");
+    } catch (erreur) {
+      statut("cfg-statut", `Échec : ${erreur.message || erreur}`, "err");
     }
     return;
   }
@@ -408,10 +427,10 @@ $("cfg-enregistrer").addEventListener("click", async () => {
     setTimeout(() => {
       $("config").hidden = true;
     }, 800);
-  } catch (e) {
+  } catch (erreur) {
     statut(
       "cfg-statut",
-      `Échec : ${e.message || e}. Vos droits ne permettent peut-être pas de modifier la table ${PARAMETRES.table}.`,
+      `Échec : ${erreur.message || erreur}. Vos droits ne permettent peut-être pas de modifier la table ${PARAMETRES.table}.`,
       "err",
     );
   }

@@ -4,8 +4,8 @@
 /* ---------- Questions conditionnelles ---------- */
 // Valeur courante d'une colonne dont dépend une condition (questions, mais aussi description
 // et qualification du formulaire principal).
-const normaliser = (t) =>
-  String(t ?? "")
+const normaliser = (texte) =>
+  String(texte ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
@@ -15,17 +15,21 @@ const normaliser = (t) =>
 
 // Retrouve la colonne visée par une condition : d'abord parmi les questions du formulaire, puis la
 // qualification et la description, puis n'importe quelle colonne de la table (valeur de la dernière version).
-function resoudreColonne(ref, defs) {
-  const n = normaliser(ref);
+function resoudreColonne(referenceColonne, questions) {
+  const referenceNormalisee = normaliser(referenceColonne);
   const trouve = (liste) =>
-    liste.find((d) => d.colId === ref) || liste.find((d) => normaliser(d.colId) === n || normaliser(d.libelle) === n);
-  const q = trouve(defs);
-  if (q) return { genre: "question", def: q };
+    liste.find((definition) => definition.colId === referenceColonne) ||
+    liste.find(
+      (definition) =>
+        normaliser(definition.colId) === referenceNormalisee || normaliser(definition.libelle) === referenceNormalisee,
+    );
+  const questionTrouvee = trouve(questions);
+  if (questionTrouvee) return { genre: "question", def: questionTrouvee };
   const tous = Object.values(etatSaisie.metaSig);
   const autre = trouve(tous);
   if (!autre) return null;
-  if (autre.colId === col("Qualification")) return { genre: "qualification", def: autre };
-  if (autre.colId === col("Description")) return { genre: "description", def: autre };
+  if (autre.colId === colonneDe("Qualification")) return { genre: "qualification", def: autre };
+  if (autre.colId === colonneDe("Description")) return { genre: "description", def: autre };
   return { genre: "colonne", def: autre };
 }
 
@@ -36,176 +40,210 @@ function resoudreColonne(ref, defs) {
    parenthèses, nombres et références $Colonne. Toute autre formule garde sa dernière valeur enregistrée.
    Le calcul ne porte que sur quelques champs : aucun coût perceptible. */
 const FORMULE_SIMPLE = /^[\s$\w.,+\-*/()]+$/;
-function formuleCalculable(def) {
-  const f = ((def && def.texteFormule) || "").trim().replace(/^return\s+/, "");
-  if (!def || !def.formule || !f || !FORMULE_SIMPLE.test(f) || !/\$\w/.test(f)) return null;
+function formuleCalculable(definition) {
+  const formule = ((definition && definition.texteFormule) || "").trim().replace(/^return\s+/, "");
+  if (!definition || !definition.formule || !formule || !FORMULE_SIMPLE.test(formule) || !/\$\w/.test(formule))
+    return null;
   // Une fois retirés les références $Colonne et les nombres, il ne doit rester que des opérateurs :
   // un nom de fonction (max, SUM, len…) ou tout autre mot rend la formule non calculable ici.
-  const reste = f.replace(/\$\w+/g, " ").replace(/\d+(?:[.,]\d+)?/g, " ");
-  return /^[\s+\-*/()]*$/.test(reste) ? f : null;
+  const reste = formule.replace(/\$\w+/g, " ").replace(/\d+(?:[.,]\d+)?/g, " ");
+  return /^[\s+\-*/()]*$/.test(reste) ? formule : null;
 }
 /* Formule qui lit une colonne de la fiche de l'établissement (ex. « $Etablissement_ESR.Effectif ») :
    le widget a déjà cette fiche, il donne donc la valeur dès que l'établissement est choisi. */
-function formuleEtab(def) {
-  const f = ((def && def.formule && def.texteFormule) || "").trim().replace(/^return\s+/, "");
-  const m = f.match(/^\$(\w+)\.(\w+)$/);
-  if (!m) return null;
-  const ref = etatSaisie.metaSig[m[1]];
-  const versEtab = m[1] === col("Etablissement") || (ref && (ref.type || "") === `Ref:${ETAB.table}`);
-  return versEtab ? m[2] : null;
+function formuleEtab(definition) {
+  const formule = ((definition && definition.formule && definition.texteFormule) || "")
+    .trim()
+    .replace(/^return\s+/, "");
+  const correspondance = formule.match(/^\$(\w+)\.(\w+)$/);
+  if (!correspondance) return null;
+  const definitionReference = etatSaisie.metaSig[correspondance[1]];
+  const versEtab =
+    correspondance[1] === colonneDe("Etablissement") ||
+    (definitionReference && (definitionReference.type || "") === `Ref:${ETAB.table}`);
+  return versEtab ? correspondance[2] : null;
 }
 // Valeur d'une question formule pendant la saisie ; undefined si le widget ne sait pas la calculer
-function valeurFormuleEnDirect(def, prefix = "q", defs = etatSaisie.defsQuestions) {
-  const c = formuleEtab(def);
-  if (c) {
-    const e = etabDe(etablissementDuFormulaire());
-    const v = e ? e[c] : null;
-    return v === undefined || (v && typeof v === "object") ? null : v;
+function valeurFormuleEnDirect(definition, prefix = "q", questions = etatSaisie.defsQuestions) {
+  const colonneEtab = formuleEtab(definition);
+  if (colonneEtab) {
+    const etablissement = etabDe(etablissementDuFormulaire());
+    const valeur = etablissement ? etablissement[colonneEtab] : null;
+    return valeur === undefined || (valeur && typeof valeur === "object") ? null : valeur;
   }
-  if (formuleCalculable(def)) return valeurColonneEnDirect(def.colId, prefix, defs);
+  if (formuleCalculable(definition)) return valeurColonneEnDirect(definition.colId, prefix, questions);
   return undefined;
 }
-const formuleConnue = (def) => !!def.formule && (!!formuleEtab(def) || !!formuleCalculable(def));
+const formuleConnue = (definition) =>
+  !!definition.formule && (!!formuleEtab(definition) || !!formuleCalculable(definition));
 // Affichage en direct des questions formules calculables
 function majFormulesEnDirect() {
-  for (const def of etatSaisie.defsQuestions) {
-    if (!formuleConnue(def)) continue;
-    const el = document.getElementById(`q-${def.colId}`),
-      v = valeurFormuleEnDirect(def);
-    if (el && v !== undefined) el.textContent = formatValeur(def, v);
+  for (const question of etatSaisie.defsQuestions) {
+    if (!formuleConnue(question)) continue;
+    const champFormule = document.getElementById(`q-${question.colId}`),
+      valeurDirecte = valeurFormuleEnDirect(question);
+    if (champFormule && valeurDirecte !== undefined) champFormule.textContent = formatValeur(question, valeurDirecte);
   }
 }
-const questionVisible = (prefix, def) => {
-  const b = document.querySelector(`[data-champ="${prefix}-${def.colId}"]`);
-  return !!b && !b.hidden;
+const questionVisible = (prefix, question) => {
+  const bloc = document.querySelector(`[data-champ="${prefix}-${question.colId}"]`);
+  return !!bloc && !bloc.hidden;
 };
-function nombreDe(v) {
-  if (typeof v === "boolean") return v ? 1 : 0;
-  if (v == null || v === "") return 0; // réponse vide : comptée comme 0, comme dans Grist
-  const n = typeof v === "number" ? v : parseFloat(String(v).replace(",", "."));
-  return isNaN(n) ? 0 : n;
+function nombreDe(valeur) {
+  if (typeof valeur === "boolean") return valeur ? 1 : 0;
+  if (valeur == null || valeur === "") return 0; // réponse vide : comptée comme 0, comme dans Grist
+  const nombre = typeof valeur === "number" ? valeur : parseFloat(String(valeur).replace(",", "."));
+  return isNaN(nombre) ? 0 : nombre;
 }
-function calculerFormule(f, lire, profondeur = 0) {
+function calculerFormule(formule, lire, profondeur = 0) {
   // Analyse descendante : expression → terme (+|- terme)* ; terme → facteur (*|/ facteur)*
-  const jetons = f.match(/\$\w+|\d+(?:[.,]\d+)?|[+\-*/()]/g) || [];
+  const jetons = formule.match(/\$\w+|\d+(?:[.,]\d+)?|[+\-*/()]/g) || [];
   let i = 0;
   const facteur = () => {
     const j = jetons[i++];
     if (j === "(") {
-      const v = expression();
+      const valeurEntreParentheses = expression();
       i++;
-      return v;
+      return valeurEntreParentheses;
     }
     if (j === "-") return -facteur();
     if (j && j[0] === "$") return lire(j.slice(1), profondeur);
     return nombreDe(j);
   };
   const terme = () => {
-    let v = facteur();
+    let produit = facteur();
     while (jetons[i] === "*" || jetons[i] === "/") {
-      const op = jetons[i++];
-      const d = facteur();
-      v = op === "*" ? v * d : d ? v / d : 0;
+      const operateur = jetons[i++];
+      const facteurSuivant = facteur();
+      produit = operateur === "*" ? produit * facteurSuivant : facteurSuivant ? produit / facteurSuivant : 0;
     }
-    return v;
+    return produit;
   };
   const expression = () => {
-    let v = terme();
+    let somme = terme();
     while (jetons[i] === "+" || jetons[i] === "-") {
-      const op = jetons[i++];
-      const d = terme();
-      v = op === "+" ? v + d : v - d;
+      const operateur = jetons[i++];
+      const termeSuivant = terme();
+      somme = operateur === "+" ? somme + termeSuivant : somme - termeSuivant;
     }
-    return v;
+    return somme;
   };
   return expression();
 }
 // Valeur actuelle d'une colonne, pour le calcul : réponse en cours si c'est une question du formulaire,
 // formule simple recalculée si c'en est une, sinon dernière valeur enregistrée
-function valeurColonneEnDirect(colId, prefix, defs, profondeur = 0) {
-  const def = defs.find((d) => d.colId === colId) || etatSaisie.metaSig[colId];
-  if (!def) return 0;
-  const f = formuleCalculable(def);
-  if (f && profondeur < 5)
-    return calculerFormule(f, (c, p) => valeurColonneEnDirect(c, prefix, defs, p + 1), profondeur);
-  if (colId === col("Qualification") && prefix === "q") return nombreDe(lireQualificationInitiale());
-  if (!def.formule && defs.includes(def)) {
+function valeurColonneEnDirect(colId, prefix, questions, profondeur = 0) {
+  const definitionColonne = questions.find((question) => question.colId === colId) || etatSaisie.metaSig[colId];
+  if (!definitionColonne) return 0;
+  const formule = formuleCalculable(definitionColonne);
+  if (formule && profondeur < 5)
+    return calculerFormule(
+      formule,
+      (identifiantColonne, profondeurAppel) =>
+        valeurColonneEnDirect(identifiantColonne, prefix, questions, profondeurAppel + 1),
+      profondeur,
+    );
+  if (colId === colonneDe("Qualification") && prefix === "q") return nombreDe(lireQualificationInitiale());
+  if (!definitionColonne.formule && questions.includes(definitionColonne)) {
     const bloc = document.querySelector(`[data-champ="${prefix}-${colId}"]`);
-    if (bloc && !bloc.hidden) return nombreDe(lireUnChamp(prefix, def));
+    if (bloc && !bloc.hidden) return nombreDe(lireUnChamp(prefix, definitionColonne));
     if (bloc && bloc.hidden) return 0;
   }
-  const ref = etatSaisie.derniere || etatSaisie.initiale;
-  return nombreDe(ref ? ref[colId] : null);
+  const ligneVersion = etatSaisie.derniere || etatSaisie.initiale;
+  return nombreDe(ligneVersion ? ligneVersion[colId] : null);
 }
 
-function valeurPourCondition(prefix, defs, cond) {
-  const cible = resoudreColonne(cond.ref, defs);
+function valeurPourCondition(prefix, questions, cond) {
+  const cible = resoudreColonne(cond.ref, questions);
   if (!cible) return null;
-  const def = cible.def;
-  const f = formuleCalculable(def);
-  if (f) return calculerFormule(f, (c, p) => valeurColonneEnDirect(c, prefix, defs, p + 1));
-  if (typeBase(def.type) === "Bool" && cible.genre === "colonne") {
-    const r = etatSaisie.derniere || etatSaisie.initiale;
-    return !!(r && r[def.colId]);
+  const definition = cible.def;
+  const formule = formuleCalculable(definition);
+  if (formule)
+    return calculerFormule(formule, (identifiantColonne, profondeurAppel) =>
+      valeurColonneEnDirect(identifiantColonne, prefix, questions, profondeurAppel + 1),
+    );
+  if (typeBase(definition.type) === "Bool" && cible.genre === "colonne") {
+    const ligneVersionBool = etatSaisie.derniere || etatSaisie.initiale;
+    return !!(ligneVersionBool && ligneVersionBool[definition.colId]);
   }
   if (cible.genre === "qualification" && prefix === "q") return lireQualificationInitiale();
   if (cible.genre === "description" && prefix === "q") return $("description").value.trim();
-  if (cible.genre === "question" && def.formule) {
-    const r = etatSaisie.derniere || etatSaisie.initiale;
-    return r ? r[def.colId] : null;
+  if (cible.genre === "question" && definition.formule) {
+    const ligneVersionFormule = etatSaisie.derniere || etatSaisie.initiale;
+    return ligneVersionFormule ? ligneVersionFormule[definition.colId] : null;
   }
-  if (cible.genre === "question" && def.tableau) {
+  if (cible.genre === "question" && definition.tableau) {
     // tableau : nombre de lignes saisies
-    const c = tableaux[`${prefix}-${def.colId}`];
-    return c ? c.lignesValides().length : lireTableauJson(lireUnChamp(prefix, def)).length;
+    const controleur = tableaux[`${prefix}-${definition.colId}`];
+    return controleur ? controleur.lignesValides().length : lireTableauJson(lireUnChamp(prefix, definition)).length;
   }
   if (cible.genre === "question") {
-    const bloc = document.querySelector(`[data-champ="${prefix}-${def.colId}"]`);
+    const bloc = document.querySelector(`[data-champ="${prefix}-${definition.colId}"]`);
     if (bloc && bloc.hidden) return null; // question elle-même masquée : considérée comme sans réponse
-    const v = lireUnChamp(prefix, def);
+    const valeurChamp = lireUnChamp(prefix, definition);
     // Référence : on compare avec le texte affiché, pas avec le numéro de ligne
-    const t = typeBase(def.type);
-    if (t === "Ref") return v ? (def._labels && def._labels.get(v)) || String(v) : null;
-    if (t === "RefList" && Array.isArray(v))
-      return ["L", ...v.slice(1).map((x) => (def._labels && def._labels.get(x)) || String(x))];
-    return v;
+    const typeColonne = typeBase(definition.type);
+    if (typeColonne === "Ref")
+      return valeurChamp ? (definition._labels && definition._labels.get(valeurChamp)) || String(valeurChamp) : null;
+    if (typeColonne === "RefList" && Array.isArray(valeurChamp))
+      return [
+        "L",
+        ...valeurChamp
+          .slice(1)
+          .map(
+            (numeroReference) =>
+              (definition._labels && definition._labels.get(numeroReference)) || String(numeroReference),
+          ),
+      ];
+    return valeurChamp;
   }
   // Colonne hors formulaire : valeur de la version affichée (ou vide pour un nouveau signalement)
-  const ref = etatSaisie.derniere || etatSaisie.initiale;
-  return ref ? ref[def.colId] : null;
+  const ligneVersion = etatSaisie.derniere || etatSaisie.initiale;
+  return ligneVersion ? ligneVersion[definition.colId] : null;
 }
 
-function conditionRemplie(prefix, defs, cond) {
+function conditionRemplie(prefix, questions, cond) {
   if (!cond) return true;
-  return evaluerCondition(valeurPourCondition(prefix, defs, cond), cond);
+  return evaluerCondition(valeurPourCondition(prefix, questions, cond), cond);
 }
-function evaluerCondition(v, cond) {
+function evaluerCondition(valeur, cond) {
   // Nombre comparé à Oui / Non : « Oui » = supérieur à 0 (ex. [si Nb de blessés = Oui])
-  if ((cond.op === "=" || cond.op === "!=") && typeof v === "number") {
-    const c = (cond.valeurs || []).map(normaliser),
+  if ((cond.op === "=" || cond.op === "!=") && typeof valeur === "number") {
+    const valeursCondition = (cond.valeurs || []).map(normaliser),
       oui = ["oui", "vrai", "true"],
       non = ["non", "faux", "false"];
-    if (c.length && c.every((x) => oui.includes(x) || non.includes(x))) {
-      const res = (c.some((x) => oui.includes(x)) && v > 0) || (c.some((x) => non.includes(x)) && v <= 0);
-      return cond.op === "!=" ? !res : res;
+    if (
+      valeursCondition.length &&
+      valeursCondition.every((valeurNormalisee) => oui.includes(valeurNormalisee) || non.includes(valeurNormalisee))
+    ) {
+      const correspond =
+        (valeursCondition.some((valeurNormalisee) => oui.includes(valeurNormalisee)) && valeur > 0) ||
+        (valeursCondition.some((valeurNormalisee) => non.includes(valeurNormalisee)) && valeur <= 0);
+      return cond.op === "!=" ? !correspond : correspond;
     }
   }
   // Comparaisons numériques
   if ([">", ">=", "<", "<="].includes(cond.op)) {
-    const x = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(",", "."));
-    const y = parseFloat(String((cond.valeurs || [])[0] ?? "").replace(",", "."));
-    if (isNaN(x) || isNaN(y)) return false;
-    return cond.op === ">" ? x > y : cond.op === ">=" ? x >= y : cond.op === "<" ? x < y : x <= y;
+    const nombreSaisi = typeof valeur === "number" ? valeur : parseFloat(String(valeur ?? "").replace(",", "."));
+    const nombreCondition = parseFloat(String((cond.valeurs || [])[0] ?? "").replace(",", "."));
+    if (isNaN(nombreSaisi) || isNaN(nombreCondition)) return false;
+    return cond.op === ">"
+      ? nombreSaisi > nombreCondition
+      : cond.op === ">="
+        ? nombreSaisi >= nombreCondition
+        : cond.op === "<"
+          ? nombreSaisi < nombreCondition
+          : nombreSaisi <= nombreCondition;
   }
   let liste, renseignee;
-  if (typeof v === "boolean") {
-    liste = v ? ["oui", "vrai", "true", "1"] : ["non", "faux", "false", "0"];
-    renseignee = v;
-  } else if (Array.isArray(v)) {
-    liste = v[0] === "L" ? v.slice(1) : v;
+  if (typeof valeur === "boolean") {
+    liste = valeur ? ["oui", "vrai", "true", "1"] : ["non", "faux", "false", "0"];
+    renseignee = valeur;
+  } else if (Array.isArray(valeur)) {
+    liste = valeur[0] === "L" ? valeur.slice(1) : valeur;
     renseignee = liste.length > 0;
   } else {
-    liste = v == null || v === "" ? [] : [String(v)];
+    liste = valeur == null || valeur === "" ? [] : [String(valeur)];
     renseignee = liste.length > 0;
   }
   if (cond.op === "vide") return !renseignee;
@@ -213,7 +251,7 @@ function evaluerCondition(v, cond) {
   // Égalité : sans tenir compte des majuscules, des accents ni des espaces superflus
   const valeurs = liste.map(normaliser);
   const candidates = [...(cond.valeurs || []), ...(cond.brut ? [cond.brut] : [])];
-  const trouve = candidates.some((x) => valeurs.includes(normaliser(x)));
+  const trouve = candidates.some((candidate) => valeurs.includes(normaliser(candidate)));
   return cond.op === "!=" ? !trouve : trouve;
 }
 
@@ -221,25 +259,25 @@ function evaluerCondition(v, cond) {
 // conditionnée par une autre question elle-même conditionnelle suive correctement.
 function afficherDiagnostic() {
   if (!$("diagnostic-conditions").open) return;
-  const defs = etatSaisie.defsQuestions;
-  const lignes = defs
-    .filter((d) => d.condition)
-    .map((d) => {
-      const cible = resoudreColonne(d.condition.ref, defs);
-      const bloc = document.querySelector(`[data-champ="q-${d.colId}"]`);
-      const v = cible ? valeurPourCondition("q", defs, d.condition) : undefined;
-      const lu =
-        v === undefined
+  const questions = etatSaisie.defsQuestions;
+  const lignes = questions
+    .filter((question) => question.condition)
+    .map((question) => {
+      const cible = resoudreColonne(question.condition.ref, questions);
+      const bloc = document.querySelector(`[data-champ="q-${question.colId}"]`);
+      const valeurCondition = cible ? valeurPourCondition("q", questions, question.condition) : undefined;
+      const valeurAffichee =
+        valeurCondition === undefined
           ? "—"
-          : v === null || v === ""
+          : valeurCondition === null || valeurCondition === ""
             ? "(vide)"
-            : Array.isArray(v)
-              ? (v[0] === "L" ? v.slice(1) : v).join(", ") || "(vide)"
-              : typeof v === "boolean"
-                ? v
+            : Array.isArray(valeurCondition)
+              ? (valeurCondition[0] === "L" ? valeurCondition.slice(1) : valeurCondition).join(", ") || "(vide)"
+              : typeof valeurCondition === "boolean"
+                ? valeurCondition
                   ? "coché"
                   : "non coché"
-                : String(v);
+                : String(valeurCondition);
       const origine = !cible
         ? `<span class="ko">introuvable</span>`
         : `${esc(cible.def.libelle || cible.def.colId)} <small>(${esc(cible.def.colId)}${
@@ -251,8 +289,9 @@ function afficherDiagnostic() {
                   ? ", hors formulaire : valeur enregistrée"
                   : ""
           })</small>`;
-      const res = bloc && !bloc.hidden ? `<span class="ok">affichée</span>` : `<span class="ko">masquée</span>`;
-      return `<tr><td>${esc(d.libelle)}</td><td><code>[si ${esc(d.condition.texte)}]</code></td><td>${origine}</td><td>${esc(lu)}</td><td>${res}</td></tr>`;
+      const indicateurVisibilite =
+        bloc && !bloc.hidden ? `<span class="ok">affichée</span>` : `<span class="ko">masquée</span>`;
+      return `<tr><td>${esc(question.libelle)}</td><td><code>[si ${esc(question.condition.texte)}]</code></td><td>${origine}</td><td>${esc(valeurAffichee)}</td><td>${indicateurVisibilite}</td></tr>`;
     });
   $("diag-lignes").innerHTML = lignes.join("") || `<tr><td colspan="5">Aucune question conditionnelle.</td></tr>`;
 }

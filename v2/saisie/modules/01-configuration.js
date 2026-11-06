@@ -63,7 +63,7 @@ const NATURE = { initial: "Nouveau signalement", suivi: "Mise à jour" };
 
 // La zone « Commentaire de mise à jour » n'est pas affichée dans le formulaire.
 // Le résumé automatique des modifications reste enregistré dans la colonne Commentaire (si elle est associée).
-const afficherCommentaire = () => !!S().commentaire;
+const afficherCommentaire = () => !!reglagesSaisie().commentaire;
 
 // Recherche : référentiel du document, complété si le formulaire le prévoit par les annuaires en ligne
 // (API OpenDataSoft v2.1). Clé du réglage ⚙ « Référentiel des établissements » dans la table Parametres :

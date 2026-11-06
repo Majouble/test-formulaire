@@ -5,7 +5,7 @@
    Outils
    ========================================================= */
 const { esc, $ } = Outils;
-const E = ETAB.colonnes;
+const colonnesEtab = ETAB.colonnes;
 /* Reconnaissance des colonnes du référentiel : si une colonne attendue (Nom, UAI, Commune…) n'existe pas
    sous cet identifiant, le widget cherche une colonne équivalente d'après son identifiant ou son libellé
    (« Appellation officielle », « Numéro UAI », « Nom de l'établissement », « Code RNE »…), ou, pour l'UAI,
@@ -40,37 +40,48 @@ const RECONNAISSANCE_ETAB = {
   departement: { motifs: [/^(nom_|libelle_)?(du_)?departement$/, /departement/], sauf: /code|^id|numero/ },
   mail: { motifs: [/^(mail|courriel|e_?mail)$/, /mail|courriel/], sauf: /annuaire|contact_2|secondaire/ },
 };
-const normColonne = (s) =>
-  String(s ?? "")
+const normColonne = (valeur) =>
+  String(valeur ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_|_$/g, "");
-async function reconnaitreColonnesEtab(t) {
-  Object.assign(E, COLONNES_ETAB_DEFAUT);
+async function reconnaitreColonnesEtab(donneesTable) {
+  Object.assign(colonnesEtab, COLONNES_ETAB_DEFAUT);
   etatSaisie.colonnesReconnues = {};
   etatSaisie.colonnesParContenu = new Set();
   let meta = null;
   try {
     meta = await metaColonnes(ETAB.table);
   } catch (_) {}
-  const cols = Object.keys(t).filter((c) => c !== "id" && c !== "manualSort" && !c.startsWith("gristHelper"));
-  const noms = (c) => [normColonne(c), normColonne(meta && meta[c] && meta[c].libelle)].filter(Boolean);
-  const pris = new Set(Object.values(COLONNES_ETAB_DEFAUT).filter((c) => cols.includes(c)));
-  const texte = (c) => {
-    const v = (t[c] || []).filter((x) => x != null && x !== "");
-    return v.length ? v.filter((x) => typeof x === "string").length / v.length : 0;
+  const colonnes = Object.keys(donneesTable).filter(
+    (colonne) => colonne !== "id" && colonne !== "manualSort" && !colonne.startsWith("gristHelper"),
+  );
+  const noms = (colonne) =>
+    [normColonne(colonne), normColonne(meta && meta[colonne] && meta[colonne].libelle)].filter(Boolean);
+  const pris = new Set(Object.values(COLONNES_ETAB_DEFAUT).filter((colonne) => colonnes.includes(colonne)));
+  const texte = (colonne) => {
+    const valeursNonVides = (donneesTable[colonne] || []).filter((valeur) => valeur != null && valeur !== "");
+    return valeursNonVides.length
+      ? valeursNonVides.filter((valeur) => typeof valeur === "string").length / valeursNonVides.length
+      : 0;
   };
-  const uaiContenu = (c) => {
-    const v = (t[c] || []).filter((x) => typeof x === "string" && x.trim());
-    return v.length ? v.filter((x) => /^\d{7}[a-z]$/i.test(x.trim())).length / v.length : 0;
+  const uaiContenu = (colonne) => {
+    const valeursTexte = (donneesTable[colonne] || []).filter((valeur) => typeof valeur === "string" && valeur.trim());
+    return valeursTexte.length
+      ? valeursTexte.filter((valeur) => /^\d{7}[a-z]$/i.test(valeur.trim())).length / valeursTexte.length
+      : 0;
   };
-  for (const [k, r] of Object.entries(RECONNAISSANCE_ETAB)) {
-    if (cols.includes(E[k])) continue;
+  for (const [k, reconnaissance] of Object.entries(RECONNAISSANCE_ETAB)) {
+    if (colonnes.includes(colonnesEtab[k])) continue;
     let trouve = null;
-    for (const m of r.motifs) {
-      const cands = cols.filter((c) => !pris.has(c) && noms(c).some((n) => m.test(n) && !r.sauf.test(n)));
+    for (const motif of reconnaissance.motifs) {
+      const cands = colonnes.filter(
+        (colonne) =>
+          !pris.has(colonne) &&
+          noms(colonne).some((nomNormalise) => motif.test(nomNormalise) && !reconnaissance.sauf.test(nomNormalise)),
+      );
       if (cands.length) {
         trouve = cands.sort((a, b) => texte(b) - texte(a))[0];
         break;
@@ -78,31 +89,41 @@ async function reconnaitreColonnesEtab(t) {
     }
     if (!trouve && k === "uai")
       trouve =
-        cols
-          .filter((c) => !pris.has(c))
-          .map((c) => [c, uaiContenu(c)])
-          .filter(([, s]) => s >= 0.6)
+        colonnes
+          .filter((colonne) => !pris.has(colonne))
+          .map((colonne) => [colonne, uaiContenu(colonne)])
+          .filter(([, proportionUai]) => proportionUai >= 0.6)
           .sort((a, b) => b[1] - a[1])
-          .map(([c]) => c)[0] || null;
+          .map(([colonne]) => colonne)[0] || null;
     // Nom introuvable par son intitulé : la colonne texte aux valeurs les plus longues et les plus variées
     if (!trouve && k === "nom") {
-      const score = (c) => {
-        const v = (t[c] || []).filter((x) => typeof x === "string" && /[a-z]/i.test(x));
-        return v.length < (t.id || []).length * 0.6
+      const score = (colonne) => {
+        const valeursTexte = (donneesTable[colonne] || []).filter(
+          (valeur) => typeof valeur === "string" && /[a-z]/i.test(valeur),
+        );
+        return valeursTexte.length < (donneesTable.id || []).length * 0.6
           ? 0
-          : (new Set(v).size / v.length) * (v.reduce((s, x) => s + x.length, 0) / v.length);
+          : (new Set(valeursTexte).size / valeursTexte.length) *
+              (valeursTexte.reduce((somme, valeur) => somme + valeur.length, 0) / valeursTexte.length);
       };
       trouve =
-        cols
-          .filter((c) => !pris.has(c) && c !== E.cle && c !== E.lien && !/uuid|lien|mail|url/i.test(c))
-          .map((c) => [c, score(c)])
-          .filter(([, s]) => s > 4)
+        colonnes
+          .filter(
+            (colonne) =>
+              !pris.has(colonne) &&
+              colonne !== colonnesEtab.cle &&
+              colonne !== colonnesEtab.lien &&
+              !/uuid|lien|mail|url/i.test(colonne),
+          )
+          .map((colonne) => [colonne, score(colonne)])
+          .filter(([, noteColonne]) => noteColonne > 4)
           .sort((a, b) => b[1] - a[1])
-          .map(([c]) => c)[0] || null;
+          .map(([colonne]) => colonne)[0] || null;
     }
-    if (trouve && !noms(trouve).some((n) => r.motifs.some((m) => m.test(n)))) etatSaisie.colonnesParContenu.add(k);
+    if (trouve && !noms(trouve).some((nomNormalise) => reconnaissance.motifs.some((motif) => motif.test(nomNormalise))))
+      etatSaisie.colonnesParContenu.add(k);
     if (trouve) {
-      E[k] = trouve;
+      colonnesEtab[k] = trouve;
       pris.add(trouve);
       etatSaisie.colonnesReconnues[k] = trouve;
     }

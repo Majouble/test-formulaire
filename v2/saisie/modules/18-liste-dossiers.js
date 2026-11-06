@@ -1,29 +1,34 @@
 /* PRISME — widget de saisie, module 18/34 : Menu et recherche des signalements.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
-function libelleDossier(l) {
-  const d =
-    secondes(val(l, "Date")) != null ? dateFr(val(l, "Date"), { ...(etatSaisie.metaDate || {}), type: "Date" }) : "";
-  const texte = String(val(l, "Description") || "").slice(0, 60);
-  const etab = etatSaisie.modeEtab ? "" : nomEtabLigne(l);
-  return { titre: etab || `Signalement n° ${l.id}`, detail: `${d ? "du " + d + " — " : ""}${texte}` };
+function libelleDossier(ligne) {
+  const dateSignalement =
+    secondes(valeurLigne(ligne, "Date")) != null
+      ? dateFr(valeurLigne(ligne, "Date"), { ...(etatSaisie.metaDate || {}), type: "Date" })
+      : "";
+  const texte = String(valeurLigne(ligne, "Description") || "").slice(0, 60);
+  const etab = etatSaisie.modeEtab ? "" : nomEtabLigne(ligne);
+  return {
+    titre: etab || `Signalement n° ${ligne.id}`,
+    detail: `${dateSignalement ? "du " + dateSignalement + " — " : ""}${texte}`,
+  };
 }
 function majListeDossiers() {
   $("menu-dossiers").hidden = true; // remplacé par la liste de l'accueil
   $("barre-recherche").hidden = false;
   etatSaisie.indexRecherche = null; // reconstruit à la prochaine frappe
   etatSaisie.cacheDernieres = null;
-  const cD = col("Dossier");
+  const colonneDossier = colonneDe("Dossier");
   etatSaisie.dossiersInit = etatSaisie.enregistrements
-    .filter((l) => (refId(cD && l[cD]) || l.id) === l.id)
-    .filter((l) => !perimetreActif() || dansPerimetre(etabDeLigne(l)))
-    .sort((a, b) => (secondes(val(b, "Date")) ?? 0) - (secondes(val(a, "Date")) ?? 0));
+    .filter((ligne) => (refId(colonneDossier && ligne[colonneDossier]) || ligne.id) === ligne.id)
+    .filter((ligne) => !perimetreActif() || dansPerimetre(etabDeLigne(ligne)))
+    .sort((a, b) => (secondes(valeurLigne(b, "Date")) ?? 0) - (secondes(valeurLigne(a, "Date")) ?? 0));
   majFiltre();
   if (!$("resultats-signalements").hidden) afficherResultatsRecherche();
-  const courant = etatSaisie.dossiersInit.find((l) => l.id === etatSaisie.dossierId);
-  const lib = courant ? libelleDossier(courant) : null;
-  $("btn-dossiers").querySelector(".texte").textContent = lib
-    ? `${lib.titre} — ${lib.detail}`
+  const courant = etatSaisie.dossiersInit.find((ligne) => ligne.id === etatSaisie.dossierId);
+  const libelleCourant = courant ? libelleDossier(courant) : null;
+  $("btn-dossiers").querySelector(".texte").textContent = libelleCourant
+    ? `${libelleCourant.titre} — ${libelleCourant.detail}`
     : `${etatSaisie.modeEtab ? "Mes signalements" : "Signalements"} (${filtreActif() ? dossiersFiltres().length + " / " : ""}${etatSaisie.dossiersInit.length})`;
   $("recherche-dossiers").hidden = etatSaisie.dossiersInit.length < 8;
   // Le contenu de la liste n'est construit qu'à l'ouverture du menu : inutile de formater
@@ -33,59 +38,59 @@ function majListeDossiers() {
   afficherBandeauPerimetre();
 }
 function construireIndexRecherche() {
-  const cD = col("Dossier"),
+  const colonneDossier = colonneDe("Dossier"),
     dernieres = new Map();
-  for (const l of etatSaisie.enregistrements) {
-    const d = refId(cD && l[cD]) || l.id,
-      p = dernieres.get(d);
-    if (!p || comparerVersions(p, l) < 0) dernieres.set(d, l);
+  for (const ligne of etatSaisie.enregistrements) {
+    const idDossier = refId(colonneDossier && ligne[colonneDossier]) || ligne.id,
+      derniereVersion = dernieres.get(idDossier);
+    if (!derniereVersion || comparerVersions(derniereVersion, ligne) < 0) dernieres.set(idDossier, ligne);
   }
-  etatSaisie.indexRecherche = etatSaisie.dossiersInit.map((l) => {
-    const e = etabDeLigne(l) || {},
-      der = dernieres.get(l.id) || l;
+  etatSaisie.indexRecherche = etatSaisie.dossiersInit.map((ligne) => {
+    const etablissement = etabDeLigne(ligne) || {},
+      der = dernieres.get(ligne.id) || ligne;
     const texte = [
-      e[E.nom] || texteEtabBrut(l),
-      e[E.commune],
-      e[E.uai],
-      e[E.academie],
-      e[E.departement],
-      col("Site") ? val(der, "Site") : "",
-      `n° ${l.id}`,
-      String(l.id),
-      val(l, "Description"),
-      der !== l ? val(der, "Description") : "",
-      listeQualif(val(der, "Qualification")).join(" "),
+      etablissement[colonnesEtab.nom] || texteEtabBrut(ligne),
+      etablissement[colonnesEtab.commune],
+      etablissement[colonnesEtab.uai],
+      etablissement[colonnesEtab.academie],
+      etablissement[colonnesEtab.departement],
+      colonneDe("Site") ? valeurLigne(der, "Site") : "",
+      `n° ${ligne.id}`,
+      String(ligne.id),
+      valeurLigne(ligne, "Description"),
+      der !== ligne ? valeurLigne(der, "Description") : "",
+      listeQualif(valeurLigne(der, "Qualification")).join(" "),
     ]
-      .filter((v) => v != null && typeof v !== "object")
+      .filter((valeur) => valeur != null && typeof valeur !== "object")
       .join(" ")
       .replace(/\*\*|==/g, "");
-    return { l, der, e, cle: sansAccent(texte) };
+    return { l: ligne, der, e: etablissement, cle: sansAccent(texte) };
   });
 }
-function surligneMots(txt, mots) {
+function surligneMots(texte, mots) {
   // repérage sans accents, sur le texte d'origine (même longueur une fois normalisé), puis échappement morceau par morceau
-  const brut = String(txt ?? "").normalize("NFC"),
-    norm = [...brut].map((c) => sansAccent(c) || c).join("");
+  const brut = String(texte ?? "").normalize("NFC"),
+    norm = [...brut].map((caractere) => sansAccent(caractere) || caractere).join("");
   if (norm.length !== brut.length) return esc(brut);
   const marques = new Array(brut.length).fill(false);
-  for (const m of mots) {
-    if (m.length < 2) continue;
-    let i = norm.indexOf(m);
+  for (const mot of mots) {
+    if (mot.length < 2) continue;
+    let i = norm.indexOf(mot);
     while (i >= 0) {
-      for (let k = i; k < i + m.length; k++) marques[k] = true;
-      i = norm.indexOf(m, i + m.length);
+      for (let k = i; k < i + mot.length; k++) marques[k] = true;
+      i = norm.indexOf(mot, i + mot.length);
     }
   }
-  let h = "",
+  let html = "",
     dans = false;
   for (let k = 0; k < brut.length; k++) {
     if (marques[k] !== dans) {
-      h += marques[k] ? "<mark>" : "</mark>";
+      html += marques[k] ? "<mark>" : "</mark>";
       dans = marques[k];
     }
-    h += esc(brut[k]);
+    html += esc(brut[k]);
   }
-  return h + (dans ? "</mark>" : "");
+  return html + (dans ? "</mark>" : "");
 }
 function afficherResultatsRecherche() {
   etatSaisie.nbCartes = 30;
@@ -95,8 +100,8 @@ function fermerRecherche() {
   $("resultats-signalements").hidden = true;
   $("recherche-signalements").setAttribute("aria-expanded", "false");
 }
-function ouvrirResultat(li) {
-  const id = +li.dataset.id;
+function ouvrirResultat(itemResultat) {
+  const id = +itemResultat.dataset.id;
   if (!id) return;
   fermerRecherche();
   $("recherche-signalements").value = "";
@@ -112,36 +117,36 @@ $("recherche-signalements").addEventListener("focus", () => {
   fermerPanneauFiltre(false);
   afficherResultatsRecherche();
 });
-$("recherche-signalements").addEventListener("keydown", (ev) => {
+$("recherche-signalements").addEventListener("keydown", (evenement) => {
   const premiere = $("cartes-signalements").querySelector(".carte-sig");
-  if (ev.key === "ArrowDown") {
+  if (evenement.key === "ArrowDown") {
     if (premiere) {
-      ev.preventDefault();
+      evenement.preventDefault();
       premiere.focus();
     }
-  } else if (ev.key === "Enter") {
-    ev.preventDefault();
+  } else if (evenement.key === "Enter") {
+    evenement.preventDefault();
     if (premiere) ouvrirDepuisListe(+premiere.dataset.id);
-  } else if (ev.key === "Escape" && $("recherche-signalements").value) {
-    ev.preventDefault();
+  } else if (evenement.key === "Escape" && $("recherche-signalements").value) {
+    evenement.preventDefault();
     $("recherche-signalements").value = "";
     afficherResultatsRecherche();
   }
 });
-$("resultats-signalements").addEventListener("mousedown", (ev) => {
-  const li = ev.target.closest('[role="option"]');
-  if (li) {
-    ev.preventDefault();
-    ouvrirResultat(li);
+$("resultats-signalements").addEventListener("mousedown", (evenement) => {
+  const itemResultat = evenement.target.closest('[role="option"]');
+  if (itemResultat) {
+    evenement.preventDefault();
+    ouvrirResultat(itemResultat);
   }
 });
 $("recherche-signalements").addEventListener("blur", () => setTimeout(fermerRecherche, 150));
 // Raccourci : « / » place le curseur dans la barre de recherche (hors saisie en cours)
-document.addEventListener("keydown", (ev) => {
-  if (ev.key !== "/" || ev.ctrlKey || ev.metaKey || ev.altKey) return;
-  const t = ev.target,
-    saisie = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+document.addEventListener("keydown", (evenement) => {
+  if (evenement.key !== "/" || evenement.ctrlKey || evenement.metaKey || evenement.altKey) return;
+  const cible = evenement.target,
+    saisie = cible && (cible.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(cible.tagName));
   if (saisie || $("barre-recherche").hidden || etatSaisie.vue !== "accueil") return;
-  ev.preventDefault();
+  evenement.preventDefault();
   $("recherche-signalements").focus();
 });

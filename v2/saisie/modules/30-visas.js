@@ -4,30 +4,35 @@
 /* =========================================================
    Visas : portent sur la dernière version, jamais recopiés dans les suivis
    ========================================================= */
-const sansAccentBas = (s) =>
-  String(s ?? "")
+const sansAccentBas = (texte) =>
+  String(texte ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
-function classerNiveau(v) {
-  const s = sansAccentBas(v);
-  if (s.includes("region")) return "region"; // avant "academie" : "région académique" contient aussi "academie"
-  if (s.includes("departement")) return "departement";
-  if (s.includes("academie")) return "academie";
+function classerNiveau(valeur) {
+  const texteSansAccent = sansAccentBas(valeur);
+  if (texteSansAccent.includes("region")) return "region"; // avant "academie" : "région académique" contient aussi "academie"
+  if (texteSansAccent.includes("departement")) return "departement";
+  if (texteSansAccent.includes("academie")) return "academie";
   return null;
 }
 async function chargerProfil() {
   etatSaisie.monNiveau = null;
   try {
-    const t = await Donnees.lire(UTILISATEURS.table);
-    const cols = Object.keys(t);
-    const U = UTILISATEURS.colonnes;
-    if (!cols.includes(U.mail) || !cols.includes(U.niveau) || t.id.length !== 1) return;
-    const l = {};
-    cols.forEach((c) => (l[c] = t[c][0]));
-    etatSaisie.monNiveau = classerNiveau(l[U.niveau]);
-  } catch (e) {
-    console.warn("Table Utilisateurs illisible", e);
+    const tableUtilisateurs = await Donnees.lire(UTILISATEURS.table);
+    const nomsColonnes = Object.keys(tableUtilisateurs);
+    const colonnesUtilisateurs = UTILISATEURS.colonnes;
+    if (
+      !nomsColonnes.includes(colonnesUtilisateurs.mail) ||
+      !nomsColonnes.includes(colonnesUtilisateurs.niveau) ||
+      tableUtilisateurs.id.length !== 1
+    )
+      return;
+    const ligneUtilisateur = {};
+    nomsColonnes.forEach((nomColonne) => (ligneUtilisateur[nomColonne] = tableUtilisateurs[nomColonne][0]));
+    etatSaisie.monNiveau = classerNiveau(ligneUtilisateur[colonnesUtilisateurs.niveau]);
+  } catch (erreur) {
+    console.warn("Table Utilisateurs illisible", erreur);
   }
 }
 
@@ -40,37 +45,39 @@ async function chargerProfilViseur() {
   }
   if (etatSaisie.agentPage == null) return;
   try {
-    const t = await Donnees.lire(etatSaisie.socleGeneral.agents || "Agents"),
-      i = t.id.indexOf(etatSaisie.agentPage);
-    if (i < 0 || !t.Echelon_visa) return;
-    const ech = String(t.Echelon_visa[i] || ""),
+    const tableAgents = await Donnees.lire(etatSaisie.socleGeneral.agents || "Agents"),
+      i = tableAgents.id.indexOf(etatSaisie.agentPage);
+    if (i < 0 || !tableAgents.Echelon_visa) return;
+    const ech = String(tableAgents.Echelon_visa[i] || ""),
       niveau = ech === "Départemental" ? "departement" : ech === "Académique" ? "academie" : null;
     if (!niveau) return;
     etatSaisie.monNiveau = niveau;
     etatSaisie.monPerimetreVisa = {
       echelon: ech,
-      departements: window.Socle.listeChoix((t.Visa_departements || [])[i]),
-      academies: window.Socle.listeChoix((t.Visa_academies || [])[i]),
+      departements: window.Socle.listeChoix((tableAgents.Visa_departements || [])[i]),
+      academies: window.Socle.listeChoix((tableAgents.Visa_academies || [])[i]),
     };
   } catch (_) {
     /* table Agents illisible : ancien fonctionnement */
   }
 }
 // Département et académie de l'établissement d'une ligne (référentiel, à défaut colonnes recopiées de la table des réponses)
-function lieuDe(l) {
-  const e = (l && etabDeLigne(l)) || {},
-    d = l || {};
+function lieuDe(ligne) {
+  const ligneEtablissement = (ligne && etabDeLigne(ligne)) || {},
+    donneesLigne = ligne || {};
   return {
-    dep: String((E.departement && e[E.departement]) || d.Departement || ""),
-    aca: String((E.academie && e[E.academie]) || d.Academie || ""),
+    dep: String(
+      (colonnesEtab.departement && ligneEtablissement[colonnesEtab.departement]) || donneesLigne.Departement || "",
+    ),
+    aca: String((colonnesEtab.academie && ligneEtablissement[colonnesEtab.academie]) || donneesLigne.Academie || ""),
   };
 }
-const statutDe = (l) =>
-  etatSaisie.reglageValidation && l ? String(l[etatSaisie.reglageValidation.colonne] || "") : "";
+const statutDe = (ligne) =>
+  etatSaisie.reglageValidation && ligne ? String(ligne[etatSaisie.reglageValidation.colonne] || "") : "";
 // Le viseur de la page peut-il viser ce dossier à cet échelon (« dep » | « aca ») ? Sans profil de viseur : les règles d'accès décident.
-function peutViser(echelonVisa, l = etatSaisie.initiale) {
+function peutViser(echelonVisa, ligne = etatSaisie.initiale) {
   if (!etatSaisie.monPerimetreVisa) return true;
-  const { dep, aca } = lieuDe(l);
+  const { dep, aca } = lieuDe(ligne);
   return window.Socle.viseurCouvre(
     etatSaisie.monPerimetreVisa,
     echelonVisa,
@@ -80,26 +87,29 @@ function peutViser(echelonVisa, l = etatSaisie.initiale) {
   );
 }
 // Dossier (ligne initiale) en attente du visa de ce viseur, dans son périmètre
-function aViserParMoi(l) {
+function aViserParMoi(ligne) {
   if (!etatSaisie.monPerimetreVisa || !etatSaisie.reglageValidation) return false;
-  const s = statutDe(derniereDe(l));
-  return (s === Socle.STATUT.dep && peutViser("dep", l)) || (s === Socle.STATUT.aca && peutViser("aca", l));
+  const statutDossier = statutDe(derniereDe(ligne));
+  return (
+    (statutDossier === Socle.STATUT.dep && peutViser("dep", ligne)) ||
+    (statutDossier === Socle.STATUT.aca && peutViser("aca", ligne))
+  );
 }
 function majBandeauVisa() {
-  const b = $("bandeau-visa");
-  if (!b) return;
+  const bandeau = $("bandeau-visa");
+  if (!bandeau) return;
   if (!etatSaisie.monPerimetreVisa || !etatSaisie.reglageValidation || etatSaisie.modeEtab) {
-    b.hidden = true;
+    bandeau.hidden = true;
     etatSaisie.fileVisa = false;
     return;
   }
-  const n = (etatSaisie.indexRecherche || []).filter((x) => aViserParMoi(x.l)).length,
-    p = etatSaisie.monPerimetreVisa;
-  const zone = p.echelon === "Départemental" ? p.departements : p.academies;
-  b.hidden = false;
-  b.innerHTML = `<span class="grand">${n ? `${n} dossier${n > 1 ? "s" : ""} à viser` : "Aucun dossier à viser"}</span>
-    <span>visa ${p.echelon === "Départemental" ? "départemental" : "académique"} · ${esc(zone.length ? zone.join(", ") : "tout le document")}</span>
-    <button type="button" class="secondaire petit" id="btn-file-visa">${etatSaisie.fileVisa ? "Afficher tous les signalements" : n ? "Afficher la file" : "Afficher la file (vide)"}</button>`;
+  const nombreAViser = (etatSaisie.indexRecherche || []).filter((entree) => aViserParMoi(entree.l)).length,
+    perimetreViseur = etatSaisie.monPerimetreVisa;
+  const zone = perimetreViseur.echelon === "Départemental" ? perimetreViseur.departements : perimetreViseur.academies;
+  bandeau.hidden = false;
+  bandeau.innerHTML = `<span class="grand">${nombreAViser ? `${nombreAViser} dossier${nombreAViser > 1 ? "s" : ""} à viser` : "Aucun dossier à viser"}</span>
+    <span>visa ${perimetreViseur.echelon === "Départemental" ? "départemental" : "académique"} · ${esc(zone.length ? zone.join(", ") : "tout le document")}</span>
+    <button type="button" class="secondaire petit" id="btn-file-visa">${etatSaisie.fileVisa ? "Afficher tous les signalements" : nombreAViser ? "Afficher la file" : "Afficher la file (vide)"}</button>`;
   $("btn-file-visa").addEventListener("click", () => {
     etatSaisie.fileVisa = !etatSaisie.fileVisa;
     etatSaisie.nbCartes = 30;
@@ -115,34 +125,38 @@ async function lireVeille() {
   }
 }
 function majBandeauVeille() {
-  const b = $("bandeau-veille");
-  if (!b) return;
+  const bandeau = $("bandeau-veille");
+  if (!bandeau) return;
   if (Date.now() - etatSaisie.dernierVeille > 600000) lireVeille().then(majBandeauVeille); // relue toutes les 10 minutes
   if (etatSaisie.modeEtab || !etatSaisie.vigilancesPage) {
-    b.hidden = true;
+    bandeau.hidden = true;
     return;
   }
-  const r = Socle.reglagesVeille(etatSaisie.socleConfig),
+  const reglagesVeille = Socle.reglagesVeille(etatSaisie.socleConfig),
     groupes = new Map();
-  for (const v of etatSaisie.vigilancesPage) {
-    if (v.niveau < r.seuil || (r.phenomenes.length && !r.phenomenes.includes(v.phenomene))) continue;
-    const k = `${v.niveau}|${v.echeance === "Demain" ? 1 : 0}|${v.phenomene}`;
-    if (!groupes.has(k)) groupes.set(k, { v, deps: [] });
-    if (!groupes.get(k).deps.includes(v.departement)) groupes.get(k).deps.push(v.departement);
+  for (const vigilance of etatSaisie.vigilancesPage) {
+    if (
+      vigilance.niveau < reglagesVeille.seuil ||
+      (reglagesVeille.phenomenes.length && !reglagesVeille.phenomenes.includes(vigilance.phenomene))
+    )
+      continue;
+    const k = `${vigilance.niveau}|${vigilance.echeance === "Demain" ? 1 : 0}|${vigilance.phenomene}`;
+    if (!groupes.has(k)) groupes.set(k, { v: vigilance, deps: [] });
+    if (!groupes.get(k).deps.includes(vigilance.departement)) groupes.get(k).deps.push(vigilance.departement);
   }
   if (!groupes.size) {
-    b.hidden = true;
+    bandeau.hidden = true;
     return;
   }
   const pastille = ["", "🟢", "🟡", "🟠", "🔴"];
-  b.hidden = false;
-  b.innerHTML =
+  bandeau.hidden = false;
+  bandeau.innerHTML =
     [...groupes.entries()]
-      .sort((x, y) => y[0].localeCompare(x[0]))
+      .sort((entreeA, entreeB) => entreeB[0].localeCompare(entreeA[0]))
       .slice(0, 4)
       .map(
-        ([, g]) =>
-          `<p>${pastille[g.v.niveau] || ""} <strong>Vigilance ${esc(String(g.v.couleur).toLowerCase())} ${esc(g.v.phenomene.toLowerCase())}</strong> ${g.v.echeance === "Demain" ? "demain" : "aujourd'hui"} : ${esc(g.deps.slice(0, 8).join(", "))}${g.deps.length > 8 ? ` et ${g.deps.length - 8} autres` : ""}</p>`,
+        ([, groupe]) =>
+          `<p>${pastille[groupe.v.niveau] || ""} <strong>Vigilance ${esc(String(groupe.v.couleur).toLowerCase())} ${esc(groupe.v.phenomene.toLowerCase())}</strong> ${groupe.v.echeance === "Demain" ? "demain" : "aujourd'hui"} : ${esc(groupe.deps.slice(0, 8).join(", "))}${groupe.deps.length > 8 ? ` et ${groupe.deps.length - 8} autres` : ""}</p>`,
       )
       .join("") + (groupes.size > 4 ? `<p>… et ${groupes.size - 4} autre(s) vigilance(s).</p>` : "");
 }
@@ -151,46 +165,55 @@ function majBandeauVeille() {
 function campagnesDeLEtab() {
   if (!etatSaisie.modeEtab || !etatSaisie.etabs || !etatSaisie.etabs[0] || !etatSaisie.socleConfig || !Socle.campagnes)
     return [];
-  const cols = { nom: E.nom, uai: E.uai, commune: E.commune, mail: E.mail };
+  const colonnesEtablissement = {
+    nom: colonnesEtab.nom,
+    uai: colonnesEtab.uai,
+    commune: colonnesEtab.commune,
+    mail: colonnesEtab.mail,
+  };
   return Socle.campagnes(etatSaisie.socleConfig).filter(
-    (c) =>
-      Socle.campagneEnCours(c) &&
-      (!c.referentiel || c.referentiel === ETAB.table) &&
-      Socle.campagneVise(c, etatSaisie.etabs[0], cols),
+    (campagne) =>
+      Socle.campagneEnCours(campagne) &&
+      (!campagne.referentiel || campagne.referentiel === ETAB.table) &&
+      Socle.campagneVise(campagne, etatSaisie.etabs[0], colonnesEtablissement),
   );
 }
 function majBandeauCampagne() {
-  const b = $("bandeau-campagne");
-  if (!b) return;
-  const cs = campagnesDeLEtab();
-  if (!cs.length) {
-    b.hidden = true;
+  const bandeau = $("bandeau-campagne");
+  if (!bandeau) return;
+  const campagnesVisees = campagnesDeLEtab();
+  if (!campagnesVisees.length) {
+    bandeau.hidden = true;
     return;
   }
-  const saisies = etatSaisie.enregistrements.map((l) => secondes(val(l, "Date"))).filter((x) => x != null);
-  const attente = cs.filter((c) => !saisies.some((x) => Socle.reponseCompte(c, x)));
-  b.hidden = false;
-  b.classList.toggle("ok", !attente.length);
+  const saisies = etatSaisie.enregistrements
+    .map((ligne) => secondes(valeurLigne(ligne, "Date")))
+    .filter((saisie) => saisie != null);
+  const attente = campagnesVisees.filter(
+    (campagne) => !saisies.some((saisie) => Socle.reponseCompte(campagne, saisie)),
+  );
+  bandeau.hidden = false;
+  bandeau.classList.toggle("ok", !attente.length);
   if (!attente.length) {
-    b.innerHTML = `<p>✓ ${cs.length > 1 ? "Vos réponses sont enregistrées" : `Votre réponse à « ${esc(cs[0].nom)} » est enregistrée`}${cs.some((c) => c.mode === "quotidienne") ? " pour aujourd'hui" : ""}. Merci.</p>`;
+    bandeau.innerHTML = `<p>✓ ${campagnesVisees.length > 1 ? "Vos réponses sont enregistrées" : `Votre réponse à « ${esc(campagnesVisees[0].nom)} » est enregistrée`}${campagnesVisees.some((campagne) => campagne.mode === "quotidienne") ? " pour aujourd'hui" : ""}. Merci.</p>`;
     return;
   }
-  const c = attente[0],
-    jour = c.mode === "quotidienne";
-  b.innerHTML = `<p><span class="grand">Réponse attendue${jour ? " aujourd'hui" : ""} : « ${esc(c.nom)} ».</span>
+  const campagneEnAttente = attente[0],
+    jour = campagneEnAttente.mode === "quotidienne";
+  bandeau.innerHTML = `<p><span class="grand">Réponse attendue${jour ? " aujourd'hui" : ""} : « ${esc(campagneEnAttente.nom)} ».</span>
     Signalez tout événement concernant votre établissement ; s'il n'y a rien à signaler, répondez en un clic.</p>
     <button type="button" class="primaire" id="btn-rien-a-signaler">Rien à signaler</button>`;
   $("btn-rien-a-signaler").addEventListener("click", rienASignaler);
 }
 // Valeur de qualification « retour à la normale » proposée par le formulaire (RAS par défaut)
 function qualificationRetourNormale() {
-  const r = retourNormale(),
-    trouve = (etatSaisie.choix || []).find((x) => r.has(String(x).trim().toUpperCase()));
+  const valeursRetourNormale = retourNormale(),
+    trouve = (etatSaisie.choix || []).find((choix) => valeursRetourNormale.has(String(choix).trim().toUpperCase()));
   return trouve || (etatSaisie.choix && etatSaisie.choix.length ? null : "RAS");
 }
 async function rienASignaler() {
-  const q = qualificationRetourNormale();
-  if (!q) {
+  const qualification = qualificationRetourNormale();
+  if (!qualification) {
     alert("Le formulaire ne propose pas de qualification « RAS » : utilisez « Nouveau signalement ».");
     return;
   }
@@ -208,7 +231,7 @@ async function rienASignaler() {
   });
   if (duJour && etatSaisie.dossierId !== duJour.d) return;
   await enFile(async () => {
-    cocherQualif(q);
+    cocherQualif(qualification);
     $("description").value = "Rien à signaler.";
     etatSaisie.descriptionManuelle = true;
     majEtatDescription();
@@ -219,23 +242,24 @@ async function rienASignaler() {
 
 async function remplirVisas() {
   // Un bloc n'est affiché que si les règles d'accès laissent lire ses colonnes
-  const visibles = (defs, prefix) =>
-    defs.filter((d) => {
-      const ok = etatSaisie.derniere && lisible(etatSaisie.derniere[d.colId]) && d.colId in etatSaisie.derniere;
-      const bloc = document.querySelector(`[data-champ="${prefix}-${d.colId}"]`);
+  const visibles = (questions, prefix) =>
+    questions.filter((question) => {
+      const accessible =
+        etatSaisie.derniere && lisible(etatSaisie.derniere[question.colId]) && question.colId in etatSaisie.derniere;
+      const bloc = document.querySelector(`[data-champ="${prefix}-${question.colId}"]`);
       if (bloc) {
-        bloc.hidden = !ok;
-        bloc.dataset.masqueAcces = ok ? "0" : "1";
+        bloc.hidden = !accessible;
+        bloc.dataset.masqueAcces = accessible ? "0" : "1";
       }
-      return ok;
+      return accessible;
     });
-  const vd = visibles(etatSaisie.defsDep, "vd"),
-    va = visibles(etatSaisie.defsAca, "va");
+  const questionsVisaDep = visibles(etatSaisie.defsDep, "vd"),
+    questionsVisaAca = visibles(etatSaisie.defsAca, "va");
   // Un profil identifié dans « Utilisateurs » décide du périmètre : département → son échelon
   // seulement ; académie et région académique → les deux échelons. Sans profil reconnu (ex. le
   // propriétaire du document), on retombe sur ce que les règles d'accès laissent lire.
-  let montrerDep = vd.length > 0;
-  let montrerAca = va.length > 0 && (!etatSaisie.monNiveau || etatSaisie.monNiveau !== "departement");
+  let montrerDep = questionsVisaDep.length > 0;
+  let montrerAca = questionsVisaAca.length > 0 && (!etatSaisie.monNiveau || etatSaisie.monNiveau !== "departement");
   // Viseur de l'onglet Validation : son échelon, sur les établissements de son périmètre seulement
   if (etatSaisie.monPerimetreVisa) {
     montrerDep =
@@ -253,23 +277,23 @@ async function remplirVisas() {
   [
     ["form-visa-dep", etatSaisie.defsDep, "vd", montrerDep],
     ["form-visa-aca", etatSaisie.defsAca, "va", montrerAca],
-  ].forEach(([formId, defs, prefix, montrer]) => {
+  ].forEach(([formId, questions, prefix, montrer]) => {
     $(formId).classList.toggle("mode-toggle", !!etatSaisie.monNiveau);
     if (!etatSaisie.monNiveau || !montrer) return;
-    const prim = champVerdict(defs);
-    defs.forEach((d) => {
-      const bloc = document.querySelector(`[data-champ="${prefix}-${d.colId}"]`);
-      if (bloc && d !== prim) bloc.hidden = true;
+    const prim = champVerdict(questions);
+    questions.forEach((question) => {
+      const bloc = document.querySelector(`[data-champ="${prefix}-${question.colId}"]`);
+      if (bloc && question !== prim) bloc.hidden = true;
     });
   });
-  await remplirChamps("vd", vd, (d) => etatSaisie.derniere[d.colId]);
-  await remplirChamps("va", va, (d) => etatSaisie.derniere[d.colId]);
+  await remplirChamps("vd", questionsVisaDep, (question) => etatSaisie.derniere[question.colId]);
+  await remplirChamps("va", questionsVisaAca, (question) => etatSaisie.derniere[question.colId]);
   if (etatSaisie.derniere) {
-    const d = val(etatSaisie.derniere, "Date");
+    const dateSaisie = valeurLigne(etatSaisie.derniere, "Date");
     $("note-visa").textContent =
       `Les visas portent sur la version la plus récente du signalement` +
-      (secondes(d) != null
-        ? ` (${etatSaisie.derniere === etatSaisie.initiale ? "signalement initial" : "suivi"} du ${dateFr(d, etatSaisie.metaDate)})`
+      (secondes(dateSaisie) != null
+        ? ` (${etatSaisie.derniere === etatSaisie.initiale ? "signalement initial" : "suivi"} du ${dateFr(dateSaisie, etatSaisie.metaDate)})`
         : "") +
       `. Tout nouveau suivi devra être visé à nouveau.`;
   }
@@ -280,28 +304,28 @@ async function remplirVisas() {
 // comme un verdict : cliquer dessus l'enregistre aussitôt, sans passer par le bouton « Enregistrer »,
 // pour que l'agent du département ou de l'académie puisse valider en un geste. Les autres champs du
 // bloc (observations, etc.) restent soumis par le bouton habituel.
-function champVerdict(defs) {
-  return defs.find(
-    (d) =>
-      !d.formule &&
-      typeBase(d.type) === "Choice" &&
-      (d.opts.choices || []).length &&
-      (d.opts.choices || []).length <= 5,
+function champVerdict(questions) {
+  return questions.find(
+    (question) =>
+      !question.formule &&
+      typeBase(question.type) === "Choice" &&
+      (question.opts.choices || []).length &&
+      (question.opts.choices || []).length <= 5,
   );
 }
 
-function activerVerdictRapide(prefix, defs, statutId) {
-  const def = champVerdict(defs);
-  if (!def) return;
-  const id = `${prefix}-${def.colId}`;
+function activerVerdictRapide(prefix, questions, statutId) {
+  const questionVerdict = champVerdict(questions);
+  if (!questionVerdict) return;
+  const id = `${prefix}-${questionVerdict.colId}`;
   const bloc = document.querySelector(`[data-champ="${id}"]`);
   if (!bloc) return;
   bloc.classList.add("bloc-verdict");
   if (!bloc.querySelector(".aide-verdict")) {
-    const p = document.createElement("p");
-    p.className = "aide-verdict";
-    p.textContent = "Cliquer sur une valeur l'enregistre immédiatement.";
-    bloc.insertBefore(p, bloc.querySelector(".choix-groupe"));
+    const paragrapheAide = document.createElement("p");
+    paragrapheAide.className = "aide-verdict";
+    paragrapheAide.textContent = "Cliquer sur une valeur l'enregistre immédiatement.";
+    bloc.insertBefore(paragrapheAide, bloc.querySelector(".choix-groupe"));
   }
   // À la souris, un clic sur une valeur l'enregistre aussitôt. Au clavier, les flèches parcourent les
   // valeurs sans rien enregistrer (sinon chaque valeur intermédiaire serait écrite) : Entrée valide.
@@ -309,21 +333,23 @@ function activerVerdictRapide(prefix, defs, statutId) {
   bloc.addEventListener("pointerdown", () => {
     pointeur = true;
   });
-  bloc.querySelectorAll(`input[name="${id}"]`).forEach((r) => {
-    r.addEventListener("change", () => {
+  bloc.querySelectorAll(`input[name="${id}"]`).forEach((choixRadio) => {
+    choixRadio.addEventListener("change", () => {
       if (pointeur) {
         pointeur = false;
-        enFile(() => enregistrerVerdict(def, id, statutId));
+        enFile(() => enregistrerVerdict(questionVerdict, id, statutId));
         return;
       }
       const encours = lireChoix(id);
-      const deja = etatSaisie.derniere && egal(norm(def, encours), norm(def, etatSaisie.derniere[def.colId]));
+      const deja =
+        etatSaisie.derniere &&
+        egal(norm(questionVerdict, encours), norm(questionVerdict, etatSaisie.derniere[questionVerdict.colId]));
       statut(statutId, deja ? "" : `« ${encours} » sélectionné, non enregistré : appuyez sur Entrée pour valider.`);
     });
-    r.addEventListener("keydown", (ev) => {
-      if (ev.key !== "Enter") return;
-      ev.preventDefault(); // pas d'envoi implicite du formulaire de visa
-      enFile(() => enregistrerVerdict(def, id, statutId));
+    choixRadio.addEventListener("keydown", (evenement) => {
+      if (evenement.key !== "Enter") return;
+      evenement.preventDefault(); // pas d'envoi implicite du formulaire de visa
+      enFile(() => enregistrerVerdict(questionVerdict, id, statutId));
     });
   });
   const aide = bloc.querySelector(".aide-verdict");
@@ -332,33 +358,37 @@ function activerVerdictRapide(prefix, defs, statutId) {
       "Un clic sur une valeur l'enregistre immédiatement. Au clavier : flèches pour choisir, Entrée pour valider.";
 }
 
-async function enregistrerVerdict(def, id, statutId) {
+async function enregistrerVerdict(questionVerdict, id, statutId) {
   if (!etatSaisie.derniere) return;
-  const v = lireChoix(id);
-  if (!v || egal(norm(def, v), norm(def, etatSaisie.derniere[def.colId]))) return;
+  const valeurChoisie = lireChoix(id);
+  if (
+    !valeurChoisie ||
+    egal(norm(questionVerdict, valeurChoisie), norm(questionVerdict, etatSaisie.derniere[questionVerdict.colId]))
+  )
+    return;
   statut(statutId, "Enregistrement…");
   try {
-    await grist.getTable().update({ id: etatSaisie.derniere.id, fields: { [def.colId]: v } });
-    etatSaisie.derniere[def.colId] = v; // évite qu'« Enregistrer » ne renvoie inutilement cette même valeur
-    statut(statutId, `Visa enregistré : ${v}.`, "ok");
-  } catch (e) {
+    await grist.getTable().update({ id: etatSaisie.derniere.id, fields: { [questionVerdict.colId]: valeurChoisie } });
+    etatSaisie.derniere[questionVerdict.colId] = valeurChoisie; // évite qu'« Enregistrer » ne renvoie inutilement cette même valeur
+    statut(statutId, `Visa enregistré : ${valeurChoisie}.`, "ok");
+  } catch (erreur) {
     statut(
       statutId,
-      `Échec : ${e.message || e}. Vérifiez que ce visa relève bien de votre échelon et porte sur la dernière version.`,
+      `Échec : ${erreur.message || erreur}. Vérifiez que ce visa relève bien de votre échelon et porte sur la dernière version.`,
       "err",
     );
   }
 }
 
-async function enregistrerVisa(prefix, defs, statutId) {
+async function enregistrerVisa(prefix, questions, statutId) {
   if (!etatSaisie.derniere) return;
   const manquants = [];
-  const valeurs = lireChamps(prefix, defs, manquants);
+  const valeurs = lireChamps(prefix, questions, manquants);
   if (manquants.length) {
     statut(statutId, `Renseignez ${manquants.join(", ")}.`, "err");
     return;
   }
-  const fields = seulementModifies(defs, valeurs, etatSaisie.derniere);
+  const fields = seulementModifies(questions, valeurs, etatSaisie.derniere);
   if (!Object.keys(fields).length) {
     statut(statutId, "Aucune modification à enregistrer.");
     return;
@@ -367,19 +397,19 @@ async function enregistrerVisa(prefix, defs, statutId) {
     await grist.getTable().update({ id: etatSaisie.derniere.id, fields });
     etatSaisie.modifieVisa = false;
     statut(statutId, "Visa enregistré.", "ok");
-  } catch (e) {
+  } catch (erreur) {
     statut(
       statutId,
-      `Échec : ${e.message || e}. Vérifiez que ce visa relève bien de votre échelon et porte sur la dernière version.`,
+      `Échec : ${erreur.message || erreur}. Vérifiez que ce visa relève bien de votre échelon et porte sur la dernière version.`,
       "err",
     );
   }
 }
-$("form-visa-dep").addEventListener("submit", (ev) => {
-  ev.preventDefault();
+$("form-visa-dep").addEventListener("submit", (evenement) => {
+  evenement.preventDefault();
   enFile(() => enregistrerVisa("vd", etatSaisie.defsDep, "statut-dep"));
 });
-$("form-visa-aca").addEventListener("submit", (ev) => {
-  ev.preventDefault();
+$("form-visa-aca").addEventListener("submit", (evenement) => {
+  evenement.preventDefault();
   enFile(() => enregistrerVisa("va", etatSaisie.defsAca, "statut-aca"));
 });

@@ -5,31 +5,31 @@
    Onglets, modes et en-tête
    ========================================================= */
 function afficherOnglet(nom) {
-  ["signalement", "historique", "visas"].forEach((n) => {
-    $(`onglet-${n}`).setAttribute("aria-selected", String(n === nom));
-    $(`onglet-${n}`).tabIndex = n === nom ? 0 : -1; // seul l'onglet actif est dans l'ordre de tabulation
-    $(`panneau-${n}`).hidden = n !== nom;
+  ["signalement", "historique", "visas"].forEach((onglet) => {
+    $(`onglet-${onglet}`).setAttribute("aria-selected", String(onglet === nom));
+    $(`onglet-${onglet}`).tabIndex = onglet === nom ? 0 : -1; // seul l'onglet actif est dans l'ordre de tabulation
+    $(`panneau-${onglet}`).hidden = onglet !== nom;
   });
 }
 // Clavier : flèches gauche/droite, Début et Fin passent d'un onglet visible à l'autre
-$("onglets").addEventListener("keydown", (ev) => {
-  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(ev.key)) return;
-  const visibles = [...$("onglets").querySelectorAll('[role="tab"]')].filter((t) => !t.hidden);
+$("onglets").addEventListener("keydown", (evenement) => {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(evenement.key)) return;
+  const visibles = [...$("onglets").querySelectorAll('[role="tab"]')].filter((onglet) => !onglet.hidden);
   const i = visibles.indexOf(document.activeElement);
   if (i < 0) return;
-  ev.preventDefault();
+  evenement.preventDefault();
   const j =
-    ev.key === "Home"
+    evenement.key === "Home"
       ? 0
-      : ev.key === "End"
+      : evenement.key === "End"
         ? visibles.length - 1
-        : (i + (ev.key === "ArrowRight" ? 1 : -1) + visibles.length) % visibles.length;
+        : (i + (evenement.key === "ArrowRight" ? 1 : -1) + visibles.length) % visibles.length;
   const cible = visibles[j];
   afficherOnglet(cible.id.replace("onglet-", ""));
   cible.focus();
 });
-["signalement", "historique", "visas"].forEach((n) =>
-  $(`onglet-${n}`).addEventListener("click", () => afficherOnglet(n)),
+["signalement", "historique", "visas"].forEach((onglet) =>
+  $(`onglet-${onglet}`).addEventListener("click", () => afficherOnglet(onglet)),
 );
 
 async function passerEnCreation() {
@@ -85,41 +85,42 @@ function afficherDossier() {
   $("btn-corriger").hidden = false;
   $("aide-correction").hidden = false;
   $("btn-effacer").textContent = "Revenir à l'état actuel";
-  $("bloc-commentaire").hidden = !(afficherCommentaire() && col("Commentaire"));
+  $("bloc-commentaire").hidden = !(afficherCommentaire() && colonneDe("Commentaire"));
   $("btn-nouveau").hidden = false;
   $("onglets").hidden = false;
   $("nb-suivis").textContent = Math.max(0, etatSaisie.versions.length - 1);
 
-  const qDerniere = listeQualif(val(etatSaisie.derniere, "Qualification"));
-  const qList = qDerniere.length ? qDerniere : listeQualif(val(etatSaisie.initiale, "Qualification"));
-  $("titre").textContent = `${etatSaisie.etabCourant ? etatSaisie.etabCourant[E.nom] : "Signalement"} `;
-  qList.forEach((q) => {
-    const p = document.createElement("span");
-    p.className = "pastille";
-    p.textContent = q;
-    p.title = "Qualification actuelle";
-    styleChoix(p, q);
-    $("titre").appendChild(p);
+  const qDerniere = listeQualif(valeurLigne(etatSaisie.derniere, "Qualification"));
+  const qList = qDerniere.length ? qDerniere : listeQualif(valeurLigne(etatSaisie.initiale, "Qualification"));
+  $("titre").textContent = `${etatSaisie.etabCourant ? etatSaisie.etabCourant[colonnesEtab.nom] : "Signalement"} `;
+  qList.forEach((qualification) => {
+    const pastille = document.createElement("span");
+    pastille.className = "pastille";
+    pastille.textContent = qualification;
+    pastille.title = "Qualification actuelle";
+    styleChoix(pastille, qualification);
+    $("titre").appendChild(pastille);
   });
   const stV = !etatSaisie.modeEtab ? statutDe(etatSaisie.derniere) : "";
   if (stV) {
-    const sv = (window.Socle.STATUTS_VALIDATION || []).find((x) => x.nom === stV) || {},
-      p = document.createElement("span");
-    p.className = "pastille pastille-statut";
-    p.textContent = stV;
-    p.title = "Statut de validation (visas)";
-    if (sv.fond) {
-      p.style.setProperty("--c-bg", sv.fond);
-      p.style.setProperty("--c", sv.texte);
+    const styleStatut =
+        (window.Socle.STATUTS_VALIDATION || []).find((statutValidation) => statutValidation.nom === stV) || {},
+      pastilleStatut = document.createElement("span");
+    pastilleStatut.className = "pastille pastille-statut";
+    pastilleStatut.textContent = stV;
+    pastilleStatut.title = "Statut de validation (visas)";
+    if (styleStatut.fond) {
+      pastilleStatut.style.setProperty("--c-bg", styleStatut.fond);
+      pastilleStatut.style.setProperty("--c", styleStatut.texte);
     }
-    $("titre").appendChild(p);
+    $("titre").appendChild(pastilleStatut);
   }
-  const dInit = val(etatSaisie.initiale, "Date");
-  const d = secondes(dInit) != null ? `, créé le ${dateFr(dInit, etatSaisie.metaDate)}` : "";
-  const n = etatSaisie.versions.length - 1;
-  const site = col("Site") ? String(val(etatSaisie.derniere, "Site") || "").trim() : "";
+  const dInit = valeurLigne(etatSaisie.initiale, "Date");
+  const texteCreation = secondes(dInit) != null ? `, créé le ${dateFr(dInit, etatSaisie.metaDate)}` : "";
+  const nombreMisesAJour = etatSaisie.versions.length - 1;
+  const site = colonneDe("Site") ? String(valeurLigne(etatSaisie.derniere, "Site") || "").trim() : "";
   $("sous-titre").textContent =
-    `${d ? "Signalé" + d.replace(/^, créé/, "") : `Dossier n° ${etatSaisie.dossierId}`}${site ? ` · site « ${site} »` : ""} · ${n === 0 ? "aucune mise à jour" : n === 1 ? "1 mise à jour" : n + " mises à jour"}.`;
+    `${texteCreation ? "Signalé" + texteCreation.replace(/^, créé/, "") : `Dossier n° ${etatSaisie.dossierId}`}${site ? ` · site « ${site} »` : ""} · ${nombreMisesAJour === 0 ? "aucune mise à jour" : nombreMisesAJour === 1 ? "1 mise à jour" : nombreMisesAJour + " mises à jour"}.`;
   afficherEtablissement();
   afficherHistorique();
   majListeDossiers();
@@ -130,7 +131,7 @@ function afficherDossier() {
 // visible, et en dernier recours la description (qui est en bas du formulaire)
 function focusPremiereQuestion() {
   const qualif = $("qualifs-initiales").querySelector("input:checked") || $("qualifs-initiales").querySelector("input");
-  const question = [...$("questions").querySelectorAll("[data-champ]")].find((b) => !b.hidden);
+  const question = [...$("questions").querySelectorAll("[data-champ]")].find((blocQuestion) => !blocQuestion.hidden);
   const cible = qualif || (question && question.querySelector("input, select, textarea")) || $("description");
   cible.focus({ preventScroll: true });
   const bloc = cible.closest("fieldset, .champ") || cible;
@@ -183,28 +184,28 @@ function avertirFaitsAnterieurs() {
   const aide = $("aide-date-faits");
   if (!aide.dataset.base) aide.dataset.base = aide.textContent;
   const nouvelle = lireDateFaits(),
-    ref = etatSaisie.derniere && jourDesFaits(etatSaisie.derniere);
+    jourDerniereVersion = etatSaisie.derniere && jourDesFaits(etatSaisie.derniere);
   // une série « plusieurs jours » qui va jusqu'à l'étape la plus récente (ou au-delà) la remplace : pas d'avertissement
   const finSerie = joursSuivants().slice(-1)[0];
   const anterieur =
     etatSaisie.dossierId &&
     etatSaisie.derniere &&
     nouvelle != null &&
-    ref != null &&
-    jourFaits(nouvelle) < jourFaits(ref) &&
-    !(finSerie != null && jourCle(finSerie) >= jourCle(ref));
+    jourDerniereVersion != null &&
+    jourFaits(nouvelle) < jourFaits(jourDerniereVersion) &&
+    !(finSerie != null && jourCle(finSerie) >= jourCle(jourDerniereVersion));
   const autreJourDossier =
     etatSaisie.dossierId &&
     etatSaisie.derniere &&
     nouvelle != null &&
-    ref != null &&
-    jourFaits(nouvelle) !== jourFaits(ref) &&
+    jourDerniereVersion != null &&
+    jourFaits(nouvelle) !== jourFaits(jourDerniereVersion) &&
     !anterieur;
   const futur = !anterieur && !autreJourDossier && dateFaitsFuture();
   aide.textContent = autreJourDossier
-    ? `Ce signalement concerne le ${jourCourt(ref)}. Pour un autre jour, créez plutôt un nouveau signalement (« Autres actions › Reporter sur d'autres jours ») : un dossier par jour.`
+    ? `Ce signalement concerne le ${jourCourt(jourDerniereVersion)}. Pour un autre jour, créez plutôt un nouveau signalement (« Autres actions › Reporter sur d'autres jours ») : un dossier par jour.`
     : anterieur
-      ? `Faits antérieurs à ceux de l'étape la plus récente (${dateFr(ref, { ...(etatSaisie.metaFaits || {}), type: (etatSaisie.metaFaits && etatSaisie.metaFaits.type) || "Date" })}) : cette étape sera rangée à sa date dans l'historique, mais ne deviendra pas la dernière étape du dossier.`
+      ? `Faits antérieurs à ceux de l'étape la plus récente (${dateFr(jourDerniereVersion, { ...(etatSaisie.metaFaits || {}), type: (etatSaisie.metaFaits && etatSaisie.metaFaits.type) || "Date" })}) : cette étape sera rangée à sa date dans l'historique, mais ne deviendra pas la dernière étape du dossier.`
       : futur
         ? `Faits à venir : l'étape sera datée du ${jourCourt(lireDateFaits())}, postérieur à aujourd'hui.`
         : aide.dataset.base;

@@ -1,5 +1,5 @@
 CARTE : Mode secours En cas de panne réseau, le kit de secours fait tourner le formulaire, le tableau de bord et le tableau des signalements sans Grist, sur une copie du document, à plusieurs postes reliés par un dossier partagé. Les saisies sont ensuite réintégrées d
-KIT : Kit de secours <VERSION>.html 2.4 Mo | <!-- Kit de secours <VERSION> (<DATE>), construit le <DATE> <HEURE> par outils/construire-secours.js  | statut : « Kit de secours <VERSION>.html » téléchargé (2.4 Mo, construit le <DATE> <HEURE>).
+KIT : Kit de secours <VERSION>.html <N> Mo | <!-- Kit de secours <VERSION> (<DATE>), construit le <DATE> <HEURE> par outils/construire-secours.js  | statut : « Kit de secours <VERSION>.html » téléchargé (<N> Mo, construit le <DATE> <HEURE>).
 RELAIS : relais-secours-jDpuGM63.json | nom : Relais du mode secours — jDpuGM63egPP | chemin : secours-jdpugm63 | webhookId neuf : true
 RÉGLAGES : {"API_GRIST":"https://grist.numerique.gouv.fr/o/crise/api","DOC":"jDpuGM63egPP","CLE_GRIST":"cle-api-grist","cle_kit_affichee":true,"longueur":24}
 CLÉ DANS LE DOCUMENT ? false

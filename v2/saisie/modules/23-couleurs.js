@@ -21,58 +21,67 @@ const COULEURS_NOMMEES = {
   brun: "#8a4b00",
   turquoise: "#009081",
 };
-function hexVersRvb(h) {
-  const m = String(h || "")
+function hexVersRvb(codeHex) {
+  const correspondanceCode = String(codeHex || "")
     .trim()
     .match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
-  if (!m) return null;
-  const x = m[1].length === 3 ? [...m[1]].map((c) => c + c).join("") : m[1];
-  return [0, 2, 4].map((i) => parseInt(x.slice(i, i + 2), 16));
+  if (!correspondanceCode) return null;
+  const hexLong =
+    correspondanceCode[1].length === 3
+      ? [...correspondanceCode[1]].map((caractere) => caractere + caractere).join("")
+      : correspondanceCode[1];
+  return [0, 2, 4].map((i) => parseInt(hexLong.slice(i, i + 2), 16));
 }
-const versHex = (c) => "#" + c.map((v) => Math.round(v).toString(16).padStart(2, "0")).join("");
-function teinteClaire(h, part) {
+const versHex = (composantes) =>
+  "#" + composantes.map((composante) => Math.round(composante).toString(16).padStart(2, "0")).join("");
+function teinteClaire(codeHex, part) {
   // mélange avec du blanc : part = proportion de la couleur
-  const c = hexVersRvb(h);
-  return c ? versHex(c.map((v) => v * part + 255 * (1 - part))) : null;
+  const composantes = hexVersRvb(codeHex);
+  return composantes ? versHex(composantes.map((composante) => composante * part + 255 * (1 - part))) : null;
 }
-function couleurNommee(t) {
-  const s = sansGuillemets(t);
-  if (COULEURS_NOMMEES[normaliser(s)]) return COULEURS_NOMMEES[normaliser(s)];
-  const c = hexVersRvb(s);
-  return c ? versHex(c) : null;
+function couleurNommee(texte) {
+  const texteCouleur = sansGuillemets(texte);
+  if (COULEURS_NOMMEES[normaliser(texteCouleur)]) return COULEURS_NOMMEES[normaliser(texteCouleur)];
+  const composantes = hexVersRvb(texteCouleur);
+  return composantes ? versHex(composantes) : null;
 }
 /* Règles d'un repère [couleur …], dans l'ordre où elles sont écrites (la première qui s'applique l'emporte) :
      Blocage=rouge          valeur exacte
      >50=rouge, >=10=orange comparaison (nombres ; pour une date : >0 = date renseignée, ou >2026-09-01, <01/10/2026)
      renseigné=rouge        n'importe quelle valeur (aussi : rempli, non vide, *)
      vide=gris              aucune valeur */
-function nombreRegle(t) {
-  const s = String(t).trim();
-  let m;
-  if ((m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/))) return Date.UTC(+m[1], m[2] - 1, +m[3]) / 1000;
-  if ((m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/))) return Date.UTC(+m[3], m[2] - 1, +m[1]) / 1000;
-  const n = parseFloat(s.replace(/\s/g, "").replace(",", "."));
-  return isNaN(n) ? null : n;
+function nombreRegle(texte) {
+  const texteNettoye = String(texte).trim();
+  let correspondance;
+  if ((correspondance = texteNettoye.match(/^(\d{4})-(\d{2})-(\d{2})$/)))
+    return Date.UTC(+correspondance[1], correspondance[2] - 1, +correspondance[3]) / 1000;
+  if ((correspondance = texteNettoye.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)))
+    return Date.UTC(+correspondance[3], correspondance[2] - 1, +correspondance[1]) / 1000;
+  const nombre = parseFloat(texteNettoye.replace(/\s/g, "").replace(",", "."));
+  return isNaN(nombre) ? null : nombre;
 }
-function lireRegleCouleur(txt) {
-  const m = String(txt || "").match(/\[\s*couleurs?\b([^\]]*)\]/i);
-  if (!m) return null;
+function lireRegleCouleur(description) {
+  const correspondanceRepere = String(description || "").match(/\[\s*couleurs?\b([^\]]*)\]/i);
+  if (!correspondanceRepere) return null;
   const regles = [];
   // séparateur « , » ou « ; » — sauf la virgule décimale d'un seuil (« >2,5=rouge »)
-  for (const p of m[1].split(/\s*;\s*|\s*,\s*(?!\d+\s*[=:])/)) {
-    let k = p.lastIndexOf("=");
-    if (k < 0) k = p.lastIndexOf(":");
+  for (const regleBrute of correspondanceRepere[1].split(/\s*;\s*|\s*,\s*(?!\d+\s*[=:])/)) {
+    let k = regleBrute.lastIndexOf("=");
+    if (k < 0) k = regleBrute.lastIndexOf(":");
     if (k <= 0) continue;
-    const couleur = couleurNommee(p.slice(k + 1));
+    const couleur = couleurNommee(regleBrute.slice(k + 1));
     if (!couleur) continue;
-    const brut = sansGuillemets(p.slice(0, k)),
+    const brut = sansGuillemets(regleBrute.slice(0, k)),
       cle = normaliser(brut);
-    let c;
-    if ((c = brut.match(/^(>=|<=|!=|≠|≥|≤|>|<)\s*(.+)$/)) && nombreRegle(c[2]) != null)
+    let correspondanceComparaison;
+    if (
+      (correspondanceComparaison = brut.match(/^(>=|<=|!=|≠|≥|≤|>|<)\s*(.+)$/)) &&
+      nombreRegle(correspondanceComparaison[2]) != null
+    )
       regles.push({
         type: "cmp",
-        op: { "≠": "!=", "≥": ">=", "≤": "<=" }[c[1]] || c[1],
-        n: nombreRegle(c[2]),
+        op: { "≠": "!=", "≥": ">=", "≤": "<=" }[correspondanceComparaison[1]] || correspondanceComparaison[1],
+        n: nombreRegle(correspondanceComparaison[2]),
         couleur,
       });
     else if (/^(renseigne|renseignee|rempli|remplie|non vide|n est pas vide|\*)$/.test(cle))
@@ -85,37 +94,37 @@ function lireRegleCouleur(txt) {
 function construireReglesCouleur(alertes) {
   etatSaisie.reglesCouleur = [];
   const vus = new Set();
-  const ajouter = (def, genre) => {
-    if (!def || vus.has(def.colId)) return;
-    const r = lireRegleCouleur(def.description);
-    if (!r) return;
-    vus.add(def.colId);
-    etatSaisie.reglesCouleur.push({ def, genre, regles: r.regles });
-    const couleursGrist = Object.values((def.opts && def.opts.choiceOptions) || {}).some(
-      (o) => o && hexVersRvb(o.fillColor),
+  const ajouter = (definitionColonne, genre) => {
+    if (!definitionColonne || vus.has(definitionColonne.colId)) return;
+    const reglesLues = lireRegleCouleur(definitionColonne.description);
+    if (!reglesLues) return;
+    vus.add(definitionColonne.colId);
+    etatSaisie.reglesCouleur.push({ def: definitionColonne, genre, regles: reglesLues.regles });
+    const couleursGrist = Object.values((definitionColonne.opts && definitionColonne.opts.choiceOptions) || {}).some(
+      (optionChoix) => optionChoix && hexVersRvb(optionChoix.fillColor),
     );
-    if (!r.regles.length && !couleursGrist)
+    if (!reglesLues.regles.length && !couleursGrist)
       alertes.push(
-        `La colonne « ${def.libelle || def.colId} » porte le repère [couleur], mais ses choix n'ont pas de couleur dans Grist : ` +
+        `La colonne « ${definitionColonne.libelle || definitionColonne.colId} » porte le repère [couleur], mais ses choix n'ont pas de couleur dans Grist : ` +
           `donnez une couleur de fond à ses choix, ou indiquez-les dans le repère, par exemple [couleur Blocage=rouge, Tentative=orange].`,
       );
   };
-  ajouter(etatSaisie.metaSig[col("Qualification")], "qualification");
-  etatSaisie.defsQuestions.forEach((d) => ajouter(d, "question"));
-  Object.values(etatSaisie.metaSig).forEach((d) => ajouter(d, "colonne"));
+  ajouter(etatSaisie.metaSig[colonneDe("Qualification")], "qualification");
+  etatSaisie.defsQuestions.forEach((definitionColonne) => ajouter(definitionColonne, "question"));
+  Object.values(etatSaisie.metaSig).forEach((definitionColonne) => ajouter(definitionColonne, "colonne"));
 }
 // Libellés des colonnes Référence (lus une fois, à la demande)
 const cacheLibelles = new Map(),
   libellesDemandes = new Set();
-function libelleRef(def, id) {
-  if (def._labels && def._labels.has(id)) return def._labels.get(id);
-  const m = cacheLibelles.get(def.colId);
-  if (m) return m.get(id) || `n° ${id}`;
-  if (!libellesDemandes.has(def.colId) && /^Ref(List)?:/.test(def.type || "")) {
-    libellesDemandes.add(def.colId);
-    optionsReference({ ...def })
-      .then((opts) => {
-        cacheLibelles.set(def.colId, new Map(opts.map((o) => [o.id, o.libelle])));
+function libelleRef(definitionColonne, id) {
+  if (definitionColonne._labels && definitionColonne._labels.has(id)) return definitionColonne._labels.get(id);
+  const libellesColonne = cacheLibelles.get(definitionColonne.colId);
+  if (libellesColonne) return libellesColonne.get(id) || `n° ${id}`;
+  if (!libellesDemandes.has(definitionColonne.colId) && /^Ref(List)?:/.test(definitionColonne.type || "")) {
+    libellesDemandes.add(definitionColonne.colId);
+    optionsReference({ ...definitionColonne })
+      .then((options) => {
+        cacheLibelles.set(definitionColonne.colId, new Map(options.map((option) => [option.id, option.libelle])));
         enFile(async () => {
           majListeDossiers();
           majCouleur();
@@ -126,113 +135,127 @@ function libelleRef(def, id) {
   return `n° ${id}`;
 }
 // Valeur Grist -> textes affichés (une liste, pour les choix multiples)
-function textesValeur(def, v) {
-  if (v == null || v === "" || !lisible(v)) return [];
-  const t = typeBase(def.type);
-  if (t === "Bool") return [v ? "Oui" : "Non"];
-  if (t === "Date" || t === "DateTime") {
-    const s = secondes(v);
-    return s == null ? [] : [String(s)];
+function textesValeur(definitionColonne, valeur) {
+  if (valeur == null || valeur === "" || !lisible(valeur)) return [];
+  const typeDeBase = typeBase(definitionColonne.type);
+  if (typeDeBase === "Bool") return [valeur ? "Oui" : "Non"];
+  if (typeDeBase === "Date" || typeDeBase === "DateTime") {
+    const secondesValeur = secondes(valeur);
+    return secondesValeur == null ? [] : [String(secondesValeur)];
   }
-  if (Array.isArray(v)) {
-    if (v[0] === "L") return v.slice(1).map((x) => (t === "RefList" ? libelleRef(def, x) : String(x)));
-    if (v[0] === "R") return v[2] ? [libelleRef(def, v[2])] : [];
+  if (Array.isArray(valeur)) {
+    if (valeur[0] === "L")
+      return valeur
+        .slice(1)
+        .map((identifiant) =>
+          typeDeBase === "RefList" ? libelleRef(definitionColonne, identifiant) : String(identifiant),
+        );
+    if (valeur[0] === "R") return valeur[2] ? [libelleRef(definitionColonne, valeur[2])] : [];
     return [];
   }
-  if (t === "Ref") return v ? [libelleRef(def, v)] : [];
-  return [String(v)];
+  if (typeDeBase === "Ref") return valeur ? [libelleRef(definitionColonne, valeur)] : [];
+  return [String(valeur)];
 }
-function valeursEnCours(r) {
-  if (r.genre === "qualification") return listeQualif(lireQualificationInitiale()).filter(Boolean);
-  if (r.def.colId === col("Date_faits") && !$("bloc-date-faits").hidden) {
-    const s = lireDateFaits();
-    return s == null ? [] : [String(s)];
+function valeursEnCours(regleCouleur) {
+  if (regleCouleur.genre === "qualification") return listeQualif(lireQualificationInitiale()).filter(Boolean);
+  if (regleCouleur.def.colId === colonneDe("Date_faits") && !$("bloc-date-faits").hidden) {
+    const secondesDateFaits = lireDateFaits();
+    return secondesDateFaits == null ? [] : [String(secondesDateFaits)];
   }
-  const ref = etatSaisie.derniere || etatSaisie.initiale;
-  if (r.genre === "question" && !r.def.formule) {
-    const bloc = document.querySelector(`[data-champ="q-${r.def.colId}"]`);
+  const enregistrementReference = etatSaisie.derniere || etatSaisie.initiale;
+  if (regleCouleur.genre === "question" && !regleCouleur.def.formule) {
+    const bloc = document.querySelector(`[data-champ="q-${regleCouleur.def.colId}"]`);
     if (!bloc || bloc.hidden) return [];
-    return textesValeur(r.def, lireUnChamp("q", r.def));
+    return textesValeur(regleCouleur.def, lireUnChamp("q", regleCouleur.def));
   }
-  return textesValeur(r.def, ref ? ref[r.def.colId] : null);
+  return textesValeur(
+    regleCouleur.def,
+    enregistrementReference ? enregistrementReference[regleCouleur.def.colId] : null,
+  );
 }
-function couleurDe(r, textes) {
-  const ordre = (r.def.opts && r.def.opts.choices) || [];
-  const rang = (v) => {
-    const i = ordre.indexOf(v);
+function couleurDe(regleCouleur, textes) {
+  const ordre = (regleCouleur.def.opts && regleCouleur.def.opts.choices) || [];
+  const rang = (texte) => {
+    const i = ordre.indexOf(texte);
     return i < 0 ? 1e9 : i;
   };
   const tries = [...textes].sort((a, b) => rang(a) - rang(b));
-  const res = (fond, v) => (hexVersRvb(fond) ? { fond: versHex(hexVersRvb(fond)), valeur: v, def: r.def } : null);
-  if (r.regles.length) {
+  const resultatCouleur = (fond, valeur) =>
+    hexVersRvb(fond) ? { fond: versHex(hexVersRvb(fond)), valeur: valeur, def: regleCouleur.def } : null;
+  if (regleCouleur.regles.length) {
     if (!textes.length) {
-      const g = r.regles.find((x) => x.type === "vide");
-      return g ? res(g.couleur, null) : null;
+      const regleVide = regleCouleur.regles.find((regle) => regle.type === "vide");
+      return regleVide ? resultatCouleur(regleVide.couleur, null) : null;
     }
-    for (const g of r.regles)
-      for (const v of tries) {
-        let ok = false;
-        if (g.type === "egal") ok = normaliser(v) === g.valeur;
-        else if (g.type === "rempli") ok = true;
-        else if (g.type === "cmp") {
-          const n = parseFloat(String(v).replace(",", "."));
-          ok =
-            !isNaN(n) &&
-            (g.op === ">"
-              ? n > g.n
-              : g.op === ">="
-                ? n >= g.n
-                : g.op === "<"
-                  ? n < g.n
-                  : g.op === "<="
-                    ? n <= g.n
-                    : n !== g.n);
+    for (const regle of regleCouleur.regles)
+      for (const texte of tries) {
+        let regleApplicable = false;
+        if (regle.type === "egal") regleApplicable = normaliser(texte) === regle.valeur;
+        else if (regle.type === "rempli") regleApplicable = true;
+        else if (regle.type === "cmp") {
+          const nombre = parseFloat(String(texte).replace(",", "."));
+          regleApplicable =
+            !isNaN(nombre) &&
+            (regle.op === ">"
+              ? nombre > regle.n
+              : regle.op === ">="
+                ? nombre >= regle.n
+                : regle.op === "<"
+                  ? nombre < regle.n
+                  : regle.op === "<="
+                    ? nombre <= regle.n
+                    : nombre !== regle.n);
         }
-        if (ok) return res(g.couleur, v);
+        if (regleApplicable) return resultatCouleur(regle.couleur, texte);
       }
     return null;
   }
-  for (const v of tries) {
-    const c = res((((r.def.opts && r.def.opts.choiceOptions) || {})[v] || {}).fillColor, v);
-    if (c) return c;
+  for (const texte of tries) {
+    const couleurTrouvee = resultatCouleur(
+      (((regleCouleur.def.opts && regleCouleur.def.opts.choiceOptions) || {})[texte] || {}).fillColor,
+      texte,
+    );
+    if (couleurTrouvee) return couleurTrouvee;
   }
   return null;
 }
 // Valeur montrée dans l'étiquette de couleur (date lisible, nombre à la française)
-function valeurLisible(def, v) {
-  if (v == null) return "(vide)";
-  const t = typeBase(def.type);
-  if (t === "Date" || t === "DateTime") return dateFr(Number(v), { ...def, type: def.type || "Date" });
-  if ((t === "Numeric" || t === "Int") && !isNaN(parseFloat(v))) return parseFloat(v).toLocaleString("fr-FR");
-  return v;
+function valeurLisible(definitionColonne, valeur) {
+  if (valeur == null) return "(vide)";
+  const typeDeBase = typeBase(definitionColonne.type);
+  if (typeDeBase === "Date" || typeDeBase === "DateTime")
+    return dateFr(Number(valeur), { ...definitionColonne, type: definitionColonne.type || "Date" });
+  if ((typeDeBase === "Numeric" || typeDeBase === "Int") && !isNaN(parseFloat(valeur)))
+    return parseFloat(valeur).toLocaleString("fr-FR");
+  return valeur;
 }
-function couleurLigne(l) {
+function couleurLigne(dossier) {
   if (!etatSaisie.reglesCouleur.length) return null;
-  const der = derniereDe(l);
-  for (const r of etatSaisie.reglesCouleur) {
-    const c = couleurDe(r, textesValeur(r.def, der[r.def.colId]));
-    if (c) return c;
+  const der = derniereDe(dossier);
+  for (const regleCouleur of etatSaisie.reglesCouleur) {
+    const couleurTrouvee = couleurDe(regleCouleur, textesValeur(regleCouleur.def, der[regleCouleur.def.colId]));
+    if (couleurTrouvee) return couleurTrouvee;
   }
   return null;
 }
-const bandeCouleur = (l) => {
-  const c = couleurLigne(l);
-  return c ? ` style="box-shadow: inset 4px 0 0 ${c.fond}"` : "";
+const bandeCouleur = (dossier) => {
+  const couleurTrouvee = couleurLigne(dossier);
+  return couleurTrouvee ? ` style="box-shadow: inset 4px 0 0 ${couleurTrouvee.fond}"` : "";
 };
 function majCouleur() {
-  let c = null;
-  for (const r of etatSaisie.reglesCouleur) {
-    c = couleurDe(r, valeursEnCours(r));
-    if (c) break;
+  let couleurActive = null;
+  for (const regleCouleur of etatSaisie.reglesCouleur) {
+    couleurActive = couleurDe(regleCouleur, valeursEnCours(regleCouleur));
+    if (couleurActive) break;
   }
-  const b = document.body,
-    lg = $("legende-teinte");
-  b.classList.toggle("teinte", !!c);
-  if (c) {
-    b.style.setProperty("--teinte", c.fond);
-    b.style.setProperty("--fond", teinteClaire(c.fond, 0.09));
-    b.style.setProperty("--teinte-moyenne", teinteClaire(c.fond, 0.22));
-    lg.textContent = `${c.def.libelle || c.def.colId} : ${valeurLisible(c.def, c.valeur)}`;
-  } else ["--teinte", "--fond", "--teinte-moyenne"].forEach((p) => b.style.removeProperty(p));
-  lg.hidden = !c;
+  const corps = document.body,
+    legende = $("legende-teinte");
+  corps.classList.toggle("teinte", !!couleurActive);
+  if (couleurActive) {
+    corps.style.setProperty("--teinte", couleurActive.fond);
+    corps.style.setProperty("--fond", teinteClaire(couleurActive.fond, 0.09));
+    corps.style.setProperty("--teinte-moyenne", teinteClaire(couleurActive.fond, 0.22));
+    legende.textContent = `${couleurActive.def.libelle || couleurActive.def.colId} : ${valeurLisible(couleurActive.def, couleurActive.valeur)}`;
+  } else ["--teinte", "--fond", "--teinte-moyenne"].forEach((propriete) => corps.style.removeProperty(propriete));
+  legende.hidden = !couleurActive;
 }

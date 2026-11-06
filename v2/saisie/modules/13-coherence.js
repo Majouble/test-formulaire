@@ -3,28 +3,31 @@
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* ---------- Cohérence des dossiers ---------- */
 function lignesIncoherentes() {
-  const cD = col("Dossier"),
-    cE = col("Etablissement");
-  if (!cD || !cE) return [];
-  const parId = new Map(etatSaisie.enregistrements.map((l) => [l.id, l]));
+  const colonneDossier = colonneDe("Dossier"),
+    colonneEtablissement = colonneDe("Etablissement");
+  if (!colonneDossier || !colonneEtablissement) return [];
+  const parId = new Map(etatSaisie.enregistrements.map((ligne) => [ligne.id, ligne]));
   return etatSaisie.enregistrements
-    .filter((l) => {
-      const d = refId(l[cD]);
-      if (!d || d === l.id) return false;
-      const init = parId.get(d);
-      return init && refId(init[cE]) !== refId(l[cE]);
+    .filter((ligne) => {
+      const idDossier = refId(ligne[colonneDossier]);
+      if (!idDossier || idDossier === ligne.id) return false;
+      const init = parId.get(idDossier);
+      return init && refId(init[colonneEtablissement]) !== refId(ligne[colonneEtablissement]);
     })
-    .map((l) => ({ ligne: l, dossier: parId.get(refId(l[cD])) }));
+    .map((ligne) => ({ ligne: ligne, dossier: parId.get(refId(ligne[colonneDossier])) }));
 }
 function afficherCoherence() {
   if (!$("coherence-dossiers").open) return;
-  const nomEtab = (id) => (etabDe(id) || {})[E.nom] || `n° ${id}`;
+  const nomEtab = (id) => (etabDe(id) || {})[colonnesEtab.nom] || `n° ${id}`;
   const liste = lignesIncoherentes();
   $("coherence-lignes").innerHTML = liste.length
     ? liste
         .map(
-          ({ ligne, dossier }) => `<tr><td>${ligne.id}</td><td>${esc(nomEtab(refId(val(ligne, "Etablissement"))))}</td>
-        <td>n° ${dossier.id}</td><td>${esc(nomEtab(refId(val(dossier, "Etablissement"))))}</td></tr>`,
+          ({
+            ligne,
+            dossier,
+          }) => `<tr><td>${ligne.id}</td><td>${esc(nomEtab(refId(valeurLigne(ligne, "Etablissement"))))}</td>
+        <td>n° ${dossier.id}</td><td>${esc(nomEtab(refId(valeurLigne(dossier, "Etablissement"))))}</td></tr>`,
         )
         .join("")
     : `<tr><td colspan="4" class="ok">Aucune incohérence : chaque version appartient au dossier de son établissement.</td></tr>`;
@@ -43,38 +46,38 @@ $("btn-reparer").addEventListener("click", () =>
     )
       return;
     const maj = liste.map(({ ligne }) => {
-      const fields = { [col("Dossier")]: ligne.id };
-      if (col("Nature")) fields[col("Nature")] = NATURE.initial;
+      const fields = { [colonneDe("Dossier")]: ligne.id };
+      if (colonneDe("Nature")) fields[colonneDe("Nature")] = NATURE.initial;
       return { id: ligne.id, fields };
     });
     try {
       await grist.getTable().update(maj);
       statut("statut-coherence", `${maj.length} ligne(s) réparée(s).`, "ok");
-    } catch (e) {
-      statut("statut-coherence", `Échec : ${e.message || e}`, "err");
+    } catch (erreur) {
+      statut("statut-coherence", `Échec : ${erreur.message || erreur}`, "err");
     }
   }),
 );
 
-function appliquerConditions(prefix, defs) {
-  const aCondition = defs.filter((d) => d.condition);
+function appliquerConditions(prefix, questions) {
+  const aCondition = questions.filter((question) => question.condition);
   if (!aCondition.length) {
-    controleursTableau(prefix).forEach((c) => c.ajuster());
+    controleursTableau(prefix).forEach((controleur) => controleur.ajuster());
     return;
   }
   for (let passe = 0; passe < 3; passe++) {
     let bouge = false;
-    for (const def of aCondition) {
-      const bloc = document.querySelector(`[data-champ="${prefix}-${def.colId}"]`);
+    for (const question of aCondition) {
+      const bloc = document.querySelector(`[data-champ="${prefix}-${question.colId}"]`);
       if (!bloc || bloc.dataset.masqueAcces === "1") continue; // masquage par règle d'accès prioritaire
-      const montrer = conditionRemplie(prefix, defs, def.condition);
+      const montrer = conditionRemplie(prefix, questions, question.condition);
       if (bloc.hidden === !montrer) continue;
       bloc.hidden = !montrer;
       bouge = true;
     }
     if (!bouge) break;
   }
-  controleursTableau(prefix).forEach((c) => c.ajuster());
+  controleursTableau(prefix).forEach((controleur) => controleur.ajuster());
   if (prefix === "q") afficherDiagnostic();
 }
 
@@ -82,50 +85,67 @@ function appliquerConditions(prefix, defs) {
 // Une version est arrivée depuis l'ouverture du formulaire : on garde les réponses que l'agent a changées,
 // et pour les autres celles de la version la plus récente (l'apport du collègue n'est pas effacé).
 function fusionnerAvecVersionRecente(valeurs) {
-  const res = { valeurs: {}, conflits: [], recuperes: [] };
+  const resultat = { valeurs: {}, conflits: [], recuperes: [] };
   if (!etatSaisie.versionAffichee || !etatSaisie.derniere || etatSaisie.versionAffichee.id === etatSaisie.derniere.id)
-    return res;
-  const defs = [...etatSaisie.champsVersion, ...etatSaisie.defsQuestions],
-    def = (c) => defs.find((d) => d.colId === c) || { type: "Any" };
-  const pareil = (c, a, b) => egal(norm(def(c), a), norm(def(c), b));
-  for (const [c, v] of Object.entries(valeurs)) {
-    const avant = etatSaisie.versionAffichee[c],
-      recent = etatSaisie.derniere[c];
-    const moi = !pareil(c, v, avant),
-      lui = !pareil(c, recent, avant);
+    return resultat;
+  const definitions = [...etatSaisie.champsVersion, ...etatSaisie.defsQuestions],
+    definitionDe = (identifiantColonne) =>
+      definitions.find((definition) => definition.colId === identifiantColonne) || { type: "Any" };
+  const pareil = (identifiantColonne, ancienneValeur, nouvelleValeur) =>
+    egal(
+      norm(definitionDe(identifiantColonne), ancienneValeur),
+      norm(definitionDe(identifiantColonne), nouvelleValeur),
+    );
+  for (const [identifiantColonne, valeur] of Object.entries(valeurs)) {
+    const avant = etatSaisie.versionAffichee[identifiantColonne],
+      recent = etatSaisie.derniere[identifiantColonne];
+    const moi = !pareil(identifiantColonne, valeur, avant),
+      lui = !pareil(identifiantColonne, recent, avant);
     if (!moi && lui) {
-      res.valeurs[c] = recent;
-      res.recuperes.push(def(c).libelle || c);
-    } else if (moi && lui && !pareil(c, v, recent)) res.conflits.push(def(c).libelle || c);
+      resultat.valeurs[identifiantColonne] = recent;
+      resultat.recuperes.push(definitionDe(identifiantColonne).libelle || identifiantColonne);
+    } else if (moi && lui && !pareil(identifiantColonne, valeur, recent))
+      resultat.conflits.push(definitionDe(identifiantColonne).libelle || identifiantColonne);
   }
-  return res;
+  return resultat;
 }
-const auteurDe = (l) => {
-  const a = l && col("Auteur") ? val(l, "Auteur") : "";
-  return a ? ` (par ${a})` : "";
+const auteurDe = (ligne) => {
+  const auteur = ligne && colonneDe("Auteur") ? valeurLigne(ligne, "Auteur") : "";
+  return auteur ? ` (par ${auteur})` : "";
 };
-function seulementModifies(defs, valeurs, ligne) {
-  const res = {};
-  for (const [c, v] of Object.entries(valeurs)) {
-    const def = defs.find((d) => d.colId === c) || { type: "Any" };
-    if (!egal(norm(def, v), norm(def, ligne ? ligne[c] : null))) res[c] = v;
+function seulementModifies(definitions, valeurs, ligne) {
+  const resultat = {};
+  for (const [identifiantColonne, valeur] of Object.entries(valeurs)) {
+    const definitionColonne = definitions.find((definition) => definition.colId === identifiantColonne) || {
+      type: "Any",
+    };
+    if (!egal(norm(definitionColonne, valeur), norm(definitionColonne, ligne ? ligne[identifiantColonne] : null)))
+      resultat[identifiantColonne] = valeur;
   }
-  return res;
+  return resultat;
 }
 
-function formatValeur(def, v) {
-  if (estVide(def, v)) return "—";
-  if (def.tableau) return syntheseTableau(def._sousDefs || [], lireTableauJson(v), true);
-  const t = typeBase(def.type);
-  if (t === "Bool") return v ? "Oui" : "Non";
-  if (t === "Date" || t === "DateTime") return dateFr(v, def);
-  if (t === "Numeric" || t === "Int") return typeof v === "number" ? v.toLocaleString("fr-FR") : String(v);
-  if (t === "Ref") return (def._labels && def._labels.get(v)) || `n° ${v}`;
-  if (t === "Attachments") return PJ.texte(v);
-  if (Array.isArray(v) && v[0] === "L") {
-    const l = v.slice(1);
-    return (t === "RefList" ? l.map((x) => (def._labels && def._labels.get(x)) || `n° ${x}`) : l).join(", ");
+function formatValeur(definition, valeur) {
+  if (estVide(definition, valeur)) return "—";
+  if (definition.tableau) return syntheseTableau(definition._sousDefs || [], lireTableauJson(valeur), true);
+  const typeColonne = typeBase(definition.type);
+  if (typeColonne === "Bool") return valeur ? "Oui" : "Non";
+  if (typeColonne === "Date" || typeColonne === "DateTime") return dateFr(valeur, definition);
+  if (typeColonne === "Numeric" || typeColonne === "Int")
+    return typeof valeur === "number" ? valeur.toLocaleString("fr-FR") : String(valeur);
+  if (typeColonne === "Ref") return (definition._labels && definition._labels.get(valeur)) || `n° ${valeur}`;
+  if (typeColonne === "Attachments") return piecesJointes.texte(valeur);
+  if (Array.isArray(valeur) && valeur[0] === "L") {
+    const elementsListe = valeur.slice(1);
+    return (
+      typeColonne === "RefList"
+        ? elementsListe.map(
+            (numeroReference) =>
+              (definition._labels && definition._labels.get(numeroReference)) || `n° ${numeroReference}`,
+          )
+        : elementsListe
+    ).join(", ");
   }
-  const s = String(v);
-  return s.length > 160 ? s.slice(0, 157) + "…" : s;
+  const texte = String(valeur);
+  return texte.length > 160 ? texte.slice(0, 157) + "…" : texte;
 }

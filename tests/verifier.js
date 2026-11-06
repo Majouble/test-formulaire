@@ -63,6 +63,7 @@ const REMPLACEMENTS = [
   [/\(\d{1,2} h – \d{1,2} h\)/g, "(<H> h – <H> h)"], // plage horaire calculée depuis l'heure du lancement
   [/\bil y a \d+ (s|min|secondes?|minutes?|heures?)\b/g, "il y a <N> $1"],
   [/(prisme-veille-)\d+/g, "$1<N>"],
+  [/(Kit de secours <VERSION>\.html |téléchargé \()\d+(\.\d+)? Mo/g, "$1<N> Mo"], // poids du kit : change avec le code
 ];
 function normaliser(texte) {
   let lignes = texte
