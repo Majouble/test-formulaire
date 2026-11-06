@@ -42,7 +42,7 @@ if (require.main === module) (async () => {
   const browser = await chromium.launch({ executablePath: __C.chromium });
   const page = await browser.newPage({ viewport: { width: 1100, height: 1600 }, acceptDownloads: true });
   page.on('pageerror', e => console.log('PAGEERROR', e.message));
-  await page.route('**/leaflet.min.*', r => r.abort());
+  await page.route('**/vendor/leaflet/leaflet.*', r => r.abort());
   await page.route('**/jszip.min.js', r => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync(require.resolve('jszip/dist/jszip.min.js')) }));
   await page.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__vraiFetch=window.fetch.bind(window);window.__DOC__=${JSON.stringify(doc)};window.__OPTS__={};` + fs.readFileSync('mock.js') + fs.readFileSync('fakeapi.js') + fs.readFileSync('mock-saisie.js') + `;{const f=window.fetch;window.fetch=(u,...a)=>(String(u).includes('/atlas/')||String(u).includes('/attachments'))?window.__vraiFetch(u,...a):f(u,...a);}` }));
   await page.goto('http://localhost:8769/v2/cartographie/index.html'); await page.waitForTimeout(2500);

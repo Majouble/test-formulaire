@@ -42,9 +42,10 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 ├── point-situation/     production du point de situation
 ├── cartographie/        carte et export cartographique (reprise du widget « Export cartographique ») ; atlas/ : projet QGIS de l'atlas par académie et contours
 ├── tableau-de-bord/     tableau de bord : tableau.js (module partagé, édition dans l'administration, lecture dans le widget)
-├── secours/             mode secours sans réseau : grist-hors-ligne.js (Grist simulé, mode veille), relais-n8n.json (relais à importer dans n8n), kit-secours.html (assemblé par outils/construire-secours.js), liste.html (tableau des signalements de A à Z), demo.json, vendor/ (sql.js, MIT)
+├── secours/             mode secours sans réseau : grist-hors-ligne.js (Grist simulé, mode veille), relais-n8n.json (relais à importer dans n8n), kit-secours.html (assemblé par outils/construire-secours.js), liste.html (tableau des signalements de A à Z), demo.json
 ├── reintegration/       réintégration dans Grist des saisies du mode secours
 ├── extractions/        widget « Extractions » : une ligne par établissement, filtres, export Excel (page créée depuis l'onglet Tableau de bord)
+├── vendor/              bibliothèques tierces copiées à version figée (Leaflet, PizZip, docxtemplater, ExcelJS, JSZip, shp-write, sql.js) : voir vendor/README.md
 ├── veille/              relais-vigilance-n8n.json : workflow n8n Météo-France → table Vigilances (onglet Veille)
 └── modeles/             exemples de configuration à importer (à venir)
 ```
@@ -109,7 +110,7 @@ Les règles d'accès Grist sont générées par l'onglet Accès (`admin/acces.js
 
 ### Dépendances extérieures
 
-Bibliothèques chargées à la demande, en version figée : JSZip, Leaflet (cdnjs) ; PizZip, docxtemplater, ExcelJS, shp-write (jsDelivr) ; API des widgets Grist (docs.getgrist.com). Services : Géoplateforme de l'IGN (fonds de carte, géocodage), Overpass (OpenStreetMap), portails open data de l'éducation nationale et de l'enseignement supérieur ; par les relais n8n : API Météo-France, Tchap (Matrix).
+Bibliothèques tierces : copiées dans `vendor/`, à version figée, sans appel à un CDN (voir `vendor/README.md`), sauf l'API des widgets Grist, encore chargée depuis docs.getgrist.com. Services : Géoplateforme de l'IGN (fonds de carte, géocodage), Overpass (OpenStreetMap), portails open data de l'éducation nationale et de l'enseignement supérieur ; par les relais n8n : API Météo-France, Tchap (Matrix).
 
 ### Tests
 

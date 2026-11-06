@@ -43,7 +43,7 @@ const mkDoc = (sansDep) => {
    await page.close(); }
  // 2. Cartographie sans Leaflet, référentiel sans département ni académie
  { const doc=mkDoc(true); const page = await browser.newPage({viewport:{width:1100,height:1300}}); log(page);
-   await page.route('**/leaflet.min.js', r=>r.abort()); await page.route('**/leaflet.min.css', r=>r.abort());
+   await page.route('**/vendor/leaflet/leaflet.js', r=>r.abort()); await page.route('**/vendor/leaflet/leaflet.css', r=>r.abort());
    await page.route('**/grist-plugin-api.js', r=>r.fulfill({contentType:'text/javascript', body:`window.__DOC__=${JSON.stringify(doc)};window.__OPTS__={};`+fs.readFileSync('mock.js')+fs.readFileSync('fakeapi.js')+fs.readFileSync('mock-saisie.js')}));
    await page.goto('file://' + __C.racine + '/v2/cartographie/index.html'); await page.waitForTimeout(3000);
    console.log('LEAFLET:', await page.evaluate(()=>!!window.L), 'STATS:', (await page.textContent('#stats')).replace(/\s+/g,' '));

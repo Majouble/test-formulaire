@@ -12,8 +12,8 @@ const REF = process.argv[2] === 'ref';   // « Nom du site » : colonne référe
   D.Sites = { id: [1, 2, 3, 4, 5, 6], Dossier: [3, 3, 4, 4, 2, 5], Nom_du_site: [REF ? 2 : 'Campus Beaulieu bat 12', 'Annexe Rue Dupont', 'campus beaulieu, bât. 12', 'Villejean', 'Bâtiment Ivry', 'Annexe rue Dupont'], Qualification: ['Blocage total', 'Rassemblement', 'Blocage total', 'Rassemblement', 'RAS', 'RAS'] };
   const browser = await chromium.launch({ executablePath: __C.chromium }); const page = await browser.newPage({ viewport: { width: 1300, height: 1100 } });
   page.on('pageerror', e => console.log('PAGEERROR', e.message)); page.on('dialog', d => { console.log('CONFIRMATION :', d.message()); d.accept(); });
-  await page.route('**/leaflet.min.js', r => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.js') }));
-  await page.route('**/leaflet.min.css', r => r.fulfill({ contentType: 'text/css', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.css') }));
+  await page.route('**/vendor/leaflet/leaflet.js', r => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.js') }));
+  await page.route('**/vendor/leaflet/leaflet.css', r => r.fulfill({ contentType: 'text/css', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.css') }));
   await page.route(/data\.geopf\.fr/, r => r.fulfill({ contentType: 'image/png', body: PNG }));
   await page.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__DOC__=${JSON.stringify(doc)};` + fs.readFileSync('mock.js') + `;grist.onRecords=()=>{};grist.getOption=async()=>null;` }));
   await page.goto('file://' + __C.racine + '/v2/sites/index.html'); await page.waitForTimeout(1200);

@@ -10,8 +10,8 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
   const browser = await chromium.launch({ executablePath: __C.chromium }); const page = await browser.newPage({ viewport: { width: 1300, height: 950 } });
   page.on('pageerror', e => console.log('PAGEERROR', e.message)); page.on('dialog', d => d.accept());
   const appels = [];
-  await page.route('**/leaflet.min.js', r => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.js') }));
-  await page.route('**/leaflet.min.css', r => r.fulfill({ contentType: 'text/css', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.css') }));
+  await page.route('**/vendor/leaflet/leaflet.js', r => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.js') }));
+  await page.route('**/vendor/leaflet/leaflet.css', r => r.fulfill({ contentType: 'text/css', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.css') }));
   await page.route(/data\.geopf\.fr\/wmts/, r => r.fulfill({ contentType: 'image/png', body: PNG }));
   // service simulé : mêmes contrôles que la Géoplateforme
   await page.route(/data\.geopf\.fr\/geocodage\/search/, r => { const u = new URL(r.request().url()), q = u.searchParams.get('q') || '', lat = u.searchParams.get('lat');

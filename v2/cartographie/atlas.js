@@ -283,7 +283,7 @@ function loadJSZip() {
   if (!zipLoading)
     zipLoading = new Promise((res, rej) => {
       const s = document.createElement("script");
-      s.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+      s.src = "../vendor/jszip/jszip.min.js";
       s.onload = () => (window.JSZip ? res(window.JSZip) : rej(new Error("bibliothèque absente")));
       s.onerror = () => {
         zipLoading = null;

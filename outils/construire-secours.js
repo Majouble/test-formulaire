@@ -51,7 +51,7 @@ const vues = {
 
 const socle = lire("v2/commun/socle.js");
 const version = (socle.match(/VERSION\s*=\s*"([^"]+)"/) || [])[1] || "?";
-const versionSql = JSON.parse(lire("v2/secours/vendor/package-version.json")).version;
+const versionSql = JSON.parse(lire("v2/vendor/sql.js/package-version.json")).version;
 const html = `<!doctype html>
 <html lang="fr">
 <head>
@@ -69,8 +69,8 @@ const html = `<!doctype html>
   #kit-vues .kit-panneau { position: absolute; inset: 0; overflow: auto; background: #f4f5f7; }
 </style>
 <script>/* sql.js ${versionSql} — https://github.com/sql-js/sql.js — licence MIT */
-${enScript(lire("v2/secours/vendor/sql-wasm.js"))}</script>
-<script>window.__KIT_SQLJS_WASM__="${fs.readFileSync(path.join(racine, "v2/secours/vendor/sql-wasm.wasm")).toString("base64")}";</script>
+${enScript(lire("v2/vendor/sql.js/sql-wasm.js"))}</script>
+<script>window.__KIT_SQLJS_WASM__="${fs.readFileSync(path.join(racine, "v2/vendor/sql.js/sql-wasm.wasm")).toString("base64")}";</script>
 <script>window.__KIT_WIDGET_VERSION__=${JSON.stringify(version)};
 window.__KIT_DEMO__=${enScript(JSON.stringify(JSON.parse(lire("v2/secours/demo.json")).tables))};
 window.__KIT_VUES__=${enScript(JSON.stringify(vues))};</script>

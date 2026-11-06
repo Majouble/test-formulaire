@@ -19,7 +19,7 @@ const PARTAGES = [
 ];
 
 module.exports = [
-  { ignores: ["v2/secours/kit-secours.html", "v2/secours/vendor/**", "**/vendor/**", "node_modules/**", "tests/**", "prod/**", "index.html"] },
+  { ignores: ["v2/secours/kit-secours.html", "**/vendor/**", "node_modules/**", "tests/**", "prod/**", "index.html"] },
   js.configs.recommended,
   {
     files: ["v2/**/*.js", "v2/**/*.html"],

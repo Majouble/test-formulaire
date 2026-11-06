@@ -10,8 +10,8 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR
   for (const k of Object.keys(R)) R[k].push(k === 'id' ? id : k === 'Etablissement' ? 3 : k === 'Dossier' ? id : k === 'Derniere_version' ? true : k === 'Qualification' ? null : k === 'Nature' ? 'Nouveau signalement' : k === 'Description' ? 'test' : k === 'Date_faits' ? Date.UTC(2026, 9, 23) / 1000 : k === 'Cree_le' ? Date.UTC(2026, 9, 23, 9) / 1000 : (typeof R[k][0] === 'string' ? '' : null));
   const browser = await chromium.launch({ executablePath: __C.chromium }); const page = await browser.newPage({ viewport: { width: 1300, height: 950 } });
   page.on('pageerror', e => console.log('PAGEERROR', e.message)); page.on('dialog', d => d.accept());
-  await page.route('**/leaflet.min.js', r => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.js') }));
-  await page.route('**/leaflet.min.css', r => r.fulfill({ contentType: 'text/css', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.css') }));
+  await page.route('**/vendor/leaflet/leaflet.js', r => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.js') }));
+  await page.route('**/vendor/leaflet/leaflet.css', r => r.fulfill({ contentType: 'text/css', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.css') }));
   await page.route(/data\.geopf\.fr/, r => r.fulfill({ contentType: 'image/png', body: PNG }));
   await page.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__DOC__=${JSON.stringify(doc)};` + fs.readFileSync('mock.js') + `;grist.onRecords=()=>{};grist.getOption=async()=>null;` }));
   await page.goto('file://' + __C.racine + '/v2/sites/index.html'); await page.waitForTimeout(2500);

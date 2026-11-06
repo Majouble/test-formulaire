@@ -13,8 +13,8 @@
     <script src="../commun/socle.js"></script>
     <script src="../commun/geo-fond.js"></script>
     <script src="../commun/geo.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <link rel="stylesheet" href="../vendor/leaflet/leaflet.css" />
+    <script src="../vendor/leaflet/leaflet.js"></script>
     <style>
       :root {
         --bg: #ffffff;
@@ -1190,7 +1190,7 @@
         if (!shpLoading)
           shpLoading = new Promise((res, rej) => {
             const s = document.createElement("script");
-            s.src = "https://cdn.jsdelivr.net/npm/@mapbox/shp-write@0.4.3/shpwrite.js";
+            s.src = "../vendor/shp-write/shpwrite.js";
             s.onload = () => (window.shpwrite ? res(window.shpwrite) : rej(new Error("bibliothèque absente")));
             s.onerror = () => {
               shpLoading = null;

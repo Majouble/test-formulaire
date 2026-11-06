@@ -37,8 +37,8 @@ if (require.main === module) (async () => {
   doc = docRef();
   const pw = await browser.newPage({ viewport: { width: 1300, height: 1100 } });
   pw.on('pageerror', e => console.log('PAGEERROR', e.message)); pw.on('dialog', d => d.accept());
-  await pw.route('**/leaflet.min.js', r => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.js') }));
-  await pw.route('**/leaflet.min.css', r => r.fulfill({ contentType: 'text/css', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.css') }));
+  await pw.route('**/vendor/leaflet/leaflet.js', r => r.fulfill({ contentType: 'text/javascript', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.js') }));
+  await pw.route('**/vendor/leaflet/leaflet.css', r => r.fulfill({ contentType: 'text/css', body: fs.readFileSync('node_modules/leaflet/dist/leaflet.css') }));
   await pw.route(/data\.geopf\.fr/, r => r.fulfill({ contentType: 'image/png', body: PNG }));
   await pw.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__DOC__=${JSON.stringify(doc)};` + fs.readFileSync('mock.js') + `;grist.onRecords=()=>{};grist.getOption=async()=>null;` }));
   await pw.goto('file://' + __C.racine + '/v2/sites/index.html'); await pw.waitForTimeout(1200);
