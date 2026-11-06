@@ -2,18 +2,18 @@
 
 Ce dossier contient la version de développement des widgets v2. La version figée pour la production est dans `prod/` (même contenu, adresses `…/prod/…`), mise à jour seulement lors d'une publication. La version 1 (`index.html` à la racine du dépôt) reste en service tant que les documents MEN et ESR n'ont pas basculé.
 
-| Widget | Production (version figée) | Développement (bouge à chaque mise à jour) |
-| --- | --- | --- |
-| Administration | `https://majouble.github.io/test-formulaire/prod/admin/` | `https://majouble.github.io/test-formulaire/v2/admin/` |
-| Saisie | `https://majouble.github.io/test-formulaire/prod/saisie/` | `https://majouble.github.io/test-formulaire/v2/saisie/` |
-| Point de situation | `https://majouble.github.io/test-formulaire/prod/point-situation/` | `https://majouble.github.io/test-formulaire/v2/point-situation/` |
-| Tableau de bord | `https://majouble.github.io/test-formulaire/prod/tableau-de-bord/` | `https://majouble.github.io/test-formulaire/v2/tableau-de-bord/` |
-| Cartographie | `https://majouble.github.io/test-formulaire/prod/cartographie/` | `https://majouble.github.io/test-formulaire/v2/cartographie/` |
-| Référentiel des sites | `https://majouble.github.io/test-formulaire/prod/sites/` | `https://majouble.github.io/test-formulaire/v2/sites/` |
-| Réintégration du mode secours | `https://majouble.github.io/test-formulaire/prod/reintegration/` | `https://majouble.github.io/test-formulaire/v2/reintegration/` |
-| Tableau des signalements de A à Z (aussi dans le kit) | `https://majouble.github.io/test-formulaire/prod/secours/liste.html` | `https://majouble.github.io/test-formulaire/v2/secours/liste.html` |
+| Widget                                                | Production (version figée)                                                 | Développement (bouge à chaque mise à jour)                               |
+| ----------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Administration                                        | `https://majouble.github.io/test-formulaire/prod/admin/`                   | `https://majouble.github.io/test-formulaire/v2/admin/`                   |
+| Saisie                                                | `https://majouble.github.io/test-formulaire/prod/saisie/`                  | `https://majouble.github.io/test-formulaire/v2/saisie/`                  |
+| Point de situation                                    | `https://majouble.github.io/test-formulaire/prod/point-situation/`         | `https://majouble.github.io/test-formulaire/v2/point-situation/`         |
+| Tableau de bord                                       | `https://majouble.github.io/test-formulaire/prod/tableau-de-bord/`         | `https://majouble.github.io/test-formulaire/v2/tableau-de-bord/`         |
+| Cartographie                                          | `https://majouble.github.io/test-formulaire/prod/cartographie/`            | `https://majouble.github.io/test-formulaire/v2/cartographie/`            |
+| Référentiel des sites                                 | `https://majouble.github.io/test-formulaire/prod/sites/`                   | `https://majouble.github.io/test-formulaire/v2/sites/`                   |
+| Réintégration du mode secours                         | `https://majouble.github.io/test-formulaire/prod/reintegration/`           | `https://majouble.github.io/test-formulaire/v2/reintegration/`           |
+| Tableau des signalements de A à Z (aussi dans le kit) | `https://majouble.github.io/test-formulaire/prod/secours/liste.html`       | `https://majouble.github.io/test-formulaire/v2/secours/liste.html`       |
 | Kit de secours (fichier à enregistrer sur les postes) | `https://majouble.github.io/test-formulaire/prod/secours/kit-secours.html` | `https://majouble.github.io/test-formulaire/v2/secours/kit-secours.html` |
-| Version 1 | `https://majouble.github.io/test-formulaire/` | — |
+| Version 1                                             | `https://majouble.github.io/test-formulaire/`                              | —                                                                        |
 
 Un document de production n'utilise que des adresses `…/prod/…` ; un document de test, des adresses `…/v2/…`. Ne pas mélanger les deux dans un même document : l'administration crée les pages (saisie, tableau de bord, cartographie, établissements) à côté d'elle-même, donc dans le même dossier.
 
@@ -72,35 +72,35 @@ Les widgets sont des pages statiques (HTML et JavaScript, sans serveur propre) a
 
 ### Tables du socle
 
-| Table (nom par défaut) | Rôle | Créée par |
-| --- | --- | --- |
-| `Config` | Réglages de tous les modules | Installation |
-| `Reponses` | Une ligne par version de signalement ; `Dossier` renvoie à la première saisie | Installation (nom réglable) |
-| `Etablissements` | Référentiel ; clé `UUID` et `Lien` des établissements | Installation, onglet Référentiel |
-| `Referentiel_sites`, `Sites_correspondances` | Sites du supérieur ; libellés saisis rapprochés d'un site | Import du classeur ESR, widget Référentiel des sites |
-| `Formulaires` | Brouillon et version publiée de chaque formulaire (JSON) | Installation |
-| Tables des questions tableau | Lignes d'un tableau (sites…), historisées par version (`Dossier`, `Version`, `Ligne_id`, `Mouvement`) | Onglet Formulaires |
-| `Agents`, `Creneaux`, `Affectations`, `Emargements` | Équipe, planning, émargement | Onglet Équipe |
-| `Actions` | Suivi des actions de la cellule | Onglet Actions |
-| `Vigilances`, `Vigilances_journal` | Veille météo, écrites par le relais n8n | Onglet Veille |
-| `Administration`, `Cellule` | Tables vides qui portent les pages réservées (règles d'accès) | Installation |
+| Table (nom par défaut)                              | Rôle                                                                                                  | Créée par                                            |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `Config`                                            | Réglages de tous les modules                                                                          | Installation                                         |
+| `Reponses`                                          | Une ligne par version de signalement ; `Dossier` renvoie à la première saisie                         | Installation (nom réglable)                          |
+| `Etablissements`                                    | Référentiel ; clé `UUID` et `Lien` des établissements                                                 | Installation, onglet Référentiel                     |
+| `Referentiel_sites`, `Sites_correspondances`        | Sites du supérieur ; libellés saisis rapprochés d'un site                                             | Import du classeur ESR, widget Référentiel des sites |
+| `Formulaires`                                       | Brouillon et version publiée de chaque formulaire (JSON)                                              | Installation                                         |
+| Tables des questions tableau                        | Lignes d'un tableau (sites…), historisées par version (`Dossier`, `Version`, `Ligne_id`, `Mouvement`) | Onglet Formulaires                                   |
+| `Agents`, `Creneaux`, `Affectations`, `Emargements` | Équipe, planning, émargement                                                                          | Onglet Équipe                                        |
+| `Actions`                                           | Suivi des actions de la cellule                                                                       | Onglet Actions                                       |
+| `Vigilances`, `Vigilances_journal`                  | Veille météo, écrites par le relais n8n                                                               | Onglet Veille                                        |
+| `Administration`, `Cellule`                         | Tables vides qui portent les pages réservées (règles d'accès)                                         | Installation                                         |
 
 ### Clés de Config
 
-| Clé | Module | Contenu |
-| --- | --- | --- |
-| `general` | Installation | Situation, préréglage, académies, tables, qualifications de retour à la normale, second champ |
-| `roles` | Installation | Associations colonne → rôle choisies à la main |
-| `schema` | Socle | Copie des colonnes lue par les liens d'établissement |
-| `annuaire_en`, `referentiel_esr`, `regles_esr`, `effectifs` | Référentiel | Réglages des imports (dont le traitement des écoles d'ingénieurs du classeur ESR) |
-| `planning`, `repartition` | Équipe | Fonctions, modèles de journée ; critères de périmètre |
-| `liens`, `campagnes`, `acces_invites` | Établissements, Équipe | Mise en place des liens, publipostage, campagnes ; durée des liens invités |
-| `validation` | Validation | Circuits de visas |
-| `veille` | Veille | Seuil, phénomènes suivis |
-| `actions` | Actions | Colonnes du kanban |
-| `point_situation`, `tableau_de_bord`, `extractions`, `resume_auto` | Sorties, saisie | Brouillon et version publiée de chaque sortie ; description automatique |
-| `qualite` | À vérifier | Statuts des anomalies (vérifiée, corrigée) |
-| `secours` | Réintégration | Saisies hors ligne déjà réintégrées, correspondances de numéros |
+| Clé                                                                | Module                 | Contenu                                                                                       |
+| ------------------------------------------------------------------ | ---------------------- | --------------------------------------------------------------------------------------------- |
+| `general`                                                          | Installation           | Situation, préréglage, académies, tables, qualifications de retour à la normale, second champ |
+| `roles`                                                            | Installation           | Associations colonne → rôle choisies à la main                                                |
+| `schema`                                                           | Socle                  | Copie des colonnes lue par les liens d'établissement                                          |
+| `annuaire_en`, `referentiel_esr`, `regles_esr`, `effectifs`        | Référentiel            | Réglages des imports (dont le traitement des écoles d'ingénieurs du classeur ESR)             |
+| `planning`, `repartition`                                          | Équipe                 | Fonctions, modèles de journée ; critères de périmètre                                         |
+| `liens`, `campagnes`, `acces_invites`                              | Établissements, Équipe | Mise en place des liens, publipostage, campagnes ; durée des liens invités                    |
+| `validation`                                                       | Validation             | Circuits de visas                                                                             |
+| `veille`                                                           | Veille                 | Seuil, phénomènes suivis                                                                      |
+| `actions`                                                          | Actions                | Colonnes du kanban                                                                            |
+| `point_situation`, `tableau_de_bord`, `extractions`, `resume_auto` | Sorties, saisie        | Brouillon et version publiée de chaque sortie ; description automatique                       |
+| `qualite`                                                          | À vérifier             | Statuts des anomalies (vérifiée, corrigée)                                                    |
+| `secours`                                                          | Réintégration          | Saisies hors ligne déjà réintégrées, correspondances de numéros                               |
 
 ### Accès
 

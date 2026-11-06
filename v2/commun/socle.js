@@ -14,36 +14,41 @@
   const VERSION = "2.52.0 (06/11/2026)";
 
   /* ---------- Noms par défaut ---------- */
-  const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres
-  const TABLE_ADMIN = "Administration";   // table vide qui porte la page d'administration : réservée aux propriétaires par les règles d'accès
-  const TABLE_CELLULE = "Cellule";        // table vide qui porte la page « Cellule » : lisible des propriétaires et des agents connectés seulement ;
-                                           // Grist masque une page qui contient une table illisible, et toutes les pages rangées dessous
+  const TABLE_CONFIG = "Config"; // seul nom fixe : c'est là qu'on lit les autres
+  const TABLE_ADMIN = "Administration"; // table vide qui porte la page d'administration : réservée aux propriétaires par les règles d'accès
+  const TABLE_CELLULE = "Cellule"; // table vide qui porte la page « Cellule » : lisible des propriétaires et des agents connectés seulement ;
+  // Grist masque une page qui contient une table illisible, et toutes les pages rangées dessous
   // Liens personnels (établissements, invités) : page seule, sans la liste des pages ni les panneaux de Grist.
   // (« embed=true » passerait aussi le document en lecture seule : la saisie serait impossible)
   const STYLE_LIEN = ` + "&style=singlePage"`;
   const DEFAUTS_GENERAL = {
-    situation: "",                         // nom de la situation suivie (« Mouvements octobre 2026 »…)
-    preset: "en",                          // « en » (établissements scolaires) ou « esr »
-    academies: [],                         // académies couvertes par le document
-    reponses: "Reponses",                  // table des versions de signalements
-    referentiel: "Etablissements",         // table des établissements (et des sites)
-    formulaires: "Formulaires",            // table des formulaires
-    agents: "Agents",                      // équipe de la cellule (une ligne par agent)
-    creneaux: "Creneaux",                  // planning : créneaux de chaque jour
-    affectations: "Affectations",          // planning : agents affectés à chaque créneau
-    emargements: "Emargements",            // émargement : prises et fins de service
-    actions: "Actions",                    // suivi des actions (kanban des coordinateurs)
-    vigilances: "Vigilances",              // veille : vigilances météo en cours (relais n8n, onglet Veille)
+    situation: "", // nom de la situation suivie (« Mouvements octobre 2026 »…)
+    preset: "en", // « en » (établissements scolaires) ou « esr »
+    academies: [], // académies couvertes par le document
+    reponses: "Reponses", // table des versions de signalements
+    referentiel: "Etablissements", // table des établissements (et des sites)
+    formulaires: "Formulaires", // table des formulaires
+    agents: "Agents", // équipe de la cellule (une ligne par agent)
+    creneaux: "Creneaux", // planning : créneaux de chaque jour
+    affectations: "Affectations", // planning : agents affectés à chaque créneau
+    emargements: "Emargements", // émargement : prises et fins de service
+    actions: "Actions", // suivi des actions (kanban des coordinateurs)
+    vigilances: "Vigilances", // veille : vigilances météo en cours (relais n8n, onglet Veille)
     vigilances_journal: "Vigilances_journal", // veille : changements de vigilance (alertes, retour d'expérience)
-    retour_normale: ["RAS"],               // qualifications qui valent retour à la normale
+    retour_normale: ["RAS"], // qualifications qui valent retour à la normale
   };
   const NATURES = ["Nouveau signalement", "Mise à jour"];
 
   /* ---------- Outils ---------- */
   // « Établissement_ESR » → « etablissement_esr » : comparaison sans accents ni majuscules
-  const norm = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
-    .toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-  const typeBase = t => String(t || "").split(":")[0];
+  const norm = (s) =>
+    String(s || "")
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "");
+  const typeBase = (t) => String(t || "").split(":")[0];
 
   /* ---------- Sections d'établissement (SEGPA, SEP, SGT, SES) ----------
      Elles ont leur propre UAI dans l'annuaire mais font partie d'un collège ou d'un lycée : un signalement doit porter
@@ -51,167 +56,413 @@
      rattachementSection : établissement de rattachement probable parmi des candidats { id, nom, type, nature, commune,
      lat, lon } — le plus proche (moins de 500 m) du type attendu, nom voisin en prime ; sans coordonnées, même commune
      et nom voisin. Renvoie { etab, distance } ou null. */
-  const MAJ = s => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
+  const MAJ = (s) =>
+    String(s || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, " ")
+      .trim();
   function genreSection(nature, type, nom) {
-    const tout = `${MAJ(nature)} | ${MAJ(type)}`, m = MAJ(nom);
-    if (/SECTION D ENSEIGNEMENT GENERAL ET PROFESSIONNEL ADAPTE|\bSEGPA\b/.test(tout) || /\bSEGPA\b/.test(m)) return "SEGPA";
+    const tout = `${MAJ(nature)} | ${MAJ(type)}`,
+      m = MAJ(nom);
+    if (/SECTION D ENSEIGNEMENT GENERAL ET PROFESSIONNEL ADAPTE|\bSEGPA\b/.test(tout) || /\bSEGPA\b/.test(m))
+      return "SEGPA";
     if (/SECTION D EDUCATION SPECIALISEE|\bSES\b/.test(tout) || /^SES\b/.test(m)) return "SES";
     if (/SECTION D ENSEIGNEMENT PROFESSIONNEL|\bSEP\b/.test(tout) || /^SEP\b/.test(m)) return "SEP";
     if (/SECTION D ENSEIGNEMENT GENERAL ET TECHNOLOGIQUE|\bSGT\b/.test(tout) || /^SGT\b/.test(m)) return "SGT";
     return null;
   }
-  const PARENT_SECTION = { SEGPA: /COLLEGE|\bCLG\b/, SES: /COLLEGE|\bCLG\b/, SEP: /LYCEE|\bLPO?\b|\bLGT\b/, SGT: /LYCEE|\bLPO?\b|\bLGT\b/ };
-  const MOTS_VIDES_SECTION = new Set(["SEGPA", "SEP", "SGT", "SES", "SECTION", "D", "DE", "DU", "DES", "LA", "LE", "LES", "L", "ET", "ENSEIGNEMENT", "GENERAL",
-    "PROFESSIONNEL", "ADAPTE", "TECHNOLOGIQUE", "EDUCATION", "SPECIALISEE", "COLLEGE", "CLG", "LYCEE", "LP", "LPO", "LGT", "PUBLIC", "PRIVE", "POLYVALENT",
-    "PROFESSIONNELLE", "AU", "AUX"]);
-  const motsSection = s => new Set(MAJ(s).split(" ").filter(w => w.length > 1 && !MOTS_VIDES_SECTION.has(w)));
-  const distanceM = (a, b) => { const k = Math.PI / 180, x = (b.lon - a.lon) * Math.cos((a.lat + b.lat) / 2 * k), y = b.lat - a.lat; return Math.hypot(x, y) * 111195; };
+  const PARENT_SECTION = {
+    SEGPA: /COLLEGE|\bCLG\b/,
+    SES: /COLLEGE|\bCLG\b/,
+    SEP: /LYCEE|\bLPO?\b|\bLGT\b/,
+    SGT: /LYCEE|\bLPO?\b|\bLGT\b/,
+  };
+  const MOTS_VIDES_SECTION = new Set([
+    "SEGPA",
+    "SEP",
+    "SGT",
+    "SES",
+    "SECTION",
+    "D",
+    "DE",
+    "DU",
+    "DES",
+    "LA",
+    "LE",
+    "LES",
+    "L",
+    "ET",
+    "ENSEIGNEMENT",
+    "GENERAL",
+    "PROFESSIONNEL",
+    "ADAPTE",
+    "TECHNOLOGIQUE",
+    "EDUCATION",
+    "SPECIALISEE",
+    "COLLEGE",
+    "CLG",
+    "LYCEE",
+    "LP",
+    "LPO",
+    "LGT",
+    "PUBLIC",
+    "PRIVE",
+    "POLYVALENT",
+    "PROFESSIONNELLE",
+    "AU",
+    "AUX",
+  ]);
+  const motsSection = (s) =>
+    new Set(
+      MAJ(s)
+        .split(" ")
+        .filter((w) => w.length > 1 && !MOTS_VIDES_SECTION.has(w)),
+    );
+  const distanceM = (a, b) => {
+    const k = Math.PI / 180,
+      x = (b.lon - a.lon) * Math.cos(((a.lat + b.lat) / 2) * k),
+      y = b.lat - a.lat;
+    return Math.hypot(x, y) * 111195;
+  };
   function rattachementSection(x, candidats) {
-    const genre = x && (x.section || genreSection(x.nature, x.type, x.nom)); if (!genre) return null;
-    const attendu = PARENT_SECTION[genre], mots = motsSection(x.nom), geo = x.lat != null && x.lon != null;
+    const genre = x && (x.section || genreSection(x.nature, x.type, x.nom));
+    if (!genre) return null;
+    const attendu = PARENT_SECTION[genre],
+      mots = motsSection(x.nom),
+      geo = x.lat != null && x.lon != null;
     let meilleur = null;
     for (const y of candidats) {
       if (!y || y.id === x.id || genreSection(y.nature, y.type, y.nom)) continue;
       const d = geo && y.lat != null && y.lon != null ? distanceM(x, y) : null;
       if (d != null ? d > 500 : MAJ(y.commune) !== MAJ(x.commune) || !MAJ(x.commune)) continue;
-      const typeOk = attendu.test(MAJ(`${y.type} ${y.nature} ${y.nom}`)), communs = [...motsSection(y.nom)].filter(w => mots.has(w)).length;
+      const typeOk = attendu.test(MAJ(`${y.type} ${y.nature} ${y.nom}`)),
+        communs = [...motsSection(y.nom)].filter((w) => mots.has(w)).length;
       if (d == null && !communs) continue;
       const score = (d == null ? 300 : d) - communs * 150 - (typeOk ? 400 : 0);
       if ((typeOk || communs) && (!meilleur || score < meilleur.score)) meilleur = { etab: y, distance: d, score };
     }
     return meilleur ? { etab: meilleur.etab, distance: meilleur.distance } : null;
   }
-  const cibleRef = t => (/^Ref:(.+)$/.exec(String(t || "")) || [])[1] || null;
-  const json = v => JSON.stringify(v);
+  const cibleRef = (t) => (/^Ref:(.+)$/.exec(String(t || "")) || [])[1] || null;
+  const json = (v) => JSON.stringify(v);
   const maintenant = () => Date.now() / 1000;
-
 
   /* ---------- Régions académiques ---------- */
   const REGIONS_ACADEMIQUES = {
-    "Auvergne-Rhône-Alpes": ["Clermont-Ferrand", "Grenoble", "Lyon"], "Bourgogne-Franche-Comté": ["Besançon", "Dijon"], "Bretagne": ["Rennes"],
-    "Centre-Val de Loire": ["Orléans-Tours"], "Corse": ["Corse"], "Grand Est": ["Nancy-Metz", "Reims", "Strasbourg"], "Hauts-de-France": ["Amiens", "Lille"],
-    "Île-de-France": ["Créteil", "Paris", "Versailles"], "Normandie": ["Normandie", "Caen", "Rouen"], "Nouvelle-Aquitaine": ["Bordeaux", "Limoges", "Poitiers"],
-    "Occitanie": ["Montpellier", "Toulouse"], "Pays de la Loire": ["Nantes"], "Provence-Alpes-Côte d'Azur": ["Aix-Marseille", "Nice"],
-    "Guadeloupe": ["Guadeloupe"], "Martinique": ["Martinique"], "Guyane": ["Guyane"], "La Réunion": ["La Réunion", "Réunion"], "Mayotte": ["Mayotte"],
+    "Auvergne-Rhône-Alpes": ["Clermont-Ferrand", "Grenoble", "Lyon"],
+    "Bourgogne-Franche-Comté": ["Besançon", "Dijon"],
+    Bretagne: ["Rennes"],
+    "Centre-Val de Loire": ["Orléans-Tours"],
+    Corse: ["Corse"],
+    "Grand Est": ["Nancy-Metz", "Reims", "Strasbourg"],
+    "Hauts-de-France": ["Amiens", "Lille"],
+    "Île-de-France": ["Créteil", "Paris", "Versailles"],
+    Normandie: ["Normandie", "Caen", "Rouen"],
+    "Nouvelle-Aquitaine": ["Bordeaux", "Limoges", "Poitiers"],
+    Occitanie: ["Montpellier", "Toulouse"],
+    "Pays de la Loire": ["Nantes"],
+    "Provence-Alpes-Côte d'Azur": ["Aix-Marseille", "Nice"],
+    Guadeloupe: ["Guadeloupe"],
+    Martinique: ["Martinique"],
+    Guyane: ["Guyane"],
+    "La Réunion": ["La Réunion", "Réunion"],
+    Mayotte: ["Mayotte"],
   };
-  const REGION_PAR_ACADEMIE = new Map(Object.entries(REGIONS_ACADEMIQUES).flatMap(([r, l]) => l.map(a => [norm(a), r])));
-  const regionDeAcademie = a => REGION_PAR_ACADEMIE.get(norm(a)) || "";
+  const REGION_PAR_ACADEMIE = new Map(
+    Object.entries(REGIONS_ACADEMIQUES).flatMap(([r, l]) => l.map((a) => [norm(a), r])),
+  );
+  const regionDeAcademie = (a) => REGION_PAR_ACADEMIE.get(norm(a)) || "";
 
   /* ---------- Rôles ----------
      Chaque rôle : nom canonique, libellé, obligatoire, test de type (accepte), motifs de reconnaissance,
      et la colonne à créer quand il manque (creer). ctx = { reponses, referentiel, cols } (noms résolus). */
   const ROLES = {
     reponses: [
-      { role: "Etablissement", libelle: "Établissement", obligatoire: true,
+      {
+        role: "Etablissement",
+        libelle: "Établissement",
+        obligatoire: true,
         accepte: (c, ctx) => /^Ref:/.test(c.type) && cibleRef(c.type) !== ctx.reponses,
         motifs: [/etablissement/, /(^|_)etab(_|$)/, /structure|universite|ecole|college|lycee/],
-        creer: ctx => ({ type: `Ref:${ctx.referentiel}`, isFormula: false }) },
-      { role: "Dossier", libelle: "Dossier (signalement initial)", obligatoire: true,
+        creer: (ctx) => ({ type: `Ref:${ctx.referentiel}`, isFormula: false }),
+      },
+      {
+        role: "Dossier",
+        libelle: "Dossier (signalement initial)",
+        obligatoire: true,
         accepte: (c, ctx) => c.type === `Ref:${ctx.reponses}`,
         motifs: [/(^|_)dossier(_|$)/, /signalement_?initial/],
-        creer: ctx => ({ type: `Ref:${ctx.reponses}`, isFormula: false }) },
-      { role: "Date_faits", libelle: "Date des faits", obligatoire: true,
-        accepte: c => /^(Date|DateTime)$/.test(typeBase(c.type)) && !c.isFormula,
+        creer: (ctx) => ({ type: `Ref:${ctx.reponses}`, isFormula: false }),
+      },
+      {
+        role: "Date_faits",
+        libelle: "Date des faits",
+        obligatoire: true,
+        accepte: (c) => /^(Date|DateTime)$/.test(typeBase(c.type)) && !c.isFormula,
         motifs: [/faits?(_|$)/, /date_?(de_?l_?)?evenement/],
-        creer: () => ({ type: "Date", isFormula: false }) },
-      { role: "Cree_le", libelle: "Date de saisie", obligatoire: true,
-        accepte: c => /^(Date|DateTime)$/.test(typeBase(c.type)),
+        creer: () => ({ type: "Date", isFormula: false }),
+      },
+      {
+        role: "Cree_le",
+        libelle: "Date de saisie",
+        obligatoire: true,
+        accepte: (c) => /^(Date|DateTime)$/.test(typeBase(c.type)),
         motifs: [/cree_?le|horodat|creation/, /^date_?(de_?)?(saisie|creation|version)/, /^date$/],
         // formule d'initialisation : l'heure du serveur Grist, posée à la création de la ligne
-        creer: () => ({ type: "DateTime:Europe/Paris", isFormula: false, formula: "NOW()" }) },
-      { role: "Nature", libelle: "Nature (nouveau signalement ou mise à jour)", obligatoire: true,
-        accepte: c => /^(Choice|Text)$/.test(typeBase(c.type)) && !c.isFormula,
+        creer: () => ({ type: "DateTime:Europe/Paris", isFormula: false, formula: "NOW()" }),
+      },
+      {
+        role: "Nature",
+        libelle: "Nature (nouveau signalement ou mise à jour)",
+        obligatoire: true,
+        accepte: (c) => /^(Choice|Text)$/.test(typeBase(c.type)) && !c.isFormula,
         motifs: [/^nature$/, /nature_?(du_?)?(signalement|version|saisie)/, /initial_?suivi/],
-        creer: () => ({ type: "Choice", isFormula: false, widgetOptions: json({ choices: NATURES }) }) },
-      { role: "Qualification", libelle: "Qualification", obligatoire: true,
-        accepte: c => /^(Choice|ChoiceList|Text)$/.test(typeBase(c.type)) && !c.isFormula,
+        creer: () => ({ type: "Choice", isFormula: false, widgetOptions: json({ choices: NATURES }) }),
+      },
+      {
+        role: "Qualification",
+        libelle: "Qualification",
+        obligatoire: true,
+        accepte: (c) => /^(Choice|ChoiceList|Text)$/.test(typeBase(c.type)) && !c.isFormula,
         motifs: [/qualif/, /categorie_?(du_?)?(signalement|evenement)/, /type_?(d_?)?evenement/],
-        creer: () => ({ type: "Choice", isFormula: false, widgetOptions: json({ choices: ["RAS"] }) }) },
-      { role: "Description", libelle: "Description", obligatoire: true,
-        accepte: c => typeBase(c.type) === "Text" && !c.isFormula,
+        creer: () => ({ type: "Choice", isFormula: false, widgetOptions: json({ choices: ["RAS"] }) }),
+      },
+      {
+        role: "Description",
+        libelle: "Description",
+        obligatoire: true,
+        accepte: (c) => typeBase(c.type) === "Text" && !c.isFormula,
         motifs: [/^description$/, /^description/, /recit|resume_?des_?faits/],
-        creer: () => ({ type: "Text", isFormula: false }) },
-      { role: "Derniere_version", libelle: "Dernière version (formule)", obligatoire: true,
-        accepte: c => c.isFormula && /^(Bool|Any)$/.test(typeBase(c.type)),
+        creer: () => ({ type: "Text", isFormula: false }),
+      },
+      {
+        role: "Derniere_version",
+        libelle: "Dernière version (formule)",
+        obligatoire: true,
+        accepte: (c) => c.isFormula && /^(Bool|Any)$/.test(typeBase(c.type)),
         motifs: [/derniere_?version/],
-        creer: ctx => ({ type: "Bool", isFormula: true, formula: formuleDerniereVersion(ctx) }) },
-      { role: "Description_Word_", libelle: "Description avec les ajouts marqués (Word, Tchap)", obligatoire: false, parDefaut: true,
-        accepte: c => c.isFormula && /^(Text|Any)$/.test(typeBase(c.type)),
+        creer: (ctx) => ({ type: "Bool", isFormula: true, formula: formuleDerniereVersion(ctx) }),
+      },
+      {
+        role: "Description_Word_",
+        libelle: "Description avec les ajouts marqués (Word, Tchap)",
+        obligatoire: false,
+        parDefaut: true,
+        accepte: (c) => c.isFormula && /^(Text|Any)$/.test(typeBase(c.type)),
         motifs: [/description_?word/, /description_?(marquee|tchap)/],
-        creer: ctx => ({ type: "Text", isFormula: true, formula: formuleDescriptionMarquee(ctx) }) },
-      { role: "Commentaire", libelle: "Commentaire de mise à jour", obligatoire: false,
-        accepte: c => typeBase(c.type) === "Text" && !c.isFormula,
+        creer: (ctx) => ({ type: "Text", isFormula: true, formula: formuleDescriptionMarquee(ctx) }),
+      },
+      {
+        role: "Commentaire",
+        libelle: "Commentaire de mise à jour",
+        obligatoire: false,
+        accepte: (c) => typeBase(c.type) === "Text" && !c.isFormula,
         motifs: [/^commentaire/, /commentaire/],
-        creer: () => ({ type: "Text", isFormula: false }) },
-      { role: "Site", libelle: "Site / bâtiment", obligatoire: false,
-        accepte: c => /^(Text|Choice)$/.test(typeBase(c.type)) && !c.isFormula,
+        creer: () => ({ type: "Text", isFormula: false }),
+      },
+      {
+        role: "Site",
+        libelle: "Site / bâtiment",
+        obligatoire: false,
+        accepte: (c) => /^(Text|Choice)$/.test(typeBase(c.type)) && !c.isFormula,
         motifs: [/^site/, /batiment|campus/],
-        creer: () => ({ type: "Text", isFormula: false }) },
-      { role: "Clos", libelle: "Clos", obligatoire: false,
-        accepte: c => c.type === "Bool" && !c.isFormula,
+        creer: () => ({ type: "Text", isFormula: false }),
+      },
+      {
+        role: "Clos",
+        libelle: "Clos",
+        obligatoire: false,
+        accepte: (c) => c.type === "Bool" && !c.isFormula,
         motifs: [/^clos/, /cloture|termine/],
-        creer: () => ({ type: "Bool", isFormula: false }) },
-      { role: "Auteur", libelle: "Auteur (compte Grist, invité ou établissement)", obligatoire: false, parDefaut: true,
+        creer: () => ({ type: "Bool", isFormula: false }),
+      },
+      {
+        role: "Auteur",
+        libelle: "Auteur (compte Grist, invité ou établissement)",
+        obligatoire: false,
+        parDefaut: true,
         accepte: () => true,
         motifs: [/^auteur/, /saisi_?par|redacteur|createur/],
-        creer: ctx => ({ type: "Text", isFormula: false, formula: formuleAuteur(ctx && ctx.general, (ctx && ctx.cols && ctx.cols.Etablissement) || "Etablissement") }) },
-      { role: "Etat_plus_grave", libelle: "État le plus grave de l'établissement (formule)", obligatoire: false, parDefaut: true,
-        accepte: c => c.isFormula,
+        creer: (ctx) => ({
+          type: "Text",
+          isFormula: false,
+          formula: formuleAuteur(ctx && ctx.general, (ctx && ctx.cols && ctx.cols.Etablissement) || "Etablissement"),
+        }),
+      },
+      {
+        role: "Etat_plus_grave",
+        libelle: "État le plus grave de l'établissement (formule)",
+        obligatoire: false,
+        parDefaut: true,
+        accepte: (c) => c.isFormula,
         motifs: [/etat_?(le_?)?plus_?grave/, /etat_?max|gravite_?max|qualification_?max/],
-        creer: ctx => { const q = qualifMeta(ctx), choix = q.choix.filter(x => !RAS.test(x));   // mêmes choix et couleurs que Qualification
-          return { type: choix.length ? "Choice" : "Text", isFormula: true, formula: formuleEtatPlusGrave(ctx, q.choix),
-            ...(choix.length ? { widgetOptions: json({ choices: choix, choiceOptions: q.options }) } : {}) }; } },
-      { role: "Nb_jours_mobilisation", libelle: "Nombre de jours de mobilisation (formule)", obligatoire: false, parDefaut: true,
-        accepte: c => c.isFormula && /^(Int|Numeric|Any)$/.test(typeBase(c.type)),
+        creer: (ctx) => {
+          const q = qualifMeta(ctx),
+            choix = q.choix.filter((x) => !RAS.test(x)); // mêmes choix et couleurs que Qualification
+          return {
+            type: choix.length ? "Choice" : "Text",
+            isFormula: true,
+            formula: formuleEtatPlusGrave(ctx, q.choix),
+            ...(choix.length ? { widgetOptions: json({ choices: choix, choiceOptions: q.options }) } : {}),
+          };
+        },
+      },
+      {
+        role: "Nb_jours_mobilisation",
+        libelle: "Nombre de jours de mobilisation (formule)",
+        obligatoire: false,
+        parDefaut: true,
+        accepte: (c) => c.isFormula && /^(Int|Numeric|Any)$/.test(typeBase(c.type)),
         motifs: [/jours?_(de_)?mobilisation/, /^nb_?(de_)?jours/],
-        creer: ctx => ({ type: "Int", isFormula: true, formula: formuleJoursMobilisation(ctx) }) },
+        creer: (ctx) => ({ type: "Int", isFormula: true, formula: formuleJoursMobilisation(ctx) }),
+      },
     ],
     referentiel: [
-      { role: "Nom", libelle: "Nom de l'établissement", obligatoire: true, accepte: c => typeBase(c.type) !== "Bool",
-        motifs: [/^nom$/, /appellation/, /^(nom|libelle|denomination|intitule)_(de_l_|de_|d_)?etab/, /denomination|raison_sociale/,
-                 /^(nom|libelle|intitule)(_|$)/, /^etablissement$/, /etablissement/],
+      {
+        role: "Nom",
+        libelle: "Nom de l'établissement",
+        obligatoire: true,
+        accepte: (c) => typeBase(c.type) !== "Bool",
+        motifs: [
+          /^nom$/,
+          /appellation/,
+          /^(nom|libelle|denomination|intitule)_(de_l_|de_|d_)?etab/,
+          /denomination|raison_sociale/,
+          /^(nom|libelle|intitule)(_|$)/,
+          /^etablissement$/,
+          /etablissement/,
+        ],
         sauf: /commune|ville|academi|departement|region|contact|responsable|chef|direct|president|type|sigle|uai|rne|tutelle|mail|code|^id/,
-        creer: () => ({ type: "Text", isFormula: false }) },
-      { role: "UAI", libelle: "UAI", obligatoire: true, accepte: c => typeBase(c.type) !== "Bool",
-        motifs: [/^uai$/, /(^|_)(uai|rne)(_|$)/, /^code_etab/, /identifiant.*etab/], sauf: /tutelle|siege|rattach|parent/,
-        creer: () => ({ type: "Text", isFormula: false }) },
-      { role: "Type", libelle: "Type d'établissement", obligatoire: true, accepte: c => typeBase(c.type) !== "Bool",
-        motifs: [/^type$/, /^type_(d_)?etab/, /^type/, /nature|categorie|typologie/], sauf: /code|^id|contrat/,
-        creer: () => ({ type: "Text", isFormula: false }) },
-      { role: "Commune", libelle: "Commune", obligatoire: false, accepte: c => typeBase(c.type) !== "Bool",
-        motifs: [/^(nom_|libelle_)?(de_la_)?commune$/, /commune/, /ville|localite/], sauf: /code|insee|^id|postal/,
-        creer: () => ({ type: "Text", isFormula: false }) },
-      { role: "Academie", libelle: "Académie", obligatoire: true, accepte: c => typeBase(c.type) !== "Bool",
-        motifs: [/^(nom_|libelle_)?(de_l_)?academie$/, /academie/], sauf: /code|^id|region/,
-        creer: () => ({ type: "Text", isFormula: false }) },
-      { role: "Departement", libelle: "Département", obligatoire: true, accepte: c => typeBase(c.type) !== "Bool",
-        motifs: [/^(nom_|libelle_)?(du_)?departement$/, /departement/], sauf: /code|^id|numero/,
-        creer: () => ({ type: "Text", isFormula: false }) },
-      { role: "Region_academique", libelle: "Région académique", obligatoire: false, accepte: c => typeBase(c.type) !== "Bool",
-        motifs: [/region_?academique/, /^region/], sauf: /code|^id/,
-        creer: () => ({ type: "Text", isFormula: false }) },
-      { role: "Mail", libelle: "Courriel", obligatoire: false, accepte: c => typeBase(c.type) !== "Bool",
-        motifs: [/^(mail|courriel|e_?mail)$/, /mail|courriel/], sauf: /contact_2|secondaire/,
-        creer: () => ({ type: "Text", isFormula: false }) },
-      { role: "Statut_public_prive", libelle: "Public / privé", obligatoire: false, parDefaut: true, accepte: c => /^(Text|Choice)$/.test(typeBase(c.type)),
-        motifs: [/statut_?public_?prive/, /public_?prive/, /^secteur/], sauf: /contrat|^id/,
-        creer: () => ({ type: "Choice", isFormula: false, widgetOptions: json({ choices: ["Public", "Privé"] }) }) },
-      { role: "Libelle_nature", libelle: "Nature (libellé)", obligatoire: false, parDefaut: true, accepte: c => /^(Text|Choice)$/.test(typeBase(c.type)),
-        motifs: [/libelle_?nature/, /nature_?libelle/, /^nature$/], sauf: /code|^id/,
-        creer: () => ({ type: "Text", isFormula: false }) },
-      { role: "Nom_circonscription", libelle: "Circonscription", obligatoire: false, parDefaut: true, accepte: c => typeBase(c.type) !== "Bool",
-        motifs: [/^nom_circonscription$/, /circonscription/], sauf: /code|^id|numero/,
-        creer: () => ({ type: "Text", isFormula: false }) },
-      { role: "Latitude", libelle: "Latitude", obligatoire: false, parDefaut: true, accepte: c => /^(Numeric|Any)$/.test(typeBase(c.type)),
-        motifs: [/^latitude/, /^lat$/, /latitude/], sauf: /^id/,
-        creer: () => ({ type: "Numeric", isFormula: false }) },
-      { role: "Longitude", libelle: "Longitude", obligatoire: false, parDefaut: true, accepte: c => /^(Numeric|Any)$/.test(typeBase(c.type)),
-        motifs: [/^longitude/, /^lon$|^lng$/, /longitude/], sauf: /^id/,
-        creer: () => ({ type: "Numeric", isFormula: false }) },
-      { role: "Origine", libelle: "Origine de la ligne", obligatoire: false, accepte: c => /^(Choice|Text)$/.test(typeBase(c.type)),
-        motifs: [/^origine$/, /origine|source/], sauf: /^id/,
-        creer: () => ({ type: "Choice", isFormula: false,
-          widgetOptions: json({ choices: ["Annuaire EN", "Annuaire ESR", "OAD", "Manuel"] }) }) },
+        creer: () => ({ type: "Text", isFormula: false }),
+      },
+      {
+        role: "UAI",
+        libelle: "UAI",
+        obligatoire: true,
+        accepte: (c) => typeBase(c.type) !== "Bool",
+        motifs: [/^uai$/, /(^|_)(uai|rne)(_|$)/, /^code_etab/, /identifiant.*etab/],
+        sauf: /tutelle|siege|rattach|parent/,
+        creer: () => ({ type: "Text", isFormula: false }),
+      },
+      {
+        role: "Type",
+        libelle: "Type d'établissement",
+        obligatoire: true,
+        accepte: (c) => typeBase(c.type) !== "Bool",
+        motifs: [/^type$/, /^type_(d_)?etab/, /^type/, /nature|categorie|typologie/],
+        sauf: /code|^id|contrat/,
+        creer: () => ({ type: "Text", isFormula: false }),
+      },
+      {
+        role: "Commune",
+        libelle: "Commune",
+        obligatoire: false,
+        accepte: (c) => typeBase(c.type) !== "Bool",
+        motifs: [/^(nom_|libelle_)?(de_la_)?commune$/, /commune/, /ville|localite/],
+        sauf: /code|insee|^id|postal/,
+        creer: () => ({ type: "Text", isFormula: false }),
+      },
+      {
+        role: "Academie",
+        libelle: "Académie",
+        obligatoire: true,
+        accepte: (c) => typeBase(c.type) !== "Bool",
+        motifs: [/^(nom_|libelle_)?(de_l_)?academie$/, /academie/],
+        sauf: /code|^id|region/,
+        creer: () => ({ type: "Text", isFormula: false }),
+      },
+      {
+        role: "Departement",
+        libelle: "Département",
+        obligatoire: true,
+        accepte: (c) => typeBase(c.type) !== "Bool",
+        motifs: [/^(nom_|libelle_)?(du_)?departement$/, /departement/],
+        sauf: /code|^id|numero/,
+        creer: () => ({ type: "Text", isFormula: false }),
+      },
+      {
+        role: "Region_academique",
+        libelle: "Région académique",
+        obligatoire: false,
+        accepte: (c) => typeBase(c.type) !== "Bool",
+        motifs: [/region_?academique/, /^region/],
+        sauf: /code|^id/,
+        creer: () => ({ type: "Text", isFormula: false }),
+      },
+      {
+        role: "Mail",
+        libelle: "Courriel",
+        obligatoire: false,
+        accepte: (c) => typeBase(c.type) !== "Bool",
+        motifs: [/^(mail|courriel|e_?mail)$/, /mail|courriel/],
+        sauf: /contact_2|secondaire/,
+        creer: () => ({ type: "Text", isFormula: false }),
+      },
+      {
+        role: "Statut_public_prive",
+        libelle: "Public / privé",
+        obligatoire: false,
+        parDefaut: true,
+        accepte: (c) => /^(Text|Choice)$/.test(typeBase(c.type)),
+        motifs: [/statut_?public_?prive/, /public_?prive/, /^secteur/],
+        sauf: /contrat|^id/,
+        creer: () => ({ type: "Choice", isFormula: false, widgetOptions: json({ choices: ["Public", "Privé"] }) }),
+      },
+      {
+        role: "Libelle_nature",
+        libelle: "Nature (libellé)",
+        obligatoire: false,
+        parDefaut: true,
+        accepte: (c) => /^(Text|Choice)$/.test(typeBase(c.type)),
+        motifs: [/libelle_?nature/, /nature_?libelle/, /^nature$/],
+        sauf: /code|^id/,
+        creer: () => ({ type: "Text", isFormula: false }),
+      },
+      {
+        role: "Nom_circonscription",
+        libelle: "Circonscription",
+        obligatoire: false,
+        parDefaut: true,
+        accepte: (c) => typeBase(c.type) !== "Bool",
+        motifs: [/^nom_circonscription$/, /circonscription/],
+        sauf: /code|^id|numero/,
+        creer: () => ({ type: "Text", isFormula: false }),
+      },
+      {
+        role: "Latitude",
+        libelle: "Latitude",
+        obligatoire: false,
+        parDefaut: true,
+        accepte: (c) => /^(Numeric|Any)$/.test(typeBase(c.type)),
+        motifs: [/^latitude/, /^lat$/, /latitude/],
+        sauf: /^id/,
+        creer: () => ({ type: "Numeric", isFormula: false }),
+      },
+      {
+        role: "Longitude",
+        libelle: "Longitude",
+        obligatoire: false,
+        parDefaut: true,
+        accepte: (c) => /^(Numeric|Any)$/.test(typeBase(c.type)),
+        motifs: [/^longitude/, /^lon$|^lng$/, /longitude/],
+        sauf: /^id/,
+        creer: () => ({ type: "Numeric", isFormula: false }),
+      },
+      {
+        role: "Origine",
+        libelle: "Origine de la ligne",
+        obligatoire: false,
+        accepte: (c) => /^(Choice|Text)$/.test(typeBase(c.type)),
+        motifs: [/^origine$/, /origine|source/],
+        sauf: /^id/,
+        creer: () => ({
+          type: "Choice",
+          isFormula: false,
+          widgetOptions: json({ choices: ["Annuaire EN", "Annuaire ESR", "OAD", "Manuel"] }),
+        }),
+      },
     ],
   };
 
@@ -232,7 +483,10 @@
      à l'état le plus grave et au nombre de jours de mobilisation (reprises des documents MEN et MESRE). */
   const RAS = /^\s*ras\s*$/i;
   function entetesMobilisation(ctx) {
-    const c = ctx.cols || {}, faits = c.Date_faits || "Date_faits", cree = c.Cree_le || "Cree_le", q = c.Qualification || "Qualification";
+    const c = ctx.cols || {},
+      faits = c.Date_faits || "Date_faits",
+      cree = c.Cree_le || "Cree_le",
+      q = c.Qualification || "Qualification";
     return [
       `import datetime`,
       `def jour(r):`,
@@ -247,25 +501,33 @@
   // Choix de la colonne Qualification (ordre et couleurs), lus dans la table existante
   function qualifMeta(ctx) {
     const col = ctx.tRep && ctx.cols && ctx.cols.Qualification && ctx.tRep.colonnes[ctx.cols.Qualification];
-    let o = {}; try { o = col && col.widgetOptions ? JSON.parse(col.widgetOptions) : {}; } catch (_) { o = {}; }
+    let o = {};
+    try {
+      o = col && col.widgetOptions ? JSON.parse(col.widgetOptions) : {};
+    } catch (_) {
+      o = {};
+    }
     return { choix: Array.isArray(o.choices) ? o.choices : [], options: o.choiceOptions || {} };
   }
   // Jours distincts (hors RAS) où l'établissement a un signalement, jusqu'au jour de cette ligne
   function formuleJoursMobilisation(ctx) {
     const e = (ctx.cols && ctx.cols.Etablissement) || "Etablissement";
-    return [...entetesMobilisation(ctx),
+    return [
+      ...entetesMobilisation(ctx),
       `j = jour(rec)`,
       `if not $${e} or not j or not qualifs(rec):`,
       `  return None`,
       `jours = {jour(r) for r in ${ctx.reponses}.lookupRecords(${e}=$${e}) if qualifs(r)}`,
-      `return len([d for d in jours if d and d <= j])`].join("\n");
+      `return len([d for d in jours if d and d <= j])`,
+    ].join("\n");
   }
   // Qualification la plus grave de l'établissement jusqu'au jour de cette ligne : la première dans ORDRE (ordre des choix
   // de la colonne Qualification à l'installation, du plus grave au moins grave) ; hors liste, la plus récente
   function formuleEtatPlusGrave(ctx, choix) {
     const e = (ctx.cols && ctx.cols.Etablissement) || "Etablissement";
-    const ordre = (choix || []).filter(x => !RAS.test(x));
-    return [...entetesMobilisation(ctx),
+    const ordre = (choix || []).filter((x) => !RAS.test(x));
+    return [
+      ...entetesMobilisation(ctx),
       `# du plus grave au moins grave : à ajuster si l'ordre des choix change`,
       `ORDRE = ${JSON.stringify(ordre)}`,
       `j = jour(rec)`,
@@ -282,10 +544,12 @@
       `def rang(item):`,
       `  q, d = item`,
       `  return (ORDRE.index(q) if q in ORDRE else len(ORDRE), -d.toordinal(), q)`,
-      `return sorted(vus.items(), key=rang)[0][0]`].join("\n");
+      `return sorted(vus.items(), key=rang)[0][0]`,
+    ].join("\n");
   }
   function formuleDerniereVersion(ctx) {
-    const d = (ctx.cols && ctx.cols.Dossier) || "Dossier", c = (ctx.cols && ctx.cols.Cree_le) || "Cree_le";
+    const d = (ctx.cols && ctx.cols.Dossier) || "Dossier",
+      c = (ctx.cols && ctx.cols.Cree_le) || "Cree_le";
     return [
       `initiale = $${d} or rec`,
       `versions = list(${ctx.reponses}.lookupRecords(${d}=initiale.id))`,
@@ -300,7 +564,8 @@
   // Description d'une mise à jour avec les mots ajoutés depuis la version précédente entourés de == (repris par
   // n8n pour Tchap et par le point de situation pour Word). Formule des documents MEN et ESR, rendue paramétrable.
   function formuleDescriptionMarquee(ctx) {
-    const d = (ctx.cols && ctx.cols.Dossier) || "Dossier", c = (ctx.cols && ctx.cols.Cree_le) || "Cree_le",
+    const d = (ctx.cols && ctx.cols.Dossier) || "Dossier",
+      c = (ctx.cols && ctx.cols.Cree_le) || "Cree_le",
       desc = (ctx.cols && ctx.cols.Description) || "Description";
     return `import difflib, re
 
@@ -360,9 +625,14 @@ return "".join(resultat)`;
     { id: "Modifie_le", type: "DateTime:Europe/Paris" },
   ];
   const COLONNES_FORMULAIRES = [
-    { id: "Nom", type: "Text" }, { id: "Table", type: "Text" }, { id: "Brouillon", type: "Text" }, { id: "Publie", type: "Text" },
-    { id: "Publie_le", type: "DateTime:Europe/Paris" }, { id: "Modifie_le", type: "DateTime:Europe/Paris" },
-    { id: "Type", type: "Text" }, { id: "Widget", type: "Text" },
+    { id: "Nom", type: "Text" },
+    { id: "Table", type: "Text" },
+    { id: "Brouillon", type: "Text" },
+    { id: "Publie", type: "Text" },
+    { id: "Publie_le", type: "DateTime:Europe/Paris" },
+    { id: "Modifie_le", type: "DateTime:Europe/Paris" },
+    { id: "Type", type: "Text" },
+    { id: "Widget", type: "Text" },
   ];
 
   /* ---------- Équipe et planning ----------
@@ -381,18 +651,40 @@ return "".join(resultat)`;
   /* Champs suivis par le document (ex. MEN et MESRE) : chacun a sa table de réponses et son référentiel, pour que
      les données ne se mêlent pas. Le premier est celui du préréglage (general.reponses, general.referentiel) ;
      les suivants sont dans general.autres_champs : [{ champ: "ESR", reponses, referentiel }]. */
-  const AUTRE_CHAMP_DEFAUT = { EN: { reponses: "Reponses_EN", referentiel: "Etablissements_EN" }, ESR: { reponses: "Reponses_ESR", referentiel: "Etablissements_ESR" } };
+  const AUTRE_CHAMP_DEFAUT = {
+    EN: { reponses: "Reponses_EN", referentiel: "Etablissements_EN" },
+    ESR: { reponses: "Reponses_ESR", referentiel: "Etablissements_ESR" },
+  };
   function espaces(g) {
     g = g || DEFAUTS_GENERAL;
     const premier = g.preset === "esr" ? "ESR" : "EN";
-    const out = [{ champ: premier, reponses: g.reponses || DEFAUTS_GENERAL.reponses, referentiel: g.referentiel || DEFAUTS_GENERAL.referentiel }];
-    (Array.isArray(g.autres_champs) ? g.autres_champs : []).forEach(e => {
-      if (e && CHAMPS.some(c => c.id === e.champ) && e.reponses && !out.some(x => x.champ === e.champ || x.reponses === e.reponses))
-        out.push({ champ: e.champ, reponses: e.reponses, referentiel: e.referentiel || (AUTRE_CHAMP_DEFAUT[e.champ] || {}).referentiel || out[0].referentiel });
+    const out = [
+      {
+        champ: premier,
+        reponses: g.reponses || DEFAUTS_GENERAL.reponses,
+        referentiel: g.referentiel || DEFAUTS_GENERAL.referentiel,
+      },
+    ];
+    (Array.isArray(g.autres_champs) ? g.autres_champs : []).forEach((e) => {
+      if (
+        e &&
+        CHAMPS.some((c) => c.id === e.champ) &&
+        e.reponses &&
+        !out.some((x) => x.champ === e.champ || x.reponses === e.reponses)
+      )
+        out.push({
+          champ: e.champ,
+          reponses: e.reponses,
+          referentiel: e.referentiel || (AUTRE_CHAMP_DEFAUT[e.champ] || {}).referentiel || out[0].referentiel,
+        });
     });
-    return out.map(e => ({ ...e, version: (CHAMPS.find(c => c.id === e.champ) || CHAMPS[0]).version, libelle: (CHAMPS.find(c => c.id === e.champ) || {}).libelle || e.champ }));
+    return out.map((e) => ({
+      ...e,
+      version: (CHAMPS.find((c) => c.id === e.champ) || CHAMPS[0]).version,
+      libelle: (CHAMPS.find((c) => c.id === e.champ) || {}).libelle || e.champ,
+    }));
   }
-  const espaceDeTable = (g, table) => espaces(g).find(e => e.reponses === table) || null;
+  const espaceDeTable = (g, table) => espaces(g).find((e) => e.reponses === table) || null;
   // fonctions : une ligne du tableau du planning chacune, dans cet ordre ; ligne: false = non affichée ; saisie: page de saisie
   const PLANNING_DEFAUT = {
     fonctions: [
@@ -401,22 +693,39 @@ return "".join(resultat)`;
       { nom: "Rédacteur", saisie: false, ligne: true },
     ],
     modeles: [
-      { nom: "Semaine", creneaux: [{ nom: "Matin", debut: "08:00", fin: "13:00" }, { nom: "Après-midi", debut: "13:00", fin: "19:00" }] },
+      {
+        nom: "Semaine",
+        creneaux: [
+          { nom: "Matin", debut: "08:00", fin: "13:00" },
+          { nom: "Après-midi", debut: "13:00", fin: "19:00" },
+        ],
+      },
       { nom: "Week-end", creneaux: [{ nom: "Journée", debut: "09:00", fin: "18:00" }] },
     ],
   };
   function reglagesPlanning(config) {
     const v = (config && config.valeurs && config.valeurs.planning) || {};
     return {
-      fonctions: (Array.isArray(v.fonctions) && v.fonctions.length ? v.fonctions : PLANNING_DEFAUT.fonctions)
-        .map(f => ({ nom: String(f.nom || ""), saisie: !!f.saisie, ligne: f.ligne !== false, code: String(f.code || "").toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2) })),
+      fonctions: (Array.isArray(v.fonctions) && v.fonctions.length ? v.fonctions : PLANNING_DEFAUT.fonctions).map(
+        (f) => ({
+          nom: String(f.nom || ""),
+          saisie: !!f.saisie,
+          ligne: f.ligne !== false,
+          code: String(f.code || "")
+            .toUpperCase()
+            .replace(/[^A-Z]/g, "")
+            .slice(0, 2),
+        }),
+      ),
       modeles: Array.isArray(v.modeles) ? v.modeles : PLANNING_DEFAUT.modeles,
     };
   }
-  const choix = liste => json({ choices: liste });
+  const choix = (liste) => json({ choices: liste });
   // Champs_acces (formule) : champs EN / ESR sur lesquels l'agent est mobilisé au planning, 7 jours avant ou après
   // aujourd'hui ; lu par les règles d'accès (onglet Accès). Grist réévalue NOW() environ toutes les heures.
-  const formuleChampsAcces = g => `# Champs (EN, ESR) sur lesquels l'agent est mobilisé au planning, 7 jours avant ou après aujourd'hui.
+  const formuleChampsAcces = (
+    g,
+  ) => `# Champs (EN, ESR) sur lesquels l'agent est mobilisé au planning, 7 jours avant ou après aujourd'hui.
 # Lu par les règles d'accès (onglet Accès de l'administration). Recalculé environ toutes les heures.
 from datetime import timedelta
 if not $Actif:
@@ -426,14 +735,27 @@ champs = set()
 for a in ${g.affectations}.lookupRecords(Agent=$id):
   c = a.Creneau
   if c and c.Debut and c.Fin and c.Fin >= maintenant - timedelta(days=7) and c.Debut <= maintenant + timedelta(days=7):
-    champs.update(a.Champ or ${json(CHAMPS.map(c => c.id))})
+    champs.update(a.Champ or ${json(CHAMPS.map((c) => c.id))})
 return sorted(champs)`;
   /* ---------- Agents invités : accès par lien personnel, sans compte Grist ----------
      Clé dans Agents.Cle_acces, page de saisie dans Agents.Page_saisie, lien dans Agents.Lien_acces (?Invite_=<clé>).
      Attribut utilisateur « Invite » (onglet Accès) : l'invité a les droits d'un agent actif de l'équipe. */
-  const INVITE = { attribut: "Invite", cle: "Cle_acces", page: "Page_saisie", lien: "Lien_acces", expire: "Lien_expire_le", valide: "Lien_valide" };
+  const INVITE = {
+    attribut: "Invite",
+    cle: "Cle_acces",
+    page: "Page_saisie",
+    lien: "Lien_acces",
+    expire: "Lien_expire_le",
+    valide: "Lien_valide",
+  };
   // Durées de validité d'un lien d'invité (clé « acces_invites » de Config, réglée dans l'onglet Équipe › Agents)
-  const DUREES_INVITE = [["24h", "24 heures", 24], ["72h", "3 jours", 72], ["7j", "7 jours", 168], ["30j", "30 jours", 720], ["illimite", "sans limite", 0]];
+  const DUREES_INVITE = [
+    ["24h", "24 heures", 24],
+    ["72h", "3 jours", 72],
+    ["7j", "7 jours", 168],
+    ["30j", "30 jours", 720],
+    ["illimite", "sans limite", 0],
+  ];
   // Auteur d'une ligne (formule d'initialisation) : adresse du compte Grist, sinon « Invité : <nom> » pour le lien d'un agent,
   // sinon « Établissement : <UAI> <nom> » pour le lien d'un établissement (colEtab : colonne Réf. de l'établissement de la ligne).
   // La première ligne sert de marque de version : une formule qui ne la porte pas est proposée à la mise à jour.
@@ -450,10 +772,12 @@ return sorted(champs)`;
       `  a = ${t}.lookupOne(${INVITE.cle}=lk["${INVITE.attribut}"])`,
       `  return ("Invité : " + a.Nom) if a else "Invité"`,
     ];
-    if (colEtab) l.push(
-      `if any(k.startswith("Etab") and v for k, v in lk.items()):`,
-      `  e = $${colEtab}`,
-      `  return ("Établissement : " + " ".join(str(x) for x in (getattr(e, "UAI", ""), getattr(e, "Nom", "")) if x)) if e else "Établissement"`);
+    if (colEtab)
+      l.push(
+        `if any(k.startswith("Etab") and v for k, v in lk.items()):`,
+        `  e = $${colEtab}`,
+        `  return ("Établissement : " + " ".join(str(x) for x in (getattr(e, "UAI", ""), getattr(e, "Nom", "")) if x)) if e else "Établissement"`,
+      );
     l.push(`return "Lien anonyme" if email == "anon@getgrist.com" else (email or "")`);
     return l.join("\n");
   }
@@ -461,24 +785,45 @@ return sorted(champs)`;
   function auteurAMettreAJour(c) {
     if (!c || c.isFormula) return false;
     const f = String(c.formula || "").trim();
-    return f === "" || f === "user.Email" || (/^# Auteur \(socle/.test(f) && !f.startsWith(MARQUE_AUTEUR)) || (/user\.LinkKey/.test(f) && /Invité/.test(f) && !f.startsWith("#"));
+    return (
+      f === "" ||
+      f === "user.Email" ||
+      (/^# Auteur \(socle/.test(f) && !f.startsWith(MARQUE_AUTEUR)) ||
+      (/user\.LinkKey/.test(f) && /Invité/.test(f) && !f.startsWith("#"))
+    );
   }
   const ANCIENNE_FORMULE_LIEN_INVITE = `SELF_HYPERLINK(page=$${INVITE.page} or None, LinkKey_${INVITE.attribut}=$${INVITE.cle}) if $${INVITE.cle} else ""`;
-  const formuleLienInvite = () => `(SELF_HYPERLINK(page=$${INVITE.page} or None, LinkKey_${INVITE.attribut}=$${INVITE.cle})${STYLE_LIEN}) if $${INVITE.cle} else ""`;
+  const formuleLienInvite = () =>
+    `(SELF_HYPERLINK(page=$${INVITE.page} or None, LinkKey_${INVITE.attribut}=$${INVITE.cle})${STYLE_LIEN}) if $${INVITE.cle} else ""`;
   function colonnesAgents(config) {
     const g = general(config);
     return [
-      { id: "Nom", type: "Text" }, { id: "Email", type: "Text" },
-      { id: "Telephone", type: "Text" }, { id: "Actif", type: "Bool" },
+      { id: "Nom", type: "Text" },
+      { id: "Email", type: "Text" },
+      { id: "Telephone", type: "Text" },
+      { id: "Actif", type: "Bool" },
       // équipe (texte libre : « Équipe A », « Nuit »…) et fonction habituelle (proposée sur le planning, qui reste maître créneau par créneau)
       { id: "Equipe", type: "Text" },
-      { id: "Fonction", type: "Choice", widgetOptions: choix(reglagesPlanning(config).fonctions.map(f => f.nom)) },
+      { id: "Fonction", type: "Choice", widgetOptions: choix(reglagesPlanning(config).fonctions.map((f) => f.nom)) },
       { id: "Modifie_le", type: "DateTime:Europe/Paris" },
-      { id: INVITE.cle, type: "Text" }, { id: INVITE.page, type: "Int" }, { id: INVITE.expire, type: "DateTime:Europe/Paris" },
-      { id: "Champs_acces", type: "ChoiceList", isFormula: true, formula: formuleChampsAcces(g), widgetOptions: choix(CHAMPS.map(c => c.id)) },
+      { id: INVITE.cle, type: "Text" },
+      { id: INVITE.page, type: "Int" },
+      { id: INVITE.expire, type: "DateTime:Europe/Paris" },
+      {
+        id: "Champs_acces",
+        type: "ChoiceList",
+        isFormula: true,
+        formula: formuleChampsAcces(g),
+        widgetOptions: choix(CHAMPS.map((c) => c.id)),
+      },
       { id: INVITE.lien, type: "Text", isFormula: true, formula: formuleLienInvite() },
       // lien encore valable (recalculé par Grist à chaque modification et au moins toutes les heures) : lu par les règles d'accès
-      { id: INVITE.valide, type: "Bool", isFormula: true, formula: `bool($${INVITE.cle}) and (not $${INVITE.expire} or $${INVITE.expire} > NOW())` },
+      {
+        id: INVITE.valide,
+        type: "Bool",
+        isFormula: true,
+        formula: `bool($${INVITE.cle}) and (not $${INVITE.expire} or $${INVITE.expire} > NOW())`,
+      },
       // viseurs (onglet Validation) : échelon et périmètre de visa ; périmètre vide = tous les départements ou académies
       ...COLONNES_VISEURS,
     ];
@@ -495,7 +840,8 @@ return sorted(champs)`;
   const ECHELONS_VISA = ["Départemental", "Académique"];
   const COLONNES_VISEURS = [
     { id: "Echelon_visa", type: "Choice", widgetOptions: json({ choices: ECHELONS_VISA }) },
-    { id: "Visa_departements", type: "ChoiceList" }, { id: "Visa_academies", type: "ChoiceList" },
+    { id: "Visa_departements", type: "ChoiceList" },
+    { id: "Visa_academies", type: "ChoiceList" },
   ];
   const STATUTS_VALIDATION = [
     { nom: "À viser (département)", fond: "#FEECC2", texte: "#716043", echelon: "Départemental" },
@@ -503,25 +849,42 @@ return sorted(champs)`;
     { nom: "À revoir", fond: "#FFE9E6", texte: "#CE0500" },
     { nom: "Validé", fond: "#B8FEC9", texte: "#18753C" },
   ];
-  const STATUT = { dep: STATUTS_VALIDATION[0].nom, aca: STATUTS_VALIDATION[1].nom, revoir: STATUTS_VALIDATION[2].nom, valide: STATUTS_VALIDATION[3].nom };
+  const STATUT = {
+    dep: STATUTS_VALIDATION[0].nom,
+    aca: STATUTS_VALIDATION[1].nom,
+    revoir: STATUTS_VALIDATION[2].nom,
+    valide: STATUTS_VALIDATION[3].nom,
+  };
   const COLONNE_STATUT = "Statut_validation";
   const MARQUE_STATUT = "# Statut de validation (socle v2.41)";
   const FAVORABLE = /favorable|valid|accord|conforme|^ok$|^oui$|vis[ée]/i;
   const DEFAVORABLE = /d[ée]favorable|non|refus|revoir|incomplet/i;
-  const estFavorable = v => FAVORABLE.test(String(v || "")) && !DEFAVORABLE.test(String(v || ""));
+  const estFavorable = (v) => FAVORABLE.test(String(v || "")) && !DEFAVORABLE.test(String(v || ""));
   // Réglage d'une table (null si le circuit n'y est pas actif)
   function reglagesValidation(config, table) {
     const t = config && config.valeurs && config.valeurs.validation && config.valeurs.validation.tables;
     const r = t && table && t[table];
     if (!r || !r.actif) return null;
-    return { echelons: r.echelons === "aca" ? "aca" : "dep_aca", verdict_dep: r.verdict_dep || "", verdict_aca: r.verdict_aca || "",
-      favorables: Array.isArray(r.favorables) ? r.favorables.map(String) : [], aca_vise_dep: r.aca_vise_dep !== false, colonne: r.colonne || COLONNE_STATUT };
+    return {
+      echelons: r.echelons === "aca" ? "aca" : "dep_aca",
+      verdict_dep: r.verdict_dep || "",
+      verdict_aca: r.verdict_aca || "",
+      favorables: Array.isArray(r.favorables) ? r.favorables.map(String) : [],
+      aca_vise_dep: r.aca_vise_dep !== false,
+      colonne: r.colonne || COLONNE_STATUT,
+    };
   }
-  const optionsStatutValidation = () => json({ choices: STATUTS_VALIDATION.map(s => s.nom),
-    choiceOptions: Object.fromEntries(STATUTS_VALIDATION.map(s => [s.nom, { fillColor: s.fond, textColor: s.texte }])) });
+  const optionsStatutValidation = () =>
+    json({
+      choices: STATUTS_VALIDATION.map((s) => s.nom),
+      choiceOptions: Object.fromEntries(
+        STATUTS_VALIDATION.map((s) => [s.nom, { fillColor: s.fond, textColor: s.texte }]),
+      ),
+    });
   // Formule du statut d'après le réglage r et les colonnes résolues de la table (cols.Derniere_version)
   function formuleStatutValidation(r, cols) {
-    const dv = cols && cols.Derniere_version, dep = r.echelons === "dep_aca" && r.verdict_dep;
+    const dv = cols && cols.Derniere_version,
+      dep = r.echelons === "dep_aca" && r.verdict_dep;
     return [
       `${MARQUE_STATUT} — réglé dans l'onglet Validation de l'administration`,
       ...(dv ? [`if not $${dv}:`, `  return None`] : []),
@@ -534,17 +897,30 @@ return sorted(champs)`;
       `  return "ok" if v in FAVORABLES else "ko"`,
       r.verdict_aca ? `aca = avis($${r.verdict_aca})` : `aca = None`,
       dep ? `dep = avis($${r.verdict_dep})` : `dep = "ok"`,
-      `if aca == "ok":`, `  return ${JSON.stringify(STATUT.valide)}`,
-      `if aca == "ko" or dep == "ko":`, `  return ${JSON.stringify(STATUT.revoir)}`,
-      `if dep == "ok":`, `  return ${JSON.stringify(STATUT.aca)}`,
+      `if aca == "ok":`,
+      `  return ${JSON.stringify(STATUT.valide)}`,
+      `if aca == "ko" or dep == "ko":`,
+      `  return ${JSON.stringify(STATUT.revoir)}`,
+      `if dep == "ok":`,
+      `  return ${JSON.stringify(STATUT.aca)}`,
       `return ${JSON.stringify(STATUT.dep)}`,
     ].join("\n");
   }
   // Statut attendu calculé en JavaScript (mêmes règles que la formule) : pour les contrôles et les essais
   function statutValidation(r, ligne) {
-    const avis = v => { const s = (Array.isArray(v) ? v.filter(x => x !== "L").join(" ") : String(v == null ? "" : v)).trim(); return !s ? null : r.favorables.includes(s) ? "ok" : "ko"; };
-    const aca = r.verdict_aca ? avis(ligne[r.verdict_aca]) : null, dep = r.echelons === "dep_aca" && r.verdict_dep ? avis(ligne[r.verdict_dep]) : "ok";
-    return aca === "ok" ? STATUT.valide : aca === "ko" || dep === "ko" ? STATUT.revoir : dep === "ok" ? STATUT.aca : STATUT.dep;
+    const avis = (v) => {
+      const s = (Array.isArray(v) ? v.filter((x) => x !== "L").join(" ") : String(v == null ? "" : v)).trim();
+      return !s ? null : r.favorables.includes(s) ? "ok" : "ko";
+    };
+    const aca = r.verdict_aca ? avis(ligne[r.verdict_aca]) : null,
+      dep = r.echelons === "dep_aca" && r.verdict_dep ? avis(ligne[r.verdict_dep]) : "ok";
+    return aca === "ok"
+      ? STATUT.valide
+      : aca === "ko" || dep === "ko"
+        ? STATUT.revoir
+        : dep === "ok"
+          ? STATUT.aca
+          : STATUT.dep;
   }
   // Le viseur v ({ echelon, departements, academies }) peut-il viser cet établissement à cet échelon (« dep » | « aca ») ?
   function viseurCouvre(v, echelonVisa, dep, aca, r) {
@@ -560,34 +936,81 @@ return sorted(champs)`;
      de Météo-France (API DonneesPubliquesVigilance, clé gardée dans n8n) et réécrit la table Vigilances : une ligne par
      département, phénomène et échéance (aujourd'hui, demain) en jaune, orange ou rouge. Chaque changement est ajouté au
      journal. Réglages (seuil, phénomènes suivis) : clé « veille » de Config. */
-  const PHENOMENES_VIGILANCE = { 1: "Vent violent", 2: "Pluie-inondation", 3: "Orages", 4: "Crues", 5: "Neige-verglas", 6: "Canicule", 7: "Grand froid", 8: "Avalanches", 9: "Vagues-submersion" };
+  const PHENOMENES_VIGILANCE = {
+    1: "Vent violent",
+    2: "Pluie-inondation",
+    3: "Orages",
+    4: "Crues",
+    5: "Neige-verglas",
+    6: "Canicule",
+    7: "Grand froid",
+    8: "Avalanches",
+    9: "Vagues-submersion",
+  };
   const COULEURS_VIGILANCE = [
-    { niveau: 1, nom: "Vert", fond: "#31AA35", texte: "#FFFFFF" }, { niveau: 2, nom: "Jaune", fond: "#FFF600", texte: "#3A3A00" },
-    { niveau: 3, nom: "Orange", fond: "#FFB82B", texte: "#3A2400" }, { niveau: 4, nom: "Rouge", fond: "#CC0000", texte: "#FFFFFF" },
+    { niveau: 1, nom: "Vert", fond: "#31AA35", texte: "#FFFFFF" },
+    { niveau: 2, nom: "Jaune", fond: "#FFF600", texte: "#3A3A00" },
+    { niveau: 3, nom: "Orange", fond: "#FFB82B", texte: "#3A2400" },
+    { niveau: 4, nom: "Rouge", fond: "#CC0000", texte: "#FFFFFF" },
   ];
   const ECHEANCES_VIGILANCE = ["Aujourd'hui", "Demain"];
-  const optionsCouleurs = () => json({ choices: COULEURS_VIGILANCE.map(c => c.nom), choiceOptions: Object.fromEntries(COULEURS_VIGILANCE.map(c => [c.nom, { fillColor: c.fond, textColor: c.texte }])) });
+  const optionsCouleurs = () =>
+    json({
+      choices: COULEURS_VIGILANCE.map((c) => c.nom),
+      choiceOptions: Object.fromEntries(
+        COULEURS_VIGILANCE.map((c) => [c.nom, { fillColor: c.fond, textColor: c.texte }]),
+      ),
+    });
   const COLONNES_VIGILANCES = [
-    { id: "Departement_code", type: "Text" }, { id: "Departement", type: "Text" }, { id: "Phenomene", type: "Text" },
-    { id: "Couleur", type: "Choice", widgetOptions: optionsCouleurs() }, { id: "Niveau", type: "Int" },
+    { id: "Departement_code", type: "Text" },
+    { id: "Departement", type: "Text" },
+    { id: "Phenomene", type: "Text" },
+    { id: "Couleur", type: "Choice", widgetOptions: optionsCouleurs() },
+    { id: "Niveau", type: "Int" },
     { id: "Echeance", type: "Choice", widgetOptions: json({ choices: ECHEANCES_VIGILANCE }) },
-    { id: "Debut", type: "DateTime:Europe/Paris" }, { id: "Fin", type: "DateTime:Europe/Paris" }, { id: "Mise_a_jour", type: "DateTime:Europe/Paris" }, { id: "Littoral", type: "Bool" },
+    { id: "Debut", type: "DateTime:Europe/Paris" },
+    { id: "Fin", type: "DateTime:Europe/Paris" },
+    { id: "Mise_a_jour", type: "DateTime:Europe/Paris" },
+    { id: "Littoral", type: "Bool" },
   ];
   const COLONNES_VIGILANCES_JOURNAL = [
-    { id: "Le", type: "DateTime:Europe/Paris" }, { id: "Departement_code", type: "Text" }, { id: "Departement", type: "Text" }, { id: "Phenomene", type: "Text" },
+    { id: "Le", type: "DateTime:Europe/Paris" },
+    { id: "Departement_code", type: "Text" },
+    { id: "Departement", type: "Text" },
+    { id: "Phenomene", type: "Text" },
     { id: "Echeance", type: "Choice", widgetOptions: json({ choices: ECHEANCES_VIGILANCE }) },
-    { id: "Avant", type: "Choice", widgetOptions: optionsCouleurs() }, { id: "Apres", type: "Choice", widgetOptions: optionsCouleurs() }, { id: "Niveau", type: "Int" },
+    { id: "Avant", type: "Choice", widgetOptions: optionsCouleurs() },
+    { id: "Apres", type: "Choice", widgetOptions: optionsCouleurs() },
+    { id: "Niveau", type: "Int" },
   ];
   function reglagesVeille(config) {
     const v = (config && config.valeurs && config.valeurs.veille) || {};
-    return { seuil: [2, 3, 4].includes(v.seuil) ? v.seuil : 3, phenomenes: Array.isArray(v.phenomenes) ? v.phenomenes : [] };
+    return {
+      seuil: [2, 3, 4].includes(v.seuil) ? v.seuil : 3,
+      phenomenes: Array.isArray(v.phenomenes) ? v.phenomenes : [],
+    };
   }
   async function lireVigilances(g) {
-    let t; try { t = await grist.docApi.fetchTable((g && g.vigilances) || DEFAUTS_GENERAL.vigilances); } catch (_) { return null; }
+    let t;
+    try {
+      t = await grist.docApi.fetchTable((g && g.vigilances) || DEFAUTS_GENERAL.vigilances);
+    } catch (_) {
+      return null;
+    }
     const v = (k, i) => (t[k] || [])[i];
-    return (t.id || []).map((id, i) => ({ id, code: String(v("Departement_code", i) || ""), departement: String(v("Departement", i) || ""), phenomene: String(v("Phenomene", i) || ""),
-      niveau: Number(v("Niveau", i)) || 0, couleur: String(v("Couleur", i) || ""), echeance: String(v("Echeance", i) || ""), debut: v("Debut", i) || null, fin: v("Fin", i) || null,
-      maj: v("Mise_a_jour", i) || null, littoral: !!v("Littoral", i) }));
+    return (t.id || []).map((id, i) => ({
+      id,
+      code: String(v("Departement_code", i) || ""),
+      departement: String(v("Departement", i) || ""),
+      phenomene: String(v("Phenomene", i) || ""),
+      niveau: Number(v("Niveau", i)) || 0,
+      couleur: String(v("Couleur", i) || ""),
+      echeance: String(v("Echeance", i) || ""),
+      debut: v("Debut", i) || null,
+      fin: v("Fin", i) || null,
+      maj: v("Mise_a_jour", i) || null,
+      littoral: !!v("Littoral", i),
+    }));
   }
 
   /* ---------- Campagnes de sollicitation des établissements (onglet Établissements) ----------
@@ -596,54 +1019,97 @@ return sorted(champs)`;
      Un établissement visé a répondu s'il a enregistré un signalement (ou « Rien à signaler ») depuis le lancement
      (mode « une »), ou ce jour-là (mode « quotidienne »). */
   const MODES_CAMPAGNE = { une: "Une réponse attendue", quotidienne: "Une réponse attendue chaque jour" };
-  const campagnes = config => ((config && config.valeurs && config.valeurs.campagnes && config.valeurs.campagnes.liste) || []).filter(c => c && c.id);
-  const campagneEnCours = (c, t = Date.now() / 1000) => !!c && !c.close && (!c.debut || c.debut <= t) && (!c.fin || t <= c.fin);
-  const valeursCellule = v => (Array.isArray(v) ? (v[0] === "L" ? v.slice(1) : v) : [v]).map(x => (x == null ? "" : String(x).trim())).filter(Boolean);
+  const campagnes = (config) =>
+    ((config && config.valeurs && config.valeurs.campagnes && config.valeurs.campagnes.liste) || []).filter(
+      (c) => c && c.id,
+    );
+  const campagneEnCours = (c, t = Date.now() / 1000) =>
+    !!c && !c.close && (!c.debut || c.debut <= t) && (!c.fin || t <= c.fin);
+  const valeursCellule = (v) =>
+    (Array.isArray(v) ? (v[0] === "L" ? v.slice(1) : v) : [v])
+      .map((x) => (x == null ? "" : String(x).trim()))
+      .filter(Boolean);
   // L'établissement (ligne du référentiel { colonne: valeur }) est-il visé par la campagne ? cols : { nom, uai, commune, mail }
   function campagneVise(c, ligne, cols) {
     if (!c || !ligne) return false;
-    for (const [col, vals] of Object.entries(c.crit || {})) if (Array.isArray(vals) && vals.length && !valeursCellule(ligne[col]).some(x => vals.includes(x))) return false;
+    for (const [col, vals] of Object.entries(c.crit || {}))
+      if (Array.isArray(vals) && vals.length && !valeursCellule(ligne[col]).some((x) => vals.includes(x))) return false;
     if (c.avecMail && cols && cols.mail && !String(ligne[cols.mail] || "").trim()) return false;
     const q = norm(c.recherche || "");
-    if (q && cols) { const txt = norm([cols.nom, cols.uai, cols.commune].filter(Boolean).map(k => ligne[k]).join(" ")); if (!txt.includes(q)) return false; }
+    if (q && cols) {
+      const txt = norm(
+        [cols.nom, cols.uai, cols.commune]
+          .filter(Boolean)
+          .map((k) => ligne[k])
+          .join(" "),
+      );
+      if (!txt.includes(q)) return false;
+    }
     return true;
   }
   // Jour civil à Paris (AAAA-MM-JJ) d'un instant en secondes
-  const fmtJour = new Intl.DateTimeFormat("fr-CA", { timeZone: "Europe/Paris", year: "numeric", month: "2-digit", day: "2-digit" });
-  const jourParis = s => s == null || s === "" ? "" : fmtJour.format(new Date(Number(s) * 1000));
+  const fmtJour = new Intl.DateTimeFormat("fr-CA", {
+    timeZone: "Europe/Paris",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const jourParis = (s) => (s == null || s === "" ? "" : fmtJour.format(new Date(Number(s) * 1000)));
   // Réponse attendue : saisie (en secondes) qui compte pour la campagne, le jour donné (AAAA-MM-JJ, mode quotidien)
   function reponseCompte(c, saisie, jour) {
     if (saisie == null || saisie === "" || (c.debut && saisie < c.debut)) return false;
     return c.mode === "quotidienne" ? jourParis(saisie) === (jour || jourParis(Date.now() / 1000)) : true;
   }
   const COLONNES_CRENEAUX = [
-    { id: "Date", type: "Date" }, { id: "Nom", type: "Text" },
-    { id: "Debut", type: "DateTime:Europe/Paris" }, { id: "Fin", type: "DateTime:Europe/Paris" }, { id: "Note", type: "Text" },
+    { id: "Date", type: "Date" },
+    { id: "Nom", type: "Text" },
+    { id: "Debut", type: "DateTime:Europe/Paris" },
+    { id: "Fin", type: "DateTime:Europe/Paris" },
+    { id: "Note", type: "Text" },
   ];
   function colonnesAffectations(g, config) {
     return [
-      { id: "Creneau", type: `Ref:${g.creneaux}` }, { id: "Agent", type: `Ref:${g.agents}` },
-      { id: "Fonction", type: "Choice", widgetOptions: choix(reglagesPlanning(config).fonctions.map(f => f.nom)) },
-      { id: "Perimetre", type: "Text" }, { id: "Champ", type: "ChoiceList", widgetOptions: choix(CHAMPS.map(c => c.id)) },
-      { id: "Note", type: "Text" }, { id: "Modifie_le", type: "DateTime:Europe/Paris" },
+      { id: "Creneau", type: `Ref:${g.creneaux}` },
+      { id: "Agent", type: `Ref:${g.agents}` },
+      { id: "Fonction", type: "Choice", widgetOptions: choix(reglagesPlanning(config).fonctions.map((f) => f.nom)) },
+      { id: "Perimetre", type: "Text" },
+      { id: "Champ", type: "ChoiceList", widgetOptions: choix(CHAMPS.map((c) => c.id)) },
+      { id: "Note", type: "Text" },
+      { id: "Modifie_le", type: "DateTime:Europe/Paris" },
     ];
   }
   // Émargement : une ligne par prise de service (Debut) ; Fin remplie à la fin du service.
   // Auteur : adresse du compte Grist qui a créé la ligne (formule d'initialisation user.Email), non falsifiable.
   function colonnesEmargements(g) {
     return [
-      { id: "Agent", type: `Ref:${g.agents}` }, { id: "Creneau", type: `Ref:${g.creneaux}` },
-      { id: "Debut", type: "DateTime:Europe/Paris" }, { id: "Fin", type: "DateTime:Europe/Paris" },
-      { id: "Auteur", type: "Text", formula: formuleAuteur(g) }, { id: "Note", type: "Text" },
+      { id: "Agent", type: `Ref:${g.agents}` },
+      { id: "Creneau", type: `Ref:${g.creneaux}` },
+      { id: "Debut", type: "DateTime:Europe/Paris" },
+      { id: "Fin", type: "DateTime:Europe/Paris" },
+      { id: "Auteur", type: "Text", formula: formuleAuteur(g) },
+      { id: "Note", type: "Text" },
     ];
   }
   // Émargements lus en une fois : [{ id, agent, creneau, debut, fin, auteur, note }] ; null si la table n'existe pas
   async function lireEmargements(g) {
     let t;
-    try { t = await grist.docApi.fetchTable(g.emargements || "Emargements"); } catch (_) { return null; }
+    try {
+      t = await grist.docApi.fetchTable(g.emargements || "Emargements");
+    } catch (_) {
+      return null;
+    }
     const v = (k, i) => (t[k] || [])[i];
-    return (t.id || []).map((id, i) => ({ id, agent: v("Agent", i), creneau: v("Creneau", i) || null, debut: v("Debut", i) || null, fin: v("Fin", i) || null,
-      auteur: String(v("Auteur", i) || ""), note: String(v("Note", i) || "") })).sort((a, b) => (a.debut || 0) - (b.debut || 0));
+    return (t.id || [])
+      .map((id, i) => ({
+        id,
+        agent: v("Agent", i),
+        creneau: v("Creneau", i) || null,
+        debut: v("Debut", i) || null,
+        fin: v("Fin", i) || null,
+        auteur: String(v("Auteur", i) || ""),
+        note: String(v("Note", i) || ""),
+      }))
+      .sort((a, b) => (a.debut || 0) - (b.debut || 0));
   }
   // Suivi des actions (onglet Actions de l'administration, en kanban) : une ligne par action.
   // Colonnes du kanban (statuts) réglables : clé « actions » de Config ; « clos » = la colonne qui termine une action
@@ -656,62 +1122,117 @@ return sorted(champs)`;
     ],
     cartes: { priorite: true, description: true, echeance: true, responsable: true, creation: false },
   };
-  const STATUTS_ACTION = ACTIONS_DEFAUT.statuts.map(x => x.nom);
+  const STATUTS_ACTION = ACTIONS_DEFAUT.statuts.map((x) => x.nom);
   const PRIORITES_ACTION = ["Haute", "Moyenne", "Basse"];
   function reglagesActions(config) {
     const v = (config && config.valeurs && config.valeurs.actions) || {};
     const statuts = (Array.isArray(v.statuts) && v.statuts.length >= 2 ? v.statuts : ACTIONS_DEFAUT.statuts)
-      .map(x => ({ nom: String(x.nom || ""), couleur: x.couleur || "#94a3b8", emoji: String(x.emoji || ""), clos: !!x.clos })).filter(x => x.nom);
-    if (!statuts.some(x => x.clos)) statuts[statuts.length - 1].clos = true;
+      .map((x) => ({
+        nom: String(x.nom || ""),
+        couleur: x.couleur || "#94a3b8",
+        emoji: String(x.emoji || ""),
+        clos: !!x.clos,
+      }))
+      .filter((x) => x.nom);
+    if (!statuts.some((x) => x.clos)) statuts[statuts.length - 1].clos = true;
     return { statuts, cartes: { ...ACTIONS_DEFAUT.cartes, ...(v.cartes || {}) } };
   }
   // Options de la colonne Choice Statut : choix et couleurs des colonnes du kanban
-  const optionsStatuts = statuts => json({ choices: statuts.map(x => x.nom),
-    choiceOptions: Object.fromEntries(statuts.map(x => [x.nom, { fillColor: x.couleur, textColor: "#ffffff" }])) });
+  const optionsStatuts = (statuts) =>
+    json({
+      choices: statuts.map((x) => x.nom),
+      choiceOptions: Object.fromEntries(statuts.map((x) => [x.nom, { fillColor: x.couleur, textColor: "#ffffff" }])),
+    });
   function colonnesActions(g, config) {
     return [
-      { id: "Titre", type: "Text" }, { id: "Description", type: "Text" },
+      { id: "Titre", type: "Text" },
+      { id: "Description", type: "Text" },
       { id: "Statut", type: "Choice", widgetOptions: optionsStatuts(reglagesActions(config).statuts) },
       { id: "Priorite", type: "Choice", widgetOptions: choix(PRIORITES_ACTION) },
-      { id: "Responsable", type: `Ref:${g.agents}` }, { id: "Echeance", type: "Date" },
-      { id: "Cree_par", type: "Text", formula: "user.Email" }, { id: "Cree_le", type: "DateTime:Europe/Paris", formula: "NOW()" },
+      { id: "Responsable", type: `Ref:${g.agents}` },
+      { id: "Echeance", type: "Date" },
+      { id: "Cree_par", type: "Text", formula: "user.Email" },
+      { id: "Cree_le", type: "DateTime:Europe/Paris", formula: "NOW()" },
       { id: "Fait_le", type: "DateTime:Europe/Paris" },
-      { id: "Ordre", type: "Numeric" }, { id: "Archivee", type: "Bool" },
+      { id: "Ordre", type: "Numeric" },
+      { id: "Archivee", type: "Bool" },
     ];
   }
   async function lireActions(g) {
     let t;
-    try { t = await grist.docApi.fetchTable(g.actions || "Actions"); } catch (_) { return null; }
+    try {
+      t = await grist.docApi.fetchTable(g.actions || "Actions");
+    } catch (_) {
+      return null;
+    }
     const v = (k, i) => (t[k] || [])[i];
-    return (t.id || []).map((id, i) => ({ id, titre: String(v("Titre", i) || ""), description: String(v("Description", i) || ""),
-      statut: String(v("Statut", i) || ""), priorite: PRIORITES_ACTION.includes(v("Priorite", i)) ? v("Priorite", i) : "Moyenne",
-      responsable: v("Responsable", i) || null, echeance: v("Echeance", i) || null, creePar: String(v("Cree_par", i) || ""),
-      creeLe: v("Cree_le", i) || null, faitLe: v("Fait_le", i) || null, ordre: typeof v("Ordre", i) === "number" ? v("Ordre", i) : null,
-      archivee: !!v("Archivee", i) }));
+    return (t.id || []).map((id, i) => ({
+      id,
+      titre: String(v("Titre", i) || ""),
+      description: String(v("Description", i) || ""),
+      statut: String(v("Statut", i) || ""),
+      priorite: PRIORITES_ACTION.includes(v("Priorite", i)) ? v("Priorite", i) : "Moyenne",
+      responsable: v("Responsable", i) || null,
+      echeance: v("Echeance", i) || null,
+      creePar: String(v("Cree_par", i) || ""),
+      creeLe: v("Cree_le", i) || null,
+      faitLe: v("Fait_le", i) || null,
+      ordre: typeof v("Ordre", i) === "number" ? v("Ordre", i) : null,
+      archivee: !!v("Archivee", i),
+    }));
   }
   // Valeur d'une colonne ChoiceList (["L", "EN", …], texte « EN, ESR », ou vide) → liste
-  const listeChoix = v => Array.isArray(v) ? v.filter(x => x !== "L").map(String) : (typeof v === "string" && v.trim() ? v.split(/\s*,\s*/) : []);
+  const listeChoix = (v) =>
+    Array.isArray(v)
+      ? v.filter((x) => x !== "L").map(String)
+      : typeof v === "string" && v.trim()
+        ? v.split(/\s*,\s*/)
+        : [];
   // Champs couverts par une affectation : vide = les deux
-  const champsDe = a => { const l = (a && a.champ) || []; return l.length ? l : CHAMPS.map(c => c.id); };
+  const champsDe = (a) => {
+    const l = (a && a.champ) || [];
+    return l.length ? l : CHAMPS.map((c) => c.id);
+  };
   // Planning lu en une fois : { creneaux: [{id, date, nom, debut, fin, note}], affectations: [{id, creneau, agent, fonction, perimetre(texte), note}] }
   // null si les tables n'existent pas.
   async function lirePlanning(g) {
     let c, a;
-    try { [c, a] = await Promise.all([grist.docApi.fetchTable(g.creneaux), grist.docApi.fetchTable(g.affectations)]); } catch (_) { return null; }
+    try {
+      [c, a] = await Promise.all([grist.docApi.fetchTable(g.creneaux), grist.docApi.fetchTable(g.affectations)]);
+    } catch (_) {
+      return null;
+    }
     const v = (t, k, i) => (t[k] || [])[i];
     return {
-      creneaux: (c.id || []).map((id, i) => ({ id, date: v(c, "Date", i), nom: String(v(c, "Nom", i) || ""), debut: v(c, "Debut", i), fin: v(c, "Fin", i), note: String(v(c, "Note", i) || "") }))
+      creneaux: (c.id || [])
+        .map((id, i) => ({
+          id,
+          date: v(c, "Date", i),
+          nom: String(v(c, "Nom", i) || ""),
+          debut: v(c, "Debut", i),
+          fin: v(c, "Fin", i),
+          note: String(v(c, "Note", i) || ""),
+        }))
         .sort((x, y) => (x.debut || 0) - (y.debut || 0)),
-      affectations: (a.id || []).map((id, i) => ({ id, creneau: v(a, "Creneau", i), agent: v(a, "Agent", i), fonction: String(v(a, "Fonction", i) || ""),
-        perimetre: v(a, "Perimetre", i) || "", champ: listeChoix(v(a, "Champ", i)), note: String(v(a, "Note", i) || "") })),
+      affectations: (a.id || []).map((id, i) => ({
+        id,
+        creneau: v(a, "Creneau", i),
+        agent: v(a, "Agent", i),
+        fonction: String(v(a, "Fonction", i) || ""),
+        perimetre: v(a, "Perimetre", i) || "",
+        champ: listeChoix(v(a, "Champ", i)),
+        note: String(v(a, "Note", i) || ""),
+      })),
     };
   }
   // Affectations en cours d'un agent à l'instant t (secondes) : [{ affectation, creneau }]
   function affectationsEnCours(planning, agentId, t = Date.now() / 1000) {
     if (!planning || agentId == null) return [];
-    const parId = new Map(planning.creneaux.map(c => [c.id, c]));
-    return planning.affectations.filter(a => a.agent === agentId).map(a => ({ affectation: a, creneau: parId.get(a.creneau) }))
-      .filter(x => x.creneau && x.creneau.debut <= t && t < x.creneau.fin);
+    const parId = new Map(planning.creneaux.map((c) => [c.id, c]));
+    return planning.affectations
+      .filter((a) => a.agent === agentId)
+      .map((a) => ({ affectation: a, creneau: parId.get(a.creneau) }))
+      .filter((x) => x.creneau && x.creneau.debut <= t && t < x.creneau.fin);
   }
 
   /* ---------- Cache de lecture (administration) ----------
@@ -720,47 +1241,105 @@ return sorted(champs)`;
      Toute écriture par applyUserActions vide le cache, sauf les grosses tables qu'elle ne touche pas.
      Chaque lecture rend une copie (les colonnes sont des tableaux neufs) : un module qui modifie ce qu'il lit ne gâte pas le cache. */
   const ecouteursEcriture = [];
-  function surEcriture(fn) { ecouteursEcriture.push(fn); }
+  function surEcriture(fn) {
+    ecouteursEcriture.push(fn);
+  }
   function activerCacheLecture() {
     const api = window.grist && grist.docApi;
     if (!api || api.__socleCache) return !!(api && api.__socleCache);
-    const fetchOrig = api.fetchTable && api.fetchTable.bind(api), applyOrig = api.applyUserActions && api.applyUserActions.bind(api);
+    const fetchOrig = api.fetchTable && api.fetchTable.bind(api),
+      applyOrig = api.applyUserActions && api.applyUserActions.bind(api);
     if (!fetchOrig || !applyOrig) return false;
-    const cache = new Map(), TTL = 15000, TTL_GROS = 60000, GROS = 5000;
-    const copie = t => { const r = {}; for (const [k, v] of Object.entries(t || {})) r[k] = Array.isArray(v) ? v.slice() : v; return r; };
-    const lire = tableId => {
-      const e = cache.get(tableId), now = Date.now();
+    const cache = new Map(),
+      TTL = 15000,
+      TTL_GROS = 60000,
+      GROS = 5000;
+    const copie = (t) => {
+      const r = {};
+      for (const [k, v] of Object.entries(t || {})) r[k] = Array.isArray(v) ? v.slice() : v;
+      return r;
+    };
+    const lire = (tableId) => {
+      const e = cache.get(tableId),
+        now = Date.now();
       if (e && now - e.t < (e.gros ? TTL_GROS : TTL)) return e.p.then(copie);
       const ent = { t: now, gros: false };
       ent.p = fetchOrig(tableId);
       cache.set(tableId, ent);
-      ent.p.then(r => { ent.gros = !!(r && r.id && r.id.length > GROS); }, () => { if (cache.get(tableId) === ent) cache.delete(tableId); });
+      ent.p.then(
+        (r) => {
+          ent.gros = !!(r && r.id && r.id.length > GROS);
+        },
+        () => {
+          if (cache.get(tableId) === ent) cache.delete(tableId);
+        },
+      );
       return ent.p.then(copie);
     };
-    const invalider = actions => {
+    const invalider = (actions) => {
       const cibles = new Set();
       for (const a of actions || []) if (Array.isArray(a) && typeof a[1] === "string") cibles.add(a[1]);
       for (const [k, e] of [...cache]) if (!e.gros || cibles.has(k) || k.startsWith("_grist")) cache.delete(k);
-      ecouteursEcriture.forEach(fn => { try { fn(cibles); } catch (_) { /* écouteur fautif ignoré */ } });
+      ecouteursEcriture.forEach((fn) => {
+        try {
+          fn(cibles);
+        } catch (_) {
+          /* écouteur fautif ignoré */
+        }
+      });
     };
-    const ecrire = async (actions, opts) => { try { return await applyOrig(actions, opts); } finally { invalider(actions); } };
-    try { api.fetchTable = lire; api.applyUserActions = ecrire; } catch (_) { return false; }
+    const ecrire = async (actions, opts) => {
+      try {
+        return await applyOrig(actions, opts);
+      } finally {
+        invalider(actions);
+      }
+    };
+    try {
+      api.fetchTable = lire;
+      api.applyUserActions = ecrire;
+    } catch (_) {
+      return false;
+    }
     if (api.fetchTable !== lire || api.applyUserActions !== ecrire) {
       // objet de Grist non modifiable : on remet tout en l'état, sans cache
-      try { api.fetchTable = fetchOrig; api.applyUserActions = applyOrig; } catch (_) { /* rien */ }
+      try {
+        api.fetchTable = fetchOrig;
+        api.applyUserActions = applyOrig;
+      } catch (_) {
+        /* rien */
+      }
       return false;
     }
     // oublier la structure (pages, tables, colonnes) : elle change aussi depuis Grist (page supprimée, colonne ajoutée…)
-    api.__socleCache = { vider: () => { cache.clear(); invalider([]); }, oublierStructure: () => { for (const k of [...cache.keys()]) if (k.startsWith("_grist")) cache.delete(k); } };
+    api.__socleCache = {
+      vider: () => {
+        cache.clear();
+        invalider([]);
+      },
+      oublierStructure: () => {
+        for (const k of [...cache.keys()]) if (k.startsWith("_grist")) cache.delete(k);
+      },
+    };
     return true;
   }
-  const oublierStructure = () => { const c = window.grist && grist.docApi && grist.docApi.__socleCache; if (c) c.oublierStructure(); };
-  const viderCacheLecture = () => { const c = window.grist && grist.docApi && grist.docApi.__socleCache; if (c) c.vider(); };
+  const oublierStructure = () => {
+    const c = window.grist && grist.docApi && grist.docApi.__socleCache;
+    if (c) c.oublierStructure();
+  };
+  const viderCacheLecture = () => {
+    const c = window.grist && grist.docApi && grist.docApi.__socleCache;
+    if (c) c.vider();
+  };
 
   /* ---------- Lecture des métadonnées Grist ---------- */
   async function lireMeta() {
-    const [t, c] = await Promise.all([grist.docApi.fetchTable("_grist_Tables"), grist.docApi.fetchTable("_grist_Tables_column")]);
-    const parRef = {}, tables = {};
+    const [t, c] = await Promise.all([
+      grist.docApi.fetchTable("_grist_Tables"),
+      grist.docApi.fetchTable("_grist_Tables_column"),
+    ]);
+    const parRef = {},
+      tables = {};
     t.id.forEach((ref, i) => {
       const tableId = t.tableId[i];
       if (!tableId || tableId.startsWith("GristHidden")) return;
@@ -768,11 +1347,17 @@ return sorted(champs)`;
       tables[tableId] = { ref, tableId, colonnes: {} };
     });
     c.id.forEach((ref, i) => {
-      const tableId = parRef[c.parentId[i]], colId = c.colId[i];
+      const tableId = parRef[c.parentId[i]],
+        colId = c.colId[i];
       if (!tableId || !colId || colId === "manualSort" || colId.startsWith("gristHelper")) return;
       tables[tableId].colonnes[colId] = {
-        ref, colId, type: c.type[i], label: c.label[i] || colId,
-        isFormula: !!c.isFormula[i], formula: c.formula[i] || "", widgetOptions: c.widgetOptions[i] || "",
+        ref,
+        colId,
+        type: c.type[i],
+        label: c.label[i] || colId,
+        isFormula: !!c.isFormula[i],
+        formula: c.formula[i] || "",
+        widgetOptions: c.widgetOptions[i] || "",
       };
     });
     return tables;
@@ -783,15 +1368,22 @@ return sorted(champs)`;
   async function lireConfig(meta) {
     if (meta && !meta[TABLE_CONFIG]) return null;
     let t;
-    try { t = await grist.docApi.fetchTable(TABLE_CONFIG); } catch (_) { return null; }
+    try {
+      t = await grist.docApi.fetchTable(TABLE_CONFIG);
+    } catch (_) {
+      return null;
+    }
     const res = { valeurs: {}, ids: {}, erreurs: [] };
     (t.id || []).forEach((id, i) => {
       const cle = String((t.Cle || [])[i] || "").trim();
       if (!cle) return;
       const brut = (t.Valeur || [])[i];
       res.ids[cle] = id;
-      try { res.valeurs[cle] = brut ? JSON.parse(brut) : null; }
-      catch (e) { res.erreurs.push(`La valeur de la clé « ${cle} » n'est pas un JSON valide : ${e.message}`); }
+      try {
+        res.valeurs[cle] = brut ? JSON.parse(brut) : null;
+      } catch (e) {
+        res.erreurs.push(`La valeur de la clé « ${cle} » n'est pas un JSON valide : ${e.message}`);
+      }
     });
     return res;
   }
@@ -814,20 +1406,32 @@ return sorted(champs)`;
      Ordre : association du panneau Grist (mappings), puis clé « roles » de Config, puis nom canonique,
      puis reconnaissance par le nom ou le libellé. Une colonne ne sert qu'à un seul rôle. */
   function resoudreRoles(famille, tableMeta, ctx, assocConfig = {}, mappings = {}) {
-    const res = {}, pris = new Set();
+    const res = {},
+      pris = new Set();
     if (!tableMeta) return res;
     const cols = Object.values(tableMeta.colonnes);
-    const prendre = (def, colId, origine) => { res[def.role] = { col: colId, origine }; pris.add(colId); };
+    const prendre = (def, colId, origine) => {
+      res[def.role] = { col: colId, origine };
+      pris.add(colId);
+    };
     const ok = (def, c) => c && !pris.has(c.colId) && def.accepte(c, ctx);
     const defs = ROLES[famille];
     // 1 et 2 : associations explicites (mêmes contrôles de type)
     for (const def of defs) {
-      for (const [source, origine] of [[mappings, "panneau Grist"], [assocConfig, "Config"]]) {
+      for (const [source, origine] of [
+        [mappings, "panneau Grist"],
+        [assocConfig, "Config"],
+      ]) {
         const colId = source && source[def.role];
         if (res[def.role] || !colId) continue;
         const c = tableMeta.colonnes[colId];
         if (ok(def, c)) prendre(def, colId, origine);
-        else res[def.role] = { col: null, origine: null, alerte: `L'association « ${def.role} → ${colId} » (${origine}) est ignorée : colonne absente ou de type incompatible.` };
+        else
+          res[def.role] = {
+            col: null,
+            origine: null,
+            alerte: `L'association « ${def.role} → ${colId} » (${origine}) est ignorée : colonne absente ou de type incompatible.`,
+          };
       }
     }
     // 3 : nom canonique
@@ -841,7 +1445,10 @@ return sorted(champs)`;
       if (res[def.role] && res[def.role].col) continue;
       let trouve = null;
       for (const m of def.motifs) {
-        trouve = cols.find(c => ok(def, c) && [norm(c.colId), norm(c.label)].some(n => n && m.test(n) && !(def.sauf && def.sauf.test(n))));
+        trouve = cols.find(
+          (c) =>
+            ok(def, c) && [norm(c.colId), norm(c.label)].some((n) => n && m.test(n) && !(def.sauf && def.sauf.test(n))),
+        );
         if (trouve) break;
       }
       if (trouve) prendre(def, trouve.colId, "reconnaissance");
@@ -851,16 +1458,26 @@ return sorted(champs)`;
   }
   // Colonnes d'une table compatibles avec un rôle (pour les listes de choix de l'administration)
   function colonnesCompatibles(famille, role, tableMeta, ctx) {
-    const def = ROLES[famille].find(d => d.role === role);
+    const def = ROLES[famille].find((d) => d.role === role);
     if (!def || !tableMeta) return [];
-    return Object.values(tableMeta.colonnes).filter(c => def.accepte(c, ctx)).map(c => c.colId);
+    return Object.values(tableMeta.colonnes)
+      .filter((c) => def.accepte(c, ctx))
+      .map((c) => c.colId);
   }
 
   // Nouvelle table avec page : colonnes créées avec AddTable, options d'affichage (listes de choix) posées ensuite.
   // Aucun libellé n'est fixé : dans Grist, modifier le libellé renomme la colonne, ce qui casserait les noms canoniques.
   function actionsNouvelleTable(nom, specs) {
-    return [["AddTable", nom, specs.map(({ id, type, isFormula, formula }) => ({ id, type, isFormula: !!isFormula, formula: formula || "" }))],
-            ...specs.filter(c => c.widgetOptions).map(c => ["ModifyColumn", nom, c.id, { widgetOptions: c.widgetOptions }])];
+    return [
+      [
+        "AddTable",
+        nom,
+        specs.map(({ id, type, isFormula, formula }) => ({ id, type, isFormula: !!isFormula, formula: formula || "" })),
+      ],
+      ...specs
+        .filter((c) => c.widgetOptions)
+        .map((c) => ["ModifyColumn", nom, c.id, { widgetOptions: c.widgetOptions }]),
+    ];
   }
 
   /* ---------- Plan d'installation ----------
@@ -870,77 +1487,174 @@ return sorted(champs)`;
      Version (référence vers la version), Mouvement (Ajout, Modification, Inchangée, Retrait — par rapport à la
      version précédente du dossier), Etat_actuel (ligne de la version la plus récente du dossier, hors retraits :
      le stock), Date_version (date des faits de la version, à défaut sa date de saisie). */
-  const MOUVEMENTS_TABLEAU = { Ajout: "#B8FEC9", Modification: "#FEECC2", "Inchangée": "#EEEEEE", Retrait: "#FFE9E6" };
+  const MOUVEMENTS_TABLEAU = { Ajout: "#B8FEC9", Modification: "#FEECC2", Inchangée: "#EEEEEE", Retrait: "#FFE9E6" };
   function colonnesHistoriqueTableau(table, rep, colDos, rolesRep) {
-    const c = r => rolesRep && rolesRep[r] && rolesRep[r].col;
-    const dv = c("Derniere_version"), faits = c("Date_faits"), cree = c("Cree_le");
+    const c = (r) => rolesRep && rolesRep[r] && rolesRep[r].col;
+    const dv = c("Derniere_version"),
+      faits = c("Date_faits"),
+      cree = c("Cree_le");
     const cols = [
       { id: "Version", type: `Ref:${rep}` },
-      { id: "Mouvement", type: "Choice", widgetOptions: json({ choices: Object.keys(MOUVEMENTS_TABLEAU), choiceOptions: Object.fromEntries(Object.entries(MOUVEMENTS_TABLEAU).map(([k, v]) => [k, { fillColor: v }])) }) },
-      { id: "Etat_actuel", type: "Bool", isFormula: true, formula: [
-        "# ligne de la version la plus récente du dossier (hors retraits) : le stock",
-        "if not $Version:", "  return True",
-        "if $Mouvement == \"Retrait\":", "  return False",
-        `versions = [r.Version for r in ${table}.lookupRecords(${colDos}=$${colDos}) if r.Version]`,
-        `derniere = max(versions, key=lambda v: (${dv ? `bool(v.${dv}), ` : ""}v.id))`,
-        "return $Version.id == derniere.id"].join("\n") },
+      {
+        id: "Mouvement",
+        type: "Choice",
+        widgetOptions: json({
+          choices: Object.keys(MOUVEMENTS_TABLEAU),
+          choiceOptions: Object.fromEntries(Object.entries(MOUVEMENTS_TABLEAU).map(([k, v]) => [k, { fillColor: v }])),
+        }),
+      },
+      {
+        id: "Etat_actuel",
+        type: "Bool",
+        isFormula: true,
+        formula: [
+          "# ligne de la version la plus récente du dossier (hors retraits) : le stock",
+          "if not $Version:",
+          "  return True",
+          'if $Mouvement == "Retrait":',
+          "  return False",
+          `versions = [r.Version for r in ${table}.lookupRecords(${colDos}=$${colDos}) if r.Version]`,
+          `derniere = max(versions, key=lambda v: (${dv ? `bool(v.${dv}), ` : ""}v.id))`,
+          "return $Version.id == derniere.id",
+        ].join("\n"),
+      },
     ];
-    if (faits || cree) cols.push({ id: "Date_version", type: "Date", isFormula: true, formula: [
-      "v = $Version", "if not v:", "  return None",
-      ...(faits ? [`if v.${faits}:`, `  return v.${faits}.date() if hasattr(v.${faits}, "date") else v.${faits}`] : []),
-      ...(cree ? [`return v.${cree}.date() if v.${cree} else None`] : ["return None"])].join("\n") });
+    if (faits || cree)
+      cols.push({
+        id: "Date_version",
+        type: "Date",
+        isFormula: true,
+        formula: [
+          "v = $Version",
+          "if not v:",
+          "  return None",
+          ...(faits
+            ? [`if v.${faits}:`, `  return v.${faits}.date() if hasattr(v.${faits}, "date") else v.${faits}`]
+            : []),
+          ...(cree ? [`return v.${cree}.date() if v.${cree} else None`] : ["return None"]),
+        ].join("\n"),
+      });
     return cols;
   }
   function planInstallation(meta, config, choix = {}) {
     const g = general(config);
     const assoc = (config && config.valeurs && config.valeurs.roles) || {};
-    const etapes = [], infos = [];
+    const etapes = [],
+      infos = [];
     // Colonne de données ; une formule sans isFormula est une formule d'initialisation (calculée à la création de la ligne)
-    const infoCol = c => ({ type: c.type, isFormula: false, ...(c.widgetOptions ? { widgetOptions: c.widgetOptions } : {}), ...(c.formula ? { formula: c.formula } : {}) });
+    const infoCol = (c) => ({
+      type: c.type,
+      isFormula: false,
+      ...(c.widgetOptions ? { widgetOptions: c.widgetOptions } : {}),
+      ...(c.formula ? { formula: c.formula } : {}),
+    });
     const ajouterTableTechnique = (nom, colonnes, titre) => {
       const t = meta[nom];
       if (!t) {
-        etapes.push({ id: `table-${nom}`, groupe: "Tables", coche: true, titre: `Créer la table ${nom}`, detail: titre,
-          actions: [["AddRawTable", nom], ...colonnes.map(c => ["AddColumn", nom, c.id, infoCol(c)]),
-                    ["RemoveColumn", nom, "A"], ["RemoveColumn", nom, "B"], ["RemoveColumn", nom, "C"]] });
+        etapes.push({
+          id: `table-${nom}`,
+          groupe: "Tables",
+          coche: true,
+          titre: `Créer la table ${nom}`,
+          detail: titre,
+          actions: [
+            ["AddRawTable", nom],
+            ...colonnes.map((c) => ["AddColumn", nom, c.id, infoCol(c)]),
+            ["RemoveColumn", nom, "A"],
+            ["RemoveColumn", nom, "B"],
+            ["RemoveColumn", nom, "C"],
+          ],
+        });
         return;
       }
-      const manquantes = colonnes.filter(c => !t.colonnes[c.id]);
-      if (manquantes.length) etapes.push({ id: `cols-${nom}`, groupe: "Tables", coche: true,
-        titre: `Compléter la table ${nom}`, detail: `Colonnes ajoutées : ${manquantes.map(c => c.id).join(", ")}.`,
-        actions: manquantes.map(c => ["AddColumn", nom, c.id, infoCol(c)]) });
+      const manquantes = colonnes.filter((c) => !t.colonnes[c.id]);
+      if (manquantes.length)
+        etapes.push({
+          id: `cols-${nom}`,
+          groupe: "Tables",
+          coche: true,
+          titre: `Compléter la table ${nom}`,
+          detail: `Colonnes ajoutées : ${manquantes.map((c) => c.id).join(", ")}.`,
+          actions: manquantes.map((c) => ["AddColumn", nom, c.id, infoCol(c)]),
+        });
     };
 
     // 1. Tables techniques
     ajouterTableTechnique(TABLE_CONFIG, COLONNES_CONFIG, "Réglages du document, une ligne par clé (valeur en JSON).");
-    ajouterTableTechnique(TABLE_ADMIN, [{ id: "Note", type: "Text" }], "Table vide qui porte la page d'administration : les règles d'accès la réservent aux propriétaires, la page est ainsi invisible des agents, des invités et des établissements.");
-    ajouterTableTechnique(TABLE_CELLULE, [{ id: "Note", type: "Text" }], "Table vide qui porte la page « Cellule » : les pages rangées dessous (réponses, référentiel, tableaux de bord…) sont invisibles des établissements et des invités (onglet Accès).");
+    ajouterTableTechnique(
+      TABLE_ADMIN,
+      [{ id: "Note", type: "Text" }],
+      "Table vide qui porte la page d'administration : les règles d'accès la réservent aux propriétaires, la page est ainsi invisible des agents, des invités et des établissements.",
+    );
+    ajouterTableTechnique(
+      TABLE_CELLULE,
+      [{ id: "Note", type: "Text" }],
+      "Table vide qui porte la page « Cellule » : les pages rangées dessous (réponses, référentiel, tableaux de bord…) sont invisibles des établissements et des invités (onglet Accès).",
+    );
     ajouterTableTechnique(g.formulaires, COLONNES_FORMULAIRES, "Formulaires en brouillon et publiés.");
     const colsAgents = colonnesAgents(config);
-    ajouterTableTechnique(g.agents, colsAgents.filter(c => !c.isFormula), "Équipe de la cellule : nom, adresse, téléphone, équipe et fonction habituelle (onglet Équipe).");
+    ajouterTableTechnique(
+      g.agents,
+      colsAgents.filter((c) => !c.isFormula),
+      "Équipe de la cellule : nom, adresse, téléphone, équipe et fonction habituelle (onglet Équipe).",
+    );
     ajouterTableTechnique(g.creneaux, COLONNES_CRENEAUX, "Planning : créneaux de chaque jour (Équipe › Planning).");
-    ajouterTableTechnique(g.affectations, colonnesAffectations(g, config), "Planning : agents affectés à chaque créneau, avec leur fonction et leur périmètre.");
-    ajouterTableTechnique(g.actions, colonnesActions(g, config), "Suivi des actions de la cellule : kanban des coordinateurs (onglet Actions).");
-    ajouterTableTechnique(g.emargements, colonnesEmargements(g), "Émargement : prises et fins de service des agents (page de saisie, suivi dans Équipe › Planning).");
-    ajouterTableTechnique(g.vigilances, COLONNES_VIGILANCES, "Veille : vigilances météo en cours, écrites par le relais n8n (onglet Veille).");
-    ajouterTableTechnique(g.vigilances_journal, COLONNES_VIGILANCES_JOURNAL, "Veille : journal des changements de vigilance (alertes, retour d'expérience).");
+    ajouterTableTechnique(
+      g.affectations,
+      colonnesAffectations(g, config),
+      "Planning : agents affectés à chaque créneau, avec leur fonction et leur périmètre.",
+    );
+    ajouterTableTechnique(
+      g.actions,
+      colonnesActions(g, config),
+      "Suivi des actions de la cellule : kanban des coordinateurs (onglet Actions).",
+    );
+    ajouterTableTechnique(
+      g.emargements,
+      colonnesEmargements(g),
+      "Émargement : prises et fins de service des agents (page de saisie, suivi dans Équipe › Planning).",
+    );
+    ajouterTableTechnique(
+      g.vigilances,
+      COLONNES_VIGILANCES,
+      "Veille : vigilances météo en cours, écrites par le relais n8n (onglet Veille).",
+    );
+    ajouterTableTechnique(
+      g.vigilances_journal,
+      COLONNES_VIGILANCES_JOURNAL,
+      "Veille : journal des changements de vigilance (alertes, retour d'expérience).",
+    );
     // Formules de la table Agents : après Affectations, qu'elles lisent
-    const formules = colsAgents.filter(c => c.isFormula && !(meta[g.agents] && meta[g.agents].colonnes[c.id]));
-    if (formules.length) etapes.push({ id: `formule-${g.agents}`, groupe: "Tables", coche: true, titre: `Ajouter ${formules.map(c => `${g.agents}.${c.id}`).join(", ")}`,
-      detail: "Champs (EN, ESR) de chaque agent d'après le planning, lus par les règles d'accès.",
-      actions: formules.map(c => ["AddColumn", g.agents, c.id, { type: c.type, isFormula: true, formula: c.formula, widgetOptions: c.widgetOptions || "" }]) });
+    const formules = colsAgents.filter((c) => c.isFormula && !(meta[g.agents] && meta[g.agents].colonnes[c.id]));
+    if (formules.length)
+      etapes.push({
+        id: `formule-${g.agents}`,
+        groupe: "Tables",
+        coche: true,
+        titre: `Ajouter ${formules.map((c) => `${g.agents}.${c.id}`).join(", ")}`,
+        detail: "Champs (EN, ESR) de chaque agent d'après le planning, lus par les règles d'accès.",
+        actions: formules.map((c) => [
+          "AddColumn",
+          g.agents,
+          c.id,
+          { type: c.type, isFormula: true, formula: c.formula, widgetOptions: c.widgetOptions || "" },
+        ]),
+      });
 
     // 2 à 4 bis : tables d'un champ (réponses et référentiel) ; sfx distingue les étapes du second champ
     const planEspace = (rep, refDefaut, assocRep, assocRef, sfx, choixRef, version) => {
-      const voulu = def => def.obligatoire || def.parDefaut || (def.role === "Site" && version === "esr");
+      const voulu = (def) => def.obligatoire || def.parDefaut || (def.role === "Site" && version === "esr");
       // 2. Table des réponses : la référence Établissement indique, dans un document existant, la vraie table du référentiel
       const tRep = meta[rep];
       let referentiel = refDefaut;
       if (tRep) {
         const r0 = resoudreRoles("reponses", tRep, { reponses: rep, referentiel }, assocRep, {});
-        const cible = r0.Etablissement && r0.Etablissement.col ? cibleRef(tRep.colonnes[r0.Etablissement.col].type) : null;
+        const cible =
+          r0.Etablissement && r0.Etablissement.col ? cibleRef(tRep.colonnes[r0.Etablissement.col].type) : null;
         if (cible && cible !== referentiel && meta[cible]) {
-          infos.push(`La colonne « ${r0.Etablissement.col} » renvoie vers la table « ${cible} » : elle est retenue comme référentiel.`);
+          infos.push(
+            `La colonne « ${r0.Etablissement.col} » renvoie vers la table « ${cible} » : elle est retenue comme référentiel.`,
+          );
           referentiel = cible;
         }
       }
@@ -952,19 +1666,35 @@ return sorted(champs)`;
       let rolesRef = {};
       if (!tRef) {
         const defs = ROLES.referentiel;
-        etapes.push({ id: `table-referentiel${sfx}`, groupe: "Tables", coche: true, titre: `Créer la table ${referentiel}`,
-          detail: `Référentiel des établissements : ${defs.map(d => d.role).join(", ")}. À remplir ensuite par l'annuaire ou l'import OAD.`,
-          actions: actionsNouvelleTable(referentiel, defs.map(d => ({ id: d.role, ...d.creer(ctxRef) }))) });
+        etapes.push({
+          id: `table-referentiel${sfx}`,
+          groupe: "Tables",
+          coche: true,
+          titre: `Créer la table ${referentiel}`,
+          detail: `Référentiel des établissements : ${defs.map((d) => d.role).join(", ")}. À remplir ensuite par l'annuaire ou l'import OAD.`,
+          actions: actionsNouvelleTable(
+            referentiel,
+            defs.map((d) => ({ id: d.role, ...d.creer(ctxRef) })),
+          ),
+        });
       } else {
         rolesRef = resoudreRoles("referentiel", tRef, ctxRef, assocRef, {});
         for (const def of ROLES.referentiel) {
           const r = rolesRef[def.role];
           if (r && r.col) continue;
           if (!def.obligatoire && !def.parDefaut && !choix[`ref:${def.role}`]) continue;
-          if (tRef.colonnes[def.role]) { infos.push(`${referentiel}.${def.role} existe mais son type ne convient pas au rôle « ${def.libelle} ».`); continue; }
-          etapes.push({ id: `ref-${def.role}${sfx}`, groupe: "Colonnes", coche: def.obligatoire || !!def.parDefaut,
-            titre: `Ajouter ${referentiel}.${def.role}`, detail: `Aucune colonne ne joue le rôle « ${def.libelle} ».`,
-            actions: [["AddColumn", referentiel, def.role, def.creer(ctxRef)]] });
+          if (tRef.colonnes[def.role]) {
+            infos.push(`${referentiel}.${def.role} existe mais son type ne convient pas au rôle « ${def.libelle} ».`);
+            continue;
+          }
+          etapes.push({
+            id: `ref-${def.role}${sfx}`,
+            groupe: "Colonnes",
+            coche: def.obligatoire || !!def.parDefaut,
+            titre: `Ajouter ${referentiel}.${def.role}`,
+            detail: `Aucune colonne ne joue le rôle « ${def.libelle} ».`,
+            actions: [["AddColumn", referentiel, def.role, def.creer(ctxRef)]],
+          });
         }
       }
 
@@ -974,114 +1704,254 @@ return sorted(champs)`;
       if (!tRep) {
         // Colonnes simples avec la table, références et formule ensuite (la table doit exister pour s'y référer)
         const defs = ROLES.reponses.filter(voulu);
-        const apres = ["Etablissement", "Dossier", "Derniere_version", "Description_Word_", "Auteur", "Etat_plus_grave", "Nb_jours_mobilisation"];   // références et formules : une fois la table créée
-        const simples = defs.filter(d => !apres.includes(d.role));
-        etapes.push({ id: `table-reponses${sfx}`, groupe: "Tables", coche: true, titre: `Créer la table ${rep}`,
-          detail: `Une ligne par version de signalement : ${defs.map(d => d.role).join(", ")}.`,
-          actions: [...actionsNouvelleTable(rep, simples.map(d => ({ id: d.role, ...d.creer(ctx) }))),
-                    ...apres.map(role =>
-                      ["AddColumn", rep, role, ROLES.reponses.find(d => d.role === role).creer(ctx)])] });
+        const apres = [
+          "Etablissement",
+          "Dossier",
+          "Derniere_version",
+          "Description_Word_",
+          "Auteur",
+          "Etat_plus_grave",
+          "Nb_jours_mobilisation",
+        ]; // références et formules : une fois la table créée
+        const simples = defs.filter((d) => !apres.includes(d.role));
+        etapes.push({
+          id: `table-reponses${sfx}`,
+          groupe: "Tables",
+          coche: true,
+          titre: `Créer la table ${rep}`,
+          detail: `Une ligne par version de signalement : ${defs.map((d) => d.role).join(", ")}.`,
+          actions: [
+            ...actionsNouvelleTable(
+              rep,
+              simples.map((d) => ({ id: d.role, ...d.creer(ctx) })),
+            ),
+            ...apres.map((role) => ["AddColumn", rep, role, ROLES.reponses.find((d) => d.role === role).creer(ctx)]),
+          ],
+        });
       } else {
-        rolesRep = resoudreRoles("reponses", tRep, ctx, assocRep, {}); ctx.tRep = tRep;
-        Object.entries(rolesRep).forEach(([role, r]) => { if (r.col) ctx.cols[role] = r.col; });
+        rolesRep = resoudreRoles("reponses", tRep, ctx, assocRep, {});
+        ctx.tRep = tRep;
+        Object.entries(rolesRep).forEach(([role, r]) => {
+          if (r.col) ctx.cols[role] = r.col;
+        });
         for (const def of ROLES.reponses) {
           const r = rolesRep[def.role];
           if (r && r.col) continue;
           if (!voulu(def) && !choix[`rep:${def.role}`]) continue;
-          if (tRep.colonnes[def.role]) { infos.push(`${rep}.${def.role} existe mais son type ne convient pas au rôle « ${def.libelle} ».`); continue; }
-          etapes.push({ id: `rep-${def.role}${sfx}`, groupe: "Colonnes", coche: voulu(def),
-            titre: `Ajouter ${rep}.${def.role}`, detail: `Aucune colonne ne joue le rôle « ${def.libelle} ».`,
-            actions: [["AddColumn", rep, def.role, def.creer({ ...ctx, cols: { ...ctx.cols, [def.role]: def.role } })]] });
+          if (tRep.colonnes[def.role]) {
+            infos.push(`${rep}.${def.role} existe mais son type ne convient pas au rôle « ${def.libelle} ».`);
+            continue;
+          }
+          etapes.push({
+            id: `rep-${def.role}${sfx}`,
+            groupe: "Colonnes",
+            coche: voulu(def),
+            titre: `Ajouter ${rep}.${def.role}`,
+            detail: `Aucune colonne ne joue le rôle « ${def.libelle} ».`,
+            actions: [["AddColumn", rep, def.role, def.creer({ ...ctx, cols: { ...ctx.cols, [def.role]: def.role } })]],
+          });
         }
         // Auteur : formule d'initialisation à jour (compte Grist, invité, établissement)
         const au = rolesRep.Auteur;
         if (au && au.col && auteurAMettreAJour(tRep.colonnes[au.col])) {
           const vide = !String(tRep.colonnes[au.col].formula || "").trim();
-          etapes.push({ id: `rep-formule-auteur${sfx}`, groupe: "Colonnes", coche: true,
+          etapes.push({
+            id: `rep-formule-auteur${sfx}`,
+            groupe: "Colonnes",
+            coche: true,
             titre: `${vide ? "Remplir" : "Mettre à jour"} la formule de ${rep}.${au.col}`,
-            detail: "Formule d'initialisation : adresse du compte Grist, « Invité : <nom> » pour le lien d'un agent, « Établissement : <UAI> <nom> » pour le lien d'un établissement. Les lignes existantes ne changent pas.",
-            actions: [["ModifyColumn", rep, au.col, { formula: formuleAuteur(g, (rolesRep.Etablissement && rolesRep.Etablissement.col) || null), isFormula: false }]] });
+            detail:
+              "Formule d'initialisation : adresse du compte Grist, « Invité : <nom> » pour le lien d'un agent, « Établissement : <UAI> <nom> » pour le lien d'un établissement. Les lignes existantes ne changent pas.",
+            actions: [
+              [
+                "ModifyColumn",
+                rep,
+                au.col,
+                {
+                  formula: formuleAuteur(g, (rolesRep.Etablissement && rolesRep.Etablissement.col) || null),
+                  isFormula: false,
+                },
+              ],
+            ],
+          });
         }
         // Formule de la dernière version : signalée, jamais remplacée d'office (bascule à l'étape 6)
         const dv = rolesRep.Derniere_version;
         if (dv && dv.col && rolesRep.Dossier && rolesRep.Dossier.col && rolesRep.Cree_le && rolesRep.Cree_le.col) {
-          const attendue = formuleDerniereVersion(ctx), actuelle = tRep.colonnes[dv.col].formula;
+          const attendue = formuleDerniereVersion(ctx),
+            actuelle = tRep.colonnes[dv.col].formula;
           if (actuelle.replace(/\s+/g, " ").trim() !== attendue.replace(/\s+/g, " ").trim())
-            etapes.push({ id: `rep-formule-dv${sfx}`, groupe: "Règles métier", coche: false,
+            etapes.push({
+              id: `rep-formule-dv${sfx}`,
+              groupe: "Règles métier",
+              coche: false,
               titre: `Remplacer la formule de ${rep}.${dv.col}`,
-              detail: "La formule actuelle diffère de la règle décidée le 15/10/2026 (dernière saisie du dossier). À ne cocher qu'au moment de la bascule : les dossiers étalés sur plusieurs jours changeraient de dernière version.",
-              actions: [["ModifyColumn", rep, dv.col, { formula: attendue, isFormula: true }]] });
+              detail:
+                "La formule actuelle diffère de la règle décidée le 15/10/2026 (dernière saisie du dossier). À ne cocher qu'au moment de la bascule : les dossiers étalés sur plusieurs jours changeraient de dernière version.",
+              actions: [["ModifyColumn", rep, dv.col, { formula: attendue, isFormula: true }]],
+            });
         }
       }
 
       // 4 bis. Colonnes de l'établissement (formules) : lignes par UAI, cartes par département, académie ou point, exports CSV
-      const colEtab = (rolesRep.Etablissement && rolesRep.Etablissement.col) || (!tRep || etapes.some(e => e.id === `rep-Etablissement${sfx}`) ? "Etablissement" : null);
-      const colRef = role => !tRef ? role : (rolesRef[role] && rolesRef[role].col) || (etapes.some(e => e.id === `ref-${role}${sfx}`) ? role : null);
+      const colEtab =
+        (rolesRep.Etablissement && rolesRep.Etablissement.col) ||
+        (!tRep || etapes.some((e) => e.id === `rep-Etablissement${sfx}`) ? "Etablissement" : null);
+      const colRef = (role) =>
+        !tRef
+          ? role
+          : (rolesRef[role] && rolesRef[role].col) || (etapes.some((e) => e.id === `ref-${role}${sfx}`) ? role : null);
       if (colEtab) {
-        const ajout = COLONNES_ETABLISSEMENT.filter(c => colRef(c.role) && !(tRep && tRep.colonnes[c.id]))
-          .map(c => ({ ...c, formula: `$${colEtab}.${colRef(c.role)}` }));
-        if (ajout.length) etapes.push({ id: `rep-etablissement${sfx}`, groupe: "Colonnes", coche: true,
-          titre: `Ajouter à ${rep} les colonnes de l'établissement : ${ajout.map(c => c.id).join(", ")}`,
-          detail: `Formules qui recopient le référentiel (${ajout.map(c => c.formula).join(", ")}) : lignes par UAI, cartes par département, académie ou établissement, exports CSV.`,
-          actions: ajout.map(c => ["AddColumn", rep, c.id, { type: c.type, isFormula: true, formula: c.formula, label: c.label, untieColIdFromLabel: true }]) });
+        const ajout = COLONNES_ETABLISSEMENT.filter((c) => colRef(c.role) && !(tRep && tRep.colonnes[c.id])).map(
+          (c) => ({ ...c, formula: `$${colEtab}.${colRef(c.role)}` }),
+        );
+        if (ajout.length)
+          etapes.push({
+            id: `rep-etablissement${sfx}`,
+            groupe: "Colonnes",
+            coche: true,
+            titre: `Ajouter à ${rep} les colonnes de l'établissement : ${ajout.map((c) => c.id).join(", ")}`,
+            detail: `Formules qui recopient le référentiel (${ajout.map((c) => c.formula).join(", ")}) : lignes par UAI, cartes par département, académie ou établissement, exports CSV.`,
+            actions: ajout.map((c) => [
+              "AddColumn",
+              rep,
+              c.id,
+              { type: c.type, isFormula: true, formula: c.formula, label: c.label, untieColIdFromLabel: true },
+            ]),
+          });
       }
       // 4 ter. Questions « tableau » : sous-tables historisées (une ligne par version du signalement et par ligne saisie)
-      if (tRep) for (const [nomT, tm] of Object.entries(meta)) {
-        if (nomT === rep || nomT.startsWith("_grist") || !tm.colonnes.Ligne_id) continue;
-        const colDos = tm.colonnes.Dossier && tm.colonnes.Dossier.type === `Ref:${rep}` ? "Dossier" : (Object.values(tm.colonnes).find(c => c.type === `Ref:${rep}` && c.colId !== "Version") || {}).colId;
-        if (!colDos) continue;
-        const ajout = colonnesHistoriqueTableau(nomT, rep, colDos, rolesRep).filter(c => !tm.colonnes[c.id]);
-        if (ajout.length) etapes.push({ id: `tableau-historique-${nomT}`, groupe: "Colonnes", coche: true,
-          titre: `Historiser la sous-table ${nomT} : ${ajout.map(c => c.id).join(", ")}`,
-          detail: "Une ligne par version du signalement et par ligne du tableau (Version), avec son mouvement (ajout, modification, inchangée, retrait) : stock (Etat_actuel), flux et évolution mesurables. Les lignes existantes sont rattachées à la dernière version à la prochaine saisie ; « Reconstruire les tables des questions tableau » (réglages du widget de saisie) refait tout l'historique.",
-          actions: ajout.map(c => ["AddColumn", nomT, c.id, { type: c.type, isFormula: !!c.isFormula, formula: c.formula || "", ...(c.widgetOptions ? { widgetOptions: c.widgetOptions } : {}), label: c.id }]) });
-      }
+      if (tRep)
+        for (const [nomT, tm] of Object.entries(meta)) {
+          if (nomT === rep || nomT.startsWith("_grist") || !tm.colonnes.Ligne_id) continue;
+          const colDos =
+            tm.colonnes.Dossier && tm.colonnes.Dossier.type === `Ref:${rep}`
+              ? "Dossier"
+              : (Object.values(tm.colonnes).find((c) => c.type === `Ref:${rep}` && c.colId !== "Version") || {}).colId;
+          if (!colDos) continue;
+          const ajout = colonnesHistoriqueTableau(nomT, rep, colDos, rolesRep).filter((c) => !tm.colonnes[c.id]);
+          if (ajout.length)
+            etapes.push({
+              id: `tableau-historique-${nomT}`,
+              groupe: "Colonnes",
+              coche: true,
+              titre: `Historiser la sous-table ${nomT} : ${ajout.map((c) => c.id).join(", ")}`,
+              detail:
+                "Une ligne par version du signalement et par ligne du tableau (Version), avec son mouvement (ajout, modification, inchangée, retrait) : stock (Etat_actuel), flux et évolution mesurables. Les lignes existantes sont rattachées à la dernière version à la prochaine saisie ; « Reconstruire les tables des questions tableau » (réglages du widget de saisie) refait tout l'historique.",
+              actions: ajout.map((c) => [
+                "AddColumn",
+                nomT,
+                c.id,
+                {
+                  type: c.type,
+                  isFormula: !!c.isFormula,
+                  formula: c.formula || "",
+                  ...(c.widgetOptions ? { widgetOptions: c.widgetOptions } : {}),
+                  label: c.id,
+                },
+              ]),
+            });
+        }
       return { referentiel, rolesRep, rolesRef, tRep };
     };
-    const principal = planEspace(g.reponses, g.referentiel, assoc.reponses || {}, assoc.referentiel || {}, "", choix.referentiel, g.preset);
+    const principal = planEspace(
+      g.reponses,
+      g.referentiel,
+      assoc.reponses || {},
+      assoc.referentiel || {},
+      "",
+      choix.referentiel,
+      g.preset,
+    );
     const { referentiel, rolesRep, rolesRef, tRep } = principal;
     // Champs suivants (ex. MESRE à côté du MEN) : leurs propres tables de réponses et référentiel, mêmes rôles, noms par défaut
-    for (const e of espaces(g).slice(1)) planEspace(e.reponses, e.referentiel, {}, {}, `@${e.reponses}`, null, e.version);
+    for (const e of espaces(g).slice(1))
+      planEspace(e.reponses, e.referentiel, {}, {}, `@${e.reponses}`, null, e.version);
 
     // 5. Config : réglages généraux et associations reconnues
     const aEcrire = {};
     // Préréglage deviné pour un document existant : colonne Site ou référentiel autre que « Etablissements » → ESR
-    const presetDevine = (rolesRep.Site && rolesRep.Site.col) || referentiel !== DEFAUTS_GENERAL.referentiel ? "esr" : "en";
-    if (!config || !config.valeurs.general) aEcrire.general = { ...g, preset: tRep ? presetDevine : g.preset, referentiel };
+    const presetDevine =
+      (rolesRep.Site && rolesRep.Site.col) || referentiel !== DEFAUTS_GENERAL.referentiel ? "esr" : "en";
+    if (!config || !config.valeurs.general)
+      aEcrire.general = { ...g, preset: tRep ? presetDevine : g.preset, referentiel };
     else if (referentiel !== g.referentiel) aEcrire.general = { ...config.valeurs.general, referentiel };
     const nouvellesAssoc = { reponses: {}, referentiel: {} };
-    for (const [famille, roles] of [["reponses", rolesRep], ["referentiel", rolesRef]])
+    for (const [famille, roles] of [
+      ["reponses", rolesRep],
+      ["referentiel", rolesRef],
+    ])
       for (const [role, r] of Object.entries(roles))
         if (r.col && r.col !== role && r.origine === "reconnaissance") nouvellesAssoc[famille][role] = r.col;
     const nbAssoc = Object.keys(nouvellesAssoc.reponses).length + Object.keys(nouvellesAssoc.referentiel).length;
-    if (nbAssoc) aEcrire.roles = {
-      reponses: { ...((config && config.valeurs.roles && config.valeurs.roles.reponses) || {}), ...nouvellesAssoc.reponses },
-      referentiel: { ...((config && config.valeurs.roles && config.valeurs.roles.referentiel) || {}), ...nouvellesAssoc.referentiel },
-    };
+    if (nbAssoc)
+      aEcrire.roles = {
+        reponses: {
+          ...((config && config.valeurs.roles && config.valeurs.roles.reponses) || {}),
+          ...nouvellesAssoc.reponses,
+        },
+        referentiel: {
+          ...((config && config.valeurs.roles && config.valeurs.roles.referentiel) || {}),
+          ...nouvellesAssoc.referentiel,
+        },
+      };
     for (const [cle, valeur] of Object.entries(aEcrire)) {
-      const detail = cle === "general" ? `Situation, préréglage, académies, noms des tables (référentiel : ${referentiel}).`
-        : `Associations reconnues, rendues explicites : ${[...Object.entries(nouvellesAssoc.reponses), ...Object.entries(nouvellesAssoc.referentiel)].map(([r, c]) => `${r} → ${c}`).join(", ")}.`;
-      etapes.push({ id: `config-${cle}`, groupe: "Réglages", coche: true, titre: `Enregistrer la clé « ${cle} » dans Config`, detail,
+      const detail =
+        cle === "general"
+          ? `Situation, préréglage, académies, noms des tables (référentiel : ${referentiel}).`
+          : `Associations reconnues, rendues explicites : ${[...Object.entries(nouvellesAssoc.reponses), ...Object.entries(nouvellesAssoc.referentiel)].map(([r, c]) => `${r} → ${c}`).join(", ")}.`;
+      etapes.push({
+        id: `config-${cle}`,
+        groupe: "Réglages",
+        coche: true,
+        titre: `Enregistrer la clé « ${cle} » dans Config`,
+        detail,
         // l'action est calculée au moment d'appliquer, une fois la table Config créée
-        configCle: cle, configValeur: valeur, actions: [] });
+        configCle: cle,
+        configValeur: valeur,
+        actions: [],
+      });
     }
-    return { etapes, infos, referentiel, rolesRep, rolesRef, general: aEcrire.general ? { ...g, ...aEcrire.general } : g };
+    return {
+      etapes,
+      infos,
+      referentiel,
+      rolesRep,
+      rolesRef,
+      general: aEcrire.general ? { ...g, ...aEcrire.general } : g,
+    };
   }
 
   /* ---------- Tableaux de bord (clé « tableau_de_bord » de Config) ----------
      Plusieurs tableaux de bord (ex. MEN et MESRE) : { tableaux: [{ id, nom, table, brouillon, publie, publie_le, modifie_le }] }.
      Ancienne forme (un seul) : { brouillon, publie, publie_le, modifie_le } → premier tableau, id « principal ». */
   function tableauxDeBord(valeur, general) {
-    const v = valeur || {}, g = general || DEFAUTS_GENERAL;
-    if (Array.isArray(v.tableaux)) return v.tableaux.map(t => ({ ...t, table: t.table || g.reponses }));
+    const v = valeur || {},
+      g = general || DEFAUTS_GENERAL;
+    if (Array.isArray(v.tableaux)) return v.tableaux.map((t) => ({ ...t, table: t.table || g.reponses }));
     if (!v.brouillon && !v.publie) return [];
     const c = v.brouillon || v.publie;
-    return [{ id: "principal", nom: (c && c.name) || "Tableau de bord", table: g.reponses, brouillon: v.brouillon || null, publie: v.publie || null, publie_le: v.publie_le || null, modifie_le: v.modifie_le || null }];
+    return [
+      {
+        id: "principal",
+        nom: (c && c.name) || "Tableau de bord",
+        table: g.reponses,
+        brouillon: v.brouillon || null,
+        publie: v.publie || null,
+        publie_le: v.publie_le || null,
+        modifie_le: v.modifie_le || null,
+      },
+    ];
   }
   // valeur à enregistrer ; le premier tableau reste aussi en tête (publie, brouillon) pour les pages d'avant la v2.0.0-alpha.29
   function valeurTableauxDeBord(liste) {
     const p = liste[0] || {};
-    return { tableaux: liste, brouillon: p.brouillon || null, publie: p.publie || null, publie_le: p.publie_le || null };
+    return {
+      tableaux: liste,
+      brouillon: p.brouillon || null,
+      publie: p.publie || null,
+      publie_le: p.publie_le || null,
+    };
   }
 
   /* ---------- Schéma public (accès par lien) ----------
@@ -1090,27 +1960,49 @@ return sorted(champs)`;
      établissements). La copie est rafraîchie à la publication d'un formulaire, à l'ouverture de l'onglet Établissements
      et à l'application des règles d'accès. */
   async function instantaneSchema(tables) {
-    const [T, C] = await Promise.all([grist.docApi.fetchTable("_grist_Tables"), grist.docApi.fetchTable("_grist_Tables_column")]);
+    const [T, C] = await Promise.all([
+      grist.docApi.fetchTable("_grist_Tables"),
+      grist.docApi.fetchTable("_grist_Tables_column"),
+    ]);
     const out = {};
     for (const tid of [...new Set(tables)].filter(Boolean).sort()) {
-      const ref = T.id[T.tableId.indexOf(tid)]; if (ref == null) continue;
-      out[tid] = C.id.map((_, i) => i).filter(i => C.parentId[i] === ref && C.colId[i] !== "manualSort" && !String(C.colId[i]).startsWith("gristHelper"))
+      const ref = T.id[T.tableId.indexOf(tid)];
+      if (ref == null) continue;
+      out[tid] = C.id
+        .map((_, i) => i)
+        .filter(
+          (i) => C.parentId[i] === ref && C.colId[i] !== "manualSort" && !String(C.colId[i]).startsWith("gristHelper"),
+        )
         .sort((a, b) => ((C.parentPos || [])[a] || 0) - ((C.parentPos || [])[b] || 0))
-        .map(i => { const v = (C.visibleCol || [])[i], vi = v ? C.id.indexOf(v) : -1;
-          return { colId: C.colId[i], label: C.label[i] || "", type: C.type[i] || "Any", widgetOptions: C.widgetOptions[i] || "", isFormula: !!C.isFormula[i],
-            formula: C.formula[i] || "", description: (C.description || [])[i] || "", visibleCol: vi >= 0 ? C.colId[vi] : "" }; });
+        .map((i) => {
+          const v = (C.visibleCol || [])[i],
+            vi = v ? C.id.indexOf(v) : -1;
+          return {
+            colId: C.colId[i],
+            label: C.label[i] || "",
+            type: C.type[i] || "Any",
+            widgetOptions: C.widgetOptions[i] || "",
+            isFormula: !!C.isFormula[i],
+            formula: C.formula[i] || "",
+            description: (C.description || [])[i] || "",
+            visibleCol: vi >= 0 ? C.colId[vi] : "",
+          };
+        });
     }
     return out;
   }
   // Écrit la copie si elle a changé ; renvoie true si écrite. Sans droit d'écriture : silencieux.
   async function majSchemaPublic(tables) {
     try {
-      const config = await lireConfig(), schema = await instantaneSchema(tables);
+      const config = await lireConfig(),
+        schema = await instantaneSchema(tables);
       const avant = config && config.valeurs.schema && config.valeurs.schema.tables;
       if (JSON.stringify(avant || null) === JSON.stringify(schema)) return false;
       await ecrireConfig("schema", { tables: schema, maj: new Date().toISOString() });
       return true;
-    } catch (_) { return false; }
+    } catch (_) {
+      return false;
+    }
   }
 
   // Applique les étapes cochées, une par une ; renvoie [{ etape, ok, erreur }]
@@ -1132,29 +2024,114 @@ return sorted(champs)`;
   // Réglages techniques du point de situation déduits du socle (table et colonnes) : valeurs par défaut,
   // que la configuration publiée peut remplacer
   async function reglagesPointParDefaut(meta, config) {
-    meta = meta || await lireMeta();
-    const g = general(config), assoc = (config && config.valeurs && config.valeurs.roles) || {};
+    meta = meta || (await lireMeta());
+    const g = general(config),
+      assoc = (config && config.valeurs && config.valeurs.roles) || {};
     const ctx = { reponses: g.reponses, referentiel: g.referentiel };
     const rr = resoudreRoles("reponses", meta[g.reponses], ctx, assoc.reponses || {}, {});
     const rf = resoudreRoles("referentiel", meta[g.referentiel], ctx, assoc.referentiel || {}, {});
     const c = (r, role, def) => (r[role] && r[role].col) || def;
     const etab = c(rr, "Etablissement", "Etablissement");
-    return { table: g.reponses, dossier: c(rr, "Dossier", "Dossier"), date: c(rr, "Cree_le", "Cree_le"), dateFaits: c(rr, "Date_faits", ""),
-      nature: c(rr, "Nature", ""), champAcademie: `${etab}.${c(rf, "Academie", "Academie")}`, modeleTable: TABLE_CONFIG, modeleColonne: "Fichier" };
+    return {
+      table: g.reponses,
+      dossier: c(rr, "Dossier", "Dossier"),
+      date: c(rr, "Cree_le", "Cree_le"),
+      dateFaits: c(rr, "Date_faits", ""),
+      nature: c(rr, "Nature", ""),
+      champAcademie: `${etab}.${c(rf, "Academie", "Academie")}`,
+      modeleTable: TABLE_CONFIG,
+      modeleColonne: "Fichier",
+    };
   }
 
   window.Socle = {
     reglagesPointParDefaut,
-    espaces, espaceDeTable, AUTRE_CHAMP_DEFAUT, VERSION, TABLE_CONFIG, TABLE_ADMIN, TABLE_CELLULE, STYLE_LIEN, formuleLienInvite, ANCIENNE_FORMULE_LIEN_INVITE, DEFAUTS_GENERAL, NATURES, ROLES,
-    colonnesEmargements, lireEmargements, STATUTS_ACTION, PRIORITES_ACTION, ACTIONS_DEFAUT, reglagesActions, optionsStatuts, colonnesActions, lireActions,
-    PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
-    norm, cibleRef, lireMeta, lireConfig, activerCacheLecture, viderCacheLecture, oublierStructure, surEcriture, general, actionConfig, ecrireConfig,
-    resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer, COLONNES_ETABLISSEMENT,
-    instantaneSchema, majSchemaPublic, tableauxDeBord, valeurTableauxDeBord, INVITE, DUREES_INVITE, formuleAuteur, auteurAMettreAJour,
-    REGIONS_ACADEMIQUES, regionDeAcademie, genreSection, rattachementSection, colonnesHistoriqueTableau, MOUVEMENTS_TABLEAU,
-    ECHELONS_VISA, COLONNES_VISEURS, STATUTS_VALIDATION, STATUT, COLONNE_STATUT, MARQUE_STATUT, estFavorable, reglagesValidation,
-    optionsStatutValidation, formuleStatutValidation, statutValidation, viseurCouvre,
-    PHENOMENES_VIGILANCE, COULEURS_VIGILANCE, ECHEANCES_VIGILANCE, COLONNES_VIGILANCES, COLONNES_VIGILANCES_JOURNAL, reglagesVeille, lireVigilances,
-    MODES_CAMPAGNE, campagnes, campagneEnCours, campagneVise, valeursCellule, jourParis, reponseCompte,
+    espaces,
+    espaceDeTable,
+    AUTRE_CHAMP_DEFAUT,
+    VERSION,
+    TABLE_CONFIG,
+    TABLE_ADMIN,
+    TABLE_CELLULE,
+    STYLE_LIEN,
+    formuleLienInvite,
+    ANCIENNE_FORMULE_LIEN_INVITE,
+    DEFAUTS_GENERAL,
+    NATURES,
+    ROLES,
+    colonnesEmargements,
+    lireEmargements,
+    STATUTS_ACTION,
+    PRIORITES_ACTION,
+    ACTIONS_DEFAUT,
+    reglagesActions,
+    optionsStatuts,
+    colonnesActions,
+    lireActions,
+    PLANNING_DEFAUT,
+    CHAMPS,
+    champsDe,
+    listeChoix,
+    reglagesPlanning,
+    colonnesAgents,
+    lirePlanning,
+    affectationsEnCours,
+    norm,
+    cibleRef,
+    lireMeta,
+    lireConfig,
+    activerCacheLecture,
+    viderCacheLecture,
+    oublierStructure,
+    surEcriture,
+    general,
+    actionConfig,
+    ecrireConfig,
+    resoudreRoles,
+    colonnesCompatibles,
+    formuleDerniereVersion,
+    planInstallation,
+    appliquer,
+    COLONNES_ETABLISSEMENT,
+    instantaneSchema,
+    majSchemaPublic,
+    tableauxDeBord,
+    valeurTableauxDeBord,
+    INVITE,
+    DUREES_INVITE,
+    formuleAuteur,
+    auteurAMettreAJour,
+    REGIONS_ACADEMIQUES,
+    regionDeAcademie,
+    genreSection,
+    rattachementSection,
+    colonnesHistoriqueTableau,
+    MOUVEMENTS_TABLEAU,
+    ECHELONS_VISA,
+    COLONNES_VISEURS,
+    STATUTS_VALIDATION,
+    STATUT,
+    COLONNE_STATUT,
+    MARQUE_STATUT,
+    estFavorable,
+    reglagesValidation,
+    optionsStatutValidation,
+    formuleStatutValidation,
+    statutValidation,
+    viseurCouvre,
+    PHENOMENES_VIGILANCE,
+    COULEURS_VIGILANCE,
+    ECHEANCES_VIGILANCE,
+    COLONNES_VIGILANCES,
+    COLONNES_VIGILANCES_JOURNAL,
+    reglagesVeille,
+    lireVigilances,
+    MODES_CAMPAGNE,
+    campagnes,
+    campagneEnCours,
+    campagneVise,
+    valeursCellule,
+    jourParis,
+    reponseCompte,
   };
 })();

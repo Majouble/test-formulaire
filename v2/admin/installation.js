@@ -6,15 +6,25 @@
 (function () {
   "use strict";
   const S = window.Socle;
-  const $ = id => document.getElementById(id);
-  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) =>
+    String(s == null ? "" : s).replace(
+      /[&<>"']/g,
+      (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+    );
 
-  let meta = null, config = null, plan = null;
-  const choixRoles = { reponses: {}, referentiel: {} };   // associations modifiées à l'écran, pas encore enregistrées
+  let meta = null,
+    config = null,
+    plan = null;
+  const choixRoles = { reponses: {}, referentiel: {} }; // associations modifiées à l'écran, pas encore enregistrées
 
   $("version").textContent = `socle ${S.VERSION}`;
 
-  function statut(id, texte, type) { const e = $(id); e.textContent = texte || ""; e.className = `statut ${type || ""}`; }
+  function statut(id, texte, type) {
+    const e = $(id);
+    e.textContent = texte || "";
+    e.className = `statut ${type || ""}`;
+  }
 
   async function charger() {
     statut("statut-actions", "");
@@ -24,70 +34,133 @@
       plan = S.planInstallation(meta, config);
     } catch (e) {
       $("bandeau").className = "bandeau alerte";
-      $("bandeau").textContent = `Lecture impossible : ${e.message || e}. Le widget doit avoir l'accès complet au document (panneau de droite › « Accès complet au document »).`;
+      $("bandeau").textContent =
+        `Lecture impossible : ${e.message || e}. Le widget doit avoir l'accès complet au document (panneau de droite › « Accès complet au document »).`;
       return;
     }
-    dessinerBandeau(); dessinerActions(); dessinerGeneral(); dessinerRoles(); dessinerRemarques();
+    dessinerBandeau();
+    dessinerActions();
+    dessinerGeneral();
+    dessinerRoles();
+    dessinerRemarques();
     dessinerPageAdmin();
   }
 
   /* ---------- Page d'administration protégée ----------
      La page qui porte ce widget est visible de quiconque lit sa table. Liée à la table Administration
      (réservée aux propriétaires par les règles d'accès), elle disparaît pour les agents, les invités et les établissements. */
-  const adresseAdmin = () => { try { const u = new URL("./", location.href); return u.href; } catch (_) { return ""; } };
-  const estUrlAdmin = url => /\/admin\/?(index\.html)?(\?.*)?$/i.test(url || "");
+  const adresseAdmin = () => {
+    try {
+      const u = new URL("./", location.href);
+      return u.href;
+    } catch (_) {
+      return "";
+    }
+  };
+  const estUrlAdmin = (url) => /\/admin\/?(index\.html)?(\?.*)?$/i.test(url || "");
   async function pagesAdmin() {
-    const [s, v, t] = await Promise.all(["_grist_Views_section", "_grist_Views", "_grist_Tables"].map(x => grist.docApi.fetchTable(x)));
-    return s.id.map((id, i) => {
-      if (s.parentKey[i] !== "custom" || !s.parentId[i]) return null;
-      let cv = {}; try { const o = JSON.parse(s.options[i] || "{}") || {}; cv = typeof o.customView === "string" ? JSON.parse(o.customView || "{}") : (o.customView || {}); } catch (_) { cv = {}; }
-      const url = cv.url || (cv.widgetDef && cv.widgetDef.url) || "";
-      if (!estUrlAdmin(url)) return null;
-      const vi = v.id.indexOf(s.parentId[i]);
-      return { sectionRef: id, viewRef: s.parentId[i], page: vi >= 0 ? String(v.name[vi] || "") : "", table: t.tableId[t.id.indexOf(s.tableRef[i])] || "" };
-    }).filter(Boolean);
+    const [s, v, t] = await Promise.all(
+      ["_grist_Views_section", "_grist_Views", "_grist_Tables"].map((x) => grist.docApi.fetchTable(x)),
+    );
+    return s.id
+      .map((id, i) => {
+        if (s.parentKey[i] !== "custom" || !s.parentId[i]) return null;
+        let cv = {};
+        try {
+          const o = JSON.parse(s.options[i] || "{}") || {};
+          cv = typeof o.customView === "string" ? JSON.parse(o.customView || "{}") : o.customView || {};
+        } catch (_) {
+          cv = {};
+        }
+        const url = cv.url || (cv.widgetDef && cv.widgetDef.url) || "";
+        if (!estUrlAdmin(url)) return null;
+        const vi = v.id.indexOf(s.parentId[i]);
+        return {
+          sectionRef: id,
+          viewRef: s.parentId[i],
+          page: vi >= 0 ? String(v.name[vi] || "") : "",
+          table: t.tableId[t.id.indexOf(s.tableRef[i])] || "",
+        };
+      })
+      .filter(Boolean);
   }
   async function dessinerPageAdmin() {
-    const z = $("page-admin"); if (!z) return;
+    const z = $("page-admin");
+    if (!z) return;
     z.innerHTML = "";
     if (!meta || !meta[S.TABLE_ADMIN]) return;
-    let pages; try { pages = await pagesAdmin(); } catch (_) { return; }
-    const protegees = pages.filter(p => p.table === S.TABLE_ADMIN), autres = pages.filter(p => p.table !== S.TABLE_ADMIN);
+    let pages;
+    try {
+      pages = await pagesAdmin();
+    } catch (_) {
+      return;
+    }
+    const protegees = pages.filter((p) => p.table === S.TABLE_ADMIN),
+      autres = pages.filter((p) => p.table !== S.TABLE_ADMIN);
     if (!autres.length) return;
     z.innerHTML = `<div class="bandeau alerte" style="margin-top:8px">
-      ${protegees.length
-        ? `La page « ${esc(protegees[0].page)} » est protégée. Supprimez l'ancienne page d'administration (${autres.map(p => `« ${esc(p.page)} », liée à ${esc(p.table)}`).join(", ")}) : clic droit sur son nom › Supprimer.`
-        : `Cette page d'administration est liée à la table ${autres.map(p => esc(p.table)).filter((x, i, a) => a.indexOf(x) === i).join(", ")} : toute personne qui lit cette table la voit, y compris les invités et les établissements.
+      ${
+        protegees.length
+          ? `La page « ${esc(protegees[0].page)} » est protégée. Supprimez l'ancienne page d'administration (${autres.map((p) => `« ${esc(p.page)} », liée à ${esc(p.table)}`).join(", ")}) : clic droit sur son nom › Supprimer.`
+          : `Cette page d'administration est liée à la table ${autres
+              .map((p) => esc(p.table))
+              .filter((x, i, a) => a.indexOf(x) === i)
+              .join(", ")} : toute personne qui lit cette table la voit, y compris les invités et les établissements.
            <button class="primaire" id="btn-page-admin" style="margin-left:8px">Créer la page protégée</button>
-           <span class="aide" style="display:block;margin-top:4px">Une page « Administration » est créée, liée à la table ${S.TABLE_ADMIN} que les règles d'accès réservent aux propriétaires. Ouvrez-la, puis supprimez celle-ci.</span>`}
+           <span class="aide" style="display:block;margin-top:4px">Une page « Administration » est créée, liée à la table ${S.TABLE_ADMIN} que les règles d'accès réservent aux propriétaires. Ouvrez-la, puis supprimez celle-ci.</span>`
+      }
       <span class="statut" id="page-admin-statut" role="status"></span></div>`;
     if ($("btn-page-admin")) $("btn-page-admin").addEventListener("click", creerPageAdmin);
   }
   async function creerPageAdmin() {
-    const b = $("btn-page-admin"); b.disabled = true;
+    const b = $("btn-page-admin");
+    b.disabled = true;
     try {
       const tref = meta[S.TABLE_ADMIN].ref;
       const res = await grist.docApi.applyUserActions([["CreateViewSection", tref, 0, "custom", null, null]]);
       const rv = (res && res.retValues && res.retValues[0]) || {};
       if (!rv.sectionRef) throw new Error("Grist n'a pas indiqué la vue créée");
-      const sec = await grist.docApi.fetchTable("_grist_Views_section"), i = sec.id.indexOf(rv.sectionRef);
-      let o = {}; try { o = JSON.parse((i >= 0 && sec.options[i]) || "{}") || {}; } catch (_) { o = {}; }
+      const sec = await grist.docApi.fetchTable("_grist_Views_section"),
+        i = sec.id.indexOf(rv.sectionRef);
+      let o = {};
+      try {
+        o = JSON.parse((i >= 0 && sec.options[i]) || "{}") || {};
+      } catch (_) {
+        o = {};
+      }
       o.customView = JSON.stringify({ mode: "url", url: adresseAdmin(), access: "full", widgetOptions: {} });
       await grist.docApi.applyUserActions([
-        ["UpdateRecord", "_grist_Views_section", rv.sectionRef, { options: JSON.stringify(o), title: "Administration" }],
-        ["UpdateRecord", "_grist_Views", rv.viewRef, { name: "Administration" }]]);
-      statut("page-admin-statut", "Page « Administration » créée : ouvrez-la (liste des pages, à gauche), puis supprimez celle-ci. Appliquez ensuite les règles (onglet Accès).", "ok");
-    } catch (e) { b.disabled = false; statut("page-admin-statut", `Création refusée par Grist (${e.message || e}).`, "err"); }
+        [
+          "UpdateRecord",
+          "_grist_Views_section",
+          rv.sectionRef,
+          { options: JSON.stringify(o), title: "Administration" },
+        ],
+        ["UpdateRecord", "_grist_Views", rv.viewRef, { name: "Administration" }],
+      ]);
+      statut(
+        "page-admin-statut",
+        "Page « Administration » créée : ouvrez-la (liste des pages, à gauche), puis supprimez celle-ci. Appliquez ensuite les règles (onglet Accès).",
+        "ok",
+      );
+    } catch (e) {
+      b.disabled = false;
+      statut("page-admin-statut", `Création refusée par Grist (${e.message || e}).`, "err");
+    }
   }
 
   function dessinerBandeau() {
-    const b = $("bandeau"), aFaire = plan.etapes.filter(e => e.coche).length, options = plan.etapes.length - aFaire;
-    if (!config && !plan.etapes.some(e => e.id === "table-reponses")) {
+    const b = $("bandeau"),
+      aFaire = plan.etapes.filter((e) => e.coche).length,
+      options = plan.etapes.length - aFaire;
+    if (!config && !plan.etapes.some((e) => e.id === "table-reponses")) {
       b.className = "bandeau info";
       b.textContent = "Document existant détecté : vérifiez les associations proposées ci-dessous avant d'appliquer.";
     } else if (!aFaire) {
       b.className = "bandeau ok";
-      b.textContent = options ? `Le socle est complet. ${options} action facultative reste proposée.` : "Le socle est complet.";
+      b.textContent = options
+        ? `Le socle est complet. ${options} action facultative reste proposée.`
+        : "Le socle est complet.";
     } else {
       b.className = "bandeau alerte";
       b.textContent = `${aFaire} action${aFaire > 1 ? "s" : ""} à appliquer pour compléter le socle.`;
@@ -96,19 +169,37 @@
 
   function dessinerActions() {
     const zone = $("liste-actions");
-    if (!plan.etapes.length) { zone.innerHTML = `<p class="vide">Aucune action : tout est en place.</p>`; $("btn-appliquer").disabled = true; return; }
+    if (!plan.etapes.length) {
+      zone.innerHTML = `<p class="vide">Aucune action : tout est en place.</p>`;
+      $("btn-appliquer").disabled = true;
+      return;
+    }
     $("btn-appliquer").disabled = false;
-    const groupes = [...new Set(plan.etapes.map(e => e.groupe))];
-    zone.innerHTML = groupes.map(g => `<div class="groupe">${esc(g)}</div>` + plan.etapes.map((e, i) => e.groupe !== g ? "" :
-      `<label class="etape"><input type="checkbox" data-i="${i}" ${e.coche ? "checked" : ""}>
-        <span><strong>${esc(e.titre)}</strong><br><span class="detail">${esc(e.detail)}</span></span></label>`).join("")).join("");
+    const groupes = [...new Set(plan.etapes.map((e) => e.groupe))];
+    zone.innerHTML = groupes
+      .map(
+        (g) =>
+          `<div class="groupe">${esc(g)}</div>` +
+          plan.etapes
+            .map((e, i) =>
+              e.groupe !== g
+                ? ""
+                : `<label class="etape"><input type="checkbox" data-i="${i}" ${e.coche ? "checked" : ""}>
+        <span><strong>${esc(e.titre)}</strong><br><span class="detail">${esc(e.detail)}</span></span></label>`,
+            )
+            .join(""),
+      )
+      .join("");
   }
 
   function optionsTables(sel, valeur) {
-    const noms = Object.keys(meta).filter(t => !t.startsWith("_grist")).sort();
+    const noms = Object.keys(meta)
+      .filter((t) => !t.startsWith("_grist"))
+      .sort();
     if (valeur && !noms.includes(valeur)) noms.unshift(valeur);
-    sel.innerHTML = noms.map(n => `<option ${n === valeur ? "selected" : ""}>${esc(n)}</option>`).join("")
-      + (noms.includes(valeur) && meta[valeur] ? "" : "");
+    sel.innerHTML =
+      noms.map((n) => `<option ${n === valeur ? "selected" : ""}>${esc(n)}</option>`).join("") +
+      (noms.includes(valeur) && meta[valeur] ? "" : "");
   }
 
   function dessinerGeneral() {
@@ -129,20 +220,34 @@
 
   function dessinerTableRoles(zone, famille, tableId, roles) {
     const tMeta = meta[tableId];
-    if (!tMeta) { zone.innerHTML = `<p class="vide">Table « ${esc(tableId)} » absente : elle sera créée par l'installation.</p>`; return; }
+    if (!tMeta) {
+      zone.innerHTML = `<p class="vide">Table « ${esc(tableId)} » absente : elle sera créée par l'installation.</p>`;
+      return;
+    }
     const ctx = { reponses: plan.general.reponses, referentiel: plan.referentiel };
-    const lignes = S.ROLES[famille].map(def => {
-      const r = roles[def.role] || {}, choisi = choixRoles[famille][def.role];
-      const courant = choisi !== undefined ? choisi : (r.col || "");
-      const compat = S.colonnesCompatibles(famille, def.role, tMeta, ctx);
-      const opts = [`<option value="">— aucune —</option>`, ...compat.map(c => `<option ${c === courant ? "selected" : ""}>${esc(c)}</option>`)].join("");
-      const pastille = choisi !== undefined ? `<span class="pastille reco">modifiée</span>`
-        : r.col ? `<span class="pastille ${r.origine === "reconnaissance" ? "reco" : "ok"}">${esc(r.origine)}</span>`
-        : def.obligatoire ? `<span class="pastille manque">à créer</span>` : `<span class="pastille">facultatif</span>`;
-      return `<tr><td><strong>${esc(def.role)}</strong><br><span class="detail" style="color:var(--doux);font-size:12px">${esc(def.libelle)}</span></td>
+    const lignes = S.ROLES[famille]
+      .map((def) => {
+        const r = roles[def.role] || {},
+          choisi = choixRoles[famille][def.role];
+        const courant = choisi !== undefined ? choisi : r.col || "";
+        const compat = S.colonnesCompatibles(famille, def.role, tMeta, ctx);
+        const opts = [
+          `<option value="">— aucune —</option>`,
+          ...compat.map((c) => `<option ${c === courant ? "selected" : ""}>${esc(c)}</option>`),
+        ].join("");
+        const pastille =
+          choisi !== undefined
+            ? `<span class="pastille reco">modifiée</span>`
+            : r.col
+              ? `<span class="pastille ${r.origine === "reconnaissance" ? "reco" : "ok"}">${esc(r.origine)}</span>`
+              : def.obligatoire
+                ? `<span class="pastille manque">à créer</span>`
+                : `<span class="pastille">facultatif</span>`;
+        return `<tr><td><strong>${esc(def.role)}</strong><br><span class="detail" style="color:var(--doux);font-size:12px">${esc(def.libelle)}</span></td>
         <td><select data-famille="${famille}" data-role="${esc(def.role)}">${opts}</select>${r.alerte ? `<div class="statut err">${esc(r.alerte)}</div>` : ""}</td>
         <td>${pastille}</td></tr>`;
-    }).join("");
+      })
+      .join("");
     zone.innerHTML = `<div class="groupe">${famille === "reponses" ? "Réponses" : "Référentiel"} · table ${esc(tableId)}</div>
       <table><thead><tr><th style="width:34%">Rôle</th><th>Colonne</th><th style="width:16%">Origine</th></tr></thead><tbody>${lignes}</tbody></table>`;
   }
@@ -156,76 +261,156 @@
 
   function dessinerRemarques() {
     const items = [...plan.infos, ...((config && config.erreurs) || [])];
-    if (meta.Table1 && !Object.keys(meta.Table1.colonnes).some(c => !/^[ABC]$/.test(c)))
+    if (meta.Table1 && !Object.keys(meta.Table1.colonnes).some((c) => !/^[ABC]$/.test(c)))
       items.push("La table « Table1 » créée par Grist avec le document semble inutilisée : vous pouvez la supprimer.");
     $("carte-remarques").hidden = !items.length;
-    $("remarques").innerHTML = items.map(t => `<li>${esc(t)}</li>`).join("");
+    $("remarques").innerHTML = items.map((t) => `<li>${esc(t)}</li>`).join("");
   }
 
   /* ---------- Événements ---------- */
-  $("btn-relire").addEventListener("click", () => { S.viderCacheLecture(); charger(); });
+  $("btn-relire").addEventListener("click", () => {
+    S.viderCacheLecture();
+    charger();
+  });
 
   $("btn-appliquer").addEventListener("click", async () => {
-    const coches = [...document.querySelectorAll("#liste-actions input[type=checkbox]")].filter(c => c.checked).map(c => plan.etapes[+c.dataset.i]);
-    if (!coches.length) { statut("statut-actions", "Aucune action cochée.", "err"); return; }
-    const sensibles = coches.filter(e => e.groupe === "Règles métier");
-    if (sensibles.length && !confirm(`${sensibles.map(e => e.titre).join("\n")}\n\nCette action modifie une règle métier sur des données existantes. Continuer ?`)) return;
-    $("btn-appliquer").disabled = true; statut("statut-actions", "Application en cours…");
+    const coches = [...document.querySelectorAll("#liste-actions input[type=checkbox]")]
+      .filter((c) => c.checked)
+      .map((c) => plan.etapes[+c.dataset.i]);
+    if (!coches.length) {
+      statut("statut-actions", "Aucune action cochée.", "err");
+      return;
+    }
+    const sensibles = coches.filter((e) => e.groupe === "Règles métier");
+    if (
+      sensibles.length &&
+      !confirm(
+        `${sensibles.map((e) => e.titre).join("\n")}\n\nCette action modifie une règle métier sur des données existantes. Continuer ?`,
+      )
+    )
+      return;
+    $("btn-appliquer").disabled = true;
+    statut("statut-actions", "Application en cours…");
     const res = await S.appliquer(coches);
-    $("journal").innerHTML = res.map(r => `<li class="${r.ok ? "" : "err"}">${r.ok ? "✓" : "✗"} ${esc(r.etape.titre)}${r.ok ? "" : ` — ${esc(r.erreur)}`}</li>`).join("");
-    const ko = res.filter(r => !r.ok).length;
+    $("journal").innerHTML = res
+      .map(
+        (r) =>
+          `<li class="${r.ok ? "" : "err"}">${r.ok ? "✓" : "✗"} ${esc(r.etape.titre)}${r.ok ? "" : ` — ${esc(r.erreur)}`}</li>`,
+      )
+      .join("");
+    const ko = res.filter((r) => !r.ok).length;
     await charger();
-    statut("statut-actions", ko ? `${ko} action(s) en échec, voir le journal.` : "Actions appliquées.", ko ? "err" : "ok");
+    statut(
+      "statut-actions",
+      ko ? `${ko} action(s) en échec, voir le journal.` : "Actions appliquées.",
+      ko ? "err" : "ok",
+    );
   });
 
   // Second champ : l'autre que celui du préréglage (EN ↔ ESR), noms de tables proposés
   const champSecond = () => ($("g-preset").value === "esr" ? "EN" : "ESR");
   function majSecond(autre) {
-    const c = champSecond(), d = S.AUTRE_CHAMP_DEFAUT[c];
-    $("g-second-lib").textContent = c === "ESR" ? "Suivre aussi l'enseignement supérieur et la recherche (MESRE)" : "Suivre aussi l'éducation nationale (MEN)";
-    if (autre && autre.champ === c) { $("g-second-rep").value = autre.reponses; $("g-second-ref").value = autre.referentiel; }
-    else if (!$("g-second-rep").dataset.touche) { $("g-second-rep").value = d.reponses; $("g-second-ref").value = d.referentiel; }
+    const c = champSecond(),
+      d = S.AUTRE_CHAMP_DEFAUT[c];
+    $("g-second-lib").textContent =
+      c === "ESR"
+        ? "Suivre aussi l'enseignement supérieur et la recherche (MESRE)"
+        : "Suivre aussi l'éducation nationale (MEN)";
+    if (autre && autre.champ === c) {
+      $("g-second-rep").value = autre.reponses;
+      $("g-second-ref").value = autre.referentiel;
+    } else if (!$("g-second-rep").dataset.touche) {
+      $("g-second-rep").value = d.reponses;
+      $("g-second-ref").value = d.referentiel;
+    }
     $("g-second-tables").hidden = !$("g-second").checked;
   }
   $("g-second").addEventListener("change", () => majSecond(null));
-  $("g-preset").addEventListener("change", () => { delete $("g-second-rep").dataset.touche; majSecond(null); });
-  ["g-second-rep", "g-second-ref"].forEach(id => $(id).addEventListener("input", () => { $("g-second-rep").dataset.touche = "1"; }));
+  $("g-preset").addEventListener("change", () => {
+    delete $("g-second-rep").dataset.touche;
+    majSecond(null);
+  });
+  ["g-second-rep", "g-second-ref"].forEach((id) =>
+    $(id).addEventListener("input", () => {
+      $("g-second-rep").dataset.touche = "1";
+    }),
+  );
 
   $("btn-general").addEventListener("click", async () => {
     const valeur = {
       ...((config && config.valeurs.general) || S.DEFAUTS_GENERAL),
       situation: $("g-situation").value.trim(),
       preset: $("g-preset").value,
-      retour_normale: $("g-retour").value.split(",").map(s => s.trim()).filter(Boolean),
+      retour_normale: $("g-retour")
+        .value.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
       reponses: $("g-reponses").value,
       referentiel: $("g-referentiel").value,
-      autres_champs: $("g-second").checked ? [{ champ: champSecond(), reponses: $("g-second-rep").value.trim().replace(/[^A-Za-z0-9_]/g, "_"), referentiel: $("g-second-ref").value.trim().replace(/[^A-Za-z0-9_]/g, "_") }].filter(e => e.reponses && e.referentiel) : [],
+      autres_champs: $("g-second").checked
+        ? [
+            {
+              champ: champSecond(),
+              reponses: $("g-second-rep")
+                .value.trim()
+                .replace(/[^A-Za-z0-9_]/g, "_"),
+              referentiel: $("g-second-ref")
+                .value.trim()
+                .replace(/[^A-Za-z0-9_]/g, "_"),
+            },
+          ].filter((e) => e.reponses && e.referentiel)
+        : [],
     };
-    if (valeur.autres_champs.some(e => e.reponses === valeur.reponses || e.referentiel === valeur.referentiel)) { statut("statut-general", "Le second champ doit avoir ses propres tables (réponses et référentiel).", "err"); return; }
-    try { await S.ecrireConfig("general", valeur); await charger(); statut("statut-general", valeur.autres_champs.length && plan.etapes.some(e => /@/.test(e.id)) ? "Réglages enregistrés : appliquez les actions proposées en haut de l'onglet pour créer les tables du second champ." : "Réglages enregistrés.", "ok"); }
-    catch (e) { statut("statut-general", `Échec : ${e.message || e}`, "err"); }
+    if (valeur.autres_champs.some((e) => e.reponses === valeur.reponses || e.referentiel === valeur.referentiel)) {
+      statut("statut-general", "Le second champ doit avoir ses propres tables (réponses et référentiel).", "err");
+      return;
+    }
+    try {
+      await S.ecrireConfig("general", valeur);
+      await charger();
+      statut(
+        "statut-general",
+        valeur.autres_champs.length && plan.etapes.some((e) => /@/.test(e.id))
+          ? "Réglages enregistrés : appliquez les actions proposées en haut de l'onglet pour créer les tables du second champ."
+          : "Réglages enregistrés.",
+        "ok",
+      );
+    } catch (e) {
+      statut("statut-general", `Échec : ${e.message || e}`, "err");
+    }
   });
 
-  document.addEventListener("change", ev => {
+  document.addEventListener("change", (ev) => {
     const s = ev.target;
-    if (s.matches && s.matches("select[data-famille]")) { choixRoles[s.dataset.famille][s.dataset.role] = s.value; dessinerRoles(); }
+    if (s.matches && s.matches("select[data-famille]")) {
+      choixRoles[s.dataset.famille][s.dataset.role] = s.value;
+      dessinerRoles();
+    }
   });
 
   $("btn-roles").addEventListener("click", async () => {
     const actuel = (config && config.valeurs.roles) || {};
     const valeur = { reponses: { ...(actuel.reponses || {}) }, referentiel: { ...(actuel.referentiel || {}) } };
     // On part des associations affichées (y compris reconnues), puis on applique les choix faits à l'écran
-    for (const [famille, roles] of [["reponses", plan.rolesRep], ["referentiel", plan.rolesRef]])
+    for (const [famille, roles] of [
+      ["reponses", plan.rolesRep],
+      ["referentiel", plan.rolesRef],
+    ])
       for (const [role, r] of Object.entries(roles)) if (r.col && r.col !== role) valeur[famille][role] = r.col;
     for (const famille of ["reponses", "referentiel"])
       for (const [role, col] of Object.entries(choixRoles[famille])) {
-        if (col && col !== role) valeur[famille][role] = col; else delete valeur[famille][role];
+        if (col && col !== role) valeur[famille][role] = col;
+        else delete valeur[famille][role];
       }
     try {
       await S.ecrireConfig("roles", valeur);
-      choixRoles.reponses = {}; choixRoles.referentiel = {};
-      await charger(); statut("statut-roles", "Associations enregistrées.", "ok");
-    } catch (e) { statut("statut-roles", `Échec : ${e.message || e}`, "err"); }
+      choixRoles.reponses = {};
+      choixRoles.referentiel = {};
+      await charger();
+      statut("statut-roles", "Associations enregistrées.", "ok");
+    } catch (e) {
+      statut("statut-roles", `Échec : ${e.message || e}`, "err");
+    }
   });
 
   grist.ready({ requiredAccess: "full" });

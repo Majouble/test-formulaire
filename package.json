@@ -1,0 +1,16 @@
+{
+  "name": "prisme",
+  "private": true,
+  "description": "PRISME — outils de développement (mise en forme, analyse). Les widgets eux-mêmes n'ont besoin d'aucune installation.",
+  "scripts": {
+    "format": "prettier --write v2 outils",
+    "format:verifier": "prettier --check v2 outils",
+    "analyse": "eslint v2 outils"
+  },
+  "devDependencies": {
+    "eslint": "9.39.1",
+    "@eslint/js": "9.39.1",
+    "globals": "16.5.0",
+    "prettier": "3.6.2"
+  }
+}
