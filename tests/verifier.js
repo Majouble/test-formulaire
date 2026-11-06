@@ -25,7 +25,10 @@ const SEQUENTIELS = new Set(fs.readdirSync(ICI).filter(f => /^run\d+\.js$/.test(
 const INSTABLES = new Set(["run99"]);
 
 /* ---------- Normalisation : ce qui varie d'une exécution à l'autre ---------- */
+// numéro de version du socle (« 2.53.0 ») : change à chaque publication, sans changer le comportement
+const VERSION = fs.readFileSync(path.join(ICI, "..", "v2", "commun", "socle.js"), "utf8").match(/VERSION = "([\d.]+)/)[1];
 const REMPLACEMENTS = [
+  [new RegExp(`\\b${VERSION.replace(/\./g, "\\.")}\\b`, "g"), "<VERSION>"],
   [/\b\d{4}_\d{2}_\d{2}_\d{2}h\d{2}/g, "<HORODATAGE>"],   // noms de fichiers exportés (2026_11_06_18h26_…)
   [/\b20\d{6}-\d{4}\b/g, "<HORODATAGE>"],                  // noms de fichiers exportés (…-20261106-1740.csv)
   [/(\.jpe?g \(|photo d'origine : )\d+ Ko/gi, "$1<N> Ko"],   // photo d'essai fabriquée puis recompressée : poids variable

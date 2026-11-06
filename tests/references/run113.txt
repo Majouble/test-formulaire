@@ -1,6 +1,6 @@
 MENU : Aucune page n'affiche encore ce tableau.Créer la page dédiéeCréer la page CartographieCréer la page Extractions
 CRÉATION : Page « Extractions » créée : elle apparaît dans la liste des pages de Grist, à gauche (renommable dans Grist). | Extractions → …/v2/extractions/ (accès full)
-VERSION : socle 2.52.0 (<DATE>) | TABLES : Reponses, Etablissements
+VERSION : socle <VERSION> (<DATE>) | TABLES : Reponses, Etablissements
 RÉGLAGES PROPOSÉS : {"cle":"UAI","date":"Date_faits","qual":"Qualification","id":["Nom_etablissement","Departement","Academie"],"exclure":"RAS","gravite":["RAS","Perturbé","Fermé"]}
 RÉSULTAT : 4 établissement(s) retenu(s) sur 4 · 5 ligne(s) source(s)
   UAI ¦ Nom_etablissement ¦ Département ¦ Académie ¦ Nb jours de mobilisation (hors jours RAS) ¦ Premier jour ¦ Dernier jour ¦ Qualification la plus grave ¦ Dernière qualification
