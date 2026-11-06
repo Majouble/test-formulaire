@@ -14,7 +14,7 @@
 [B] Word : <HORODATAGE>_Signalements_Education_nationale.docx
 [A] versions du dossier : [["Nouveau signalement","Saisie en mode secours par Alice"],["Mise à jour","Mise à jour par Bob"]]
 [A] après rechargement, lignes du mode secours : 2
-[A] CSV : secours-Reponses-20261106-1740.csv | <N13>;Collège Jean Moulin;<DATE>;<DATE> <HEURE>;Nouveau signalement;RAS;Saisie en mode secours par Alic
+[A] CSV : secours-Reponses-<HORODATAGE>.csv | <N13>;Collège Jean Moulin;<DATE>;<DATE> <HEURE>;Nouveau signalement;RAS;Saisie en mode secours par Alic
 [Grist] aperçu : 5 saisie(s) à réintégrer, par 2 agent(s), du <DATE> <HEURE> au <DATE> <HEURE>. Table Lignes créées Compléments de ces lignes Lignes existantes modifiées Suppressions Reponses 2 1 0 0 Sites_signales 2 0 0 0
 [Grist] bilan : 5 saisie(s) réintégrée(s), 4 ligne(s) créée(s).
 [Grist] réponses : [[8,8,"Saisie en mode secours par Alice","<ISO>"],[9,8,"Mise à jour par Bob","<ISO>"]]

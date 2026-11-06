@@ -53,6 +53,7 @@ const { docValidation } = require('./run108');
   console.log('EXCEL : dernière colonne', ws.getRow(1).values[nb], '|', [2, 3, 4, 5].filter(r => r <= ws.rowCount).map(r => `${ws.getRow(r).values[1]} → ${ws.getRow(r).values[nb]}`).join(' ; '));
   const wp = wb.getWorksheet('Paramètres');
   console.log('PARAMÈTRES :', [...Array(wp.rowCount).keys()].map(i => wp.getRow(i + 1).values.slice(1).join(' = ')).filter(l => /Filtre/.test(l)).join(' | '));
+  await page.waitForTimeout(800);   // les options sont enregistrées 600 ms après le dernier changement
   console.log('ENREGISTRÉ :', await page.evaluate(() => JSON.stringify({ c: window.__OPTS.filtres.combinaison, f: window.__OPTS.filtres.colonnes })));
   await page.close();
   // ancien réglage : un seul filtre (chercheCol / chercheTexte)
