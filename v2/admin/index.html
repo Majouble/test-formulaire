@@ -10,6 +10,17 @@
     <script src="../commun/theme.js"></script>
     <script src="../commun/marque.js"></script>
     <script src="../commun/socle.js"></script>
+    <script src="../commun/metier/etablissements.js"></script>
+    <script src="../commun/metier/planning.js"></script>
+    <script src="../commun/metier/validation.js"></script>
+    <script src="../commun/metier/veille.js"></script>
+    <script src="../commun/metier/campagnes.js"></script>
+    <script src="../commun/metier/tableaux-de-bord.js"></script>
+    <script src="../commun/metier/point-de-situation.js"></script>
+    <script src="metier/agents.js"></script>
+    <script src="metier/actions.js"></script>
+    <script src="metier/schema-public.js"></script>
+    <script src="metier/plan-installation.js"></script>
     <script>
       Donnees.activerCache();
       // ce qui est fait directement dans Grist (page supprimée, colonne ajoutée…) n'est pas signalé au widget : la structure
@@ -4090,9 +4101,8 @@
       // les onglets Planning, Formulaires et Établissements le trouvent ensuite déjà prêt (cache de lecture)
       setTimeout(async () => {
         try {
-          const S = window.Socle,
-            c = await S.lireConfig();
-          if (c) await window.Repartition.lireReferentiel(S.general(c), c);
+          const c = await Socle.lireConfig();
+          if (c) await window.Repartition.lireReferentiel(Socle.general(c), c);
         } catch (_) {
           /* lu plus tard, à la demande */
         }

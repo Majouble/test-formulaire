@@ -8,7 +8,6 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = () => window.Socle;
   const MAX_VALEURS_CRITERE = 200; // au-delà, une colonne n'est pas proposée comme critère
   const ROLES_CRITERES = [
     "Academie",
@@ -62,10 +61,10 @@
   async function lireReferentielSansCache(general, config) {
     const table = general.referentiel;
     try {
-      const meta = await S().lireMeta(),
+      const meta = await Socle.lireMeta(),
         tMeta = meta[table];
       if (!tMeta) return { table, absent: true };
-      const roles = S().resoudreRoles(
+      const roles = Socle.associerColonnes(
         "referentiel",
         tMeta,
         { reponses: general.reponses, referentiel: table },
@@ -78,7 +77,7 @@
       for (const c of Object.values(tMeta.colonnes)) {
         if (!/^(Text|Choice|Ref)$/.test(c.type.split(":")[0]) || !t[c.colId]) continue;
         let affiche = (v) => v;
-        const cible = S().cibleRef(c.type);
+        const cible = Socle.cibleRef(c.type);
         if (cible) {
           // référence : on répartit sur le libellé affiché de la ligne visée
           try {
@@ -149,8 +148,8 @@
     return [...new Set(ordre)].filter((c) => !deja.includes(c));
   }
   async function enregistrerCriteres(config, liste) {
-    await S().ecrireConfig("repartition", { ...((config && config.valeurs.repartition) || {}), criteres: liste });
-    return S().lireConfig();
+    await Socle.ecrireConfig("repartition", { ...((config && config.valeurs.repartition) || {}), criteres: liste });
+    return Socle.lireConfig();
   }
 
   /* ---------- Périmètres ---------- */
@@ -208,7 +207,7 @@
         telephone: String(col("Telephone", i) || "").trim(),
         actif: col("Actif", i) !== false,
         equipe: String(col("Equipe", i) || "").trim(), // équipe (groupe de travail) : filtre et tri dans Équipe et Planning
-        champsAcces: t.Champs_acces ? S().listeChoix(col("Champs_acces", i)) : null, // null : colonne absente
+        champsAcces: t.Champs_acces ? Socle.listeChoix(col("Champs_acces", i)) : null, // null : colonne absente
         cle: String(col("Cle_acces", i) || "").trim(),
         pageSaisie: col("Page_saisie", i) || null, // invité : accès par lien
         lienAcces: typeof col("Lien_acces", i) === "string" ? col("Lien_acces", i) : "",
@@ -279,8 +278,8 @@
       const a = agents.find((x) => x.id === page.agent);
       if (a) return a;
     }
-    const n = S().norm(page.libelle || page.page.replace(/^Formulaire\s+/i, "").replace(/\s*\(.*\)\s*$/, ""));
-    return n ? agents.find((x) => S().norm(x.nom) === n) || null : null;
+    const n = Socle.normaliser(page.libelle || page.page.replace(/^Formulaire\s+/i, "").replace(/\s*\(.*\)\s*$/, ""));
+    return n ? agents.find((x) => Socle.normaliser(x.nom) === n) || null : null;
   }
 
   /* ---------- Accès des établissements par lien (onglets Établissements et Accès) ---------- */
@@ -329,7 +328,7 @@
     const assoc = (config && config.valeurs.roles && config.valeurs.roles.reponses) || {},
       parTable = new Map();
     for (const f of formulaires.filter((x) => x.type === "etablissement" && meta[x.table])) {
-      const rr = S().resoudreRoles(
+      const rr = Socle.associerColonnes(
         "reponses",
         meta[f.table],
         { reponses: f.table, referentiel: general.referentiel },
@@ -337,7 +336,7 @@
         {},
       );
       const col = rr.Etablissement && rr.Etablissement.col,
-        cible = col ? S().cibleRef(meta[f.table].colonnes[col].type) : null;
+        cible = col ? Socle.cibleRef(meta[f.table].colonnes[col].type) : null;
       if (!cible || !meta[cible]) continue;
       if (!parTable.has(cible)) parTable.set(cible, { table: cible, formulaires: [] });
       parTable.get(cible).formulaires.push({ ...f, colEtab: col });
@@ -363,7 +362,7 @@
         general.affectations,
         general.emargements,
         general.actions,
-        S().TABLE_CONFIG,
+        Socle.TABLE_CONFIG,
         general.formulaires,
       ]);
     for (const g of groupes) {
@@ -375,7 +374,7 @@
           if (st && meta[st]) out.add(st);
         });
         Object.values(meta[f.table].colonnes).forEach((c) => {
-          const x = S().cibleRef(c.type) || (/^RefList:(.+)$/.exec(c.type) || [])[1];
+          const x = Socle.cibleRef(c.type) || (/^RefList:(.+)$/.exec(c.type) || [])[1];
           if (x && meta[x] && !technique.has(x)) out.add(x);
         });
       }
@@ -398,10 +397,10 @@
       ),
     );
     if (!meta[general.referentiel]) tables.delete(general.referentiel);
-    return tables.size ? S().majSchemaPublic([...tables].filter((t) => meta[t])) : false;
+    return tables.size ? Socle.majSchemaPublic([...tables].filter((t) => meta[t])) : false;
   }
   const formuleLien = (attribut, page) =>
-    `SELF_HYPERLINK(${page ? `page=${page}, ` : ""}LinkKey_${attribut}=$${LIEN.cle})${S().STYLE_LIEN}`;
+    `SELF_HYPERLINK(${page ? `page=${page}, ` : ""}LinkKey_${attribut}=$${LIEN.cle})${Socle.STYLE_LIEN}`;
   const ancienneFormuleLien = (attribut, page) =>
     `SELF_HYPERLINK(${page ? `page=${page}, ` : ""}LinkKey_${attribut}=$${LIEN.cle})`;
   // Pages des établissements : vues personnalisées dont l'option « etablissements » nomme le référentiel

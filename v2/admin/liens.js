@@ -12,8 +12,7 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle,
-    R = window.Repartition;
+  const R = window.Repartition;
   const { esc, $ } = Outils;
   const { cle: CLE, lien: LIEN } = R.LIEN;
   const MAX_LIGNES = 200;
@@ -31,9 +30,9 @@
 
   /* ---------- Lecture ---------- */
   async function charger() {
-    config = await S.lireConfig();
-    general = S.general(config);
-    meta = await S.lireMeta();
+    config = await Socle.lireConfig();
+    general = Socle.general(config);
+    meta = await Socle.lireMeta();
     formulaires = await R.lireFormulairesPublies(general);
     groupes = R.groupesLiens(meta, config, general, formulaires);
     pages = (await R.lirePagesEtab()) || [];
@@ -45,13 +44,13 @@
     if (anciennes.length)
       try {
         await Donnees.ecrire(anciennes.map((g) => ["ModifyColumn", g.table, LIEN, { formula: formuleAttendue(g) }]));
-        meta = await S.lireMeta();
+        meta = await Socle.lireMeta();
         groupes = R.groupesLiens(meta, config, general, formulaires);
       } catch (_) {
         /* droits insuffisants : proposé dans l'étape « Formule du lien » */
       }
     attributs = await lireAttributs();
-    if (await R.majSchemaPublic(meta, config, general, formulaires)) config = await S.lireConfig(); // copie des colonnes pour les liens
+    if (await R.majSchemaPublic(meta, config, general, formulaires)) config = await Socle.lireConfig(); // copie des colonnes pour les liens
     message = { ...MESSAGE_DEFAUT, ...((config && config.valeurs.liens && config.valeurs.liens.message) || {}) };
     if (choix >= groupes.length) choix = 0;
     await chargerDonnees();
@@ -234,7 +233,7 @@
   function lignesFiltrees() {
     if (!donnees || !donnees.t) return [];
     const { t, cols } = donnees,
-      q = S.norm(filtre.recherche);
+      q = Socle.normaliser(filtre.recherche);
     const crit = Object.entries(filtre.crit).filter(([, v]) => v && v.size);
     return t.id
       .map((id, i) => i)
@@ -243,7 +242,7 @@
         if (filtre.sansCle && lisible((t[CLE] || [])[i])) return false;
         for (const [c, vals] of crit) if (!valeursCellule(t[c] ? t[c][i] : null).some((x) => vals.has(x))) return false;
         if (q) {
-          const txt = S.norm(
+          const txt = Socle.normaliser(
             [cols.nom, cols.uai, cols.commune]
               .filter(Boolean)
               .map((c) => t[c][i])
@@ -284,8 +283,8 @@
   }
   async function enregistrerFiltres(liste) {
     try {
-      await S.ecrireConfig("liens", { ...((config && config.valeurs.liens) || {}), filtres: liste });
-      config = await S.lireConfig();
+      await Socle.ecrireConfig("liens", { ...((config && config.valeurs.liens) || {}), filtres: liste });
+      config = await Socle.lireConfig();
     } catch (_) {
       /* droits insuffisants : réglage non gardé */
     }
@@ -569,8 +568,8 @@
   }
   async function enregistrerMessage() {
     try {
-      await S.ecrireConfig("liens", { ...((config && config.valeurs.liens) || {}), message });
-      config = await S.lireConfig();
+      await Socle.ecrireConfig("liens", { ...((config && config.valeurs.liens) || {}), message });
+      config = await Socle.lireConfig();
       dire("li-msg-statut", "Message enregistré (repris par le bouton ✉ des pages de saisie).");
     } catch (e) {
       dire("li-msg-statut", `Enregistrement refusé (${e.message || e}).`, true);
@@ -618,7 +617,7 @@
     racine.querySelectorAll("[data-crit-saisie]").forEach((inp) =>
       inp.addEventListener("change", () => {
         const c = inp.dataset.critSaisie,
-          v = (donnees.valeurs[c] || []).find((x) => S.norm(x.v) === S.norm(inp.value));
+          v = (donnees.valeurs[c] || []).find((x) => Socle.normaliser(x.v) === Socle.normaliser(inp.value));
         if (!v) {
           inp.value = "";
           inp.placeholder = "Valeur inconnue : choisissez dans la liste";
@@ -649,8 +648,8 @@
         const l = { ...((config && config.valeurs.liens) || {}) };
         delete l.filtres;
         try {
-          await S.ecrireConfig("liens", l);
-          config = await S.lireConfig();
+          await Socle.ecrireConfig("liens", l);
+          config = await Socle.lireConfig();
         } catch (_) {
           /* droits insuffisants */
         }

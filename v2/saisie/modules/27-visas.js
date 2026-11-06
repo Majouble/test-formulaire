@@ -88,9 +88,8 @@ function peutViser(echelonVisa, l = initiale) {
 // Dossier (ligne initiale) en attente du visa de ce viseur, dans son périmètre
 function aViserParMoi(l) {
   if (!monPerimetreVisa || !reglageValidation) return false;
-  const s = statutDe(derniereDe(l)),
-    V = window.Socle;
-  return (s === V.STATUT.dep && peutViser("dep", l)) || (s === V.STATUT.aca && peutViser("aca", l));
+  const s = statutDe(derniereDe(l));
+  return (s === Socle.STATUT.dep && peutViser("dep", l)) || (s === Socle.STATUT.aca && peutViser("aca", l));
 }
 function majBandeauVisa() {
   const b = $("bandeau-visa");
@@ -133,8 +132,7 @@ function majBandeauVeille() {
     b.hidden = true;
     return;
   }
-  const V = window.Socle,
-    r = V.reglagesVeille(socleConfig),
+  const r = Socle.reglagesVeille(socleConfig),
     groupes = new Map();
   for (const v of vigilancesPage) {
     if (v.niveau < r.seuil || (r.phenomenes.length && !r.phenomenes.includes(v.phenomene))) continue;
@@ -161,12 +159,13 @@ function majBandeauVeille() {
 /* Campagnes (onglet Établissements de l'administration) : la page d'un établissement ouverte par son lien affiche la
    campagne qui le vise et propose « Rien à signaler », qui enregistre un signalement en retour à la normale. */
 function campagnesDeLEtab() {
-  const V = window.Socle;
-  if (!modeEtab || !etabs || !etabs[0] || !socleConfig || !V.campagnes) return [];
+  if (!modeEtab || !etabs || !etabs[0] || !socleConfig || !Socle.campagnes) return [];
   const cols = { nom: E.nom, uai: E.uai, commune: E.commune, mail: E.mail };
-  return V.campagnes(socleConfig).filter(
+  return Socle.campagnes(socleConfig).filter(
     (c) =>
-      V.campagneEnCours(c) && (!c.referentiel || c.referentiel === ETAB.table) && V.campagneVise(c, etabs[0], cols),
+      Socle.campagneEnCours(c) &&
+      (!c.referentiel || c.referentiel === ETAB.table) &&
+      Socle.campagneVise(c, etabs[0], cols),
   );
 }
 function majBandeauCampagne() {
@@ -177,9 +176,8 @@ function majBandeauCampagne() {
     b.hidden = true;
     return;
   }
-  const V = window.Socle,
-    saisies = enregistrements.map((l) => secondes(val(l, "Date"))).filter((x) => x != null);
-  const attente = cs.filter((c) => !saisies.some((x) => V.reponseCompte(c, x)));
+  const saisies = enregistrements.map((l) => secondes(val(l, "Date"))).filter((x) => x != null);
+  const attente = cs.filter((c) => !saisies.some((x) => Socle.reponseCompte(c, x)));
   b.hidden = false;
   b.classList.toggle("ok", !attente.length);
   if (!attente.length) {

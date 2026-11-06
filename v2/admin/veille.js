@@ -13,12 +13,11 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle,
-    G = () => window.Geo;
+  const G = () => window.Geo;
   const { esc, $ } = Outils;
   const nf = (n) => Math.round(Number(n) || 0).toLocaleString("fr-FR");
   const PASTILLE = ["", "🟢", "🟡", "🟠", "🔴"];
-  const couleur = (n) => S.COULEURS_VIGILANCE.find((c) => c.niveau === n) || S.COULEURS_VIGILANCE[0];
+  const couleur = (n) => Socle.COULEURS_VIGILANCE.find((c) => c.niveau === n) || Socle.COULEURS_VIGILANCE[0];
   const heure = (s) =>
     s
       ? Outils.dates.dateHeure(s, {
@@ -38,15 +37,15 @@
     ref,
     reglages,
     racine,
-    echeance = S.ECHEANCES_VIGILANCE[0];
+    echeance = Socle.ECHEANCES_VIGILANCE[0];
 
   /* ---------- Lecture ---------- */
   async function charger() {
-    meta = await S.lireMeta();
-    config = await S.lireConfig(meta);
-    general = S.general(config);
-    reglages = S.reglagesVeille(config);
-    vigilances = meta[general.vigilances] ? await S.lireVigilances(general) : null;
+    meta = await Socle.lireMeta();
+    config = await Socle.lireConfig(meta);
+    general = Socle.general(config);
+    reglages = Socle.reglagesVeille(config);
+    vigilances = meta[general.vigilances] ? await Socle.lireVigilances(general) : null;
     journal = [];
     if (meta[general.vigilances_journal])
       try {
@@ -76,7 +75,7 @@
     const table = general.referentiel;
     if (!meta[table]) return null;
     const assoc = (config && config.valeurs.roles && config.valeurs.roles.referentiel) || {};
-    const roles = S.resoudreRoles(
+    const roles = Socle.associerColonnes(
       "referentiel",
       meta[table],
       { reponses: general.reponses, referentiel: table },
@@ -153,7 +152,7 @@
           ? `<div class="bandeau alerte">Dernière carte de Météo-France reçue ${heure(maj)}, il y a plus de ${Math.floor(age)} heures : le relais n8n ne tourne peut-être plus (vérifiez ses exécutions).</div>`
           : `<div class="bandeau ok">Carte de vigilance de Météo-France du ${heure(maj)}${vigilances.length ? "" : " : aucune vigilance jaune, orange ou rouge"}.</div>`;
     racine.innerHTML = `${etat}
-      <div class="sous-onglets" role="tablist">${S.ECHEANCES_VIGILANCE.map((e) => {
+      <div class="sous-onglets" role="tablist">${Socle.ECHEANCES_VIGILANCE.map((e) => {
         const n = departements(e).length;
         return `<button type="button" role="tab" data-ech="${esc(e)}" aria-selected="${e === echeance}">${esc(e)}${n ? ` · ${n} dép.` : ""}</button>`;
       }).join("")}</div>
@@ -233,7 +232,7 @@
       <div class="grille">
         <label class="champ"><span>Seuil affiché (et proposé pour l'alerte Tchap)</span><select id="vg-seuil">${[2, 3, 4].map((n) => `<option value="${n}"${n === reglages.seuil ? " selected" : ""}>${esc(couleur(n).nom)} et plus</option>`).join("")}</select></label>
         <div class="champ"><span class="va-titre">Phénomènes suivis <small>(aucun coché : tous)</small></span>
-          <div class="vg-phenomenes">${Object.values(S.PHENOMENES_VIGILANCE)
+          <div class="vg-phenomenes">${Object.values(Socle.PHENOMENES_VIGILANCE)
             .map(
               (p) =>
                 `<label class="va-case"><input type="checkbox" data-vg-phen="${esc(p)}"${reglages.phenomenes.includes(p) ? " checked" : ""}> ${esc(p)}</label>`,
@@ -372,7 +371,7 @@
             phenomenes: [...racine.querySelectorAll("[data-vg-phen]:checked")].map((c) => c.dataset.vgPhen),
           };
           try {
-            await S.ecrireConfig("veille", v);
+            await Socle.ecrireConfig("veille", v);
             await recharger();
             dire(
               "vg-statut-r",

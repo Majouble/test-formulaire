@@ -10,6 +10,13 @@
     <script src="../commun/theme.js"></script>
     <script src="../commun/marque.js"></script>
     <script src="../commun/socle.js"></script>
+    <script src="../commun/metier/etablissements.js"></script>
+    <script src="../commun/metier/planning.js"></script>
+    <script src="../commun/metier/validation.js"></script>
+    <script src="../commun/metier/veille.js"></script>
+    <script src="../commun/metier/campagnes.js"></script>
+    <script src="../commun/metier/tableaux-de-bord.js"></script>
+    <script src="../commun/metier/point-de-situation.js"></script>
     <script src="../commun/point-moteur.js"></script>
     <style>
       :root {
@@ -222,7 +229,7 @@
           : null;
         const R = await Socle.reglagesPointParDefaut(meta, cfg2);
         const assoc = (config && config.valeurs.roles) || {};
-        const rf = Socle.resoudreRoles(
+        const rf = Socle.associerColonnes(
           "referentiel",
           meta[e.referentiel],
           { reponses: e.reponses, referentiel: e.referentiel },

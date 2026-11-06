@@ -11,7 +11,6 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle;
   const refId = (v) =>
     typeof v === "number"
       ? v
@@ -81,11 +80,11 @@
   const GRAVITES = { 3: ["haute", "Haute"], 2: ["moyenne", "Moyenne"], 1: ["basse", "Basse"] };
 
   /* ---------- sections d'établissement : règles communes au widget de saisie (socle) ---------- */
-  const genreSection = (...a) => S.genreSection(...a);
+  const genreSection = (...a) => Socle.genreSection(...a);
 
   /* ---------- lecture et analyse d'un champ (table des réponses + référentiel) ---------- */
   async function texteRef(type, ids) {
-    const cible = S.cibleRef(type);
+    const cible = Socle.cibleRef(type);
     if (!cible) return null;
     try {
       const t = await Donnees.lire(cible),
@@ -102,10 +101,16 @@
     const tMeta = meta[e.reponses];
     if (!tMeta) return null;
     const assoc = e.reponses === g.reponses ? (config.valeurs.roles || {}).reponses || {} : {};
-    const rr = S.resoudreRoles("reponses", tMeta, { reponses: e.reponses, referentiel: e.referentiel }, assoc, {});
+    const rr = Socle.associerColonnes(
+      "reponses",
+      tMeta,
+      { reponses: e.reponses, referentiel: e.referentiel },
+      assoc,
+      {},
+    );
     const c = (r) => rr[r] && rr[r].col;
     const colEtab = c("Etablissement"),
-      refTable = colEtab ? S.cibleRef(tMeta.colonnes[colEtab].type) : null;
+      refTable = colEtab ? Socle.cibleRef(tMeta.colonnes[colEtab].type) : null;
     const t = await Donnees.lire(e.reponses);
     const v = (col, i) => (col ? (t[col] || [])[i] : null);
     // référentiel : établissements cités, leurs sections et voisins
@@ -113,7 +118,7 @@
       rc = {};
     if (refTable && meta[refTable]) {
       const assocRef = e.referentiel === g.referentiel ? (config.valeurs.roles || {}).referentiel || {} : {};
-      const rf = S.resoudreRoles(
+      const rf = Socle.associerColonnes(
         "referentiel",
         meta[refTable],
         { reponses: e.reponses, referentiel: refTable },
@@ -203,7 +208,7 @@
         ref.id.forEach((id, i) => {
           if (MAJ(ref[rc.Commune][i]) === MAJ(x.commune)) ids.push(id);
         });
-      const r = S.rattachementSection(x, ids.map(info));
+      const r = Socle.rattachementSection(x, ids.map(info));
       x.parent = r ? r.etab : null;
       x.parentDistance = r ? r.distance : null;
       return x.parent;
@@ -387,12 +392,12 @@
     iso ? Outils.dates.date(iso + "T12:00:00", { weekday: "short", day: "numeric", month: "short" }) : "date inconnue";
 
   async function analyser() {
-    config = await S.lireConfig();
+    config = await Socle.lireConfig();
     if (!config) return { erreur: "La table Config est absente : lancez d'abord l'installation." };
-    const g = S.general(config),
-      meta = await S.lireMeta(),
+    const g = Socle.general(config),
+      meta = await Socle.lireMeta(),
       res = [];
-    for (const e of S.espaces(g)) {
+    for (const e of Socle.espaces(g)) {
       const r = await analyserEspace(e, meta, g);
       if (r) res.push(r);
     }
@@ -403,15 +408,15 @@
   const statuts = (cfg) => (((cfg || config) && (cfg || config).valeurs.qualite) || {}).statuts || {};
   // marque des anomalies vérifiées (s = "ok"), corrigées (s = "corrige") ou les rouvre (s = null) ; renvoie la Config relue
   async function marquer(liste, s, note) {
-    config = await S.lireConfig();
+    config = await Socle.lireConfig();
     const q = { ...(config.valeurs.qualite || {}) },
       st = { ...(q.statuts || {}) };
     liste.forEach((a) => {
       if (s) st[a.cle] = { s, le: Math.round(Date.now() / 1000), ...(note ? { note } : {}) };
       else delete st[a.cle];
     });
-    await S.ecrireConfig("qualite", { ...q, statuts: st });
-    config = await S.lireConfig();
+    await Socle.ecrireConfig("qualite", { ...q, statuts: st });
+    config = await Socle.lireConfig();
     return config;
   }
   /* Rattachement : toutes les versions des dossiers en cause passent sur l'établissement visé (celui de l'action proposée,
@@ -451,7 +456,7 @@
      versions la suivent. Renvoie { versions, liees: ["n ligne(s) de « table »", …] }. */
   async function supprimer(esp, fiche, versionId) {
     const rep = esp.espace.reponses,
-      meta = await S.lireMeta();
+      meta = await Socle.lireMeta();
     const entier = !versionId || fiche.lignes.length === 1;
     if (!entier && versionId === fiche.id)
       throw new Error(
@@ -497,7 +502,7 @@
       C = esp.colonnes,
       rr = C.rr || {},
       col = (r) => rr[r] && rr[r].col,
-      meta = await S.lireMeta(),
+      meta = await Socle.lireMeta(),
       tm = meta[rep];
     const colDos = col("Dossier");
     if (!colDos) throw new Error("colonne Dossier introuvable dans la table des réponses");
@@ -529,8 +534,8 @@
       const toutes = [...src.lignes, ...cib.lignes].sort((a, b) => (a.cree || 0) - (b.cree || 0) || a.id - b.id);
       toutes.forEach((l, k) => {
         const v = texte((t[colNat] || [])[idx.get(l.id)]),
-          voulu = S.NATURES[k ? 1 : 0];
-        if (S.NATURES.includes(v) && v !== voulu) {
+          voulu = Socle.NATURES[k ? 1 : 0];
+        if (Socle.NATURES.includes(v) && v !== voulu) {
           poser(l.id, { [colNat]: voulu });
           natures++;
         }

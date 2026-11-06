@@ -17,7 +17,6 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle;
   const { esc, $ } = Outils;
   const nf = (n) => Number(n || 0).toLocaleString("fr-FR");
   const refId = (v) =>
@@ -186,7 +185,7 @@
       const ctx = await contexte(),
         table = ctx.cibles.includes(choixTable) ? choixTable : ctx.parDefaut,
         tm = ctx.meta[table];
-      const roles = S.resoudreRoles("referentiel", tm, { referentiel: table }, {}, {});
+      const roles = Socle.associerColonnes("referentiel", tm, { referentiel: table }, {}, {});
       const cNom = roles.Nom && roles.Nom.col,
         cType = roles.Type && roles.Type.col,
         cNiv = tm.colonnes.Niveau ? "Niveau" : null;
@@ -259,7 +258,7 @@
         });
       for (let k = 0; k < acts.length; k += LOT) await Donnees.ecrire(acts.slice(k, k + LOT));
       if (cNiv) {
-        const m = (await S.lireMeta())[table].colonnes[cNiv];
+        const m = (await Socle.lireMeta())[table].colonnes[cNiv];
         if (/^Choice/.test(m.type)) {
           let o = {};
           try {
@@ -385,11 +384,11 @@
 
   /* ---------- Contexte Grist ---------- */
   async function contexte() {
-    const meta = await S.lireMeta(),
-      config = await S.lireConfig(meta);
+    const meta = await Socle.lireMeta(),
+      config = await Socle.lireConfig(meta);
     if (!config) throw new Error("La table Config n'existe pas : terminez d'abord l'installation.");
-    const g = S.general(config),
-      esp = S.espaces(g);
+    const g = Socle.general(config),
+      esp = Socle.espaces(g);
     const cibles = [...new Set(esp.map((e) => e.referentiel))].filter((t) => meta[t]);
     const parDefaut =
       (esp.find((e) => e.champ === "ESR" && meta[e.referentiel]) || {}).referentiel || cibles[0] || null;
@@ -404,7 +403,7 @@
           /site/i.test(t) &&
           !/signal|correspond/i.test(t) &&
           Object.values(ctx.meta[t].colonnes).some((c) => c.type === `Ref:${etab}`) &&
-          !Object.values(ctx.meta[t].colonnes).some((c) => ctx.reps.includes(S.cibleRef(c.type))),
+          !Object.values(ctx.meta[t].colonnes).some((c) => ctx.reps.includes(Socle.cibleRef(c.type))),
       ) || null
     );
   }
@@ -531,7 +530,7 @@
   function resolveurTexte() {
     const caches = {};
     return async (m, valeur) => {
-      const cible = S.cibleRef(m.type);
+      const cible = Socle.cibleRef(m.type);
       if (!cible) return null;
       if (!caches[cible]) {
         const t = await Donnees.lire(cible),
@@ -586,7 +585,7 @@
       fS = regle.fS;
     const tm = ctx.meta[table],
       esp = ctx.esp.find((e) => e.referentiel === table) || {};
-    const roles = S.resoudreRoles(
+    const roles = Socle.associerColonnes(
       "referentiel",
       tm,
       { reponses: esp.reponses, referentiel: table },
@@ -1074,7 +1073,7 @@
       rg.addEventListener("change", async () => {
         regleEcoles = rg.checked;
         try {
-          await S.ecrireConfig("regles_esr", { ecoles_ingenieurs: regleEcoles });
+          await Socle.ecrireConfig("regles_esr", { ecoles_ingenieurs: regleEcoles });
         } catch (_) {
           /* réglage non enregistré : valable pour cette session */
         }
@@ -1173,7 +1172,7 @@
   }
   async function etendreChoix(table, carte) {
     if (!carte.size) return;
-    const meta = await S.lireMeta(),
+    const meta = await Socle.lireMeta(),
       acts = [];
     for (const [c, s] of carte) {
       const m = meta[table] && meta[table].colonnes[c];
@@ -1242,7 +1241,7 @@
         return champs.get(rid);
       };
       if (a.lRatt && a.lRatt.col) {
-        const m = (await S.lireMeta())[table].colonnes[a.lRatt.col],
+        const m = (await Socle.lireMeta())[table].colonnes[a.lRatt.col],
           estRef = m && m.type === `Ref:${table}`;
         for (const o of a.lignes) {
           const rid = rowDe.get(o.id);
@@ -1360,7 +1359,7 @@
       // 6. correspondances
       let nAlias = 0;
       if (a.alias && a.alias.lignes.length) {
-        const meta = await S.lireMeta();
+        const meta = await Socle.lireMeta();
         if (!meta[TABLE_ALIAS]) {
           await actions([
             [
@@ -1409,9 +1408,9 @@
         nAlias = acts.length + ajouts.length;
       }
       // 7. trace dans Config, règles d'accès des tables créées
-      const config = await S.lireConfig();
+      const config = await Socle.lireConfig();
       await actions([
-        S.actionConfig(config, "referentiel_esr", {
+        Socle.actionConfig(config, "referentiel_esr", {
           fichier: nomFichier,
           table,
           sites: a.sites ? a.sites.table : null,

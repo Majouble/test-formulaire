@@ -9,8 +9,7 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle,
-    R = window.Repartition;
+  const R = window.Repartition;
   const { esc, $ } = Outils;
 
   /* ======================= Pages de saisie ======================= */
@@ -25,12 +24,12 @@
   const inclure = new Map(); // « agent|formulaire » → case « créer sa page »
 
   async function charger() {
-    config = await S.lireConfig();
-    general = S.general(config);
+    config = await Socle.lireConfig();
+    general = Socle.general(config);
     const [m, ag, pl, pg, fs] = await Promise.all([
-      S.lireMeta(),
+      Socle.lireMeta(),
       R.lireAgents(general),
-      S.lirePlanning(general),
+      Socle.lirePlanning(general),
       R.lirePages(),
       R.lireFormulairesPublies(general),
     ]);
@@ -50,15 +49,17 @@
   function champ(f) {
     const v =
       (f.conf.saisie && f.conf.saisie.version) ||
-      (S.espaceDeTable(general, f.table) || {}).version ||
+      (Socle.espaceDeTable(general, f.table) || {}).version ||
       (() => {
         const t = meta[f.table],
-          rr = t ? S.resoudreRoles("reponses", t, { reponses: f.table, referentiel: general.referentiel }, {}, {}) : {};
+          rr = t
+            ? Socle.associerColonnes("reponses", t, { reponses: f.table, referentiel: general.referentiel }, {}, {})
+            : {};
         const cible =
-          rr.Etablissement && rr.Etablissement.col ? S.cibleRef(t.colonnes[rr.Etablissement.col].type) : null;
+          rr.Etablissement && rr.Etablissement.col ? Socle.cibleRef(t.colonnes[rr.Etablissement.col].type) : null;
         return (t && t.colonnes.Site) || (cible && cible !== "Etablissements") ? "esr" : "en";
       })();
-    return (S.CHAMPS.find((c) => c.version === v) || S.CHAMPS[0]).id;
+    return (Socle.CHAMPS.find((c) => c.version === v) || Socle.CHAMPS[0]).id;
   }
   // nom de la page : le champ distingue les formulaires quand il y en a plusieurs (le nom du formulaire si deux ont le même champ)
   function nomPage(a, f) {
@@ -68,9 +69,10 @@
   }
   const champsAgent = (id) => {
     const l = ((planning && planning.affectations) || []).filter((x) => x.agent === id);
-    return l.length ? [...new Set(l.flatMap(S.champsDe))] : null;
+    return l.length ? [...new Set(l.flatMap(Socle.champsDe))] : null;
   };
-  const fonctionDeSaisie = (nom) => !!(S.reglagesPlanning(config).fonctions.find((f) => f.nom === nom) || {}).saisie;
+  const fonctionDeSaisie = (nom) =>
+    !!(Socle.reglagesPlanning(config).fonctions.find((f) => f.nom === nom) || {}).saisie;
   const aUneFonctionDeSaisie = (id) => {
     const l = ((planning && planning.affectations) || []).filter((x) => x.agent === id);
     return !l.length || l.some((x) => fonctionDeSaisie(x.fonction));

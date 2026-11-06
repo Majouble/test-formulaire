@@ -13,6 +13,13 @@
     <script src="../commun/marque.js"></script>
     <!-- Socle v2 : rôles des colonnes (établissement, coordonnées du référentiel, dernière version, qualification) -->
     <script src="../commun/socle.js"></script>
+    <script src="../commun/metier/etablissements.js"></script>
+    <script src="../commun/metier/planning.js"></script>
+    <script src="../commun/metier/validation.js"></script>
+    <script src="../commun/metier/veille.js"></script>
+    <script src="../commun/metier/campagnes.js"></script>
+    <script src="../commun/metier/tableaux-de-bord.js"></script>
+    <script src="../commun/metier/point-de-situation.js"></script>
     <script src="../commun/geo-fond.js"></script>
     <script src="../commun/geo.js"></script>
     <link rel="stylesheet" href="../vendor/leaflet/leaflet.css" />
@@ -2285,17 +2292,16 @@
               : null;
       async function enrichirSocle(records) {
         socle = null;
-        const S = window.Socle;
-        if (!S || !mainTableId || !grist.docApi) return records;
+        if (!Socle || !mainTableId || !grist.docApi) return records;
         try {
-          const config = await S.lireConfig();
+          const config = await Socle.lireConfig();
           if (!config) return records;
-          const g = S.general(config),
-            meta = await S.lireMeta(),
+          const g = Socle.general(config),
+            meta = await Socle.lireMeta(),
             tMeta = meta[mainTableId];
           if (!tMeta) return records;
           const assoc = config.valeurs.roles || {};
-          const rr = S.resoudreRoles(
+          const rr = Socle.associerColonnes(
             "reponses",
             tMeta,
             { reponses: mainTableId, referentiel: g.referentiel },
@@ -2304,9 +2310,9 @@
           );
           const etabCol = rr.Etablissement && rr.Etablissement.col;
           if (!etabCol) return records;
-          const refTable = S.cibleRef(tMeta.colonnes[etabCol].type);
+          const refTable = Socle.cibleRef(tMeta.colonnes[etabCol].type);
           if (!refTable || !meta[refTable]) return records;
-          const rf = S.resoudreRoles(
+          const rf = Socle.associerColonnes(
             "referentiel",
             meta[refTable],
             { reponses: mainTableId, referentiel: refTable },

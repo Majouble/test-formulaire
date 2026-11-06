@@ -17,7 +17,6 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle;
   const { esc, $ } = Outils;
   const refId = (v) =>
     typeof v === "number"
@@ -155,13 +154,13 @@
 
   /* ---------- tables : réponses (et leur établissement), sources de libellés, référentiels de sites ---------- */
   function contexte(config) {
-    const g = S.general(config),
-      reps = S.espaces(g)
+    const g = Socle.general(config),
+      reps = Socle.espaces(g)
         .map((e) => e.reponses)
         .filter((t) => meta[t]);
     const etabDe = (rep) => {
       const c = Object.values(meta[rep].colonnes).find((x) => x.colId === "Etablissement") || null;
-      return c ? { col: c.colId, table: S.cibleRef(c.type) } : null;
+      return c ? { col: c.colId, table: Socle.cibleRef(c.type) } : null;
     };
     const etabTables = new Set(
       reps
@@ -175,12 +174,12 @@
           !t.startsWith("_grist") &&
           !reps.includes(t) &&
           t !== TABLE_ALIAS &&
-          Object.values(tm.colonnes).some((c) => etabTables.has(S.cibleRef(c.type))) &&
-          !Object.values(tm.colonnes).some((c) => reps.includes(S.cibleRef(c.type))),
+          Object.values(tm.colonnes).some((c) => etabTables.has(Socle.cibleRef(c.type))) &&
+          !Object.values(tm.colonnes).some((c) => reps.includes(Socle.cibleRef(c.type))),
       )
       .map(([t, tm]) => ({
         table: t,
-        etabCol: Object.values(tm.colonnes).find((c) => etabTables.has(S.cibleRef(c.type))).colId,
+        etabCol: Object.values(tm.colonnes).find((c) => etabTables.has(Socle.cibleRef(c.type))).colId,
         nomCol: (
           Object.values(tm.colonnes).find(
             (c) => /^(nom|libelle|denomination|intitule)/i.test(c.colId) && /^Text/.test(c.type),
@@ -204,7 +203,7 @@
       .sort((a, b) => (/site/i.test(b.table) ? 1 : 0) - (/site/i.test(a.table) ? 1 : 0));
     // colonnes de sites saisis : texte, ou référence vers un référentiel des sites (anciens noms restés en texte)
     const tRefs = new Set(refs.map((r) => r.table)),
-      versSites = (c) => /^Ref:/.test(c.type) && tRefs.has(S.cibleRef(c.type));
+      versSites = (c) => /^Ref:/.test(c.type) && tRefs.has(Socle.cibleRef(c.type));
     const sources = [];
     const ajouter = (t, c, rep, viaDossier, e) =>
       sources.push({
@@ -216,7 +215,7 @@
         viaDossier,
         etab: e,
         estRef: versSites(c),
-        cible: versSites(c) ? S.cibleRef(c.type) : null,
+        cible: versSites(c) ? Socle.cibleRef(c.type) : null,
       });
     for (const rep of reps) {
       const e = etabDe(rep);
@@ -255,7 +254,7 @@
   }
 
   async function analyser(config) {
-    meta = await S.lireMeta();
+    meta = await Socle.lireMeta();
     const ctx = contexte(config);
     // nombre de lignes à rattacher par colonne (texte saisi ; ancien nom dans une colonne référence) : affiché dans la liste,
     // et première colonne qui en a, par défaut
@@ -286,10 +285,10 @@
       null;
     const mc = ref ? await chargerMotsCles(ref) : null;
     // référentiel des établissements : celui du référentiel des sites, sinon celui du champ ESR, sinon le premier
-    const g = S.general(config),
-      esp = S.espaces(g);
+    const g = Socle.general(config),
+      esp = Socle.espaces(g);
     const tEtab =
-      (ref && S.cibleRef(meta[ref.table].colonnes[ref.etabCol].type)) ||
+      (ref && Socle.cibleRef(meta[ref.table].colonnes[ref.etabCol].type)) ||
       (esp.find((e) => e.champ === "ESR" && meta[e.referentiel]) || esp.find((e) => meta[e.referentiel]) || {})
         .referentiel ||
       null;
@@ -414,7 +413,7 @@
             (c) => /^mots?_?cles?$/i.test(c.colId) && /^Text/.test(c.type) && !c.isFormula,
           ) || {}
         ).colId || null;
-    const tEtab = S.cibleRef(tm.colonnes[ref.etabCol].type);
+    const tEtab = Socle.cibleRef(tm.colonnes[ref.etabCol].type);
     const [t, te] = await Promise.all([Donnees.lire(ref.table), tEtab ? Donnees.lireSiPresente(tEtab) : null]);
     let noms = new Map();
     if (te) {
@@ -784,7 +783,7 @@
         },
       ],
     ]);
-    meta = await S.lireMeta();
+    meta = await Socle.lireMeta();
   }
   /* Site saisi qui devient un site du référentiel : nouvelle ligne de la table des sites, rattachée à l'établissement,
      identifiant SITE-Mnnnn, statut « Validé », source « Saisie », actif ; deux libellés renommés pareil pour le même
@@ -891,8 +890,8 @@
   // lignes des tableaux de sites (formulaires publiés) : site vide, libellé validé → site du référentiel
   async function completer(silencieux) {
     try {
-      const cfg = await S.lireConfig(),
-        g = S.general(cfg),
+      const cfg = await Socle.lireConfig(),
+        g = Socle.general(cfg),
         tf = await Donnees.lire(g.formulaires || "Formulaires");
       const reglages = [];
       tf.id.forEach((_, i) => {
@@ -909,7 +908,9 @@
       });
       // colonnes référence aux sites (même référentiel que la table des correspondances) : anciens noms à remplacer
       const tSitesAlias =
-        meta[TABLE_ALIAS] && meta[TABLE_ALIAS].colonnes.Site ? S.cibleRef(meta[TABLE_ALIAS].colonnes.Site.type) : null;
+        meta[TABLE_ALIAS] && meta[TABLE_ALIAS].colonnes.Site
+          ? Socle.cibleRef(meta[TABLE_ALIAS].colonnes.Site.type)
+          : null;
       const sourcesRef = contexte(cfg).sources.filter((x) => x.estRef && x.cible === tSitesAlias);
       if (!reglages.length && !sourcesRef.length) {
         if (!silencieux)
@@ -989,7 +990,7 @@
 
   async function relancer() {
     try {
-      const cfg = await S.lireConfig();
+      const cfg = await Socle.lireConfig();
       etat = cfg ? await analyser(cfg) : null;
     } catch (e) {
       etat = null;

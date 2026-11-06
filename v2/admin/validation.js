@@ -13,8 +13,7 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle,
-    R = window.Repartition;
+  const R = window.Repartition;
   const { esc, $ } = Outils;
   const nf = (n) => Number(n || 0).toLocaleString("fr-FR");
   const PARTIES_DEFAUT = [
@@ -28,18 +27,18 @@
 
   /* ---------- Lecture ---------- */
   async function charger() {
-    config = await S.lireConfig();
-    general = S.general(config);
-    meta = await S.lireMeta();
+    config = await Socle.lireConfig();
+    general = Socle.general(config);
+    meta = await Socle.lireMeta();
     formulaires = await R.lireFormulairesPublies(general);
     agentsT = await Donnees.lireSiPresente(general.agents);
     ref = await R.lireReferentiel(general, config).catch(() => null);
     espaces = [];
-    for (const e of S.espaces(general)) {
+    for (const e of Socle.espaces(general)) {
       if (!meta[e.reponses]) continue;
       const assoc =
         e.reponses === general.reponses ? (config && config.valeurs.roles && config.valeurs.roles.reponses) || {} : {};
-      const roles = S.resoudreRoles(
+      const roles = Socle.associerColonnes(
         "reponses",
         meta[e.reponses],
         { reponses: e.reponses, referentiel: e.referentiel },
@@ -108,13 +107,13 @@
       verdict_aca: e.candidats.va[0] || "",
       favorables: [],
       aca_vise_dep: true,
-      colonne: S.COLONNE_STATUT,
+      colonne: Socle.COLONNE_STATUT,
       ...(enr || {}),
     };
     if (!enr)
       r.favorables = [
         ...new Set([...choixDe(e.reponses, r.verdict_dep), ...choixDe(e.reponses, r.verdict_aca)]),
-      ].filter(S.estFavorable);
+      ].filter(Socle.estFavorable);
     return r;
   }
   // Viseurs : [{ id, nom, email, invite, actif, echelon, departements, academies }]
@@ -126,16 +125,16 @@
         id,
         nom: String(v("Nom", i) || "").trim() || `Agent n° ${id}`,
         email: String(v("Email", i) || "").trim(),
-        invite: !!String(v(S.INVITE.cle, i) || "").trim(),
+        invite: !!String(v(Socle.INVITE.cle, i) || "").trim(),
         actif: v("Actif", i) !== false,
         echelon: String(v("Echelon_visa", i) || ""),
-        departements: S.listeChoix(v("Visa_departements", i)),
-        academies: S.listeChoix(v("Visa_academies", i)),
+        departements: Socle.listeChoix(v("Visa_departements", i)),
+        academies: Socle.listeChoix(v("Visa_academies", i)),
       }))
       .sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
   }
   const colonnesViseursManquantes = () =>
-    !meta[general.agents] ? [] : S.COLONNES_VISEURS.filter((c) => !meta[general.agents].colonnes[c.id]);
+    !meta[general.agents] ? [] : Socle.COLONNES_VISEURS.filter((c) => !meta[general.agents].colonnes[c.id]);
   const valeursRef = (role) => {
     const c = ref && ref.roles && ref.roles[role];
     return c && ref.valeurs && ref.valeurs[c] ? ref.valeurs[c].map((x) => x.v) : [];
@@ -188,7 +187,7 @@
     ];
     const colOk = meta[T].colonnes[r.colonne],
       enr = config.valeurs.validation && config.valeurs.validation.tables && config.valeurs.validation.tables[T];
-    const formuleAttendue = S.formuleStatutValidation(r, e.cols);
+    const formuleAttendue = Socle.formuleStatutValidation(r, e.cols);
     const aJour = colOk && colOk.isFormula && String(colOk.formula).trim() === formuleAttendue.trim();
     const sansQuestion = !cand.va.length || (r.echelons === "dep_aca" && !cand.vd.length);
     const sansColEtab = !meta[T].colonnes.Departement || !meta[T].colonnes.Academie;
@@ -235,7 +234,7 @@
     const ds = dossiers(e, r);
     if (!ds.length)
       return `<div class="groupe">Suivi</div><p class="vide">Aucun dossier pour l'instant${e.t && !e.t[r.colonne] ? " (statut pas encore calculé par Grist : rechargez dans un instant)" : ""}.</p>`;
-    const statuts = S.STATUTS_VALIDATION.map((s) => s.nom),
+    const statuts = Socle.STATUTS_VALIDATION.map((s) => s.nom),
       parAca = new Map();
     ds.forEach((d) => {
       const a = d.aca || "(sans académie)";
@@ -249,7 +248,7 @@
     });
     const cellule = (m, s) => {
       const n = m[s] || 0,
-        st = S.STATUTS_VALIDATION.find((x) => x.nom === s);
+        st = Socle.STATUTS_VALIDATION.find((x) => x.nom === s);
       return `<td class="va-n">${n ? `<span class="va-pastille" style="background:${st.fond};color:${st.texte}">${nf(n)}</span>` : "·"}</td>`;
     };
     const lignes = [...parAca.entries()]
@@ -268,13 +267,13 @@
       return m;
     };
     if (r.echelons === "dep_aca")
-      for (const [, x] of attente(S.STATUT.dep, (d) => d.dep + "|" + d.aca))
-        if (!vs.some((v) => S.viseurCouvre(v, "dep", x.d.dep, x.d.aca, r)))
+      for (const [, x] of attente(Socle.STATUT.dep, (d) => d.dep + "|" + d.aca))
+        if (!vs.some((v) => Socle.viseurCouvre(v, "dep", x.d.dep, x.d.aca, r)))
           trous.push(
             `${esc(x.d.dep || "(département inconnu)")} (${esc(x.d.aca || "?")}) : ${nf(x.n)} dossier(s) à viser, aucun viseur départemental`,
           );
-    for (const [, x] of attente(S.STATUT.aca, (d) => d.aca))
-      if (!vs.some((v) => S.viseurCouvre(v, "aca", x.d.dep, x.d.aca, r)))
+    for (const [, x] of attente(Socle.STATUT.aca, (d) => d.aca))
+      if (!vs.some((v) => Socle.viseurCouvre(v, "aca", x.d.dep, x.d.aca, r)))
         trous.push(`Académie ${esc(x.d.aca || "?")} : ${nf(x.n)} dossier(s) à viser, aucun viseur académique`);
     return `<div class="groupe">Suivi des dossiers (dernière version de chacun)</div>
       <table class="va-table"><thead><tr><th>Académie</th>${statuts.map((s) => `<th>${esc(s)}</th>`).join("")}</tr></thead>
@@ -325,7 +324,7 @@
               v,
             ) => `<tr${v.actif ? "" : ' class="va-inactif"'}><td><strong>${esc(v.nom)}</strong>${v.actif ? "" : ' <span class="pastille">inactif</span>'}</td>
           <td>${v.email ? esc(v.email) : v.invite ? `<span class="pastille reco">lien d'invité</span>` : `<span class="pastille manque">ni adresse ni lien</span>`}</td>
-          <td><select data-echelon="${v.id}"><option value="">— retirer —</option>${S.ECHELONS_VISA.map((x) => `<option${x === v.echelon ? " selected" : ""}>${x}</option>`).join("")}</select></td>
+          <td><select data-echelon="${v.id}"><option value="">— retirer —</option>${Socle.ECHELONS_VISA.map((x) => `<option${x === v.echelon ? " selected" : ""}>${x}</option>`).join("")}</select></td>
           <td>${perimetre(v)}</td></tr>`,
           )
           .join("")}</tbody></table>`
@@ -334,7 +333,7 @@
       <div class="boutons">${
         sans.length
           ? `<select id="va-ajout-agent"><option value="">+ Ajouter un viseur…</option>${sans.map((v) => `<option value="${v.id}">${esc(v.nom)}</option>`).join("")}</select>
-        <select id="va-ajout-echelon">${S.ECHELONS_VISA.map((x) => `<option>${x}</option>`).join("")}</select><button class="secondaire" data-act="ajouter">Ajouter</button>`
+        <select id="va-ajout-echelon">${Socle.ECHELONS_VISA.map((x) => `<option>${x}</option>`).join("")}</select><button class="secondaire" data-act="ajouter">Ajouter</button>`
           : `<span class="aide">Tous les agents actifs sont viseurs, ou l'équipe est vide (onglet Équipe).</span>`
       }
         <span class="statut" id="va-statut-v" role="status"></span></div>
@@ -370,10 +369,10 @@
     try {
       const v =
         config.valeurs.validation && typeof config.valeurs.validation === "object" ? config.valeurs.validation : {};
-      await S.ecrireConfig("validation", { ...v, tables: { ...(v.tables || {}), [e.reponses]: r } });
+      await Socle.ecrireConfig("validation", { ...v, tables: { ...(v.tables || {}), [e.reponses]: r } });
       if (r.actif) {
-        const formula = S.formuleStatutValidation(r, e.cols),
-          wo = S.optionsStatutValidation();
+        const formula = Socle.formuleStatutValidation(r, e.cols),
+          wo = Socle.optionsStatutValidation();
         const c = meta[e.reponses].colonnes[r.colonne];
         await Donnees.ecrire([
           c
@@ -414,7 +413,7 @@
       dire(statutId || "va-statut-v", `Échec : ${err.message || err}`, true);
     }
   }
-  const liste = (v, col) => S.listeChoix((agentsT[col] || [])[agentsT.id.indexOf(v)]);
+  const liste = (v, col) => Socle.listeChoix((agentsT[col] || [])[agentsT.id.indexOf(v)]);
 
   function lier() {
     racine.querySelectorAll("section[data-table]").forEach((sec, k) => {
@@ -438,7 +437,7 @@
                 ]),
               ];
               r.favorables = r.favorables.filter((x) => valeurs.includes(x));
-              if (!r.favorables.length) r.favorables = valeurs.filter(S.estFavorable);
+              if (!r.favorables.length) r.favorables = valeurs.filter(Socle.estFavorable);
             }
           }),
         ),

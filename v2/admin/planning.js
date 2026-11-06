@@ -16,8 +16,7 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle,
-    R = window.Repartition;
+  const R = window.Repartition;
   const { esc, $ } = Outils;
   const JOURS = ["dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"];
   const MOIS = [
@@ -114,16 +113,16 @@
     emargements: general.emargements || "Emargements",
   });
   async function charger() {
-    config = await S.lireConfig();
-    general = S.general(config);
-    reglages = S.reglagesPlanning(config);
+    config = await Socle.lireConfig();
+    general = Socle.general(config);
+    reglages = Socle.reglagesPlanning(config);
     // lectures indépendantes : en parallèle
     const [r, ag, pl, em, meta] = await Promise.all([
       R.lireReferentiel(general, config),
       R.lireAgents(general),
-      S.lirePlanning(general),
-      S.lireEmargements(general),
-      S.lireMeta(),
+      Socle.lirePlanning(general),
+      Socle.lireEmargements(general),
+      Socle.lireMeta(),
     ]);
     ref = r;
     agents = ag;
@@ -137,7 +136,7 @@
     ];
     manquantes = !meta[T().affectations]
       ? []
-      : S.planInstallation(meta, config)
+      : Socle.planInstallation(meta, config)
           .etapes.filter((e) => ids.includes(e.id))
           .map((e) =>
             e.id.startsWith("formule-")
@@ -169,7 +168,7 @@
     ];
   };
   const fonctionsMasquees = () => reglages.fonctions.filter((f) => !f.ligne).map((f) => f.nom);
-  const CHAMPS = S.CHAMPS.map((c) => c.id);
+  const CHAMPS = Socle.CHAMPS.map((c) => c.id);
   const texteChamps = (l) => (!l || !l.length || l.length === CHAMPS.length ? "EN et ESR" : l.join(" et "));
   // Dernier champ connu d'un agent : proposé par défaut quand on le mobilise
   function dernierChamp(agentId, avant) {
@@ -177,7 +176,7 @@
     const l = planning.affectations
       .filter((a) => a.agent === agentId && parId.get(a.creneau) && parId.get(a.creneau).debut <= avant)
       .sort((x, y) => parId.get(y.creneau).debut - parId.get(x.creneau).debut);
-    return l.length ? S.champsDe(l[0]) : [...CHAMPS];
+    return l.length ? Socle.champsDe(l[0]) : [...CHAMPS];
   }
   // Dernier périmètre connu d'un agent avant un instant : proposé par défaut quand on l'affecte
   function dernierPerimetre(agentId, avant) {
@@ -247,7 +246,7 @@
       new Set(
         creneauxDu(iso).flatMap((c) =>
           affectationsDe(c.id)
-            .filter((a) => S.champsDe(a).includes(ch))
+            .filter((a) => Socle.champsDe(a).includes(ch))
             .map((a) => a.agent),
         ),
       ).size;
@@ -291,10 +290,11 @@
                     partiel = cs.length > 1 && l.length < cs.length;
                   const titreP = l
                     .map(
-                      ({ c, a }) => `${c.nom} : ${texteChamps(S.champsDe(a))} · ${resume(perimetreAff(a).perimetre)}`,
+                      ({ c, a }) =>
+                        `${c.nom} : ${texteChamps(Socle.champsDe(a))} · ${resume(perimetreAff(a).perimetre)}`,
                     )
                     .join("\n");
-                  const champs = [...new Set(l.flatMap((x) => S.champsDe(x.a)))];
+                  const champs = [...new Set(l.flatMap((x) => Socle.champsDe(x.a)))];
                   const tag =
                     champs.length < CHAMPS.length
                       ? `<span class="pl-champ pl-champ-${esc(champs[0] || "").toLowerCase()}">${esc(champs.join("+"))}</span>`
@@ -311,7 +311,8 @@
     const modeles = reglages.modeles;
     const choixModele = (iso) => {
       const we = [0, 6].includes(dateDe(iso).getDay());
-      const def = modeles.find((m) => S.norm(m.nom).includes(we ? "week" : "semaine")) || (we ? null : modeles[0]);
+      const def =
+        modeles.find((m) => Socle.normaliser(m.nom).includes(we ? "week" : "semaine")) || (we ? null : modeles[0]);
       return `<label class="pl-modele"><span>${esc(jourCourt(iso))}</span><select data-modele-jour="${iso}"><option value="">—</option>${modeles.map((m, i) => `<option value="${i}"${def === m && !creneauxDu(iso).length ? " selected" : ""}>${esc(m.nom)}</option>`).join("")}</select></label>`;
     };
     return `<section class="carte"><div class="pl-barre"><h2>${esc(titre)}</h2>
@@ -417,7 +418,7 @@
     const ligneChoix = (a) => {
       const st = situation(a),
         coche = e.choix.has(a.id) && !st.pris;
-      return `<label class="pl-choix-ag${st.pris ? " pris" : ""}" data-nom="${esc(S.norm(`${a.nom} ${a.equipe || ""}`))}"><input type="checkbox" value="${a.id}"${coche ? " checked" : ""}${st.pris ? " disabled" : ""}>
+      return `<label class="pl-choix-ag${st.pris ? " pris" : ""}" data-nom="${esc(Socle.normaliser(`${a.nom} ${a.equipe || ""}`))}"><input type="checkbox" value="${a.id}"${coche ? " checked" : ""}${st.pris ? " disabled" : ""}>
         <span>${esc(a.nom)}${a.equipe ? ` <small class="aide">· ${esc(a.equipe)}</small>` : ""}</span>${st.texte ? `<small>${esc(st.texte)}</small>` : ""}</label>`;
     };
     const n = [...e.choix].filter((id) => {
@@ -474,7 +475,7 @@
               ? `<div class="pl-crit"><span class="eq-crit-lib">Champ</span><span class="eq-puces">${CHAMPS.map(
                   (ch) => {
                     const on = l.champ.includes(ch);
-                    return `<button type="button" class="eq-puce${on ? " on" : ""}" data-champ-ligne="${i}" data-val="${ch}" aria-pressed="${on}" title="${esc((S.CHAMPS.find((x) => x.id === ch) || {}).libelle || ch)}">${ch}</button>`;
+                    return `<button type="button" class="eq-puce${on ? " on" : ""}" data-champ-ligne="${i}" data-val="${ch}" aria-pressed="${on}" title="${esc((Socle.CHAMPS.find((x) => x.id === ch) || {}).libelle || ch)}">${ch}</button>`;
                   },
                 ).join("")}</span></div>
           ${puces(l.perimetre, `data-ligne="${i}"`)}`
@@ -566,7 +567,7 @@
           .sort((x, y) => ordre(x.fonction) - ordre(y.fonction))
           .map((a) => {
             const ag = agentDe(a.agent);
-            return `<li><strong>${esc(ag ? ag.nom : "?")}</strong> · ${esc(a.fonction || "fonction ?")} · ${esc(texteChamps(S.champsDe(a)))} · ${esc(resume(perimetreAff(a).perimetre))}${ag && ag.telephone ? ` · ${esc(ag.telephone)}` : ""} ${etatEmargement(a.agent, c)}</li>`;
+            return `<li><strong>${esc(ag ? ag.nom : "?")}</strong> · ${esc(a.fonction || "fonction ?")} · ${esc(texteChamps(Socle.champsDe(a)))} · ${esc(resume(perimetreAff(a).perimetre))}${ag && ag.telephone ? ` · ${esc(ag.telephone)}` : ""} ${etatEmargement(a.agent, c)}</li>`;
           })
           .join("")}</ul>
         ${al.map((x) => `<p class="avert">${esc(x)}</p>`).join("")}</div>`;
@@ -758,7 +759,7 @@
     noms.forEach((n) => {
       if (res.has(n)) return;
       // une seule lettre de préférence (initiale, puis initiale d'un autre mot, puis une autre lettre du nom), deux sinon
-      const mots = S.norm(n)
+      const mots = Socle.normaliser(n)
           .split("_")
           .filter(Boolean)
           .map((m) => m.toUpperCase().replace(/[^A-Z]/g, ""))
@@ -804,7 +805,7 @@
       );
     planning.affectations
       .filter((a) => ids.has(a.creneau))
-      .forEach((a) => cases.set(cleCase(a.agent, a.creneau), { f: a.fonction, ch: S.champsDe(a), id: a.id }));
+      .forEach((a) => cases.set(cleCase(a.agent, a.creneau), { f: a.fonction, ch: Socle.champsDe(a), id: a.id }));
     const pref = Outils.stockage.lireJSON("socle-v2-planning-grille", {});
     grille = {
       lundi,
@@ -853,7 +854,7 @@
     const presents = new Set(planning.affectations.filter((a) => ids.has(a.creneau)).map((a) => a.agent));
     const mots = String(grille.filtre || "")
         .split(/\s+/)
-        .map((m) => S.norm(m))
+        .map((m) => Socle.normaliser(m))
         .filter(Boolean),
       g = grille;
     const vise = (v, f) => !f || (f === SANS ? !v : v === f);
@@ -872,7 +873,7 @@
     return agents
       .filter((a) => a.actif || presents.has(a.id))
       .filter((a) => vise(a.equipe, g.equipe) && vise(a.fonction, g.fonction))
-      .filter((a) => mots.every((m) => S.norm(`${a.nom} ${a.equipe}`).includes(m)))
+      .filter((a) => mots.every((m) => Socle.normaliser(`${a.nom} ${a.equipe}`).includes(m)))
       .sort((x, y) => cmp(x, y) || x.nom.localeCompare(y.nom, "fr"));
   }
   function contenuGrille() {
@@ -1220,10 +1221,10 @@
         const champs =
           /\bESR\b/i.test(s) && !/\bEN\b/i.test(s) ? ["ESR"] : /\bEN\b/i.test(s) && !/\bESR\b/i.test(s) ? ["EN"] : null;
         const tete = s.replace(/\b(EN|ESR)\b|[+|·,;/-]/gi, " ").trim(),
-          n = S.norm(tete);
+          n = Socle.normaliser(tete);
         const f =
-          nomsF.find(([nom, c]) => c === tete.toUpperCase() || S.norm(nom) === n) ||
-          nomsF.find(([nom]) => n && S.norm(nom).startsWith(n)) ||
+          nomsF.find(([nom, c]) => c === tete.toUpperCase() || Socle.normaliser(nom) === n) ||
+          nomsF.find(([nom]) => n && Socle.normaliser(nom).startsWith(n)) ||
           nomsF.find(([, c]) => c[0] === tete.toUpperCase());
         if (!f) {
           inconnus++;
@@ -1347,8 +1348,8 @@
     try {
       $("pg-enregistrer").disabled = true;
       await actions(acts);
-      planning = await S.lirePlanning(general);
-      emargements = await S.lireEmargements(general);
+      planning = await Socle.lirePlanning(general);
+      emargements = await Socle.lireEmargements(general);
       const sel = g.sel,
         filtre = g.filtre;
       grille.lundi = null;
@@ -1405,7 +1406,7 @@
         creneau: a.creneau,
         agent: a.agent,
         perimetre: R.perimetreObjet(ref, a.perimetre),
-        champ: S.champsDe(a),
+        champ: Socle.champsDe(a),
         note: a.note,
       }));
     edition = {
@@ -1433,7 +1434,9 @@
     }));
     if (!creneaux.length) {
       const we = [0, 6].includes(dateDe(iso).getDay()),
-        m = reglages.modeles.find((x) => S.norm(x.nom).includes(we ? "week" : "semaine")) || reglages.modeles[0];
+        m =
+          reglages.modeles.find((x) => Socle.normaliser(x.nom).includes(we ? "week" : "semaine")) ||
+          reglages.modeles[0];
       (m ? m.creneaux : [{ nom: "Journée", debut: "09:00", fin: "18:00" }]).forEach((c) =>
         creneaux.push({ id: null, nom: c.nom, debut: c.debut, fin: c.fin, note: "", suppr: false }),
       );
@@ -1480,7 +1483,7 @@
       // chaque mot tapé doit se retrouver dans le nom (« so lau » trouve Sophie Laurent)
       const mots = String(e.recherche || "")
         .split(/\s+/)
-        .map((m) => S.norm(m))
+        .map((m) => Socle.normaliser(m))
         .filter(Boolean);
       let vus = 0;
       zone.querySelectorAll(".pl-choix-ag").forEach((l) => {
@@ -1619,9 +1622,9 @@
       $("pl-modele-jour").addEventListener("change", (ev) => {
         const m = reglages.modeles[+ev.target.value];
         if (!m) return;
-        const deja = new Set(e.creneaux.filter((c) => !c.suppr).map((c) => S.norm(c.nom)));
+        const deja = new Set(e.creneaux.filter((c) => !c.suppr).map((c) => Socle.normaliser(c.nom)));
         m.creneaux
-          .filter((c) => !deja.has(S.norm(c.nom)))
+          .filter((c) => !deja.has(Socle.normaliser(c.nom)))
           .forEach((c) =>
             e.creneaux.push({ id: null, nom: c.nom, debut: c.debut, fin: c.fin, note: "", suppr: false }),
           );
@@ -1737,8 +1740,8 @@
     if (acts.length) return Donnees.ecrire(acts);
   }
   async function recharger() {
-    planning = await S.lirePlanning(general);
-    emargements = await S.lireEmargements(general);
+    planning = await Socle.lirePlanning(general);
+    emargements = await Socle.lireEmargements(general);
     dessiner();
   }
 
@@ -1794,7 +1797,7 @@
           },
         ],
       ]);
-      emargements = await S.lireEmargements(general);
+      emargements = await Socle.lireEmargements(general);
       dessiner();
       dire("pl-statut", "Service clos.");
     } catch (err) {
@@ -1810,7 +1813,7 @@
       dire("pl-edition-statut", "Chaque créneau a besoin d'un nom, d'un début et d'une fin.", true);
       return;
     }
-    const noms = garder.map((c) => S.norm(c.nom));
+    const noms = garder.map((c) => Socle.normaliser(c.nom));
     if (noms.some((n, i) => noms.indexOf(n) !== i)) {
       dire("pl-edition-statut", "Deux créneaux du jour portent le même nom.", true);
       return;
@@ -1848,9 +1851,9 @@
       if (sel.value === "") return;
       const iso = sel.dataset.modeleJour,
         m = reglages.modeles[+sel.value],
-        deja = new Set(creneauxDu(iso).map((c) => S.norm(c.nom)));
+        deja = new Set(creneauxDu(iso).map((c) => Socle.normaliser(c.nom)));
       for (const c of m.creneaux) {
-        if (!c.nom || deja.has(S.norm(c.nom))) continue;
+        if (!c.nom || deja.has(Socle.normaliser(c.nom))) continue;
         const [d, f] = bornes(iso, c.debut, c.fin);
         acts.push(["AddRecord", T().creneaux, null, { Date: dateGrist(iso), Nom: c.nom, Debut: d, Fin: f, Note: "" }]);
       }
@@ -1902,7 +1905,7 @@
               Agent: a.agent,
               Fonction: a.fonction,
               Perimetre: a.perimetre || "",
-              Champ: ["L", ...S.champsDe(a)],
+              Champ: ["L", ...Socle.champsDe(a)],
               Note: a.note,
               Modifie_le: maintenant(),
             },
@@ -1949,7 +1952,7 @@
       dire("pl-reg-statut", "Gardez au moins une fonction.", true);
       return;
     }
-    const noms = r.fonctions.map((f) => S.norm(f.nom));
+    const noms = r.fonctions.map((f) => Socle.normaliser(f.nom));
     if (noms.some((n, i) => noms.indexOf(n) !== i)) {
       dire("pl-reg-statut", "Deux fonctions portent le même nom.", true);
       return;
@@ -1965,7 +1968,7 @@
     )
       return;
     try {
-      const meta = await S.lireMeta(),
+      const meta = await Socle.lireMeta(),
         choix = JSON.stringify({ choices: r.fonctions.map((f) => f.nom) }),
         acts = [];
       // renommage reporté sur les fiches et sur le planning
@@ -1993,7 +1996,7 @@
           { widgetOptions: JSON.stringify({ ...o, choices: JSON.parse(choix).choices }) },
         ]);
       }
-      await actions([S.actionConfig(config, "planning", r), ...acts]);
+      await actions([Socle.actionConfig(config, "planning", r), ...acts]);
       await charger();
       reglagesEdites = null;
       reglagesOuverts = true;
@@ -2007,13 +2010,13 @@
     }
   }
   async function creerTables() {
-    const meta = await S.lireMeta(),
-      plan = S.planInstallation(meta, config);
+    const meta = await Socle.lireMeta(),
+      plan = Socle.planInstallation(meta, config);
     const noms = [T().agents, T().creneaux, T().affectations, T().emargements];
     const etapes = plan.etapes.filter(
       (e) => noms.some((n) => e.id === `table-${n}` || e.id === `cols-${n}`) || e.id === `formule-${T().agents}`,
     );
-    const res = await S.appliquer(etapes),
+    const res = await Socle.appliquer(etapes),
       ko = res.find((r) => !r.ok);
     if (ko) {
       dire("pl-statut", `Création refusée par Grist (${ko.erreur}).`, true);

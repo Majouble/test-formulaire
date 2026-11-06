@@ -14,7 +14,6 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle;
   const { esc, $ } = Outils;
   const FORMAT = "socle-signalements-configuration";
   const CLES_EXCLUES = new Set(["schema", "modele_point_situation"]);
@@ -85,23 +84,23 @@
   async function exporter() {
     statut("Préparation du fichier…");
     try {
-      const meta = await S.lireMeta(),
-        config = await S.lireConfig(meta);
+      const meta = await Socle.lireMeta(),
+        config = await Socle.lireConfig(meta);
       if (!config) {
         statut("La table Config n'existe pas : rien à exporter.", "err");
         return;
       }
-      const general = S.general(config);
+      const general = Socle.general(config);
       const cles = Object.fromEntries(Object.entries(config.valeurs).filter(([k]) => !CLES_EXCLUES.has(k)));
       const formulaires = (await lireFormulaires(general)).map((f) => {
         const { id, ...r } = f;
         return r;
       });
-      const tables = await S.instantaneSchema(tablesDesFormulaires(formulaires, general, meta));
+      const tables = await Socle.instantaneSchema(tablesDesFormulaires(formulaires, general, meta));
       const fichier = {
         format: FORMAT,
         version: 1,
-        socle: S.VERSION,
+        socle: Socle.VERSION,
         exporte_le: new Date().toISOString(),
         situation: general.situation || "",
         config: cles,
@@ -153,8 +152,8 @@
       statut("Ce fichier n'est pas une configuration exportée par l'administration du socle.", "err");
       return;
     }
-    const meta = await S.lireMeta(),
-      config = await S.lireConfig(meta);
+    const meta = await Socle.lireMeta(),
+      config = await Socle.lireConfig(meta);
     if (!config) {
       statut(
         "Appliquez d'abord l'installation (table Config) : la configuration s'importe dans un document installé.",
@@ -162,7 +161,7 @@
       );
       return;
     }
-    const general = S.general(config);
+    const general = Socle.general(config);
     const cles = Object.entries(f.config || {})
       .filter(([k]) => !CLES_EXCLUES.has(k))
       .map(([k, v]) => {
@@ -177,7 +176,7 @@
     const formulaires = (f.formulaires || [])
       .filter((x) => x && x.Nom)
       .map((x) => {
-        const e = existants.find((y) => S.norm(y.Nom) === S.norm(x.Nom));
+        const e = existants.find((y) => Socle.normaliser(y.Nom) === Socle.normaliser(x.Nom));
         return {
           valeur: x,
           id: e ? e.id : null,
@@ -196,11 +195,14 @@
     let equipe = null;
     if (Array.isArray(f.equipe)) {
       const actuels = (await lireEquipe(general)) || [],
-        adresses = new Set(actuels.map((a) => S.norm(a.Email || "")).filter(Boolean)),
-        noms = new Set(actuels.map((a) => S.norm(a.Nom || "")));
+        adresses = new Set(actuels.map((a) => Socle.normaliser(a.Email || "")).filter(Boolean)),
+        noms = new Set(actuels.map((a) => Socle.normaliser(a.Nom || "")));
       equipe = f.equipe
         .filter((a) => a && a.Nom)
-        .map((a) => ({ valeur: a, nouveau: !(a.Email ? adresses.has(S.norm(a.Email)) : noms.has(S.norm(a.Nom))) }));
+        .map((a) => ({
+          valeur: a,
+          nouveau: !(a.Email ? adresses.has(Socle.normaliser(a.Email)) : noms.has(Socle.normaliser(a.Nom))),
+        }));
     }
     analyse = { fichier: f, general, cles, formulaires, tables, equipe, agentsAbsents: !meta[general.agents] };
     dessinerAnalyse();
@@ -383,7 +385,7 @@
     // 2. réglages (Config)
     for (const c of a.cles)
       if (coche(`c:${c.cle}`))
-        await essayer(`réglage « ${NOMS_CLES[c.cle] || c.cle} »`, () => S.ecrireConfig(c.cle, c.valeur));
+        await essayer(`réglage « ${NOMS_CLES[c.cle] || c.cle} »`, () => Socle.ecrireConfig(c.cle, c.valeur));
     // 3. formulaires
     const tF = a.general.formulaires;
     for (const [i, x] of a.formulaires.entries()) {

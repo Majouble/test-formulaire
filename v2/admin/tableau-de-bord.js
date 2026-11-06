@@ -7,7 +7,6 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle;
   const { esc, $ } = Outils;
   let td = {},
     module = null,
@@ -161,7 +160,7 @@
     const i = tableaux.findIndex((t) => t.id === td.id);
     if (i >= 0) tableaux[i] = td;
     else tableaux.push(td);
-    await S.ecrireConfig("tableau_de_bord", S.valeurTableauxDeBord(tableaux));
+    await Socle.ecrireConfig("tableau_de_bord", Socle.valeurTableauxDeBord(tableaux));
   }
   // enregistrement du brouillon, propre au tableau monté (un tableau démonté n'écrit plus rien dans un autre)
   function enregistreurPour(id) {
@@ -227,8 +226,8 @@
   }
   // tables proposées : réponses du socle et tables des formulaires publiés
   async function tablesPossibles() {
-    const meta = await S.lireMeta(),
-      out = new Set(S.espaces(general).map((e) => e.reponses));
+    const meta = await Socle.lireMeta(),
+      out = new Set(Socle.espaces(general).map((e) => e.reponses));
     try {
       const t = await Donnees.lire(general.formulaires);
       (t.Table || []).forEach((x) => {
@@ -249,13 +248,13 @@
       } catch (_) {}
       return;
     }
-    const config = await S.lireConfig();
+    const config = await Socle.lireConfig();
     if (!config) {
       zone.innerHTML = `<p class="statut err" style="margin:16px">La table Config n'existe pas : terminez d'abord l'installation.</p>`;
       return;
     }
-    general = S.general(config);
-    tableaux = S.tableauxDeBord(config.valeurs.tableau_de_bord, general);
+    general = Socle.general(config);
+    tableaux = Socle.tableauxDeBord(config.valeurs.tableau_de_bord, general);
     if (!tableaux.length)
       tableaux = [{ id: "principal", nom: "Tableau de bord", table: general.reponses, brouillon: null, publie: null }];
     zone.innerHTML = `<div class="tdb-barre-admin">
@@ -389,7 +388,7 @@
           $("tdb-p-statut").textContent = "Donnez un nom.";
           return;
         }
-        if (tableaux.some((t) => S.norm(t.nom) === S.norm(nom))) {
+        if (tableaux.some((t) => Socle.normaliser(t.nom) === Socle.normaliser(nom))) {
           $("tdb-p-statut").textContent = "Ce nom est déjà pris.";
           return;
         }
@@ -433,7 +432,7 @@
           $("tdb-p-statut").textContent = "Donnez un nom.";
           return;
         }
-        if (tableaux.some((t) => t.id !== td.id && S.norm(t.nom) === S.norm(nom))) {
+        if (tableaux.some((t) => t.id !== td.id && Socle.normaliser(t.nom) === Socle.normaliser(nom))) {
           $("tdb-p-statut").textContent = "Ce nom est déjà pris.";
           return;
         }
@@ -460,7 +459,7 @@
           $("tdb-p-oui").addEventListener("click", async () => {
             const reste = tableaux.filter((t) => t.id !== td.id);
             try {
-              await S.ecrireConfig("tableau_de_bord", S.valeurTableauxDeBord(reste));
+              await Socle.ecrireConfig("tableau_de_bord", Socle.valeurTableauxDeBord(reste));
             } catch (e) {
               $("tdb-p-statut").textContent = `Suppression refusée : ${e.message || e}`;
               return;
@@ -481,7 +480,9 @@
   async function proposerColonnesEtab(config) {
     const p = $("tdb-etab");
     try {
-      const etape = S.planInstallation(await S.lireMeta(), config).etapes.find((e) => e.id === "rep-etablissement");
+      const etape = Socle.planInstallation(await Socle.lireMeta(), config).etapes.find(
+        (e) => e.id === "rep-etablissement",
+      );
       if (!etape) {
         p.hidden = true;
         return;
@@ -491,7 +492,7 @@
         <button class="secondaire" id="tdb-etab-ajouter">Ajouter ces colonnes</button> <span class="statut" id="tdb-etab-statut"></span>`;
       p.hidden = false;
       $("tdb-etab-ajouter").addEventListener("click", async () => {
-        const [r] = await S.appliquer([etape]);
+        const [r] = await Socle.appliquer([etape]);
         if (!r.ok) {
           $("tdb-etab-statut").textContent = `Ajout refusé par Grist (${r.erreur}).`;
           return;

@@ -2720,9 +2720,8 @@ const AtlasUI = (() => {
   }
 
   async function charger() {
-    const S = window.Socle;
     try {
-      config = S && grist.docApi ? await S.lireConfig() : null;
+      config = Socle && grist.docApi ? await Socle.lireConfig() : null;
     } catch (_) {
       config = null;
     }
@@ -2743,8 +2742,8 @@ const AtlasUI = (() => {
     }
     // titre par défaut : la situation suivie (Config › general)
     const p = etat.profils[etat.actif];
-    if (p && !p.titre && config && S) {
-      const g = S.general(config);
+    if (p && !p.titre && config && Socle) {
+      const g = Socle.general(config);
       if (g && g.situation) p.titre = g.situation;
     }
   }
@@ -2865,8 +2864,7 @@ const AtlasUI = (() => {
       return;
     }
     try {
-      const S = window.Socle,
-        T = S.TABLE_CONFIG || "Config";
+      const T = Socle.TABLE_CONFIG || "Config";
       const jeton = await grist.docApi.getAccessToken({ readOnly: false });
       const form = new FormData();
       form.append("upload", new Blob([texte], { type: "application/xml" }), fichier.name.replace(/\.qgz$/i, ".qgs"));
@@ -2877,7 +2875,7 @@ const AtlasUI = (() => {
       });
       if (!r.ok) throw new Error(`envoi refusé (${r.status})`);
       const [idPj] = await r.json();
-      const meta = await S.lireMeta();
+      const meta = await Socle.lireMeta();
       const acts = [];
       if (meta[T] && !meta[T].colonnes.Fichier)
         acts.push(["AddColumn", T, "Fichier", { type: "Attachments", isFormula: false }]);
@@ -2898,7 +2896,7 @@ const AtlasUI = (() => {
           : ["AddRecord", T, null, { Cle: cle, Valeur: valeur, Fichier: ["L", idPj] }],
       );
       await Donnees.ecrire(acts);
-      config = await S.lireConfig();
+      config = await Socle.lireConfig();
       delete modeleCache[etat.actif];
       modeleLocal = null;
       dessiner();

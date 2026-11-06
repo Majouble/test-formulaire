@@ -12,8 +12,7 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle,
-    R = window.Repartition;
+  const R = window.Repartition;
   const { esc, $ } = Outils;
   const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -44,14 +43,14 @@
   const maintenant = () => Date.now() / 1000;
 
   async function charger() {
-    config = await S.lireConfig();
-    general = S.general(config);
+    config = await Socle.lireConfig();
+    general = Socle.general(config);
     // l'équipe n'a pas besoin du référentiel : lectures en parallèle
     const [ag, pg, meta, pl] = await Promise.all([
       R.lireAgents(general),
       R.lirePages(),
-      S.lireMeta(),
-      S.lirePlanning(general),
+      Socle.lireMeta(),
+      Socle.lirePlanning(general),
       window.PagesAgents ? window.PagesAgents.charger() : null,
     ]);
     agents = ag;
@@ -59,18 +58,18 @@
     planning = pl;
     const t = meta[table()];
     colonnesManquantes = t
-      ? S.colonnesAgents(config)
+      ? Socle.colonnesAgents(config)
           .filter((c) => !c.isFormula)
           .map((c) => c.id)
           .filter((c) => !t.colonnes[c])
       : [];
-    if (t && !t.colonnes[S.INVITE.lien]) colonnesManquantes.push(S.INVITE.lien);
-    if (t && !t.colonnes[S.INVITE.valide]) colonnesManquantes.push(S.INVITE.valide);
+    if (t && !t.colonnes[Socle.INVITE.lien]) colonnesManquantes.push(Socle.INVITE.lien);
+    if (t && !t.colonnes[Socle.INVITE.valide]) colonnesManquantes.push(Socle.INVITE.valide);
     // lien d'invité d'avant la 2.0.3 (sans « page seule ») : formule mise à jour d'office
-    const cl = t && t.colonnes[S.INVITE.lien];
-    if (cl && String(cl.formula || "").replace(/\s+/g, "") === S.ANCIENNE_FORMULE_LIEN_INVITE.replace(/\s+/g, ""))
+    const cl = t && t.colonnes[Socle.INVITE.lien];
+    if (cl && String(cl.formula || "").replace(/\s+/g, "") === Socle.ANCIENNE_FORMULE_LIEN_INVITE.replace(/\s+/g, ""))
       try {
-        await Donnees.ecrire([["ModifyColumn", table(), S.INVITE.lien, { formula: S.formuleLienInvite() }]]);
+        await Donnees.ecrire([["ModifyColumn", table(), Socle.INVITE.lien, { formula: Socle.formuleLienInvite() }]]);
         agents = await R.lireAgents(general);
       } catch (_) {
         /* droits insuffisants */
@@ -90,7 +89,7 @@
     // page supprimée dans Grist : le lien revient à la page d'accueil plutôt que de viser une page qui n'existe plus
     const acts = agents
       .filter((a) => a.cle && (pageDeAgent(a) || null) !== (a.pageSaisie || null))
-      .map((a) => ["UpdateRecord", table(), a.id, { [S.INVITE.page]: pageDeAgent(a) || null }]);
+      .map((a) => ["UpdateRecord", table(), a.id, { [Socle.INVITE.page]: pageDeAgent(a) || null }]);
     if (!acts.length) return;
     try {
       await Donnees.ecrire(acts);
@@ -128,7 +127,7 @@
   const avecEquipe = () => !colonnesManquantes.includes("Equipe");
   const avecFonction = () => !colonnesManquantes.includes("Fonction");
   const fonctionsConnues = () => {
-    const r = S.reglagesPlanning(config).fonctions.map((f) => f.nom);
+    const r = Socle.reglagesPlanning(config).fonctions.map((f) => f.nom);
     return [...r, ...[...new Set(agents.map((a) => a.fonction).filter((f) => f && !r.includes(f)))]];
   };
   const equipesConnues = () =>
@@ -141,7 +140,7 @@
   function agentsFiltres() {
     const mots = String(liste.q || "")
       .split(/\s+/)
-      .map((m) => S.norm(m))
+      .map((m) => Socle.normaliser(m))
       .filter(Boolean);
     const vise = (v, f) => !f || (f === SANS ? !v : v === f);
     const cle =
@@ -152,7 +151,7 @@
           (liste.inactifs || a.actif) &&
           vise(a.equipe, liste.equipe) &&
           vise(a.fonction, liste.fonction) &&
-          mots.every((m) => S.norm(`${a.nom} ${a.email} ${a.equipe} ${a.fonction}`).includes(m)),
+          mots.every((m) => Socle.normaliser(`${a.nom} ${a.email} ${a.equipe} ${a.fonction}`).includes(m)),
       )
       .sort((x, y) => {
         const p = cle(x),
@@ -340,7 +339,7 @@
         agents.some((a) => a.cle) || avecExpiration()
           ? `<div class="eq-invites-reglage"><strong>Liens des invités</strong>
 
-        ${avecExpiration() ? `<label>durée de validité <select id="eq-duree">${S.DUREES_INVITE.map(([v, l]) => `<option value="${v}"${v === dureeInvite() ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></label>` : ""}
+        ${avecExpiration() ? `<label>durée de validité <select id="eq-duree">${Socle.DUREES_INVITE.map(([v, l]) => `<option value="${v}"${v === dureeInvite() ? " selected" : ""}>${esc(l)}</option>`).join("")}</select></label>` : ""}
         ${agents.some((a) => a.cle) ? `<button class="secondaire" id="eq-renouveler-tous" title="Chaque invité reçoit un nouveau lien ; les anciens cessent de fonctionner">Nouveau lien pour tous les invités (${agents.filter((a) => a.cle).length})</button>` : ""}
         <span class="aide">Un lien expiré ou remplacé ne donne plus aucun accès (prise en compte par Grist dans l'heure pour l'expiration, aussitôt pour un remplacement).</span></div>
         <div id="eq-renouveles"></div>`
@@ -394,7 +393,7 @@
       <div><div class="groupe">Planning ${etatSaisie(ag)}</div>
         ${
           aVenir.length
-            ? `<ul class="journal">${aVenir.map(({ x, c }) => `<li>${esc(jour(c.debut))} · ${esc(c.nom)} ${esc(heure(c.debut))}–${esc(heure(c.fin))} · ${esc(x.fonction || "fonction ?")}${S.champsDe(x).length ? ` · ${esc(S.champsDe(x).join(", "))}` : ""}${c.debut <= t ? ` <span class="pastille ok">en cours</span>` : ""}</li>`).join("")}</ul>`
+            ? `<ul class="journal">${aVenir.map(({ x, c }) => `<li>${esc(jour(c.debut))} · ${esc(c.nom)} ${esc(heure(c.debut))}–${esc(heure(c.fin))} · ${esc(x.fonction || "fonction ?")}${Socle.champsDe(x).length ? ` · ${esc(Socle.champsDe(x).join(", "))}` : ""}${c.debut <= t ? ` <span class="pastille ok">en cours</span>` : ""}</li>`).join("")}</ul>`
             : `<p class="aide" style="margin:0">Aucun créneau à venir.</p>`
         }
         <button class="lien-btn" type="button" data-sous-aller="planning">Planning →</button></div>
@@ -405,11 +404,11 @@
     </div></div>`;
   }
   // Durée de validité des liens d'invités (clé « acces_invites » de Config) ; un lien expiré ne donne plus aucun accès
-  const avecExpiration = () => !colonnesManquantes.includes(S.INVITE.expire);
+  const avecExpiration = () => !colonnesManquantes.includes(Socle.INVITE.expire);
   const dureeInvite = () => ((config && config.valeurs.acces_invites) || {}).duree || "24h";
-  const libelleDuree = (d) => (S.DUREES_INVITE.find((x) => x[0] === d) || S.DUREES_INVITE[0])[1];
+  const libelleDuree = (d) => (Socle.DUREES_INVITE.find((x) => x[0] === d) || Socle.DUREES_INVITE[0])[1];
   const finValidite = () => {
-    const h = (S.DUREES_INVITE.find((x) => x[0] === dureeInvite()) || S.DUREES_INVITE[0])[2];
+    const h = (Socle.DUREES_INVITE.find((x) => x[0] === dureeInvite()) || Socle.DUREES_INVITE[0])[2];
     return h ? maintenant() + h * 3600 : null;
   };
   const dateCourte = (t) =>
@@ -436,7 +435,7 @@
       agents &&
       (agents.invitesPossibles ||
         (agents[0] && agents[0].invitesPossibles) ||
-        !colonnesManquantes.includes(S.INVITE.cle));
+        !colonnesManquantes.includes(Socle.INVITE.cle));
     if (!possible)
       return `<p class="aide">Accès par lien personnel (agent sans compte Grist) : complétez d'abord la table (bandeau en haut de l'onglet).</p>`;
     const lien = a.id ? (agents.find((x) => x.id === a.id) || {}).lienAcces || "" : "";
@@ -514,11 +513,11 @@
     if ($("eq-duree"))
       $("eq-duree").addEventListener("change", async (e) => {
         try {
-          await S.ecrireConfig("acces_invites", {
+          await Socle.ecrireConfig("acces_invites", {
             ...((config && config.valeurs.acces_invites) || {}),
             duree: e.target.value,
           });
-          config = await S.lireConfig();
+          config = await Socle.lireConfig();
         } catch (err) {
           dire("eq-statut", `Réglage refusé (${err.message || err}).`, true);
           return;
@@ -665,13 +664,13 @@
     };
     if (avecEquipe() && a.equipe !== undefined) c.Equipe = String(a.equipe || "").trim();
     if (avecFonction() && a.fonction !== undefined) c.Fonction = a.fonction || "";
-    if (!colonnesManquantes.includes(S.INVITE.cle) && a.invite !== undefined) {
-      c[S.INVITE.cle] = a.invite ? a.cle || nouvelleCle() : "";
+    if (!colonnesManquantes.includes(Socle.INVITE.cle) && a.invite !== undefined) {
+      c[Socle.INVITE.cle] = a.invite ? a.cle || nouvelleCle() : "";
       if (avecExpiration() && (!a.invite || !a.cle || a.renouveler))
-        c[S.INVITE.expire] = a.invite ? finValidite() : null;
+        c[Socle.INVITE.expire] = a.invite ? finValidite() : null;
       if (a.invite && a.id) {
         const p = pageDeAgent(a);
-        if (p) c[S.INVITE.page] = p;
+        if (p) c[Socle.INVITE.page] = p;
       }
     }
     return c;
@@ -686,7 +685,7 @@
           "UpdateRecord",
           table(),
           id,
-          { [S.INVITE.cle]: nouvelleCle(), ...(fin !== undefined ? { [S.INVITE.expire]: fin } : {}) },
+          { [Socle.INVITE.cle]: nouvelleCle(), ...(fin !== undefined ? { [Socle.INVITE.expire]: fin } : {}) },
         ]),
       );
       await charger();
@@ -718,14 +717,14 @@
   // Auteur des signalements et des émargements : formule qui reconnaît aussi les invités (« Invité : <nom> »)
   async function auteurPourInvites() {
     try {
-      const meta = await S.lireMeta(),
-        cfg = await S.lireConfig(),
-        g = S.general(cfg),
+      const meta = await Socle.lireMeta(),
+        cfg = await Socle.lireConfig(),
+        g = Socle.general(cfg),
         acts = [];
-      const cibles = S.espaces(g)
+      const cibles = Socle.espaces(g)
         .filter((e) => meta[e.reponses])
         .map((e) => {
-          const rr = S.resoudreRoles(
+          const rr = Socle.associerColonnes(
             "reponses",
             meta[e.reponses],
             { reponses: e.reponses, referentiel: e.referentiel },
@@ -736,8 +735,8 @@
         });
       cibles.push([g.emargements, meta[g.emargements] && meta[g.emargements].colonnes.Auteur ? "Auteur" : null, null]);
       for (const [t, c, e] of cibles)
-        if (t && c && meta[t] && S.auteurAMettreAJour(meta[t].colonnes[c]))
-          acts.push(["ModifyColumn", t, c, { formula: S.formuleAuteur(g, e) }]);
+        if (t && c && meta[t] && Socle.auteurAMettreAJour(meta[t].colonnes[c]))
+          acts.push(["ModifyColumn", t, c, { formula: Socle.formuleAuteur(g, e) }]);
       if (acts.length) await Donnees.ecrire(acts);
     } catch (_) {
       /* facultatif : l'auteur d'un invité resterait vide */
@@ -751,7 +750,7 @@
       $("eq-nom").focus();
       return;
     }
-    if (agents.some((x) => x.id !== a.id && S.norm(x.nom) === S.norm(nom))) {
+    if (agents.some((x) => x.id !== a.id && Socle.normaliser(x.nom) === Socle.normaliser(nom))) {
       dire(
         "eq-fiche-statut",
         `Un agent s'appelle déjà « ${nom} » : ajoutez l'initiale du nom pour distinguer les pages.`,
@@ -782,7 +781,7 @@
       edition = null;
       await charger();
       if (resteOuverte) {
-        const n = agents.find((x) => S.norm(x.nom) === S.norm(nom));
+        const n = agents.find((x) => Socle.normaliser(x.nom) === Socle.normaliser(nom));
         if (n) {
           edition = JSON.parse(JSON.stringify(n));
           edition.invite = true;
@@ -824,15 +823,15 @@
     }
   }
   async function creerTable() {
-    const meta = await S.lireMeta(),
-      plan = S.planInstallation(meta, config);
+    const meta = await Socle.lireMeta(),
+      plan = Socle.planInstallation(meta, config);
     const etape = plan.etapes.find((e) => e.id === `table-${table()}` || e.id === `cols-${table()}`);
     // formule Champs_acces : seulement si la table des affectations existe (sinon Équipe › Planning l'ajoutera)
     const formule = meta[general.affectations || "Affectations"]
       ? plan.etapes.find((e) => e.id === `formule-${table()}`)
       : null;
     if (!etape && formule) {
-      await S.appliquer([formule]);
+      await Socle.appliquer([formule]);
       await charger();
       dessiner();
       return;
@@ -842,8 +841,8 @@
       dessiner();
       return;
     }
-    const [r] = await S.appliquer([etape]);
-    if (r.ok && formule) await S.appliquer([formule]);
+    const [r] = await Socle.appliquer([etape]);
+    if (r.ok && formule) await Socle.appliquer([formule]);
     if (!r.ok) {
       dire("eq-statut", `Création refusée par Grist (${r.erreur}).`, true);
       return;
@@ -853,13 +852,13 @@
   }
   // Pages de saisie existantes (créées avant l'équipe) → agents, avec le nom et le périmètre de la page
   async function reprendrePages() {
-    const vus = new Set(agents.map((a) => S.norm(a.nom))),
+    const vus = new Set(agents.map((a) => Socle.normaliser(a.nom))),
       nouveaux = [];
     for (const p of pages) {
       if (R.agentDePage(p, agents)) continue;
       const nom = (p.libelle || p.page.replace(/^Formulaire\s+/i, "").replace(/\s*\(.*\)\s*$/, "")).trim();
-      if (!nom || vus.has(S.norm(nom))) continue;
-      vus.add(S.norm(nom));
+      if (!nom || vus.has(Socle.normaliser(nom))) continue;
+      vus.add(Socle.normaliser(nom));
       nouveaux.push({ nom, email: "", telephone: "", actif: true });
     }
     if (!nouveaux.length) return;
@@ -889,7 +888,7 @@
       // « nom ; adresse ; téléphone ; équipe ; fonction » (les dernières facultatives) ;
       // ancienne forme « nom ; adresse ; fonction ; téléphone » reconnue quand la 3e colonne est une fonction
       const fns = fonctionsConnues(),
-        fonctionDe = (t) => fns.find((f) => S.norm(f) === S.norm(t)) || "";
+        fonctionDe = (t) => fns.find((f) => Socle.normaliser(f) === Socle.normaliser(t)) || "";
       let [nom, email = "", telephone = "", equipe = "", fonction = ""] =
         morceaux.length === 4 && fonctionDe(morceaux[2]) && !/\d/.test(morceaux[2])
           ? [morceaux[0], morceaux[1], morceaux[3], "", morceaux[2]]
@@ -916,11 +915,11 @@
     for (const x of lus) {
       const a =
         (x.email && agents.find((y) => y.email.toLowerCase() === x.email.toLowerCase())) ||
-        agents.find((y) => S.norm(y.nom) === S.norm(x.nom));
+        agents.find((y) => Socle.normaliser(y.nom) === Socle.normaliser(x.nom));
       if (a) majs.push({ a, x });
       else ajouts.push(x);
     }
-    const doublons = lus.map((x) => S.norm(x.nom)).filter((n, i, t) => t.indexOf(n) !== i);
+    const doublons = lus.map((x) => Socle.normaliser(x.nom)).filter((n, i, t) => t.indexOf(n) !== i);
     if (doublons.length) erreurs.push(`noms en double dans la liste : ${[...new Set(doublons)].join(", ")}`);
     $("eq-import-bilan").innerHTML = `<ul class="journal">
       <li>${ajouts.length} agent(s) à ajouter${ajouts.length ? ` : ${ajouts.map((x) => esc(x.nom)).join(", ")}` : ""}</li>

@@ -34,13 +34,14 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 ├── README.md            ce fichier
 ├── commun/outils.js     petits outils communs, chargés en premier par chaque page : esc (texte → HTML sûr), $ (élément par identifiant), stockage (préférences du navigateur)
 ├── commun/donnees.js    accès au document : toutes les lectures (Donnees.lire) et écritures (Donnees.ecrire) passent par là ; cache de l'administration, écouteurs d'écriture, compteurs de lectures
-├── commun/socle.js      code partagé : lecture de Config, rôles, plan d'installation
+├── commun/socle.js      contrat entre le document et les widgets : noms des tables, colonnes attendues et leur association aux colonnes du document, champs suivis (EN, ESR), lecture et écriture de Config
+├── commun/metier/       règles métier partagées par plusieurs widgets, ajoutées à window.Socle : etablissements.js (sections SEGPA…, régions académiques), planning.js, validation.js, veille.js, campagnes.js, tableaux-de-bord.js, point-de-situation.js
 ├── commun/theme.js      thème clair ou sombre de tous les widgets (data-theme sur <html>)
 ├── commun/marque.js     logo PRISME en haut à gauche de tous les widgets (variantes bloc, compact, spectre, centre)
 ├── commun/geo-fond.js   données du fond de carte : départements et académies (Lambert-93, encarts)
 ├── commun/geo.js        fond de carte commun : correspondances département / académie, placement d'un point latitude / longitude
 ├── saisie/              formulaire de saisie : index.html (structure de la page), saisie.css, modules/ (code en 31 fichiers numérotés, chargés dans l'ordre ; voir l'en-tête de chaque module)
-├── admin/               administration : installation.js, configuration.js, referentiel.js, equipe.js, planning.js, pages-agents.js (onglet Équipe, Pages de saisie), actions.js, acces.js, liens.js, campagnes.js (onglet Établissements, carte Campagnes), effectifs.js (onglet Référentiel, carte Effectifs), veille.js (onglet Veille), validation.js (onglet Validation), repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css), secours.js (carte « Mode secours » : kit, relais, page de réintégration)
+├── admin/               administration : metier/ (règles propres à l'administration, ajoutées à window.Socle : agents.js, actions.js, schema-public.js, plan-installation.js), installation.js, configuration.js, referentiel.js, equipe.js, planning.js, pages-agents.js (onglet Équipe, Pages de saisie), actions.js, acces.js, liens.js, campagnes.js (onglet Établissements, carte Campagnes), effectifs.js (onglet Référentiel, carte Effectifs), veille.js (onglet Veille), validation.js (onglet Validation), repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css), secours.js (carte « Mode secours » : kit, relais, page de réintégration)
 ├── point-situation/     production du point de situation
 ├── cartographie/        carte et export cartographique (reprise du widget « Export cartographique ») ; atlas/ : projet QGIS de l'atlas par académie et contours
 ├── tableau-de-bord/     tableau de bord : tableau.js (monte un tableau de bord : crée l'objet « tableau », état du tableau affiché, puis construit les modules dans l'ordre), modules/ (15 modules numérotés qui reçoivent « tableau » et y ajoutent leurs fonctions), tableau.css, index.html (widget)
@@ -54,7 +55,7 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 
 ## Règles
 
-1. Un widget ne lit jamais une colonne par son nom en dur : il passe par un rôle (voir le contrat du socle).
+1. Un widget ne lit jamais une colonne par son nom en dur : il passe par une colonne attendue et son association (voir le contrat du socle).
 2. Un réglage commun au document s'écrit dans la table `Config`, sous la clé de son module. Un réglage propre à une page (formulaire, périmètre, libellé) reste dans les options du widget de cette page.
 3. Un module ne dépend que du socle, jamais d'un autre module.
 4. Chaque widget affiche son numéro de version dans son panneau de diagnostic. Le numéro (`VERSION` de `commun/socle.js`) est incrémenté à chaque mise à jour publiée.
@@ -70,10 +71,11 @@ Les widgets sont des pages statiques (HTML et JavaScript, sans serveur propre) a
 ### Le socle (`commun/socle.js`, `window.Socle`)
 
 - **Config** : seule table au nom fixe (`Cle`, `Valeur` en JSON, `Modifie_le`). Chaque module y range ses réglages sous sa clé (tableau ci-dessous). `lireConfig()`, `ecrireConfig(cle, valeur)`, `general(config)` (réglages généraux complétés par `DEFAUTS_GENERAL`).
-- **Rôles** : un widget ne lit jamais une colonne par son nom ; il demande la colonne qui joue un rôle (`resoudreRoles("reponses" | "referentiel", meta, ctx, associations)`). Les rôles (`ROLES`) décrivent ce qu'ils acceptent, les motifs de reconnaissance et, au besoin, comment créer la colonne (type, formule). Une association choisie dans l'onglet Installation (clé `roles`) prime sur la reconnaissance.
+- **Colonnes attendues** : un widget ne lit jamais une colonne par son nom ; il demande la colonne du document associée à une colonne attendue (`associerColonnes("reponses" | "referentiel", meta, contexte, associations)`). Les colonnes attendues (`COLONNES_ATTENDUES`) décrivent le type qu'elles acceptent, les motifs de reconnaissance du nom et, au besoin, comment créer la colonne (type, formule). Une association choisie dans l'onglet Installation (clé `roles` de Config, nom gardé pour les documents existants) prime sur la reconnaissance.
 - **Espaces** : un champ (EN, ESR) = une table de réponses, un référentiel et ses formulaires (`espaces(general)`) ; un document peut en suivre deux.
 - **Formules du socle** : dernière version d'un dossier, description marquée (`Description_Word_`), état le plus grave, jours de mobilisation, auteur, liens d'invité et d'établissement.
-- **Plan d'installation** : ce qui manque au document (tables, colonnes, formules), proposé par l'onglet Installation, jamais appliqué sans accord ; rien n'est renommé ni supprimé.
+- **Règles métier** : planning, validation, veille, campagnes… sont dans `commun/metier/` (partagées par plusieurs widgets) ou `admin/metier/` (administration seulement) ; chaque fichier ajoute ses fonctions à `window.Socle` et liste en en-tête ce qu'il définit et ce qu'il utilise.
+- **Plan d'installation** (`admin/metier/plan-installation.js`) : ce qui manque au document (tables, colonnes, formules), proposé par l'onglet Installation, jamais appliqué sans accord ; rien n'est renommé ni supprimé.
 - **Copie du schéma** (clé `schema`) : les liens d'établissement ne lisent pas les métadonnées de Grist ; la copie est rafraîchie à la publication d'un formulaire, à l'adaptation d'une question et à l'application des règles d'accès.
 
 ### Tables du socle
@@ -118,7 +120,7 @@ Bibliothèques tierces : copiées dans `vendor/`, à version figée, sans appel 
 
 ### Tests
 
-Scénarios Playwright avec un Grist simulé (`tests/mock.js`, `tests/fakeapi.js`) : voir `tests/README.md`. Avant chaque publication : `node tests/verifier.js` (comparaison aux journaux de référence) et `node tests/fuseaux.js` (même affichage à l'heure de Paris et de La Réunion).
+Scénarios Playwright avec un Grist simulé (`tests/mock.js`, `tests/fakeapi.js`) : voir `tests/README.md`. Avant chaque publication : `node tests/verifier.js` (comparaison aux journaux de référence) et `node tests/fuseaux.js` (même affichage à l'heure de Paris et de La Réunion). Pour renommer sans risque pendant la relecture du code : `outils/renommer.js` (renommage d'après la portée des noms) et `outils/equivalence.js` (vérifie que deux versions d'un fichier ne diffèrent que par les noms).
 
 ### Documentation utilisateur
 

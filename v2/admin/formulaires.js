@@ -1798,10 +1798,9 @@
   // publiée change de nature (sinon le formulaire ouvert par lien écrit encore dans l'ancienne colonne)
   async function majCopieLiens() {
     try {
-      const S = window.Socle,
-        cfg = await S.lireConfig(),
-        g = S.general(cfg);
-      return await R.majSchemaPublic(await S.lireMeta(), cfg, g, await R.lireFormulairesPublies(g));
+      const cfg = await Socle.lireConfig(),
+        g = Socle.general(cfg);
+      return await R.majSchemaPublic(await Socle.lireMeta(), cfg, g, await R.lireFormulairesPublies(g));
     } catch (_) {
       return false; /* copie pour les liens : facultative */
     }
@@ -3897,8 +3896,7 @@
       }
       // Config : profils de l'atlas (marques.table, sites.table) et tout autre réglage dont une clé « table » vaut l'ancien nom
       try {
-        const S = window.Socle,
-          cfg = await S.lireConfig();
+        const cfg = await Socle.lireConfig();
         if (cfg)
           for (const [cle, val] of Object.entries(cfg.valeurs || {})) {
             if (!val || typeof val !== "object") continue;
@@ -3915,7 +3913,7 @@
             };
             const copieVal = JSON.parse(JSON.stringify(val));
             marcher(copieVal);
-            if (n) acts.push(S.actionConfig(cfg, cle, copieVal));
+            if (n) acts.push(Socle.actionConfig(cfg, cle, copieVal));
           }
       } catch (_) {
         /* sans Config : formulaires seulement */

@@ -16,8 +16,7 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle,
-    R = window.Repartition;
+  const R = window.Repartition;
   const { esc, $ } = Outils;
   const MEMO = "Socle v2";
   const ATTRIBUT = "Agent";
@@ -27,12 +26,12 @@
   // et sa page « Règles d'accès » la refuse (« Condition cannot be blank »). Aucune règle du socle n'a de condition vide.
   const NON_PROPRIETAIRE = "user.Access != OWNER";
   // Identité d'agent : compte Grist (attribut « Agent », par adresse) ou lien d'agent invité (attribut « Invite », par clé)
-  const INVITE = S.INVITE.attribut;
+  const INVITE = Socle.INVITE.attribut;
   let avecInvites = false; // colonne Agents.Cle_acces présente
   let invitesExpirent = false; // colonne Agents.Lien_valide présente : lien d'invité limité dans le temps
   const agentSi = (build) =>
     avecInvites
-      ? `(${build(`user.${ATTRIBUT}`)}) or (user.LinkKey.${INVITE}${invitesExpirent ? ` and user.${INVITE}.${S.INVITE.valide}` : ""} and ${build(`user.${INVITE}`)})`
+      ? `(${build(`user.${ATTRIBUT}`)}) or (user.LinkKey.${INVITE}${invitesExpirent ? ` and user.${INVITE}.${Socle.INVITE.valide}` : ""} and ${build(`user.${INVITE}`)})`
       : build(`user.${ATTRIBUT}`);
   const membre = () => agentSi((u) => `${u}.Actif`);
 
@@ -40,15 +39,15 @@
 
   /* ---------- Lecture ---------- */
   async function charger() {
-    config = await S.lireConfig();
-    general = S.general(config);
-    meta = await S.lireMeta();
+    config = await Socle.lireConfig();
+    general = Socle.general(config);
+    meta = await Socle.lireMeta();
     agents = await R.lireAgents(general, null);
     formulaires = await R.lireFormulairesPublies(general);
     groupes = R.groupesLiens(meta, config, general, formulaires).filter((g) => g.cle); // accès par lien : clés en place
     acl = await lireAcl();
-    avecInvites = !!(meta[general.agents] && meta[general.agents].colonnes[S.INVITE.cle]);
-    invitesExpirent = !!(avecInvites && meta[general.agents].colonnes[S.INVITE.valide]);
+    avecInvites = !!(meta[general.agents] && meta[general.agents].colonnes[Socle.INVITE.cle]);
+    invitesExpirent = !!(avecInvites && meta[general.agents].colonnes[Socle.INVITE.valide]);
   }
   // null si les règles ne sont pas lisibles (non propriétaire)
   async function lireAcl() {
@@ -81,13 +80,13 @@
   // champ d'un formulaire : version réglée dans le formulaire, sinon celle du champ dont c'est la table de réponses
   const champDe = (f) =>
     (
-      S.CHAMPS.find(
+      Socle.CHAMPS.find(
         (c) =>
           c.version ===
           ((f.conf.saisie && f.conf.saisie.version) ||
-            (S.espaceDeTable(general, f.table) || {}).version ||
+            (Socle.espaceDeTable(general, f.table) || {}).version ||
             general.preset),
-      ) || S.CHAMPS[0]
+      ) || Socle.CHAMPS[0]
     ).id;
   // Tables de saisie (et leurs sous-tables) avec les champs qui y saisissent ; référentiels qu'elles visent
   function tablesGerees() {
@@ -111,7 +110,7 @@
       });
       const cols = meta[f.table] ? Object.values(meta[f.table].colonnes) : [];
       cols.forEach((c) => {
-        const cible = S.cibleRef(c.type);
+        const cible = Socle.cibleRef(c.type);
         if (cible && cible !== f.table && /etab|site|referentiel/i.test(`${c.colId} ${cible}`)) referentiels.add(cible);
       });
     }
@@ -120,13 +119,13 @@
     // « équipe : lecture seule »
     for (const t of [...saisie.keys()])
       Object.values(meta[t].colonnes).forEach((c) => {
-        const cible = S.cibleRef(c.type) || (/^RefList:(.+)$/.exec(c.type) || [])[1];
+        const cible = Socle.cibleRef(c.type) || (/^RefList:(.+)$/.exec(c.type) || [])[1];
         if (cible && meta[cible] && !saisie.has(cible) && /etab|site|referentiel/i.test(`${c.colId} ${cible}`))
           referentiels.add(cible);
       });
     // correspondances libellé saisi → site (rapprochement des sites, widget de géolocalisation)
     if (meta.Sites_correspondances) referentiels.add("Sites_correspondances");
-    S.espaces(general).forEach((e) => {
+    Socle.espaces(general).forEach((e) => {
       if (meta[e.referentiel]) referentiels.add(e.referentiel);
     });
     (groupes || []).forEach((g) => referentiels.add(g.table));
@@ -167,11 +166,11 @@
       ],
     });
     // Page « Cellule » : les pages rangées dessous ne sont visibles que des propriétaires et des agents connectés par leur compte
-    if (meta[S.TABLE_CELLULE])
+    if (meta[Socle.TABLE_CELLULE])
       out.push({
-        tableId: S.TABLE_CELLULE,
+        tableId: Socle.TABLE_CELLULE,
         colIds: "*",
-        titre: `${S.TABLE_CELLULE} — pages de la cellule`,
+        titre: `${Socle.TABLE_CELLULE} — pages de la cellule`,
         regles: [
           { aclFormula: PROPRIETAIRE, permissionsText: "+CRUD", memo: `${MEMO} — propriétaires : pages de la cellule` },
           {
@@ -191,11 +190,11 @@
         ],
       });
     // Page d'administration : portée par la table Administration, invisible de tous sauf des propriétaires
-    if (meta[S.TABLE_ADMIN])
+    if (meta[Socle.TABLE_ADMIN])
       out.push({
-        tableId: S.TABLE_ADMIN,
+        tableId: Socle.TABLE_ADMIN,
         colIds: "*",
-        titre: `${S.TABLE_ADMIN} — page d'administration`,
+        titre: `${Socle.TABLE_ADMIN} — page d'administration`,
         regles: [
           { aclFormula: PROPRIETAIRE, permissionsText: "+CRUD", memo: `${MEMO} — propriétaires : administration` },
           {
@@ -310,7 +309,7 @@
     if (avecInvites)
       out.push({
         tableId: general.agents,
-        colIds: [S.INVITE.cle, S.INVITE.lien]
+        colIds: [Socle.INVITE.cle, Socle.INVITE.lien]
           .filter((c) => meta[general.agents].colonnes[c])
           .sort()
           .join(","),
@@ -362,7 +361,7 @@
   // Circuit actif et viseurs possibles (colonnes de la table Agents) : réglage, sinon null
   const circuit = (table) =>
     meta[general.agents] && meta[general.agents].colonnes.Echelon_visa && meta[table]
-      ? S.reglagesValidation(config, table)
+      ? Socle.reglagesValidation(config, table)
       : null;
   function reglesValidation(out) {
     for (const t of [...new Set(formulaires.map((f) => f.table))]) {
@@ -430,7 +429,7 @@
       const p = parties.find((x) => x.id === (b.section || "q"));
       if (p && p.role !== "q" && b.colonne && cols[b.colonne]) visas.add(b.colonne);
     });
-    const rr = S.resoudreRoles(
+    const rr = Socle.associerColonnes(
       "reponses",
       meta[f.table],
       { reponses: f.table, referentiel: general.referentiel },
@@ -474,7 +473,7 @@
       }
       return e;
     };
-    const lecture = new Set([S.TABLE_CONFIG, general.formulaires]);
+    const lecture = new Set([Socle.TABLE_CONFIG, general.formulaires]);
     for (const g of groupes) {
       const E = condEtab(g),
         qui = `établissement (lien ${g.attribut}_)`;
@@ -556,7 +555,7 @@
           ).sousTable = { ...st, formule: `$${st.parent}.${f.colEtab}`, type: `Ref:${g.table}` };
         // tables visées par les questions (listes de choix) : lecture
         Object.values(meta[f.table].colonnes).forEach((c) => {
-          const x = S.cibleRef(c.type) || (/^RefList:(.+)$/.exec(c.type) || [])[1];
+          const x = Socle.cibleRef(c.type) || (/^RefList:(.+)$/.exec(c.type) || [])[1];
           if (x && x !== f.table && x !== g.table && meta[x] && x !== general.agents) lecture.add(x);
         });
       }
@@ -614,7 +613,7 @@
   const attributsProposes = () => [
     { name: ATTRIBUT, tableId: general.agents, lookupColId: "Email", charId: "Email" },
     ...(avecInvites
-      ? [{ name: INVITE, tableId: general.agents, lookupColId: S.INVITE.cle, charId: `LinkKey.${INVITE}` }]
+      ? [{ name: INVITE, tableId: general.agents, lookupColId: Socle.INVITE.cle, charId: `LinkKey.${INVITE}` }]
       : []),
     ...(groupes || []).map((g) => ({
       name: g.attribut,
@@ -626,7 +625,7 @@
   const estAttributSocle = (r) => {
     try {
       const n = JSON.parse(r.userAttributes).name;
-      return n === ATTRIBUT || n === S.INVITE.attribut || /^Etab(_|$)/.test(n);
+      return n === ATTRIBUT || n === Socle.INVITE.attribut || /^Etab(_|$)/.test(n);
     } catch (_) {
       return false;
     }
@@ -786,7 +785,7 @@
 
   function carteRegles(propose, remplacees, ok, sansFormule) {
     return `<section class="carte"><h2>Règles proposées</h2>
-      <p class="aide">Attribut utilisateur « ${ATTRIBUT} » : la ligne de la table ${esc(general.agents)} dont l'adresse (colonne Email) est celle du compte Grist connecté.${avecInvites ? ` Attribut « ${INVITE} » : la ligne de ${esc(general.agents)} dont la clé (${esc(S.INVITE.cle)}) est celle du lien d'un agent invité (paramètre ${INVITE}_) ; l'invité a les droits d'un agent.` : ""}${(groupes || []).map((g) => ` Attribut « ${esc(g.attribut)} » : la ligne de ${esc(g.table)} dont la clé (${esc(R.LIEN.cle)}) est celle du lien (paramètre ${esc(g.attribut)}_).`).join("")}</p>
+      <p class="aide">Attribut utilisateur « ${ATTRIBUT} » : la ligne de la table ${esc(general.agents)} dont l'adresse (colonne Email) est celle du compte Grist connecté.${avecInvites ? ` Attribut « ${INVITE} » : la ligne de ${esc(general.agents)} dont la clé (${esc(Socle.INVITE.cle)}) est celle du lien d'un agent invité (paramètre ${INVITE}_) ; l'invité a les droits d'un agent.` : ""}${(groupes || []).map((g) => ` Attribut « ${esc(g.attribut)} » : la ligne de ${esc(g.table)} dont la clé (${esc(R.LIEN.cle)}) est celle du lien (paramètre ${esc(g.attribut)}_).`).join("")}</p>
       ${propose
         .map(
           (
@@ -893,7 +892,7 @@
             pagePos: Number((p.pagePos || [])[i]) || i,
             indentation: Number((p.indentation || [])[i]) || 0,
             nom: String(v.name[v.id.indexOf(viewRef)] || ""),
-            cellule: secs.some((k) => s.tableRef[k] === tref(S.TABLE_CELLULE)),
+            cellule: secs.some((k) => s.tableRef[k] === tref(Socle.TABLE_CELLULE)),
             lien:
               secs.some((k) => {
                 const cv = optionsDe(k);
@@ -935,7 +934,7 @@
           }</p>
           <div class="boutons"><button class="primaire" id="ac-pages">Ranger les pages sous « Cellule »</button><span class="statut" id="ac-pages-statut" role="status"></span></div>`
       }
-      <p class="aide">Les pages créées ensuite (nouvel agent, nouveau tableau de bord…) se placent en bas de la liste : revenez ici pour les ranger. Appliquez ensuite les règles (table ${esc(S.TABLE_CELLULE)}).</p></section>`;
+      <p class="aide">Les pages créées ensuite (nouvel agent, nouveau tableau de bord…) se placent en bas de la liste : revenez ici pour les ranger. Appliquez ensuite les règles (table ${esc(Socle.TABLE_CELLULE)}).</p></section>`;
   }
   async function rangerPages() {
     const st = (m) => {
@@ -945,12 +944,14 @@
     $("ac-pages").disabled = true;
     st("Rangement…");
     try {
-      if (!meta[S.TABLE_CELLULE]) {
-        await Donnees.ecrire([["AddTable", S.TABLE_CELLULE, [{ id: "Note", type: "Text", isFormula: false }]]]);
-        meta = await S.lireMeta();
+      if (!meta[Socle.TABLE_CELLULE]) {
+        await Donnees.ecrire([["AddTable", Socle.TABLE_CELLULE, [{ id: "Note", type: "Text", isFormula: false }]]]);
+        meta = await Socle.lireMeta();
       }
       if (!pagesDoc.some((x) => x.cellule)) {
-        const res = await Donnees.ecrire([["CreateViewSection", meta[S.TABLE_CELLULE].ref, 0, "record", null, null]]);
+        const res = await Donnees.ecrire([
+          ["CreateViewSection", meta[Socle.TABLE_CELLULE].ref, 0, "record", null, null],
+        ]);
         const rv = (res && res.retValues && res.retValues[0]) || {};
         if (rv.viewRef)
           await Donnees.ecrire([
@@ -1020,10 +1021,10 @@
       });
   }
   async function ajouterFormule() {
-    const plan = S.planInstallation(meta, config),
+    const plan = Socle.planInstallation(meta, config),
       e = plan.etapes.find((x) => x.id === `formule-${general.agents}`);
     if (e) {
-      const [r] = await S.appliquer([e]);
+      const [r] = await Socle.appliquer([e]);
       if (!r.ok) {
         dire(`Ajout de la colonne refusé par Grist (${r.erreur}).`, true);
         return;

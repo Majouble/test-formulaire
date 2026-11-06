@@ -11,6 +11,13 @@
     <script src="../commun/theme.js"></script>
     <script src="../commun/marque.js"></script>
     <script src="../commun/socle.js"></script>
+    <script src="../commun/metier/etablissements.js"></script>
+    <script src="../commun/metier/planning.js"></script>
+    <script src="../commun/metier/validation.js"></script>
+    <script src="../commun/metier/veille.js"></script>
+    <script src="../commun/metier/campagnes.js"></script>
+    <script src="../commun/metier/tableaux-de-bord.js"></script>
+    <script src="../commun/metier/point-de-situation.js"></script>
     <style>
       :root {
         --bleu: #000091;
@@ -668,13 +675,12 @@
         } catch (e) {
           liste = Object.keys(meta);
         }
-        const S = window.Socle,
-          g = socleGeneral;
+        const g = socleGeneral;
         const techniques = g
           ? new Set([
-              S.TABLE_CONFIG,
-              S.TABLE_ADMIN,
-              S.TABLE_CELLULE,
+              Socle.TABLE_CONFIG,
+              Socle.TABLE_ADMIN,
+              Socle.TABLE_CELLULE,
               g.formulaires,
               g.agents,
               g.creneaux,
@@ -685,7 +691,7 @@
               g.vigilances_journal,
             ])
           : new Set();
-        const reponses = g ? S.espaces(g).map((e) => e.reponses) : [];
+        const reponses = g ? Socle.espaces(g).map((e) => e.reponses) : [];
         tables = liste
           .filter((t) => !t.startsWith("_grist") && !techniques.has(t))
           .sort(
@@ -696,17 +702,16 @@
       }
       // Colonnes du socle (rôles) pour une table de réponses : réglages proposés d'office
       async function rolesSocle(tableId) {
-        const S = window.Socle;
-        if (!S || !socleGeneral) return null;
+        if (!Socle || !socleGeneral) return null;
         try {
-          const m = await S.lireMeta(),
-            e = S.espaceDeTable(socleGeneral, tableId);
+          const m = await Socle.lireMeta(),
+            e = Socle.espaceDeTable(socleGeneral, tableId);
           if (!m[tableId] || !e) return null;
           const assoc =
             tableId === socleGeneral.reponses
               ? (socleConfig && socleConfig.valeurs.roles && socleConfig.valeurs.roles.reponses) || {}
               : {};
-          const r = S.resoudreRoles(
+          const r = Socle.associerColonnes(
             "reponses",
             m[tableId],
             { reponses: tableId, referentiel: e.referentiel },

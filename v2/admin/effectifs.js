@@ -14,7 +14,6 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle;
   const { esc, $ } = Outils;
   const nf = (n) => Number(n || 0).toLocaleString("fr-FR");
   const COL = { effectif: "Effectif", annee: "Effectif_rentree" };
@@ -83,7 +82,7 @@
   // Champ le plus probable : premier motif qui trouve un champ du bon genre
   const deviner = (champs, motifs, filtre = () => true) => {
     for (const m of motifs) {
-      const f = champs.find((c) => filtre(c) && (m.test(c.name) || m.test(S.norm(c.label))));
+      const f = champs.find((c) => filtre(c) && (m.test(c.name) || m.test(Socle.normaliser(c.label))));
       if (f) return f.name;
     }
     return "";
@@ -131,10 +130,10 @@
 
   /* ---------- Contexte ---------- */
   async function charger() {
-    meta = await S.lireMeta();
-    config = await S.lireConfig(meta);
-    general = S.general(config);
-    for (const e of S.espaces(general)) {
+    meta = await Socle.lireMeta();
+    config = await Socle.lireConfig(meta);
+    general = Socle.general(config);
+    for (const e of Socle.espaces(general)) {
       if (!meta[e.referentiel] || (etat[e.champ] && etat[e.champ].espace.referentiel === e.referentiel)) {
         if (etat[e.champ]) etat[e.champ].espace = e;
         continue;
@@ -143,7 +142,7 @@
         e.referentiel === general.referentiel
           ? (config && config.valeurs.roles && config.valeurs.roles.referentiel) || {}
           : {};
-      const roles = S.resoudreRoles(
+      const roles = Socle.associerColonnes(
         "referentiel",
         meta[e.referentiel],
         { reponses: e.reponses, referentiel: e.referentiel },
@@ -339,7 +338,7 @@
     }
     // réglages retenus (jeu de données et champs), repris à la prochaine mise à jour
     const v = (config && config.valeurs.effectifs) || {};
-    await S.ecrireConfig("effectifs", {
+    await Socle.ecrireConfig("effectifs", {
       ...v,
       [ch]: {
         jeux: Object.fromEntries(
@@ -361,7 +360,7 @@
   }
   // Colonne Effectif recopiée dans les tables de réponses de ce référentiel (formule)
   const tablesSansColonne = (ch) =>
-    S.espaces(general)
+    Socle.espaces(general)
       .filter(
         (e) =>
           e.referentiel === etat[ch].espace.referentiel &&
@@ -375,7 +374,7 @@
     for (const rep of tablesSansColonne(ch)) {
       const assoc =
         rep === general.reponses ? (config && config.valeurs.roles && config.valeurs.roles.reponses) || {} : {};
-      const rr = S.resoudreRoles(
+      const rr = Socle.associerColonnes(
         "reponses",
         meta[rep],
         { reponses: rep, referentiel: etat[ch].espace.referentiel },
@@ -411,7 +410,7 @@
   };
   function dessiner() {
     const champs = Object.keys(etat).filter((ch) =>
-      S.espaces(general).some((e) => e.champ === ch && meta[e.referentiel]),
+      Socle.espaces(general).some((e) => e.champ === ch && meta[e.referentiel]),
     );
     racine.innerHTML = `<h2>Effectifs des établissements</h2>
       <p class="aide">Nombre d'élèves ou d'étudiants de chaque établissement, tiré de l'open data du ministère et écrit dans le référentiel (colonnes ${COL.effectif} et ${COL.annee}).

@@ -10,7 +10,6 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle;
   const { esc, $ } = Outils;
   const nf = (n) => Number(n || 0).toLocaleString("fr-FR");
 
@@ -99,15 +98,15 @@
 
   /* ---------- Contexte Grist ---------- */
   async function contexte() {
-    const meta = await S.lireMeta(),
-      config = await S.lireConfig(meta);
+    const meta = await Socle.lireMeta(),
+      config = await Socle.lireConfig(meta);
     if (!config) throw new Error("La table Config n'existe pas : terminez d'abord l'installation.");
     // annuaire de l'éducation nationale : importé dans le référentiel du champ EN (premier ou second champ du document)
-    const g = S.general(config),
-      table = (S.espaces(g).find((e) => e.champ === "EN") || { referentiel: g.referentiel }).referentiel,
+    const g = Socle.general(config),
+      table = (Socle.espaces(g).find((e) => e.champ === "EN") || { referentiel: g.referentiel }).referentiel,
       tMeta = meta[table];
     if (!tMeta) throw new Error(`La table du référentiel « ${table} » n'existe pas : terminez d'abord l'installation.`);
-    const roles = S.resoudreRoles(
+    const roles = Socle.associerColonnes(
       "referentiel",
       tMeta,
       { reponses: g.reponses, referentiel: table },
@@ -159,7 +158,7 @@
       try {
         academiesAnnuaire = (await compterPar(CHAMPS_ROLES.Academie, ""))
           .filter((a) => a.valeur)
-          .sort((a, b) => S.norm(a.valeur).localeCompare(S.norm(b.valeur)));
+          .sort((a, b) => Socle.normaliser(a.valeur).localeCompare(Socle.normaliser(b.valeur)));
       } catch (e) {
         academiesAnnuaire = [];
       }
@@ -218,7 +217,10 @@
     const apres = [...academiesChoisies].sort((a, b) => (ordre.indexOf(a) + 1 || 999) - (ordre.indexOf(b) + 1 || 999));
     if (apres.length === avant.length && apres.every((a) => avant.includes(a))) return true;
     try {
-      await S.ecrireConfig("general", { ...(ctx.config.valeurs.general || S.DEFAUTS_GENERAL), academies: apres });
+      await Socle.ecrireConfig("general", {
+        ...(ctx.config.valeurs.general || Socle.DEFAUTS_GENERAL),
+        academies: apres,
+      });
       const st = $("ref-aca-statut");
       if (st) {
         st.textContent = `Académies enregistrées (${apres.length || "toutes"}).`;
@@ -248,7 +250,9 @@
         compterPar(CHAMPS_ROLES.Academie, where),
       ]);
       apercu = { types, academies };
-      const absentes = ctx.g.academies.filter((a) => !academies.some((x) => S.norm(x.valeur) === S.norm(a)));
+      const absentes = ctx.g.academies.filter(
+        (a) => !academies.some((x) => Socle.normaliser(x.valeur) === Socle.normaliser(a)),
+      );
       const deja = ctx.reglages.types; // types retenus lors du dernier import
       $("ref-types").innerHTML = types
         .map(
@@ -334,7 +338,7 @@
   async function resolveurRefs(ctx) {
     const caches = {};
     return async (colMeta, valeur) => {
-      const cible = S.cibleRef(colMeta.type);
+      const cible = Socle.cibleRef(colMeta.type);
       if (!cible) return valeur;
       if (!caches[cible]) {
         const t = await Donnees.lire(cible),
@@ -342,11 +346,11 @@
         for (const [col, vals] of Object.entries(t))
           if (col !== "id" && Array.isArray(vals))
             vals.forEach((v, i) => {
-              if (typeof v === "string" && !index.has(S.norm(v))) index.set(S.norm(v), t.id[i]);
+              if (typeof v === "string" && !index.has(Socle.normaliser(v))) index.set(Socle.normaliser(v), t.id[i]);
             });
         caches[cible] = index;
       }
-      return caches[cible].get(S.norm(valeur)) || null;
+      return caches[cible].get(Socle.normaliser(valeur)) || null;
     };
   }
 
@@ -393,7 +397,7 @@
           .map(([r, champ]) => ({ colonne: col(r), lire: (l) => l[champ] })),
         ...options.map(([r, champ]) => ({ colonne: col(r), lire: (l) => l[champ] })),
         ...(col("Region_academique")
-          ? [{ colonne: col("Region_academique"), lire: (l) => S.regionDeAcademie(l[CHAMPS_ROLES.Academie]) }]
+          ? [{ colonne: col("Region_academique"), lire: (l) => Socle.regionDeAcademie(l[CHAMPS_ROLES.Academie]) }]
           : []),
         ...extras.map((c) => ({ colonne: nomColonne(c), lire: (l) => l[c] })),
       ];
@@ -456,7 +460,7 @@
         else inchanges++;
       }
       // Lignes de l'annuaire, dans le périmètre, qui n'y figurent plus : conservées, seulement comptées
-      const acaDoc = new Set(ctx.g.academies.map(S.norm)),
+      const acaDoc = new Set(ctx.g.academies.map(Socle.normaliser)),
         colAca = col("Academie");
       let sorties = 0;
       if (colOrigine)
@@ -468,7 +472,9 @@
             existant[colOrigine][i] === ORIGINE &&
             u &&
             !vus.has(u) &&
-            (!acaDoc.size || typeof existant[colAca][i] !== "string" || acaDoc.has(S.norm(existant[colAca][i])))
+            (!acaDoc.size ||
+              typeof existant[colAca][i] !== "string" ||
+              acaDoc.has(Socle.normaliser(existant[colAca][i])))
           )
             sorties++;
         });
@@ -532,9 +538,9 @@
         statut(`Mise à jour : ${nf(Math.min(i + TAILLE_LOT, majs.length))} / ${nf(majs.length)}…`);
         await Donnees.ecrire(lot.map((m) => ["UpdateRecord", ctx.table, m.id, m.fields]));
       }
-      const config = await S.lireConfig();
+      const config = await Socle.lireConfig();
       await Donnees.ecrire([
-        S.actionConfig(config, "annuaire_en", {
+        Socle.actionConfig(config, "annuaire_en", {
           types: analyse.types,
           champs: analyse.extras,
           ouverts_seulement: $("ref-ouverts").checked,

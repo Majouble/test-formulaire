@@ -11,8 +11,7 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle,
-    R = window.Repartition;
+  const R = window.Repartition;
   const { esc, $ } = Outils;
   const nf = (n) => Number(n || 0).toLocaleString("fr-FR");
   const pc = (a, b) => (b ? `${Math.round((100 * a) / b)} %` : "—");
@@ -32,9 +31,9 @@
 
   /* ---------- Lecture ---------- */
   async function charger() {
-    config = await S.lireConfig();
-    general = S.general(config);
-    meta = await S.lireMeta();
+    config = await Socle.lireConfig();
+    general = Socle.general(config);
+    meta = await Socle.lireMeta();
     formulaires = await R.lireFormulairesPublies(general);
     groupes = R.groupesLiens(meta, config, general, formulaires);
     cacheRef.clear();
@@ -78,7 +77,13 @@
       }
       const assoc =
         f.table === general.reponses ? (config && config.valeurs.roles && config.valeurs.roles.reponses) || {} : {};
-      const rr = S.resoudreRoles("reponses", meta[f.table], { reponses: f.table, referentiel: table }, assoc, {});
+      const rr = Socle.associerColonnes(
+        "reponses",
+        meta[f.table],
+        { reponses: f.table, referentiel: table },
+        assoc,
+        {},
+      );
       const cree = rr.Cree_le && rr.Cree_le.col,
         faits = rr.Date_faits && rr.Date_faits.col,
         ce = f.colEtab;
@@ -110,8 +115,8 @@
       besoin.forEach((k) => {
         ligne[k] = t[k] ? t[k][i] : null;
       });
-      if (!S.campagneVise(c, ligne, cols)) return;
-      const saisies = (rep.get(id) || []).filter((s) => S.reponseCompte(c, s, jour));
+      if (!Socle.campagneVise(c, ligne, cols)) return;
+      const saisies = (rep.get(id) || []).filter((s) => Socle.reponseCompte(c, s, jour));
       vises.push({ i, id, repondu: saisies.length > 0, derniere: saisies.length ? Math.max(...saisies) : null });
     });
     return { vises, ref };
@@ -141,10 +146,10 @@
     const out = [],
       fin = c.close && c.fin ? c.fin : Date.now() / 1000;
     for (let s = c.debut || fin; s <= fin + 1; s += 86400) {
-      const j = S.jourParis(s);
+      const j = Socle.jourParis(s);
       if (!out.includes(j)) out.push(j);
     }
-    const auj = S.jourParis(fin);
+    const auj = Socle.jourParis(fin);
     if (!out.includes(auj)) out.push(auj);
     return out.reverse();
   }
@@ -155,7 +160,7 @@
       racine.innerHTML = "";
       return;
     }
-    const liste = S.campagnes(config);
+    const liste = Socle.campagnes(config);
     const blocs = [];
     for (const c of liste) {
       try {
@@ -181,7 +186,7 @@
       <p class="aide"><strong>${nf(p.n)}</strong> établissement(s) de ${esc(p.referentiel)} : ${esc(critTexte(p))}.</p>
       <div class="grille">
         <label class="champ"><span>Nom de la campagne</span><input type="text" id="cp-nom" value="${esc(p.nom)}"></label>
-        <label class="champ"><span>Réponse attendue</span><select id="cp-mode">${Object.entries(S.MODES_CAMPAGNE)
+        <label class="champ"><span>Réponse attendue</span><select id="cp-mode">${Object.entries(Socle.MODES_CAMPAGNE)
           .map(([k, v]) => `<option value="${k}"${k === p.mode ? " selected" : ""}>${esc(v)}</option>`)
           .join("")}</select>
           <small>« Chaque jour » : le suivi repart de zéro chaque matin (un dossier par jour).</small></label>
@@ -203,7 +208,7 @@
       ok = vises.filter((v) => v.repondu).length,
       sans = vises.filter((v) => !v.repondu);
     const avecLien = sans.filter((v) => lisible((t[R.LIEN.lien] || [])[v.i])).length;
-    const enCours = S.campagneEnCours(c);
+    const enCours = Socle.campagneEnCours(c);
     // ventilation par académie ou par département
     const dep = !!parDep[c.id] && cols.dep,
       cle = dep ? cols.dep : cols.aca,
@@ -223,10 +228,10 @@
     const val = (k, i) => (k && t[k] ? String(t[k][i] ?? "") : "");
     return `<div class="cp-campagne" data-id="${esc(c.id)}">
       <div class="cp-tete"><h3>${esc(c.nom)}</h3><span class="pastille ${enCours ? "ok" : ""}">${enCours ? "en cours" : c.close ? "close" : "terminée"}</span>
-        <span class="pastille reco">${esc(S.MODES_CAMPAGNE[c.mode] || c.mode)}</span>
-        <span class="aide">lancée le ${dateFr(c.debut)}${c.fin ? ` · fin le ${jourFr(S.jourParis(c.fin))}` : ""}</span></div>
+        <span class="pastille reco">${esc(Socle.MODES_CAMPAGNE[c.mode] || c.mode)}</span>
+        <span class="aide">lancée le ${dateFr(c.debut)}${c.fin ? ` · fin le ${jourFr(Socle.jourParis(c.fin))}` : ""}</span></div>
       <p class="aide">${esc(c.referentiel)} : ${esc(critTexte(c))}.</p>
-      ${quot ? `<label class="champ" style="max-width:260px"><span>Jour suivi</span><select data-jour="${esc(c.id)}">${js.map((j) => `<option value="${j}"${j === jour ? " selected" : ""}>${jourFr(j)}${j === S.jourParis(Date.now() / 1000) ? " (aujourd'hui)" : ""}</option>`).join("")}</select></label>` : ""}
+      ${quot ? `<label class="champ" style="max-width:260px"><span>Jour suivi</span><select data-jour="${esc(c.id)}">${js.map((j) => `<option value="${j}"${j === jour ? " selected" : ""}>${jourFr(j)}${j === Socle.jourParis(Date.now() / 1000) ? " (aujourd'hui)" : ""}</option>`).join("")}</select></label>` : ""}
       <p><strong>${nf(ok)}</strong> réponse(s) sur <strong>${nf(n)}</strong> établissement(s) visé(s) — ${pc(ok, n)}${quot ? ` le ${jourFr(jour)}` : ""}.</p>
       <div class="cp-barre" style="max-width:420px"><span style="width:${n ? Math.round((100 * ok) / n) : 0}%"></span></div>
       <table class="va-table"><thead><tr><th>${dep ? "Département" : "Académie"} <button type="button" class="lien-btn" data-dep="${esc(c.id)}">${dep ? "par académie" : cols.dep ? "par département" : ""}</button></th>
@@ -266,8 +271,8 @@
     }
   };
   async function ecrire(liste) {
-    await S.ecrireConfig("campagnes", { ...((config && config.valeurs.campagnes) || {}), liste });
-    config = await S.lireConfig();
+    await Socle.ecrireConfig("campagnes", { ...((config && config.valeurs.campagnes) || {}), liste });
+    config = await Socle.lireConfig();
   }
   function preparer(sel) {
     const d = new Date();
@@ -307,7 +312,7 @@
       message: { objet: $("cp-objet").value, corps: $("cp-corps").value },
     };
     try {
-      await ecrire([c, ...S.campagnes(config)]);
+      await ecrire([c, ...Socle.campagnes(config)]);
       projet = null;
       await dessiner();
       dire(`Campagne « ${nom} » lancée. Envoyez le message aux établissements depuis le publipostage.`);
@@ -316,7 +321,7 @@
     }
   }
   async function modifier(id, fn) {
-    const liste = S.campagnes(config)
+    const liste = Socle.campagnes(config)
       .map((c) => (c.id === id ? fn({ ...c }) : c))
       .filter(Boolean);
     try {
@@ -327,7 +332,7 @@
     }
   }
   async function relance(id) {
-    const c = S.campagnes(config).find((x) => x.id === id);
+    const c = Socle.campagnes(config).find((x) => x.id === id);
     if (!c) return;
     const quot = c.mode === "quotidienne",
       jour = quot ? jours[c.id] || joursCampagne(c)[0] : null;
@@ -372,7 +377,7 @@
       "\r\n";
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([texte], { type: "text/csv;charset=utf-8" }));
-    a.download = `relance-${S.norm(c.nom).slice(0, 40)}-${quot ? jour : S.jourParis(Date.now() / 1000)}.csv`;
+    a.download = `relance-${Socle.normaliser(c.nom).slice(0, 40)}-${quot ? jour : Socle.jourParis(Date.now() / 1000)}.csv`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => {

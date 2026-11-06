@@ -7,7 +7,6 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle;
   const { esc, $ } = Outils;
   const copie = (o) => JSON.parse(JSON.stringify(o));
   const norm = (s) =>
@@ -146,15 +145,15 @@
 
   /* ======================= Chargement ======================= */
   async function charger() {
-    const meta = await S.lireMeta();
-    config = await S.lireConfig(meta);
+    const meta = await Socle.lireMeta();
+    config = await Socle.lireConfig(meta);
     if (!config) {
       $("ps-editeur").innerHTML =
         `<p class="statut err">La table Config n'existe pas : terminez d'abord l'installation.</p>`;
       return false;
     }
     await lirePagesPS();
-    defauts = await S.reglagesPointParDefaut(meta, config);
+    defauts = await Socle.reglagesPointParDefaut(meta, config);
     ps = config.valeurs.point_situation || {};
     brouillon = copie(ps.brouillon || ps.publie || DEFAUT);
     for (const k of ["options", "sections", "colonnes", "tri"]) if (!brouillon[k]) brouillon[k] = copie(DEFAUT[k]);
@@ -170,7 +169,7 @@
       for (const c of Object.values(t.colonnes))
         if (!technique(c)) champs.push({ chemin: c.colId, libelle: lib(c), groupe: "Signalement", type: c.type });
       for (const c of Object.values(t.colonnes)) {
-        const cible = S.cibleRef(c.type);
+        const cible = Socle.cibleRef(c.type);
         if (!cible || !meta[cible] || cible === table) continue;
         for (const c2 of Object.values(meta[cible].colonnes))
           if (!technique(c2))
@@ -236,7 +235,7 @@
     clearTimeout(minuterie);
     try {
       ps = { ...ps, brouillon: copie(brouillon), modifie_le: Date.now() / 1000 };
-      await S.ecrireConfig("point_situation", ps);
+      await Socle.ecrireConfig("point_situation", ps);
       statut("Brouillon enregistré.", "ok");
       dessinerEtat();
     } catch (e) {
@@ -348,7 +347,7 @@
         publie_le: Date.now() / 1000,
         modifie_le: Date.now() / 1000,
       };
-      await S.ecrireConfig("point_situation", ps);
+      await Socle.ecrireConfig("point_situation", ps);
       // première publication sans page : la page du widget est créée d'office, comme pour un formulaire
       let page = "";
       if (!(await lirePagesPS()).length) {
@@ -421,15 +420,15 @@
   }
   async function preparerModele() {
     try {
-      const meta = await S.lireMeta(),
+      const meta = await Socle.lireMeta(),
         acts = [];
-      if (!meta[S.TABLE_CONFIG].colonnes.Fichier)
-        acts.push(["AddColumn", S.TABLE_CONFIG, "Fichier", { type: "Attachments", isFormula: false }]);
-      const cfg = await S.lireConfig(meta);
+      if (!meta[Socle.TABLE_CONFIG].colonnes.Fichier)
+        acts.push(["AddColumn", Socle.TABLE_CONFIG, "Fichier", { type: "Attachments", isFormula: false }]);
+      const cfg = await Socle.lireConfig(meta);
       if (!cfg.ids.modele_point_situation)
         acts.push([
           "AddRecord",
-          S.TABLE_CONFIG,
+          Socle.TABLE_CONFIG,
           null,
           {
             Cle: "modele_point_situation",

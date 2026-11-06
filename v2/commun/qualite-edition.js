@@ -11,7 +11,6 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle;
   const { esc } = Outils;
   const dateHeure = (s) =>
     typeof s === "number" ? Outils.dates.dateHeure(s, { dateStyle: "short", timeStyle: "short" }) : "date inconnue";
@@ -70,7 +69,7 @@
         b.setAttribute("aria-expanded", "true");
         cell.innerHTML = `<p class="aide">Lecture de la saisie…</p>`;
         try {
-          const fe = await window.FicheEtab.charger(await S.lireMeta(), rep, {
+          const fe = await window.FicheEtab.charger(await Socle.lireMeta(), rep, {
             exclure,
             lectureSeule,
             ordre: "table",

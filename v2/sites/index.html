@@ -11,6 +11,13 @@
     <script src="../commun/theme.js"></script>
     <script src="../commun/marque.js"></script>
     <script src="../commun/socle.js"></script>
+    <script src="../commun/metier/etablissements.js"></script>
+    <script src="../commun/metier/planning.js"></script>
+    <script src="../commun/metier/validation.js"></script>
+    <script src="../commun/metier/veille.js"></script>
+    <script src="../commun/metier/campagnes.js"></script>
+    <script src="../commun/metier/tableaux-de-bord.js"></script>
+    <script src="../commun/metier/point-de-situation.js"></script>
     <script src="../commun/fiche-etab.js"></script>
     <script src="../commun/qualite-moteur.js"></script>
     <script src="../commun/qualite-edition.js"></script>
@@ -744,7 +751,6 @@
    coordonnées ; un repère déplacé met à jour les coordonnées (« placé sur la carte ») ; un site n'est jamais supprimé
    (des signalements peuvent y renvoyer) : il se désactive (colonne Actif).
    ===================================================================== */
-      const S = window.Socle;
       const { esc, $ } = Outils;
       const norm = (s) =>
         String(s ?? "")
@@ -923,10 +929,10 @@
         actif: { re: /^actif$/i, id: "Actif", type: "Bool", label: "Actif" },
       };
       async function contexte() {
-        const meta = await S.lireMeta(),
-          config = await S.lireConfig(meta);
-        const g = config ? S.general(config) : null,
-          esp = g ? S.espaces(g) : [];
+        const meta = await Socle.lireMeta(),
+          config = await Socle.lireConfig(meta);
+        const g = config ? Socle.general(config) : null,
+          esp = g ? Socle.espaces(g) : [];
         const reps = esp.map((e) => e.reponses);
         // référentiel des sites : table « …site… » reliée aux établissements ; s'il y en a plusieurs, la plus désignée par des
         // colonnes référence ailleurs dans le document (sous-tables de réponses, correspondances…)
@@ -938,7 +944,7 @@
               !/signal|correspond/i.test(t) &&
               Object.values(meta[t].colonnes).some((c) => c.type === `Ref:${etab}`) &&
               !Object.values(meta[t].colonnes).some(
-                (c) => reps.includes(S.cibleRef(c.type)) || /^Ref:Reponses/.test(c.type),
+                (c) => reps.includes(Socle.cibleRef(c.type)) || /^Ref:Reponses/.test(c.type),
               ),
           );
           const nb = (t) =>
@@ -956,11 +962,11 @@
             // référentiel des sites existant : il désigne le référentiel des établissements
             if (t.startsWith("_grist") || !/site/i.test(t) || /signal|correspond/i.test(t)) continue;
             const c = Object.values(meta[t].colonnes).find(
-              (x) => /^Ref:/.test(x.type) && /etab/i.test(x.colId) && !reps.includes(S.cibleRef(x.type)),
+              (x) => /^Ref:/.test(x.type) && /etab/i.test(x.colId) && !reps.includes(Socle.cibleRef(x.type)),
             );
             if (c) {
               tSites = t;
-              tEtab = S.cibleRef(c.type);
+              tEtab = Socle.cibleRef(c.type);
               break;
             }
           }
@@ -970,7 +976,7 @@
             "Référentiel des établissements introuvable : terminez l'installation du socle (administration).",
           );
         const tm = meta[tEtab],
-          roles = S.resoudreRoles(
+          roles = Socle.associerColonnes(
             "referentiel",
             tm,
             { referentiel: tEtab, reponses: (esp.find((e) => e.referentiel === tEtab) || {}).reponses },
@@ -1095,7 +1101,7 @@
           await Donnees.ecrire([["AddTable", tid, cols.map((c) => ({ ...c, isFormula: false }))]]);
           ctx.tSites = tid;
         }
-        ctx.meta = await S.lireMeta();
+        ctx.meta = await Socle.lireMeta();
         const tm = ctx.meta[ctx.tSites],
           acts = [];
         for (const d of Object.values(COLS_SITES)) {
@@ -1115,7 +1121,7 @@
             { type: `Ref:${ctx.tEtab}`, isFormula: false, label: "Composante concernée", untieColIdFromLabel: true },
           ]);
         if (acts.length) await Donnees.ecrire(acts);
-        ctx.meta = await S.lireMeta();
+        ctx.meta = await Socle.lireMeta();
         ctx.cols = colonnesSites();
       }
       async function etendreChoix(k, valeur) {
@@ -1622,7 +1628,7 @@
         if (!z || !choisi) return;
         const e = choisi;
         try {
-          if (!ficheEtab) ficheEtab = await window.FicheEtab.charger(await S.lireMeta(), ctx.tEtab);
+          if (!ficheEtab) ficheEtab = await window.FicheEtab.charger(await Socle.lireMeta(), ctx.tEtab);
         } catch (err) {
           z.innerHTML = `<p class="statut err">Fiche illisible : ${esc(err.message || err)}</p>`;
           return;
@@ -1811,7 +1817,7 @@
         const autres = sel.filter((s) => s.id !== garde.id),
           ids = new Set(autres.map((s) => s.id));
         // références vers les sites fusionnés, dans toutes les tables
-        const meta = await S.lireMeta(),
+        const meta = await Socle.lireMeta(),
           refs = [];
         for (const [t, m] of Object.entries(meta)) {
           if (t.startsWith("_grist")) continue;
@@ -2548,7 +2554,7 @@
         );
       // colonne référence vers un référentiel des sites (le référentiel du widget, ou une autre table de sites reliée aux établissements)
       function estRefSites(meta, c) {
-        const t = S.cibleRef(c.type);
+        const t = Socle.cibleRef(c.type);
         if (!t || !/^Ref:/.test(c.type) || !meta[t]) return false;
         return (
           t === ctx.tSites ||
@@ -2557,10 +2563,10 @@
         );
       }
       async function sourcesSaisies() {
-        const meta = await S.lireMeta(),
-          config = await S.lireConfig(meta),
-          g = S.general(config),
-          reps = S.espaces(g)
+        const meta = await Socle.lireMeta(),
+          config = await Socle.lireConfig(meta),
+          g = Socle.general(config),
+          reps = Socle.espaces(g)
             .map((e) => e.reponses)
             .filter((t) => meta[t]);
         const out = [];
@@ -2589,7 +2595,7 @@
                 etabCol: ce.colId,
                 viaDossier: null,
                 estRef: estRefSite(c),
-                cible: S.cibleRef(c.type),
+                cible: Socle.cibleRef(c.type),
                 type: c.type,
               }),
             );
@@ -2618,7 +2624,7 @@
                   etabCol: ce.colId,
                   viaDossier: d.colId,
                   estRef: estRefSiteT(c),
-                  cible: S.cibleRef(c.type),
+                  cible: Socle.cibleRef(c.type),
                   type: c.type,
                 }),
               );
@@ -2932,7 +2938,7 @@
             src.estRef ? { [src.col]: siteId } : { [refCol]: siteId, ...(sxRemplacer ? { [src.col]: nom } : {}) },
           ]);
           // correspondances libellé saisi → site, pour les saisies à venir
-          const meta = await S.lireMeta(),
+          const meta = await Socle.lireMeta(),
             tA = "Sites_correspondances";
           if (!meta[tA]) {
             await Donnees.ecrire([
@@ -3047,7 +3053,7 @@
       $("trouver-q").addEventListener("keydown", (ev) => {
         if (ev.key === "Enter") chercher();
       });
-      if (S) $("version").textContent = `· socle ${S.VERSION}`;
+      if (Socle) $("version").textContent = `· socle ${Socle.VERSION}`;
 
       // toute écriture dans le document rend l'analyse « À vérifier » périmée : recalcul (et compteur) peu après
       function suivreEcritures() {

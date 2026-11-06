@@ -11,7 +11,6 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle;
   const { esc, $ } = Outils;
   const statut = (t, type) => {
     const e = $("sec-statut");
@@ -64,9 +63,9 @@
       if (!k) throw new Error("le fichier reçu n'est pas le kit de secours");
       const nom = `Kit de secours ${numero(k.version)}.html`;
       telecharger(nom, html, "text/html;charset=utf-8");
-      const ecart = numero(k.version) !== numero(S.VERSION);
+      const ecart = numero(k.version) !== numero(Socle.VERSION);
       statut(
-        `« ${nom} » téléchargé (${(html.length / 1048576).toFixed(1)} Mo, construit le ${k.construit}).${ecart ? ` Attention : le kit est en version ${numero(k.version)}, l'administration en ${numero(S.VERSION)} — il sera à jour à la prochaine publication.` : ""}`,
+        `« ${nom} » téléchargé (${(html.length / 1048576).toFixed(1)} Mo, construit le ${k.construit}).${ecart ? ` Attention : le kit est en version ${numero(k.version)}, l'administration en ${numero(Socle.VERSION)} — il sera à jour à la prochaine publication.` : ""}`,
         ecart ? "err" : "ok",
       );
     } catch (e) {
@@ -101,8 +100,8 @@
         }
       } catch (_) {}
       if (!doc) throw new Error("adresse du document indisponible (accès complet nécessaire)");
-      const config = await S.lireConfig(),
-        g = S.general(config),
+      const config = await Socle.lireConfig(),
+        g = Socle.general(config),
         cle = cleAleatoire();
       const chemin = `secours-${doc.slice(0, 8).toLowerCase()}`;
       const noeud = w.nodes.find((n) => n.name === "Lecture de Grist"),
@@ -170,7 +169,7 @@
     }
   }
   async function creerPageReint() {
-    const g = S.general(await S.lireConfig());
+    const g = Socle.general(await Socle.lireConfig());
     const T = await Donnees.lire("_grist_Tables"),
       ref = T.id[T.tableId.indexOf(g.reponses)];
     if (ref == null) throw new Error(`table ${g.reponses} introuvable`);

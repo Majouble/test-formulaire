@@ -31,10 +31,9 @@ function infoSection(e) {
 let sectionGardee = null,
   sectionCalculee = { id: null, r: null };
 function alerterSection(e) {
-  const bloc = $("alerte-section"),
-    S = window.Socle;
-  const x = e && S && S.genreSection ? infoSection(e) : null,
-    genre = x ? S.genreSection(x.nature, x.type, x.nom) : null;
+  const bloc = $("alerte-section");
+  const x = e && Socle && Socle.genreSection ? infoSection(e) : null,
+    genre = x ? Socle.genreSection(x.nature, x.type, x.nom) : null;
   if (!genre || sectionGardee === x.id) {
     bloc.hidden = !(genre && sectionGardee === x.id);
     if (bloc.hidden) bloc.innerHTML = "";
@@ -45,7 +44,7 @@ function alerterSection(e) {
     const proches = etabs
       .filter((y) => y.id !== x.id && (x.lat == null || !cLat || Math.abs(+y[cLat] - x.lat) < 0.01))
       .map(infoSection);
-    sectionCalculee = { id: x.id, r: S.rattachementSection({ ...x, section: genre }, proches) };
+    sectionCalculee = { id: x.id, r: Socle.rattachementSection({ ...x, section: genre }, proches) };
   }
   const r = sectionCalculee.r;
   bloc.innerHTML = `<strong>⚠ Vous avez choisi une ${esc(genre)}</strong>, section rattachée à un ${genre === "SEP" || genre === "SGT" ? "lycée" : "collège"} :

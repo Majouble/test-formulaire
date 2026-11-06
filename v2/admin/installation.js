@@ -1,11 +1,10 @@
 /* =====================================================================
    Administration v2 — onglet « Installation »
    Vérifie le socle, propose ce qui manque, enregistre les réglages généraux et les rôles.
-   Dépend de ../commun/socle.js (window.Socle).
+   Dépend de ../commun/socle.js (window.Socle) et de metier/plan-installation.js (planInstallation, appliquer).
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle;
   const { esc, $ } = Outils;
 
   let meta = null,
@@ -13,7 +12,7 @@
     plan = null;
   const choixRoles = { reponses: {}, referentiel: {} }; // associations modifiées à l'écran, pas encore enregistrées
 
-  $("version").textContent = `socle ${S.VERSION}`;
+  $("version").textContent = `socle ${Socle.VERSION}`;
 
   function statut(id, texte, type) {
     const e = $(id);
@@ -24,9 +23,9 @@
   async function charger() {
     statut("statut-actions", "");
     try {
-      meta = await S.lireMeta();
-      config = await S.lireConfig(meta);
-      plan = S.planInstallation(meta, config);
+      meta = await Socle.lireMeta();
+      config = await Socle.lireConfig(meta);
+      plan = Socle.planInstallation(meta, config);
     } catch (e) {
       $("bandeau").className = "bandeau alerte";
       $("bandeau").textContent =
@@ -83,15 +82,15 @@
     const z = $("page-admin");
     if (!z) return;
     z.innerHTML = "";
-    if (!meta || !meta[S.TABLE_ADMIN]) return;
+    if (!meta || !meta[Socle.TABLE_ADMIN]) return;
     let pages;
     try {
       pages = await pagesAdmin();
     } catch (_) {
       return;
     }
-    const protegees = pages.filter((p) => p.table === S.TABLE_ADMIN),
-      autres = pages.filter((p) => p.table !== S.TABLE_ADMIN);
+    const protegees = pages.filter((p) => p.table === Socle.TABLE_ADMIN),
+      autres = pages.filter((p) => p.table !== Socle.TABLE_ADMIN);
     if (!autres.length) return;
     z.innerHTML = `<div class="bandeau alerte" style="margin-top:8px">
       ${
@@ -102,7 +101,7 @@
               .filter((x, i, a) => a.indexOf(x) === i)
               .join(", ")} : toute personne qui lit cette table la voit, y compris les invités et les établissements.
            <button class="primaire" id="btn-page-admin" style="margin-left:8px">Créer la page protégée</button>
-           <span class="aide" style="display:block;margin-top:4px">Une page « Administration » est créée, liée à la table ${S.TABLE_ADMIN} que les règles d'accès réservent aux propriétaires. Ouvrez-la, puis supprimez celle-ci.</span>`
+           <span class="aide" style="display:block;margin-top:4px">Une page « Administration » est créée, liée à la table ${Socle.TABLE_ADMIN} que les règles d'accès réservent aux propriétaires. Ouvrez-la, puis supprimez celle-ci.</span>`
       }
       <span class="statut" id="page-admin-statut" role="status"></span></div>`;
     if ($("btn-page-admin")) $("btn-page-admin").addEventListener("click", creerPageAdmin);
@@ -111,7 +110,7 @@
     const b = $("btn-page-admin");
     b.disabled = true;
     try {
-      const tref = meta[S.TABLE_ADMIN].ref;
+      const tref = meta[Socle.TABLE_ADMIN].ref;
       const res = await Donnees.ecrire([["CreateViewSection", tref, 0, "custom", null, null]]);
       const rv = (res && res.retValues && res.retValues[0]) || {};
       if (!rv.sectionRef) throw new Error("Grist n'a pas indiqué la vue créée");
@@ -220,12 +219,12 @@
       return;
     }
     const ctx = { reponses: plan.general.reponses, referentiel: plan.referentiel };
-    const lignes = S.ROLES[famille]
+    const lignes = Socle.COLONNES_ATTENDUES[famille]
       .map((def) => {
         const r = roles[def.role] || {},
           choisi = choixRoles[famille][def.role];
         const courant = choisi !== undefined ? choisi : r.col || "";
-        const compat = S.colonnesCompatibles(famille, def.role, tMeta, ctx);
+        const compat = Socle.colonnesCompatibles(famille, def.role, tMeta, ctx);
         const opts = [
           `<option value="">— aucune —</option>`,
           ...compat.map((c) => `<option ${c === courant ? "selected" : ""}>${esc(c)}</option>`),
@@ -286,7 +285,7 @@
       return;
     $("btn-appliquer").disabled = true;
     statut("statut-actions", "Application en cours…");
-    const res = await S.appliquer(coches);
+    const res = await Socle.appliquer(coches);
     $("journal").innerHTML = res
       .map(
         (r) =>
@@ -306,7 +305,7 @@
   const champSecond = () => ($("g-preset").value === "esr" ? "EN" : "ESR");
   function majSecond(autre) {
     const c = champSecond(),
-      d = S.AUTRE_CHAMP_DEFAUT[c];
+      d = Socle.AUTRE_CHAMP_DEFAUT[c];
     $("g-second-lib").textContent =
       c === "ESR"
         ? "Suivre aussi l'enseignement supérieur et la recherche (MESRE)"
@@ -333,7 +332,7 @@
 
   $("btn-general").addEventListener("click", async () => {
     const valeur = {
-      ...((config && config.valeurs.general) || S.DEFAUTS_GENERAL),
+      ...((config && config.valeurs.general) || Socle.DEFAUTS_GENERAL),
       situation: $("g-situation").value.trim(),
       preset: $("g-preset").value,
       retour_normale: $("g-retour")
@@ -361,7 +360,7 @@
       return;
     }
     try {
-      await S.ecrireConfig("general", valeur);
+      await Socle.ecrireConfig("general", valeur);
       await charger();
       statut(
         "statut-general",
@@ -398,7 +397,7 @@
         else delete valeur[famille][role];
       }
     try {
-      await S.ecrireConfig("roles", valeur);
+      await Socle.ecrireConfig("roles", valeur);
       choixRoles.reponses = {};
       choixRoles.referentiel = {};
       await charger();

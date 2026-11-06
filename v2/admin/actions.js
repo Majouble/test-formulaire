@@ -15,8 +15,7 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle,
-    R = window.Repartition;
+  const R = window.Repartition;
   const { esc, $ } = Outils;
   const COULEURS_PRIO = { Haute: "#ce0500", Moyenne: "#d68a00", Basse: "#6a6af4" };
   const ORDRE_PRIO = { Haute: 0, Moyenne: 1, Basse: 2 };
@@ -96,15 +95,15 @@
   const statutParDefaut = () => (reglages.statuts.find((x) => !x.clos) || reglages.statuts[0]).nom;
 
   async function charger() {
-    config = await S.lireConfig();
-    general = S.general(config);
-    reglages = S.reglagesActions(config);
+    config = await Socle.lireConfig();
+    general = Socle.general(config);
+    reglages = Socle.reglagesActions(config);
     agents = (await R.lireAgents(general, null)) || [];
-    actions = await S.lireActions(general);
-    const meta = await S.lireMeta(),
+    actions = await Socle.lireActions(general);
+    const meta = await Socle.lireMeta(),
       t = meta[table()];
     manquantes = t
-      ? S.colonnesActions(general, config)
+      ? Socle.colonnesActions(general, config)
           .map((c) => c.id)
           .filter((c) => !t.colonnes[c])
       : [];
@@ -114,7 +113,7 @@
   function colonnes() {
     if (archives) return [{ cle: "archives", libelle: "Archives", couleur: "#94a3b8", emoji: "📦", champ: null }];
     if (vue.groupe === "priorite")
-      return S.PRIORITES_ACTION.map((p) => ({ cle: p, libelle: p, couleur: COULEURS_PRIO[p], champ: "priorite" }));
+      return Socle.PRIORITES_ACTION.map((p) => ({ cle: p, libelle: p, couleur: COULEURS_PRIO[p], champ: "priorite" }));
     if (vue.groupe === "responsable") {
       const ids = [...new Set(actions.filter((a) => !a.archivee && a.responsable).map((a) => a.responsable))];
       const liste = agents.filter((a) => a.actif || ids.includes(a.id)).filter((a) => ids.includes(a.id) || a.actif);
@@ -146,7 +145,7 @@
   const valeurDe = (a, champ) =>
     champ === "statut" ? a.statut : champ === "priorite" ? a.priorite : String(a.responsable || "");
   function filtrees() {
-    const q = S.norm(recherche),
+    const q = Socle.normaliser(recherche),
       limite = Date.now() / 1000 - 7 * 86400;
     return actions.filter(
       (a) =>
@@ -154,7 +153,7 @@
         (!filtreResp || (filtreResp === "aucun" ? !a.responsable : String(a.responsable) === filtreResp)) &&
         (!filtrePrio || a.priorite === filtrePrio) &&
         (!filtreRetard || enRetard(a)) &&
-        (!q || S.norm(`${a.titre} ${a.description} ${nomAgent(a.responsable)}`).includes(q)) &&
+        (!q || Socle.normaliser(`${a.titre} ${a.description} ${nomAgent(a.responsable)}`).includes(q)) &&
         !(!archives && vue.masquerAnciennes && estClos(a) && a.faitLe && a.faitLe < limite),
     );
   }
@@ -200,7 +199,7 @@
         <label class="ak-lib">Trier <select id="ak-tri">${TRIS.map(([v, t]) => `<option value="${v}"${vue.tri === v ? " selected" : ""}>${t}</option>`).join("")}</select></label>
         <select id="ak-resp" aria-label="Filtrer par responsable"><option value="">Tous les responsables</option><option value="aucun"${filtreResp === "aucun" ? " selected" : ""}>Sans responsable</option>
           ${respOpts.map((a) => `<option value="${a.id}"${filtreResp === String(a.id) ? " selected" : ""}>${esc(a.nom)}</option>`).join("")}</select>
-        <select id="ak-prio" aria-label="Filtrer par priorité"><option value="">Toutes priorités</option>${S.PRIORITES_ACTION.map((p) => `<option${filtrePrio === p ? " selected" : ""}>${p}</option>`).join("")}</select>
+        <select id="ak-prio" aria-label="Filtrer par priorité"><option value="">Toutes priorités</option>${Socle.PRIORITES_ACTION.map((p) => `<option${filtrePrio === p ? " selected" : ""}>${p}</option>`).join("")}</select>
         <button class="secondaire petit${archives ? " actif" : ""}" id="ak-archives">📦 Archives (${nbArchives})</button>
         <button class="secondaire petit" id="ak-reglages">⚙ Colonnes et cartes</button>
       </div>
@@ -258,9 +257,9 @@
           ? a.description
           : `${a.description.slice(0, 140)}…`
         : "";
-    return `<article class="ak-carte prio-${S.norm(a.priorite)}${retard ? " retard" : ""}" draggable="${archives ? "false" : "true"}" data-id="${a.id}" tabindex="0" aria-label="${esc(a.titre)}">
+    return `<article class="ak-carte prio-${Socle.normaliser(a.priorite)}${retard ? " retard" : ""}" draggable="${archives ? "false" : "true"}" data-id="${a.id}" tabindex="0" aria-label="${esc(a.titre)}">
       <div class="ak-carte-tete"><span class="ak-titre">${esc(a.titre) || "<em>Sans titre</em>"}</span>
-        <span class="ak-badges">${cd.priorite && a.priorite !== "Moyenne" ? `<span class="ak-prio prio-${S.norm(a.priorite)}">${esc(a.priorite)}</span>` : ""}
+        <span class="ak-badges">${cd.priorite && a.priorite !== "Moyenne" ? `<span class="ak-prio prio-${Socle.normaliser(a.priorite)}">${esc(a.priorite)}</span>` : ""}
           ${vue.groupe !== "statut" || archives ? `<span class="ak-statut-b" style="--c:${(def || {}).couleur || "#94a3b8"}">${esc(a.statut || "—")}</span>` : ""}
           <button type="button" class="ak-deplier" data-deplier="${a.id}" title="${ouvert ? "Replier" : "Détails"}" aria-label="${ouvert ? "Replier" : "Détails"}">${ouvert ? "▴" : "▾"}</button></span></div>
       ${desc ? `<p class="ak-desc">${esc(desc)}</p>` : ""}
@@ -299,7 +298,7 @@
       <label class="champ"><span>Description</span><textarea id="ak-description" rows="4">${esc(e.description)}</textarea></label>
       <div class="ak-grille">
         <label class="champ"><span>Statut</span><select id="ak-statut-f">${statuts.map((x) => `<option${x === e.statut ? " selected" : ""}>${esc(x)}</option>`).join("")}</select></label>
-        <label class="champ"><span>Priorité</span><select id="ak-priorite">${S.PRIORITES_ACTION.map((x) => `<option${x === e.priorite ? " selected" : ""}>${esc(x)}</option>`).join("")}</select></label>
+        <label class="champ"><span>Priorité</span><select id="ak-priorite">${Socle.PRIORITES_ACTION.map((x) => `<option${x === e.priorite ? " selected" : ""}>${esc(x)}</option>`).join("")}</select></label>
         <label class="champ"><span>Responsable</span><select id="ak-responsable"><option value="">—</option>${respOpts.map((a) => `<option value="${a.id}"${a.id === e.responsable ? " selected" : ""}>${esc(a.nom)}</option>`).join("")}</select></label>
         <label class="champ"><span>Échéance</span><input type="date" id="ak-echeance" value="${esc(isoDeDate(e.echeance))}"></label>
       </div>
@@ -630,7 +629,7 @@
   };
   const action = (...l) => Donnees.ecrire(l);
   async function relire() {
-    actions = await S.lireActions(general);
+    actions = await Socle.lireActions(general);
     dessiner();
   }
 
@@ -812,7 +811,7 @@
     });
   }
   async function ecrireReglages(statuts, cartes, renommages, deplacements) {
-    const meta = await S.lireMeta(),
+    const meta = await Socle.lireMeta(),
       acts = [];
     const nouveau = {
       statuts: statuts.map(({ nom, couleur, emoji, clos }) => ({ nom, couleur, emoji, clos })),
@@ -838,12 +837,12 @@
         "ModifyColumn",
         table(),
         "Statut",
-        { widgetOptions: JSON.stringify({ ...o, ...JSON.parse(S.optionsStatuts(nouveau.statuts)) }) },
+        { widgetOptions: JSON.stringify({ ...o, ...JSON.parse(Socle.optionsStatuts(nouveau.statuts)) }) },
       ]);
     }
-    await Donnees.ecrire([S.actionConfig(config, "actions", nouveau), ...acts]);
-    config = await S.lireConfig();
-    reglages = S.reglagesActions(config);
+    await Donnees.ecrire([Socle.actionConfig(config, "actions", nouveau), ...acts]);
+    config = await Socle.lireConfig();
+    reglages = Socle.reglagesActions(config);
   }
   async function enregistrerReglages() {
     const p = panneau;
@@ -854,7 +853,7 @@
       dire("ak-reg-statut", "Chaque colonne a besoin d'un nom.", true);
       return;
     }
-    const noms = p.statuts.map((x) => S.norm(x.nom));
+    const noms = p.statuts.map((x) => Socle.normaliser(x.nom));
     if (noms.some((n, i) => noms.indexOf(n) !== i)) {
       dire("ak-reg-statut", "Deux colonnes portent le même nom.", true);
       return;
@@ -885,7 +884,7 @@
       $("ak-nc-nom").focus();
       return;
     }
-    if (reglages.statuts.some((x) => S.norm(x.nom) === S.norm(nom))) {
+    if (reglages.statuts.some((x) => Socle.normaliser(x.nom) === Socle.normaliser(nom))) {
       dire("ak-statut", "Une colonne porte déjà ce nom.", true);
       return;
     }
@@ -905,8 +904,8 @@
 
   /* ---------- Table ---------- */
   async function creerTable() {
-    const meta = await S.lireMeta(),
-      plan = S.planInstallation(meta, config);
+    const meta = await Socle.lireMeta(),
+      plan = Socle.planInstallation(meta, config);
     if (!meta[general.agents] && !plan.etapes.some((e) => e.id === `table-${general.agents}`)) {
       dire("ak-statut", "Créez d'abord l'équipe (onglet Équipe).", true);
       return;
@@ -914,7 +913,7 @@
     const etapes = plan.etapes
       .filter((e) => e.id === `table-${general.agents}` || e.id === `table-${table()}` || e.id === `cols-${table()}`)
       .sort((a, b) => (a.id === `table-${general.agents}` ? -1 : b.id === `table-${general.agents}` ? 1 : 0));
-    const ko = (await S.appliquer(etapes)).find((r) => !r.ok);
+    const ko = (await Socle.appliquer(etapes)).find((r) => !r.ok);
     if (ko) {
       dire("ak-statut", `Création refusée par Grist (${ko.erreur}).`, true);
       return;
@@ -923,10 +922,10 @@
     dessiner();
   }
   async function completerTable() {
-    const meta = await S.lireMeta(),
-      e = S.planInstallation(meta, config).etapes.find((x) => x.id === `cols-${table()}`);
+    const meta = await Socle.lireMeta(),
+      e = Socle.planInstallation(meta, config).etapes.find((x) => x.id === `cols-${table()}`);
     if (e) {
-      const [r] = await S.appliquer([e]);
+      const [r] = await Socle.appliquer([e]);
       if (!r.ok) {
         dire("ak-statut", `Refusé par Grist (${r.erreur}).`, true);
         return;
@@ -950,7 +949,7 @@
     )
       return;
     try {
-      const l = await S.lireActions(general);
+      const l = await Socle.lireActions(general);
       if (JSON.stringify(l) !== JSON.stringify(actions)) {
         actions = l;
         dessiner();
