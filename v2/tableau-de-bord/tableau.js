@@ -10,17 +10,24 @@
     '<div class="tdb-header">\n  <div class="bar">\n    <h1>Tableau de bord</h1>\n    <span class="sub" id="source">En attente des donn\u00e9es Grist\u2026</span>\n    <span class="sp"></span>\n    <button class="edit-only" id="saveCfg" title="T\u00e9l\u00e9charger la configuration des blocs (fichier .json)">Sauvegarder la configuration</button>\n    <button class="edit-only" id="loadCfg" title="Recharger une configuration sauvegard\u00e9e">Restaurer\u2026</button>\n    <button class="edit-only" id="findCfg" title="Chercher les configurations enregistr\u00e9es dans les autres widgets de ce document">R\u00e9cup\u00e9rer d\'un autre widget\u2026</button>\n    <input type="file" id="cfgFile" accept=".json,application/json" style="display:none">\n    <button class="edit-only" id="addTile">+ Chiffre cl\u00e9</button>\n    <button class="edit-only" id="addCross">+ Tableau crois\u00e9</button>\n    <button class="edit-only ghost" id="openAll" title="D\u00e9plier les r\u00e9glages de tous les blocs">Tout d\u00e9plier</button>\n    <button class="edit-only ghost" id="closeAll" title="Replier les r\u00e9glages de tous les blocs">Tout replier</button>\n    <button class="view-only" id="exportWord" title="Tous les blocs dans un document Word : chiffres cl\u00e9s, graphiques et tableaux">Exporter en Word</button>\n    <button class="primary" id="toggleEdit">Modifier le tableau de bord</button>\n  </div>\n  <div id="quickBar" class="view-only quickbar" role="toolbar" aria-label="Filtres rapides"></div>\n</div>\n<div class="tdb-main">\n  <div id="globalBox"></div>\n  <div id="messages"></div>\n  <div id="recover"></div>\n  <div class="tiles" id="tiles"></div>\n  <div id="blocks" style="display:grid;gap:12px"></div>\n  <p class="hint" id="diag"></p>\n</div>\n<div id="tip"></div>\n<div id="qpop" class="qpop" hidden></div>\n<div id="drill" class="drill-overlay" hidden></div>';
   function monter(RACINE, CTX) {
     if (!window.Geo) {
-      // commun/geo.js absent de la page : chargé ici, puis le tableau de bord est monté
+      // fond de carte absent de la page (commun/geo-fond.js puis commun/geo.js) : chargé ici, puis le tableau de bord est monté
       let module = null;
-      const s = document.createElement("script");
-      s.src = new URL("../commun/geo.js", ICI).href;
-      s.onload = () => {
-        module = monter(RACINE, CTX);
-      };
-      s.onerror = () => {
-        RACINE.innerHTML = `<p style="margin:16px;color:#b42318">Fond de carte introuvable (${s.src}) : rechargez la page.</p>`;
-      };
-      document.head.appendChild(s);
+      const charger = (chemin) =>
+        new Promise((ok, echec) => {
+          const s = document.createElement("script");
+          s.src = new URL(chemin, ICI).href;
+          s.onload = ok;
+          s.onerror = () => echec(s.src);
+          document.head.appendChild(s);
+        });
+      (window.GEO_FOND ? Promise.resolve() : charger("../commun/geo-fond.js"))
+        .then(() => charger("../commun/geo.js"))
+        .then(() => {
+          module = monter(RACINE, CTX);
+        })
+        .catch((adresse) => {
+          RACINE.innerHTML = `<p style="margin:16px;color:#b42318">Fond de carte introuvable (${adresse}) : rechargez la page.</p>`;
+        });
       return { remplacer: (c) => module && module.remplacer(c), configuration: () => module && module.configuration() };
     }
     RACINE.innerHTML = BALISAGE;
@@ -323,7 +330,7 @@
     // =============================================================================
     // Fond de carte embarqué : départements et académies (Lambert-93 ; Outre-mer et petite couronne en encarts)
     // =============================================================================
-    // fond, noms et correspondances : socle (commun/geo.js)
+    // fond, noms et correspondances : socle (commun/geo-fond.js et commun/geo.js)
     const { GEO, geoNorm, DEP_NAMES, DEP_ACA, ACA_NAMES, ACA_BY_NAME, depKey, acaKey, depFromUai } = window.Geo;
     const UNKNOWN = "(non reconnu)";
     // libellé des lignes d'un tableau croisé : « Département », « Académie » quand la valeur est rattachée
