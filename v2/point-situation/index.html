@@ -306,7 +306,9 @@
         $("etat").textContent = t;
         $("etat").className = cls || "";
       };
-      const enLocal = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      // champs « date et heure » : affichés et lus à l'heure de Paris
+      const enLocal = (d) => Outils.dates.valeurChamp(d, true);
+      const champDate = (v) => (v ? new Date(Outils.dates.depuisChamp(v)) : null);
       let options = {},
         modeleLocal = null,
         point = null;
@@ -339,7 +341,7 @@
           const ps = config && config.valeurs.point_situation;
           if (ps && ps.publie) {
             psPublie = ps.publie;
-            psInfo = `Configuration publiée le ${ps.publie_le ? new Date(ps.publie_le * 1000).toLocaleString("fr-FR") : "?"}.`;
+            psInfo = `Configuration publiée le ${ps.publie_le ? Outils.dates.dateHeure(ps.publie_le) : "?"}.`;
             const o = { ...defauts };
             for (const [k, v] of Object.entries(ps.publie.options || {})) if (v !== "" && v != null) o[k] = v;
             return o;
@@ -530,8 +532,7 @@
       async function initialiser() {
         if (initialise) return;
         initialise = true;
-        const debut = new Date();
-        debut.setHours(0, 0, 0, 0);
+        const debut = new Date(Outils.dates.instant(Outils.dates.aujourdhui())); // minuit à Paris
         $("depuis").value = enLocal(debut);
         $("dernierPoint").value = enLocal(debut);
         $("maintenant").value = enLocal(new Date());
@@ -567,8 +568,8 @@
           reglages: {
             ...options,
             surlignage: $("surlignage").value,
-            depuis: $("depuis").value ? new Date($("depuis").value) : null,
-            dernierPoint: $("dernierPoint").value ? new Date($("dernierPoint").value) : null,
+            depuis: champDate($("depuis").value),
+            dernierPoint: champDate($("dernierPoint").value),
             academie: $("academie").value,
           },
           colonnes: await lireConfigTable("Colonnes_point"),
@@ -619,7 +620,7 @@
         etat(msgs.join("\n"), point.manquants.length || point.horsSection ? "alerte" : "");
       }
       function entete() {
-        const n = $("maintenant").value ? new Date($("maintenant").value) : new Date(),
+        const n = champDate($("maintenant").value) || new Date(),
           aca = $("academie").value;
         return {
           bandeau: options.bandeau || "Mouvements sociaux",
@@ -627,8 +628,8 @@
           perimetre_long:
             (options.perimetre_long || "ENSEIGNEMENT SUPÉRIEUR") + (aca ? " – ACADÉMIE DE " + aca.toUpperCase() : ""),
           numero: $("numero").value || "",
-          date_longue: n.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }),
-          heure: n.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }).replace(":", "h"),
+          date_longue: Outils.dates.date(n, { day: "numeric", month: "long", year: "numeric" }),
+          heure: Outils.dates.heure(n, { hour: "2-digit", minute: "2-digit" }).replace(":", "h"),
         };
       }
       ["depuis", "dernierPoint", "academie", "surlignage"].forEach((id) =>
@@ -670,9 +671,9 @@
             type: "blob",
             mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
           });
-          const n = new Date($("maintenant").value || Date.now()),
+          const n = Outils.dates.parties(champDate($("maintenant").value) || Date.now()),
             p2 = (x) => String(x).padStart(2, "0");
-          const nom = `${n.getFullYear()}_${p2(n.getMonth() + 1)}_${p2(n.getDate())}_Point_de_situation_n${p2($("numero").value || 0)}${$("academie").value ? "_" + $("academie").value : ""}.docx`;
+          const nom = `${n.annee}_${p2(n.mois)}_${p2(n.jour)}_Point_de_situation_n${p2($("numero").value || 0)}${$("academie").value ? "_" + $("academie").value : ""}.docx`;
           const a = document.createElement("a");
           a.href = URL.createObjectURL(blob);
           a.download = nom;
@@ -711,7 +712,7 @@
             "Points_situation",
             null,
             {
-              Horodatage: new Date($("maintenant").value || Date.now()).getTime() / 1000,
+              Horodatage: (champDate($("maintenant").value) || new Date()).getTime() / 1000,
               Numero: Number($("numero").value) || null,
               Academie: $("academie").value,
               Nb_dossiers: point ? point.nb : null,

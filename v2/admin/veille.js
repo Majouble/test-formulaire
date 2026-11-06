@@ -21,8 +21,7 @@
   const couleur = (n) => S.COULEURS_VIGILANCE.find((c) => c.niveau === n) || S.COULEURS_VIGILANCE[0];
   const heure = (s) =>
     s
-      ? new Date(s * 1000).toLocaleString("fr-FR", {
-          timeZone: "Europe/Paris",
+      ? Outils.dates.dateHeure(s, {
           weekday: "short",
           day: "2-digit",
           month: "2-digit",
@@ -335,7 +334,7 @@
         ...new Set(deps.flatMap((d) => d.phenomenes.filter((p) => p.niveau === niveauMax).map((p) => p.phenomene))),
       ];
     const fin = deps.reduce((m, d) => Math.max(m, d.fin || 0), 0);
-    const jour = new Date(ech === "Demain" ? Date.now() + 86400000 : Date.now()).toLocaleDateString("fr-FR");
+    const jour = Outils.dates.date(ech === "Demain" ? Date.now() + 86400000 : Date.now());
     const sel = {
       referentiel: ref.table,
       crit: { [ref.colDep]: valeurs },
@@ -345,7 +344,7 @@
       n: chiffres([...codes]).n,
       nom: `Vigilance ${couleur(niveauMax).nom.toLowerCase()} ${phens.join(", ").toLowerCase()} — ${jour}`,
       mode: "quotidienne",
-      fin: fin ? new Date(fin * 1000).toLocaleDateString("fr-CA", { timeZone: "Europe/Paris" }) : "",
+      fin: fin ? Outils.dates.jour(fin) : "",
     };
     if (!window.OngletCampagnes || !window.OngletCampagnes.preparerDepuis) {
       dire("vg-statut", "Module des campagnes indisponible.", true);

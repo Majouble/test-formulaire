@@ -14,9 +14,7 @@
   const S = window.Socle;
   const { esc } = Outils;
   const dateHeure = (s) =>
-    typeof s === "number"
-      ? new Date(s * 1000).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })
-      : "date inconnue";
+    typeof s === "number" ? Outils.dates.dateHeure(s, { dateStyle: "short", timeStyle: "short" }) : "date inconnue";
   const tri = (f) => f.lignes.slice().sort((a, b) => (a.cree || 0) - (b.cree || 0) || a.id - b.id);
 
   function html(esp, f) {

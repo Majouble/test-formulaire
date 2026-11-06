@@ -1021,9 +1021,7 @@
       `<span class="marque-apercu" id="marque-apercu" title="Bandeau du formulaire">${esc(saisieEff().marque)}</span></div>` +
       `<div class="entete-apercu${maj ? " maj" : ""}">${maj ? `<p class="etiquette-mode">Mise à jour · dossier n° 12</p>` : ""}` +
       `<h1>${maj ? esc(etabTest ? nomEtab(etabTest) : "Établissement du dossier") : "Nouveau signalement"}</h1>` +
-      (maj
-        ? `<p class="sous-titre-apercu">Signalé le ${new Date().toLocaleDateString("fr-FR")} · 2 mises à jour.</p>`
-        : "") +
+      (maj ? `<p class="sous-titre-apercu">Signalé le ${Outils.dates.date(Date.now())} · 2 mises à jour.</p>` : "") +
       `<p class="phrase-mode">${
         maj
           ? "Modifiez uniquement ce qui a changé : votre enregistrement s'ajoute comme nouvelle étape, l'état précédent reste dans l'historique."
@@ -2093,7 +2091,7 @@
     if (String(choisi).startsWith("partie:")) return panneauPartie(partieDe(choisi.slice(7)));
     if (String(choisi).startsWith("commun:")) return panneauCommun(choisi.slice(7));
     if (!b) {
-      p.innerHTML = `<h2>${esc(courant.nom)}</h2><p class="sous">table ${esc(courant.table)}${courant.publieLe ? ` · publié le ${new Date(courant.publieLe * 1000).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}` : " · jamais publié"}</p>
+      p.innerHTML = `<h2>${esc(courant.nom)}</h2><p class="sous">table ${esc(courant.table)}${courant.publieLe ? ` · publié le ${Outils.dates.dateHeure(courant.publieLe, { dateStyle: "short", timeStyle: "short" })}` : " · jamais publié"}</p>
       <div class="vide-panneau"><p>Cliquez sur une question de l'aperçu pour la régler.</p><ul>
         <li>« + Ajouter une question » apparaît au survol, entre deux blocs.</li>
         <li>Glissez un bloc par sa poignée ⋮⋮ pour le déplacer (ou Alt + ↑ / ↓ au clavier).</li>
@@ -4495,7 +4493,7 @@
         else if (t === "ChoiceList") l[d.colId] = ch.length ? [ch[k % ch.length]] : null;
         else if (t === "Bool") l[d.colId] = k === 0;
         else if (t === "Int" || t === "Numeric") l[d.colId] = k + 1;
-        else if (t === "Date") l[d.colId] = new Date().toISOString().slice(0, 10);
+        else if (t === "Date") l[d.colId] = Outils.dates.aujourdhui();
         else l[d.colId] = k === 0 ? "texte saisi" : "autre texte";
       }
       return l;
@@ -4524,7 +4522,7 @@
             : 3
           : {
               nombre: 20,
-              date: new Date().toISOString().slice(0, 10),
+              date: Outils.dates.aujourdhui(),
               case: true,
               choix: (c.opts.choices || [])[0] || "Oui",
               reference: "élément lié",

@@ -108,13 +108,13 @@
       nature: valTexte(g(trep, cols.nature, k)),
     };
   }
-  const jour = (s) =>
-    new Date(s * 1000).toLocaleDateString("fr-FR", {
-      timeZone: "UTC",
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
+  // date des faits : colonne Date (minuit UTC, lue en UTC) ou Date et heure (jour à Paris)
+  const jour = (s) => {
+    const options = { day: "2-digit", month: "2-digit", year: "numeric" };
+    return s % 86400 === 0
+      ? new Date(s * 1000).toLocaleDateString("fr-FR", { ...options, timeZone: "UTC" })
+      : Outils.dates.date(s, options);
+  };
   function contexteHtml(occs) {
     if (!occs || !occs.length) return "";
     const tri = occs.slice().sort((a, b) => b.quand - a.quand);

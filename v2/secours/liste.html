@@ -184,7 +184,9 @@
         $("etat").textContent = t;
         $("etat").className = c || "";
       };
-      const enLocal = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+      // champs « date et heure » : affichés et lus à l'heure de Paris
+      const enLocal = (d) => Outils.dates.valeurChamp(d, true);
+      const champDate = (v) => (v ? new Date(Outils.dates.depuisChamp(v)) : null);
       let ctx = null,
         point = null,
         titre = "",
@@ -206,8 +208,7 @@
           .map((e) => `<option value="${echap(e.reponses)}">${echap(e.libelle)} (${echap(e.reponses)})</option>`)
           .join("");
         if (voulu && esp.some((e) => e.reponses === voulu)) $("champ").value = voulu;
-        const minuit = new Date();
-        minuit.setHours(0, 0, 0, 0);
+        const minuit = new Date(Outils.dates.instant(Outils.dates.aujourdhui())); // minuit à Paris
         $("depuis").value = enLocal(minuit);
         ctx = { meta, config, g, esp };
       }
@@ -251,10 +252,9 @@
         const { R, colonnes } = await reglages(e);
         const per = $("periode").value;
         $("bloc-depuis").hidden = per !== "depuis";
-        const minuit = new Date();
-        minuit.setHours(0, 0, 0, 0);
+        const minuit = new Date(Outils.dates.instant(Outils.dates.aujourdhui())); // minuit à Paris
         const depuis =
-          per === "jour" ? minuit : per === "depuis" && $("depuis").value ? new Date($("depuis").value) : null;
+          per === "jour" ? minuit : per === "depuis" && $("depuis").value ? champDate($("depuis").value) : null;
         situation = new Date();
         point = await assemblerPoint(creerSource(), {
           reglages: { ...R, depuis, dernierPoint: null, academie: "", surlignage: "version" },
@@ -262,9 +262,9 @@
           sections: [{ Ordre: 1, Titre: "Signalements", Condition: "", Actif: true }],
           tri: null,
         });
-        point.sections[0].titre = `Signalements par établissement, de A à Z${per === "jour" ? " — dossiers du jour" : depuis ? ` — depuis le ${depuis.toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}` : ""}`;
+        point.sections[0].titre = `Signalements par établissement, de A à Z${per === "jour" ? " — dossiers du jour" : depuis ? ` — depuis le ${Outils.dates.dateHeure(depuis, { dateStyle: "short", timeStyle: "short" })}` : ""}`;
         titre = `Signalements ${e.libelle}`;
-        const date = situation.toLocaleString("fr-FR", { dateStyle: "full", timeStyle: "short" });
+        const date = Outils.dates.dateHeure(situation, { dateStyle: "full", timeStyle: "short" });
         $("apercu").innerHTML =
           `<article class="page"><h1>${echap(titre)}</h1><p class="sous-titre">Situation au ${echap(date)} — ${point.nb} dossier(s)</p>${sectionsHTML(point)}</article>`;
         $("copier").disabled = $("docx").disabled = false;
@@ -424,7 +424,7 @@
           .replace(/<w:(tblW|tcW|gridCol) w:w="(\d+)"/g, (_, t, n) => `<w:${t} w:w="${Math.round(n * k)}"`)
           .replace(/<w:tblInd w:w="-?\d+"/g, '<w:tblInd w:w="0"');
         const doc =
-          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${W}><w:body>${p(titre, 28, true)}${p(`Situation au ${situation.toLocaleString("fr-FR", { dateStyle: "full", timeStyle: "short" })} — ${point.nb} dossier(s)`, 20)}${corps}` +
+          `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document ${W}><w:body>${p(titre, 28, true)}${p(`Situation au ${Outils.dates.dateHeure(situation, { dateStyle: "full", timeStyle: "short" })} — ${point.nb} dossier(s)`, 20)}${corps}` +
           `<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="850" w:right="850" w:bottom="850" w:left="850" w:header="425" w:footer="425" w:gutter="0"/></w:sectPr></w:body></w:document>`;
         const styles =
           `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles ${W}><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Marianne" w:hAnsi="Marianne" w:cs="Arial"/><w:sz w:val="20"/><w:lang w:val="fr-FR"/></w:rPr></w:rPrDefault></w:docDefaults>` +
@@ -449,11 +449,9 @@
       $("docx").onclick = () => {
         try {
           const b = docx(),
-            n = situation,
+            n = Outils.dates.parties(situation), // heure de Paris
             p2 = (x) => String(x).padStart(2, "0");
-          const nom = `${n.getFullYear()}_${p2(n.getMonth() + 1)}_${p2(n.getDate())}_${p2(n.getHours())}h${p2(n.getMinutes())}_Signalements_${$(
-            "champ",
-          )
+          const nom = `${n.annee}_${p2(n.mois)}_${p2(n.jour)}_${p2(n.heures)}h${p2(n.minutes)}_Signalements_${$("champ")
             .selectedOptions[0].textContent.split(" (")[0]
             .normalize("NFD")
             .replace(/[\u0300-\u036f]/g, "")

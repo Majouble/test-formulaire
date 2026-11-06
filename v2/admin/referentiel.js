@@ -141,7 +141,7 @@
     $("ref-contexte").innerHTML = `
       <p>Table cible : <strong>${esc(table)}</strong>.</p>
       ${manquants.length ? `<p class="statut err">Rôles introuvables dans ${esc(table)} : ${manquants.join(", ")}. Corrigez-les dans l'onglet Installation.</p>` : ""}
-      ${reglages.derniere_mise_a_jour ? `<p class="aide">Dernier import : ${esc(new Date(reglages.derniere_mise_a_jour * 1000).toLocaleString("fr-FR"))}, ${nf(reglages.nb)} établissement(s) de l'annuaire.</p>` : ""}`;
+      ${reglages.derniere_mise_a_jour ? `<p class="aide">Dernier import : ${esc(Outils.dates.dateHeure(reglages.derniere_mise_a_jour))}, ${nf(reglages.nb)} établissement(s) de l'annuaire.</p>` : ""}`;
     $("ref-ouverts").checked = reglages.ouverts_seulement !== false;
     dessinerAcademies(ctx);
     $("btn-ref-apercu").disabled = !!manquants.length;

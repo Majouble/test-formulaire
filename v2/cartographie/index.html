@@ -844,8 +844,9 @@
       function dateTypeOf(col, v) {
         const t = colTypes[col] || "";
         if (t === "Date") return { kind: "date" };
-        if (t.startsWith("DateTime")) return { kind: "datetime", tz: t.split(":")[1] || undefined };
-        if (v instanceof Date) return { kind: "datetime" };
+        // date-heure : toujours à l'heure de Paris (quel que soit le fuseau de la colonne ou du poste)
+        if (t.startsWith("DateTime")) return { kind: "datetime", tz: Outils.dates.FUSEAU };
+        if (v instanceof Date) return { kind: "datetime", tz: Outils.dates.FUSEAU };
         return null;
       }
 

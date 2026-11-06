@@ -103,7 +103,7 @@
           .map(([v, l]) => `<option value="${v}"${filtre.statut === v ? " selected" : ""}>${l}</option>`)
           .join("")}</select></label>
         <button type="button" class="secondaire" id="qa-relancer">Relancer l'analyse</button>
-        <span class="aide">${etat.espaces.map((x) => `${x.nbDossiers} dossier(s)${etat.espaces.length > 1 ? ` (${esc(x.espace.libelle || x.espace.champ)})` : ""}`).join(", ")} analysés à ${new Date(etat.le).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}.</span>
+        <span class="aide">${etat.espaces.map((x) => `${x.nbDossiers} dossier(s)${etat.espaces.length > 1 ? ` (${esc(x.espace.libelle || x.espace.champ)})` : ""}`).join(", ")} analysés à ${Outils.dates.heure(etat.le, { hour: "2-digit", minute: "2-digit" })}.</span>
       </div>
       ${
         sectionsCorrigibles.length > 1
@@ -152,7 +152,7 @@
       <div class="qa-actions">
         ${
           st
-            ? `<span class="pastille ok">${st.s === "corrige" ? "corrigé" : "vérifié"} le ${new Date(st.le * 1000).toLocaleDateString("fr-FR")}</span>${st.note ? ` <span class="aide">${esc(st.note)}</span>` : ""} <button type="button" class="lien-btn" data-rouvrir>Rouvrir</button>`
+            ? `<span class="pastille ok">${st.s === "corrige" ? "corrigé" : "vérifié"} le ${Outils.dates.date(st.le)}</span>${st.note ? ` <span class="aide">${esc(st.note)}</span>` : ""} <button type="button" class="lien-btn" data-rouvrir>Rouvrir</button>`
             : `${a.action ? `<button type="button" class="primaire petit" data-corriger>${esc(a.action.libelle)}</button>` : ""}
              <button type="button" class="secondaire petit" data-verifie>${a.type === "doublon" || a.type === "voisin" ? "Faits distincts : vérifié" : "Vérifié, c'est correct"}</button>`
         }
@@ -161,12 +161,7 @@
   // rattacher un dossier à un autre : par défaut, le plus ancien au plus récent (blocage le matin → occupation l'après-midi)
   const heureDe = (f) =>
     typeof f.initiale.cree === "number"
-      ? new Date(f.initiale.cree * 1000).toLocaleString("fr-FR", {
-          day: "numeric",
-          month: "short",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
+      ? Outils.dates.dateHeure(f.initiale.cree, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
       : "";
   const libDossier = (f) =>
     `n° ${f.id}${f.derniere.qualif ? ` · ${f.derniere.qualif}` : ""}${heureDe(f) ? ` · ${heureDe(f)}` : ""}${f.lignes.length > 1 ? ` · ${f.lignes.length} saisies` : ""}`;

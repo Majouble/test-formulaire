@@ -74,19 +74,11 @@
     const [y, m, j] = iso.split("-").map(Number);
     return Date.UTC(y, m - 1, j) / 1000;
   };
-  const aujourdhuiUTC = () => {
-    const d = new Date();
-    return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 1000;
-  };
+  const aujourdhuiUTC = () => Date.parse(Outils.dates.aujourdhui() + "T00:00:00Z") / 1000; // aujourd'hui (Paris), au format des colonnes Date
   const dateCourte = (sec) =>
     new Date(sec * 1000).toLocaleDateString("fr-FR", { day: "numeric", month: "short", timeZone: "UTC" });
   const dateHeure = (sec) =>
-    new Date(sec * 1000).toLocaleString("fr-FR", {
-      day: "numeric",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    Outils.dates.dateHeure(sec, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const statutDef = (nom) => reglages.statuts.find((x) => x.nom === nom) || null;
   const estClos = (a) => !!(statutDef(a.statut) || {}).clos;
   const enRetard = (a) => !estClos(a) && a.echeance && a.echeance < aujourdhuiUTC();
@@ -197,7 +189,7 @@
     const l = filtrees(),
       ouvertes = actions.filter((a) => !a.archivee && !estClos(a));
     const nbArchives = actions.filter((a) => a.archivee).length;
-    const debutJour = new Date().setHours(0, 0, 0, 0) / 1000;
+    const debutJour = Outils.dates.instant(Outils.dates.aujourdhui()) / 1000; // minuit à Paris
     const respOpts = agents.filter((a) => a.actif || actions.some((x) => x.responsable === a.id));
     racine.innerHTML = `
       ${manquantes.length ? `<div class="bandeau alerte" style="margin:12px 16px 0">La table ${esc(table())} date d'une version antérieure (colonnes à ajouter : ${esc(manquantes.join(", "))}). <button class="primaire" id="ak-completer" style="margin-left:8px">Compléter la table</button></div>` : ""}

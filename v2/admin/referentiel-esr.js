@@ -1470,7 +1470,7 @@
     let info = "";
     const r = ctx.config.valeurs.referentiel_esr;
     if (r && r.derniere_mise_a_jour)
-      info = `Dernier import : ${new Date(r.derniere_mise_a_jour * 1000).toLocaleString("fr-FR")}, ${r.fichier ? `« ${r.fichier} », ` : ""}${nf(r.etablissements)} ligne(s) dans ${r.table}.`;
+      info = `Dernier import : ${Outils.dates.dateHeure(r.derniere_mise_a_jour)}, ${r.fichier ? `« ${r.fichier} », ` : ""}${nf(r.etablissements)} ligne(s) dans ${r.table}.`;
     dessiner();
     if (info) racine.querySelector(".esr-outils").insertAdjacentHTML("afterend", `<p class="aide">${esc(info)}</p>`);
   }

@@ -145,7 +145,7 @@
   const egalPublie = () => !!td.publie && !!td.brouillon && JSON.stringify(td.publie) === JSON.stringify(td.brouillon);
   function dessinerEtat() {
     const e = $("tdb-etat"),
-      pub = td.publie_le ? new Date(td.publie_le * 1000).toLocaleString("fr-FR") : null;
+      pub = td.publie_le ? Outils.dates.dateHeure(td.publie_le) : null;
     e.className = `pastille ${!td.publie ? "manque" : egalPublie() || !td.brouillon ? "ok" : "reco"}`;
     e.textContent = !td.publie
       ? "Jamais publié"

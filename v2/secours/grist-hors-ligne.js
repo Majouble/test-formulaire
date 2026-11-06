@@ -69,11 +69,10 @@
           const r = (Math.random() * 16) | 0;
           return (c === "x" ? r : (r & 3) | 8).toString(16);
         });
-  const heure = (d) =>
-    d ? new Date(d).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
+  const heure = (d) => (d ? Outils.dates.heure(d, { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "");
   const dateHeure = (d) =>
     d
-      ? new Date(d).toLocaleString("fr-FR", {
+      ? Outils.dates.dateHeure(d, {
           day: "2-digit",
           month: "2-digit",
           year: "numeric",
@@ -314,8 +313,7 @@
     if (typeof f === "number" && f) return Math.floor(f / 86400);
     const c = colCree && t[colCree] ? t[colCree][i] : null;
     if (typeof c !== "number" || !c) return null;
-    const d = new Date(c * 1000);
-    return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400000); // jour de Paris (poste)
+    return Math.floor(Date.parse(Outils.dates.jour(c) + "T00:00:00Z") / 86400000); // jour de Paris
   }
   function recalculerFormulesSuivi() {
     for (const [tid, cols] of M.cols) {
@@ -437,8 +435,7 @@
     if (/user\.(Email|Name)/.test(f)) return `Mode secours : ${entree.agent || "agent"}`;
     if (/^\s*NOW\(\)\s*$/.test(f)) return Date.parse(entree.t) / 1000;
     if (/^\s*TODAY\(\)\s*$/.test(f)) {
-      const j = new Date(entree.t);
-      return Date.UTC(j.getFullYear(), j.getMonth(), j.getDate()) / 1000;
+      return Date.parse(Outils.dates.jour(entree.t) + "T00:00:00Z") / 1000; // jour de Paris, au format des colonnes Date
     }
     if (/UUID\(\)/.test(f)) return uuid();
     return undefined;
@@ -1593,10 +1590,7 @@
     );
   }
   // base : une vérification par jour ; téléchargée seulement si l'empreinte a changé ou si le fichier manque
-  const jourLocal = (d) => {
-    const x = new Date(d);
-    return `${x.getFullYear()}-${x.getMonth() + 1}-${x.getDate()}`;
-  };
+  const jourLocal = (d) => Outils.dates.jour(d); // jour de Paris
   async function baseVerifieeAujourdhui() {
     const f = await fichierDuDossier(F_EMPREINTE);
     if (!f) return false;
@@ -1660,7 +1654,10 @@
     );
     return true;
   }
-  const minutes = (d) => d.getHours() * 60 + d.getMinutes();
+  const minutes = (d) => {
+    const p = Outils.dates.parties(d); // heure de Paris : la plage de copie est exprimée à l'heure de Paris
+    return p.heures * 60 + p.minutes;
+  };
   function dansPlage(d = new Date()) {
     const m = minutes(d);
     return m >= K.relais.debut * 60 && m <= K.relais.fin * 60;
@@ -1733,7 +1730,7 @@
   }
 
   /* ---------- exports ---------- */
-  const horodatageFichier = () => new Date().toISOString().slice(0, 16).replace(/[-:]/g, "").replace("T", "-");
+  const horodatageFichier = () => Outils.dates.valeurChamp(Date.now(), true).replace(/[-:]/g, "").replace("T", "-"); // heure de Paris
   function exporterMonJournal() {
     telecharger(
       `Saisies hors ligne - ${nomPropre(K.agent)
@@ -1787,7 +1784,7 @@
     if (Array.isArray(v)) return JSON.stringify(v);
     if (b === "Date" && typeof v === "number")
       return new Date(v * 1000).toLocaleDateString("fr-FR", { timeZone: "UTC" });
-    if (b === "DateTime" && typeof v === "number") return new Date(v * 1000).toLocaleString("fr-FR");
+    if (b === "DateTime" && typeof v === "number") return Outils.dates.dateHeure(v);
     if (b === "Bool") return v ? "Oui" : "Non";
     if (b === "Ref") return afficherRef(d, v);
     return String(v);
@@ -2000,7 +1997,7 @@
                 .map(([t, n]) => `${esc(t)} ${n}`)
                 .join(
                   ", ",
-                )}${veille && prochaine ? ` · prochaine vers ${prochaine.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}` : ""}`
+                )}${veille && prochaine ? ` · prochaine vers ${Outils.dates.heure(prochaine, { hour: "2-digit", minute: "2-digit" })}` : ""}`
             : complementValable()
               ? `copie du dossier : ${esc(dateHeure(K.complement.info.genere_le || K.complement.info.modifie))}${K.complement.info.ecrit_par ? ` (par ${esc(K.complement.info.ecrit_par)})` : ""}`
               : "aucune",

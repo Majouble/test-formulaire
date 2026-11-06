@@ -2169,12 +2169,7 @@
       }
       const dateHeure = (s) =>
         typeof s === "number"
-          ? new Date(s * 1000).toLocaleString("fr-FR", {
-              day: "2-digit",
-              month: "2-digit",
-              hour: "2-digit",
-              minute: "2-digit",
-            })
+          ? Outils.dates.dateHeure(s, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
           : "";
       function dessinerQa() {
         const z = $("vue-qa");
@@ -2228,7 +2223,7 @@
         <ul class="qa-dossiers">${a.fiches.map((f) => `<li>Dossier n° ${f.id} · ${esc(Q.dateFr(f.jour))}${f.derniere.qualif ? ` · ${esc(f.derniere.qualif)}` : ""}${f.derniere.desc ? `<br><span class="qa-extrait">${esc(f.derniere.desc.slice(0, 120))}${f.derniere.desc.length > 120 ? "…" : ""}</span>` : ""}</li>`).join("")}</ul>
         <div class="outils">${
           st
-            ? `<span class="pastille ok">${st.s === "corrige" ? "corrigé" : "vérifié"} le ${new Date(st.le * 1000).toLocaleDateString("fr-FR")}</span> <button type="button" class="lien" data-qa="rouvrir">Rouvrir</button>`
+            ? `<span class="pastille ok">${st.s === "corrige" ? "corrigé" : "vérifié"} le ${Outils.dates.date(st.le)}</span> <button type="button" class="lien" data-qa="rouvrir">Rouvrir</button>`
             : `<button type="button" class="primaire" data-qa="corriger">Corriger</button>${a.action ? `<button type="button" data-qa="action">${esc(a.action.libelle)}</button>` : ""}
              <button type="button" data-qa="ok">${a.type === "doublon" || a.type === "voisin" ? "Faits distincts : vérifié" : "Vérifié, c'est correct"}</button>`
         }</div></li>`;

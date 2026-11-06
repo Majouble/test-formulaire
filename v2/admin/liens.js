@@ -432,7 +432,7 @@
     }
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([texte], { type: "text/csv;charset=utf-8" }));
-    a.download = `liens-etablissements-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `liens-etablissements-${Outils.dates.aujourdhui()}.csv`;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => {

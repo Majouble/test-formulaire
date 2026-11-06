@@ -1259,7 +1259,7 @@
           resumeParametres().forEach(([p, v]) => wp.addRow({ p, v }));
 
           const buf = await wb.xlsx.writeBuffer();
-          const nom = `extraction_${config.tableId}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+          const nom = `extraction_${config.tableId}_${Outils.dates.aujourdhui()}.xlsx`;
           telecharger(
             new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
             nom,
@@ -1288,7 +1288,7 @@
       }
       function resumeParametres() {
         const p = [
-          ["Extraction réalisée le", new Date().toLocaleString("fr-FR")],
+          ["Extraction réalisée le", Outils.dates.dateHeure(Date.now())],
           ["Table", config.tableId],
           ["Regroupement par", libelle(config.cleCol)],
         ];

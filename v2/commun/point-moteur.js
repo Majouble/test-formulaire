@@ -212,13 +212,12 @@ function texteValeur(v) {
   if (v === true) return "Oui";
   if (Array.isArray(v)) return v.map(texteValeur).filter(Boolean).join(", ");
   if (v instanceof Date)
-    return v.toLocaleString("fr-FR", {
+    return Outils.dates.dateHeure(v, {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
-      timeZone: "Europe/Paris",
     });
   return String(v);
 }

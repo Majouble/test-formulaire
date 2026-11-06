@@ -228,7 +228,7 @@
       const { esc, $ } = Outils;
       const dateHeure = (d) =>
         d
-          ? new Date(d).toLocaleString("fr-FR", {
+          ? Outils.dates.dateHeure(d, {
               day: "2-digit",
               month: "2-digit",
               year: "numeric",
@@ -551,7 +551,7 @@
           .join("\r\n");
         const a = document.createElement("a");
         a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
-        a.download = `reintegration-secours-${new Date().toISOString().slice(0, 10)}.csv`;
+        a.download = `reintegration-secours-${Outils.dates.aujourdhui()}.csv`;
         a.click();
       });
     </script>

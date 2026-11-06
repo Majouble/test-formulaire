@@ -65,13 +65,14 @@
     // Texte entre astérisques (**texte** ou *texte*) affiché en gras
     function dateTokens(s) {
       if (!/\{(aujourd'?hui|hier|heure)\}/i.test(s)) return s;
+      // à l'heure de Paris
       const p = (n) => String(n).padStart(2, "0"),
-        d = new Date(),
-        y = new Date(d - 864e5);
+        d = Outils.dates.parties(Date.now()),
+        y = Outils.dates.parties(Date.now() - 864e5);
       return s
-        .replace(/\{aujourd'?hui\}/gi, `${p(d.getDate())}/${p(d.getMonth() + 1)}`)
-        .replace(/\{hier\}/gi, `${p(y.getDate())}/${p(y.getMonth() + 1)}`)
-        .replace(/\{heure\}/gi, `${d.getHours()} h ${p(d.getMinutes())}`);
+        .replace(/\{aujourd'?hui\}/gi, `${p(d.jour)}/${p(d.mois)}`)
+        .replace(/\{hier\}/gi, `${p(y.jour)}/${p(y.mois)}`)
+        .replace(/\{heure\}/gi, `${d.heures} h ${p(d.minutes)}`);
     }
     function segs(s) {
       s = dateTokens(String(s ?? ""));
@@ -169,12 +170,12 @@
     }
 
     function dayOf(col, v) {
-      // "AAAA-MM-JJ" à l'heure du fuseau de la colonne
+      // "AAAA-MM-JJ" : jour de Grist pour une colonne Date, jour de Paris pour une date-heure
       const d = toJsDate(v);
       if (!d) return null;
       const t = typeOf(col);
       if (t === "Date") return d.toISOString().slice(0, 10);
-      const tz = t.startsWith("DateTime:") ? t.split(":")[1] : undefined;
+      const tz = Outils.dates.FUSEAU; // date-heure : jour de Paris, quel que soit le fuseau de la colonne ou du poste
       try {
         const o = {};
         new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })
@@ -187,11 +188,11 @@
     }
 
     function minuteOf(col, v) {
-      // "AAAA-MM-JJTHH:MM" à l'heure du fuseau de la colonne
+      // "AAAA-MM-JJTHH:MM" à l'heure de Paris
       const d = toJsDate(v);
       if (!d) return null;
       const t = typeOf(col),
-        tz = t.startsWith("DateTime:") ? t.split(":")[1] : undefined;
+        tz = Outils.dates.FUSEAU;
       if (t === "Date") return d.toISOString().slice(0, 10) + "T00:00";
       try {
         const o = {};
@@ -3552,11 +3553,9 @@
         null,
         2,
       );
-      const d = new Date(),
-        p = (n) => String(n).padStart(2, "0");
       triggerDownload(
         new Blob([data], { type: "application/octet-stream" }),
-        `configuration tableau de bord ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}.json`,
+        `configuration tableau de bord ${Outils.dates.aujourdhui()}.json`,
       );
     });
     $("loadCfg").addEventListener("click", () => {
@@ -3750,9 +3749,9 @@
     const lightVars = (s) => s.replace(/var\((--[a-z0-9-]+)\)/g, (m, v) => LIGHT[v] || m);
 
     function stamp() {
-      const d = new Date(),
+      const d = Outils.dates.parties(Date.now()), // heure de Paris
         p = (n) => String(n).padStart(2, "0");
-      return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} à ${p(d.getHours())}h${p(d.getMinutes())}`;
+      return `${p(d.jour)}/${p(d.mois)}/${d.annee} à ${p(d.heures)}h${p(d.minutes)}`;
     }
     // nom de fichier sans accents ni caractères spéciaux (certains navigateurs remplacent sinon le nom par « download »)
     const fileSafe = (s) =>
@@ -4653,10 +4652,10 @@
     ];
 
     function dayKey(offset = 0) {
-      const d = new Date();
-      d.setDate(d.getDate() + offset);
-      const p = (n) => String(n).padStart(2, "0");
-      return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      // jour de Paris, décalé de offset jours (calcul sur le calendrier, sans heure)
+      const d = new Date(Outils.dates.aujourdhui() + "T00:00:00Z");
+      d.setUTCDate(d.getUTCDate() + offset);
+      return d.toISOString().slice(0, 10);
     }
     function quickRange(q) {
       switch (q.preset) {
@@ -4929,7 +4928,7 @@
             if (!d) return "";
             const day = dayOf(col, v);
             return typeOf(col).startsWith("DateTime")
-              ? `${dateLabel(day, "jour")} ${d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: typeOf(col).split(":")[1] || undefined })}`
+              ? `${dateLabel(day, "jour")} ${Outils.dates.heure(d, { hour: "2-digit", minute: "2-digit" })}`
               : dateLabel(day, "jour");
           })()
         : Array.isArray(v)

@@ -58,6 +58,8 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 2. Un réglage commun au document s'écrit dans la table `Config`, sous la clé de son module. Un réglage propre à une page (formulaire, périmètre, libellé) reste dans les options du widget de cette page.
 3. Un module ne dépend que du socle, jamais d'un autre module.
 4. Chaque widget affiche son numéro de version dans son panneau de diagnostic. Le numéro (`VERSION` de `commun/socle.js`) est incrémenté à chaque mise à jour publiée.
+5. Toutes les dates et heures s'affichent et se saisissent **à l'heure de Paris**, quel que soit le fuseau du poste (un agent de La Réunion ou de Guyane voit les mêmes heures qu'un agent parisien). Elles passent par `Outils.dates` (`commun/outils.js`), jamais par `toLocaleString` ou `getHours` directement. Exception : les colonnes Date de Grist (jour sans heure, rangé à minuit UTC), lues en UTC, ce qui donne le bon jour partout.
+6. Lectures et écritures du document : par `Donnees` (`commun/donnees.js`), jamais par `grist.docApi` directement.
 
 ## Architecture
 
@@ -116,7 +118,7 @@ Bibliothèques tierces : copiées dans `vendor/`, à version figée, sans appel 
 
 ### Tests
 
-Scénarios Playwright avec un Grist simulé (`tests/mock.js`, `tests/fakeapi.js`) : voir `tests/README.md`. Lancer `sh tests/lancer.sh` avant chaque publication.
+Scénarios Playwright avec un Grist simulé (`tests/mock.js`, `tests/fakeapi.js`) : voir `tests/README.md`. Avant chaque publication : `node tests/verifier.js` (comparaison aux journaux de référence) et `node tests/fuseaux.js` (même affichage à l'heure de Paris et de La Réunion).
 
 ### Documentation utilisateur
 

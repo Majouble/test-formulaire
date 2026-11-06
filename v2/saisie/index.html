@@ -3752,11 +3752,9 @@ Cordialement,`,
 
       // Dates : formes Grist et format de la colonne
       /* ---------- Date des faits ---------- */
-      const deuxChiffres = (n) => String(n).padStart(2, "0");
       function valeurLocale(d, avecHeure) {
-        // Date -> valeur d'un champ date / datetime-local (heure locale)
-        const j = `${d.getFullYear()}-${deuxChiffres(d.getMonth() + 1)}-${deuxChiffres(d.getDate())}`;
-        return avecHeure ? `${j}T${deuxChiffres(d.getHours())}:${deuxChiffres(d.getMinutes())}` : j;
+        // Date -> valeur d'un champ date / datetime-local, à l'heure de Paris
+        return Outils.dates.valeurChamp(d, avecHeure);
       }
       const faitsAvecHeure = () => $("date-faits").type === "datetime-local";
       function initialiserDateFaits(v) {
@@ -3775,7 +3773,7 @@ Cordialement,`,
         // secondes au format Grist, ou null
         const v = $("date-faits").value;
         if (!v) return null;
-        return faitsAvecHeure() ? new Date(v).getTime() / 1000 : Date.parse(v + "T00:00:00Z") / 1000;
+        return faitsAvecHeure() ? Outils.dates.depuisChamp(v) / 1000 : Date.parse(v + "T00:00:00Z") / 1000;
       }
       function dateFaitsFuture() {
         const v = $("date-faits").value;
@@ -3859,7 +3857,7 @@ Cordialement,`,
         const type = (meta && meta.type) || "DateTime";
         const o = (meta && meta.opts) || {};
         const avecHeure = type !== "Date";
-        const tz = type === "Date" ? "UTC" : type.split(":")[1] || undefined;
+        const tz = type === "Date" ? "UTC" : Outils.dates.FUSEAU; // date seule : jour de Grist (minuit UTC) ; date-heure : heure de Paris
         let fmt = o.dateFormat || "DD/MM/YYYY";
         if (avecHeure) fmt += " " + (o.timeFormat || "HH:mm");
         return formaterMoment(sec, fmt, tz);
@@ -4016,8 +4014,8 @@ Cordialement,`,
         afficherBandeauPerimetre();
       }
       const heureCourte = (sec) => {
-        const d = new Date(sec * 1000);
-        return `${d.getHours()} h${d.getMinutes() ? ` ${String(d.getMinutes()).padStart(2, "0")}` : ""}`;
+        const p = Outils.dates.parties(sec);
+        return `${p.heures} h${p.minutes ? ` ${String(p.minutes).padStart(2, "0")}` : ""}`;
       };
       function texteCreneau() {
         if (agentPage == null) return "";
@@ -4995,7 +4993,7 @@ Cordialement,`,
     <li>Traitement de ces envois par le widget : <b>${ms(moy)}</b> en moyenne, au plus ${ms(max)}.</li>
     <li>Ligne sélectionnée renvoyée par Grist : ${A.curseur} fois (${A.curseurIgnores} simples renvois sans effet).</li>
     <li>Tâches longues du widget (plus de 50 ms) : ${A.longues}, ${ms(A.dureeLongues)} au total${A.longues ? ` (${ms(A.dureeLongues / min)} par minute)` : ""}.</li>
-    <li>Référentiel : ${referentielDuCache ? `copie conservée dans ce navigateur (lue sur le serveur le ${new Date(referentielDuCache).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}, relue automatiquement après 24 h) <button type="button" class="lien-texte" id="btn-relire-ref">Relire le référentiel maintenant</button>` : "lu sur le serveur à l'ouverture"}.</li>
+    <li>Référentiel : ${referentielDuCache ? `copie conservée dans ce navigateur (lue sur le serveur le ${Outils.dates.dateHeure(referentielDuCache, { dateStyle: "short", timeStyle: "short" })}, relue automatiquement après 24 h) <button type="button" class="lien-texte" id="btn-relire-ref">Relire le référentiel maintenant</button>` : "lu sur le serveur à l'ouverture"}.</li>
     ${sqlRefuse ? `<li>Lecture rapide (SQL) indisponible : ${esc(sqlRefuse)} ; lecture habituelle utilisée.</li>` : ""}
     ${lectures ? `<li>Lectures dans Grist :<ul style="margin:0;padding-left:16px">${lectures}</ul></li>` : ""}</ul>
     <p style="margin:4px 0 0">Si la page est lente alors que ces temps restent faibles, le temps passe dans Grist (préparation et envoi de la table, calcul des formules) plutôt que dans le widget.</p>`;
@@ -6556,10 +6554,7 @@ Cordialement,`,
             el.value = s != null ? new Date(s * 1000).toISOString().slice(0, 10) : "";
           } else if (t === "DateTime") {
             const s = secondes(v);
-            if (s != null) {
-              const d = new Date(s * 1000);
-              el.value = new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-            } else el.value = "";
+            el.value = s != null ? Outils.dates.valeurChamp(s, true) : ""; // heure de Paris
           } else if (t === "Choice") {
             if (el) el.value = v ?? "";
             else document.querySelectorAll(`input[name="${id}"]`).forEach((r) => (r.checked = r.value === v));
@@ -6623,7 +6618,7 @@ Cordialement,`,
         if (t === "Numeric" || t === "Int")
           return !el || el.value === "" ? null : t === "Int" ? parseInt(el.value, 10) : parseFloat(el.value);
         if (t === "Date") return el && el.value ? Date.parse(el.value + "T00:00:00Z") / 1000 : null;
-        if (t === "DateTime") return el && el.value ? new Date(el.value).getTime() / 1000 : null;
+        if (t === "DateTime") return el && el.value ? Outils.dates.depuisChamp(el.value) / 1000 : null;
         if (t === "Choice")
           return el ? el.value : (document.querySelector(`input[name="${id}"]:checked`) || {}).value || "";
         if (t === "ChoiceList") {
@@ -7804,7 +7799,7 @@ Cordialement,`,
       const MOTIF_MOBILISATION = /\s*\(\d+(?:er|e) jour de mobilisation\)\s*$/;
       const ordinal = (n) => (n === 1 ? "1er" : `${n}e`);
       function jourCalendaire(sec) {
-        const tz = (metaDate && (metaDate.type || "").split(":")[1]) || undefined;
+        const tz = /^Date$/.test((metaDate && metaDate.type) || "") ? "UTC" : Outils.dates.FUSEAU;
         return formateur(`jour|${tz || ""}`, {
           year: "numeric",
           month: "2-digit",
@@ -7890,10 +7885,7 @@ Cordialement,`,
       const dateParGrist = () => !!(metaDate && String(metaDate.texteFormule || "").trim());
 
       function jourFaits(sec) {
-        const tz =
-          metaFaits && (metaFaits.type || "").startsWith("DateTime")
-            ? (metaFaits.type || "").split(":")[1] || undefined
-            : "UTC";
+        const tz = metaFaits && (metaFaits.type || "").startsWith("DateTime") ? Outils.dates.FUSEAU : "UTC";
         return formateur(`jour|${tz || ""}`, {
           year: "numeric",
           month: "2-digit",
@@ -8528,7 +8520,7 @@ Cordialement,`,
           [CLE_TABLE_ETAB]: $("cfg-table-etab").value || undefined,
         };
       }
-      const dateCourteExemple = () => new Date().toLocaleDateString("fr-FR");
+      const dateCourteExemple = () => Outils.dates.date(Date.now());
       function majExempleConfig() {
         const o = lireConfig();
         const exemple = (d) =>
@@ -9592,8 +9584,8 @@ Cordialement,`,
         texteRepris(l) {
           const r = l._repris,
             quand = r.quand
-              ? new Date(r.quand * 1000)
-                  .toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+              ? Outils.dates
+                  .dateHeure(r.quand, { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
                   .replace(" ", " ")
               : "";
           const etat =
@@ -9696,7 +9688,7 @@ Cordialement,`,
           if (!c || c.value === "") return null;
           if (t === "Numeric" || t === "Int") return t === "Int" ? parseInt(c.value, 10) : parseFloat(c.value);
           if (t === "Date") return Date.parse(c.value + "T00:00:00Z") / 1000;
-          if (t === "DateTime") return new Date(c.value).getTime() / 1000;
+          if (t === "DateTime") return Outils.dates.depuisChamp(c.value) / 1000;
           if (t === "Ref") return +c.value;
           return t === "Any" || t === "Text" ? c.value : c.value;
         }

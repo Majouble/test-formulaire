@@ -665,7 +665,7 @@
   function dessinerEtat() {
     const e = $("ps-etat");
     if (!e) return;
-    const pub = ps.publie_le ? new Date(ps.publie_le * 1000).toLocaleString("fr-FR") : null;
+    const pub = ps.publie_le ? Outils.dates.dateHeure(ps.publie_le) : null;
     e.className = `pastille ${!ps.publie ? "manque" : egalPublie() ? "ok" : "reco"}`;
     e.textContent = !ps.publie
       ? "Jamais publié"
@@ -747,8 +747,7 @@
       ...defauts,
       ...Object.fromEntries(Object.entries(brouillon.options).filter(([, v]) => v !== "" && v != null)),
     };
-    const jour = new Date();
-    jour.setHours(0, 0, 0, 0);
+    const jour = new Date(Outils.dates.instant(Outils.dates.aujourdhui())); // minuit à Paris
     const depuis =
       apercuReglages.periode === "jour"
         ? jour
@@ -780,7 +779,7 @@
         aca = apercuReglages.academie;
       zone.innerHTML = `<article class="page"><div class="entete"><div class="logo">MINISTÈRE<br>DE L'ÉDUCATION<br>NATIONALE</div>
         <div class="bandeau">${esc(o.bandeau || "Mouvements sociaux")}<br>${esc(o.perimetre_court || "EN")}</div>
-        <div>Point de situation n°…<br>${esc(n.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }))}</div></div>
+        <div>Point de situation n°…<br>${esc(Outils.dates.date(n, { day: "numeric", month: "long", year: "numeric" }))}</div></div>
         <h1>ESSENTIEL ${esc((o.perimetre_long || "ENSEIGNEMENT SUPÉRIEUR") + (aca ? " – ACADÉMIE DE " + aca.toUpperCase() : ""))}</h1>${sectionsHTML(point)}</article>`;
       const msgs = [`${point.nb} signalement(s) dans l'aperçu.`];
       if (point.horsSection) msgs.push(`⚠ ${point.horsSection} n'entrent dans aucun tableau.`);

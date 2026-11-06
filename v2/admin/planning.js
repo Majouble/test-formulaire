@@ -45,7 +45,9 @@
   let reglagesEdites = null; // copie des réglages en cours de modification
   let reglagesOuverts = false;
 
-  /* ---------- Dates (heure locale) ---------- */
+  /* ---------- Dates ----------
+     Jours du calendrier (« AAAA-MM-JJ ») : calculs sur des dates locales (dateDe, plusJours…), qui ne dépendent pas
+     du fuseau du poste. Instants (début et fin des créneaux, en secondes) : toujours à l'heure de Paris. */
   const pad = (n) => String(n).padStart(2, "0");
   const isoLocal = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const dateDe = (iso) => {
@@ -61,7 +63,7 @@
     const d = dateDe(iso);
     return plusJours(iso, -((d.getDay() + 6) % 7));
   };
-  const aujourdhui = () => isoLocal(new Date());
+  const aujourdhui = () => Outils.dates.aujourdhui();
   const dateGrist = (iso) => {
     const [y, m, j] = iso.split("-").map(Number);
     return Date.UTC(y, m - 1, j) / 1000;
@@ -71,17 +73,15 @@
     const [h, mi] = String(hhmm || "0:0")
       .split(":")
       .map(Number);
-    const d = dateDe(iso);
-    d.setHours(h || 0, mi || 0, 0, 0);
-    return d.getTime() / 1000;
+    return Outils.dates.instant(iso, h || 0, mi || 0) / 1000;
   };
   const hhmm = (sec) => {
-    const d = new Date(sec * 1000);
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const p = Outils.dates.parties(sec);
+    return `${pad(p.heures)}:${pad(p.minutes)}`;
   };
   const heure = (sec) => {
-    const d = new Date(sec * 1000);
-    return `${d.getHours()} h${d.getMinutes() ? ` ${pad(d.getMinutes())}` : ""}`;
+    const p = Outils.dates.parties(sec);
+    return `${p.heures} h${p.minutes ? ` ${pad(p.minutes)}` : ""}`;
   };
   const plage = (c) => (c.debut && c.fin ? `${heure(c.debut)}–${heure(c.fin)}` : "horaires à préciser");
   const jourCourt = (iso) => {
@@ -96,7 +96,7 @@
     const t = Math.round(h * 60);
     return `${Math.floor(t / 60)} h${t % 60 ? ` ${pad(t % 60)}` : ""}`;
   };
-  const jourDuCreneau = (c) => (c.date ? isoDeGrist(c.date) : c.debut ? isoLocal(new Date(c.debut * 1000)) : "");
+  const jourDuCreneau = (c) => (c.date ? isoDeGrist(c.date) : c.debut ? Outils.dates.jour(c.debut) : "");
   const heures = (c) => (c.debut && c.fin && c.fin > c.debut ? (c.fin - c.debut) / 3600 : 0);
   // Fin avant début : le créneau finit le lendemain (créneau de nuit)
   const bornes = (iso, debut, fin) => {
@@ -1790,7 +1790,7 @@
           id,
           {
             Fin: fin,
-            Note: `${e.note ? `${e.note} ; ` : ""}clos par l'administration (${new Date().toLocaleString("fr-FR")})`,
+            Note: `${e.note ? `${e.note} ; ` : ""}clos par l'administration (${Outils.dates.dateHeure(Date.now())})`,
           },
         ],
       ]);

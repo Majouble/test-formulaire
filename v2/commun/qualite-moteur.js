@@ -213,10 +213,9 @@
     const typeFaits = c("Date_faits") ? tMeta.colonnes[c("Date_faits")].type : "";
     const jourDe = (s) => {
       if (typeof s !== "number") return "";
-      const d = new Date(s * 1000);
       return /^DateTime/.test(typeFaits) || !typeFaits
-        ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-        : d.toISOString().slice(0, 10);
+        ? Outils.dates.jour(s) // date-heure : jour à Paris
+        : new Date(s * 1000).toISOString().slice(0, 10); // colonne Date : minuit UTC
     };
     const lignes = t.id.map((id, i) => ({
       id,
@@ -385,9 +384,7 @@
     return communs / (x.size + y.size - communs);
   }
   const dateFr = (iso) =>
-    iso
-      ? new Date(iso + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })
-      : "date inconnue";
+    iso ? Outils.dates.date(iso + "T12:00:00", { weekday: "short", day: "numeric", month: "short" }) : "date inconnue";
 
   async function analyser() {
     config = await S.lireConfig();

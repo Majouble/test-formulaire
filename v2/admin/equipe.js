@@ -386,10 +386,8 @@
       .filter((o) => o.c && o.c.fin > t)
       .sort((p, q) => p.c.debut - q.c.debut)
       .slice(0, 5);
-    const heure = (s) =>
-      new Date(s * 1000).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }).replace(":", "h");
-    const jour = (s) =>
-      new Date(s * 1000).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" });
+    const heure = (s) => Outils.dates.heure(s, { hour: "2-digit", minute: "2-digit" }).replace(":", "h");
+    const jour = (s) => Outils.dates.date(s, { weekday: "short", day: "numeric", month: "short" });
     const pg = window.PagesAgents ? window.PagesAgents.pourAgent(a.id) : [];
     const aFaire = pg.filter((p) => p.etat === "nouv" || p.etat === "modif").length;
     return `<div class="eq-activite"><div class="grille">
@@ -415,13 +413,7 @@
     return h ? maintenant() + h * 3600 : null;
   };
   const dateCourte = (t) =>
-    new Date(t * 1000).toLocaleString("fr-FR", {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    Outils.dates.dateHeure(t, { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const expire = (a) => !!(a.lienExpire && a.lienExpire <= maintenant());
   const etatLien = (a) =>
     !a.cle

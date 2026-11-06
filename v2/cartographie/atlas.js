@@ -1820,9 +1820,7 @@ function preparerPages(features, acasJson, depsJson, P, lignes) {
   // une page par jour (points par jour ou par signalement) : chaque page de base est déclinée sur les jours où elle a des points
   const parJour = ["jour", "aucun"].includes(P.regroupement) && P.pagesParJour !== false;
   const libelleJour = (j) =>
-    j
-      ? new Date(j + "T12:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })
-      : "date inconnue";
+    j ? Outils.dates.date(j + "T12:00:00", { day: "numeric", month: "short", year: "numeric" }) : "date inconnue";
   const dansBase = (pg, p) =>
     String(pg.properties.academies || `|${pg.properties.academie}|`).includes(`|${p.Academie}|`) &&
     (!pg.properties.dep || pg.properties.dep === p.Dep);
@@ -3425,7 +3423,7 @@ const AtlasUI = (() => {
   let pret = null;
   async function init() {
     if (!el("atlasDate").value)
-      el("atlasDate").value = new Date().toLocaleDateString("fr-FR", { month: "short", year: "numeric" });
+      el("atlasDate").value = Outils.dates.date(Date.now(), { month: "short", year: "numeric" });
     brancher();
     if (!pret)
       pret = Promise.all([charger(), chargerSousTables()]).catch((e) =>

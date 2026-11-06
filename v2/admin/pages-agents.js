@@ -323,8 +323,7 @@
       try {
         await charger();
         const t = Date.now() / 1000,
-          debut = new Date();
-        debut.setHours(0, 0, 0, 0);
+          debut = new Date(Outils.dates.instant(Outils.dates.aujourdhui())); // minuit à Paris
         const fin = debut.getTime() / 1000 + 86400;
         const parId = new Map(((planning && planning.creneaux) || []).map((c) => [c.id, c]));
         const duJour = new Set(

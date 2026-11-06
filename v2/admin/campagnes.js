@@ -120,8 +120,7 @@
   /* ---------- Rendu ---------- */
   const dateFr = (s) =>
     s
-      ? new Date(s * 1000).toLocaleString("fr-FR", {
-          timeZone: "Europe/Paris",
+      ? Outils.dates.dateHeure(s, {
           day: "2-digit",
           month: "2-digit",
           year: "numeric",
@@ -274,9 +273,7 @@
     const d = new Date();
     projet = {
       ...sel,
-      nom:
-        sel.nom ||
-        `Sollicitation du ${d.toLocaleDateString("fr-FR")}${general.situation ? ` — ${general.situation}` : ""}`,
+      nom: sel.nom || `Sollicitation du ${Outils.dates.date(d)}${general.situation ? ` — ${general.situation}` : ""}`,
       mode: sel.mode || "une",
       fin: sel.fin || "",
       message: { ...RELANCE_DEFAUT },

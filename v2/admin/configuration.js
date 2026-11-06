@@ -120,7 +120,7 @@
           .replace(/[^A-Za-z0-9]+/g, "-")
           .replace(/^-|-$/g, "")
           .slice(0, 40) || "socle"
-      }-${new Date().toISOString().slice(0, 10)}.json`;
+      }-${Outils.dates.aujourdhui()}.json`;
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([texte], { type: "application/json" }));
       a.download = nom;
@@ -218,7 +218,7 @@
     const ligne = (id, coche, titre, detail) =>
       `<label class="etape"><input type="checkbox" data-cfg="${esc(id)}"${coche ? " checked" : ""}><span><strong>${titre}</strong>${detail ? `<br><span class="detail">${detail}</span>` : ""}</span></label>`;
     const tablesUtiles = a.tables.filter((t) => t.manquantes.length || t.conflits.length);
-    z.innerHTML = `<p class="aide">Fichier exporté le ${esc(new Date(f.exporte_le).toLocaleString("fr-FR"))} (socle ${esc(f.socle || "?")})${f.situation ? `, situation « ${esc(f.situation)} »` : ""}. Cochez ce qu'il faut reprendre ; rien n'est supprimé.</p>
+    z.innerHTML = `<p class="aide">Fichier exporté le ${esc(Outils.dates.dateHeure(f.exporte_le))} (socle ${esc(f.socle || "?")})${f.situation ? `, situation « ${esc(f.situation)} »` : ""}. Cochez ce qu'il faut reprendre ; rien n'est supprimé.</p>
       ${
         tablesUtiles.length || a.tables.length
           ? `<div class="groupe">Structure</div>${a.tables

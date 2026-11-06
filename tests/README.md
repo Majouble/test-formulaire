@@ -22,6 +22,10 @@ Quand un changement est voulu, on vérifie l'écart puis on enregistre la nouvel
 
 Les scénarios qui ouvrent un serveur local (ports 87xx) passent l'un après l'autre ; les autres en parallèle (`PARALLELE=4` par défaut). Les scénarios du planning (`run68`, `run71`, `run72`) figent la date au 21/10/2026, semaine du planning d'essai.
 
+## Fuseaux horaires : `fuseaux.js`
+
+PRISME affiche toutes les dates et heures à l'heure de Paris, quel que soit le fuseau du poste. `fuseaux.js` lance chaque scénario deux fois en même temps, le navigateur réglé à l'heure de Paris puis à celle d'un autre fuseau (La Réunion par défaut, `FUSEAU=America/Cayenne` pour la Guyane), et vérifie que les deux journaux sont identiques, heures et dates comprises. Le scénario lui-même (Node) reste à l'heure de Paris, pour que les données d'essai soient les mêmes (`fuseau-navigateur.js`, préchargé). Les scénarios à serveur local passent l'un après l'autre : leurs heures peuvent différer d'une minute.
+
 `lancer.sh` reste disponible : il lance la suite sans comparaison et ne signale que les erreurs de page.
 
 Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pour vérifier le rendu QGIS : `QT_QPA_PLATFORM=offscreen python3.12 qgis/rendu.py <dossier>/atlas.qgs page.png Versailles` (PyQGIS 3.34). `qgis/poids_pdf.py` mesure le poids du PDF selon la résolution ; `PYTHON=python3.12 sh qgis/refaire_modele.sh` reconstruit le modèle QGIS intégré (python3.12 : l'interpréteur qui a PyQGIS).

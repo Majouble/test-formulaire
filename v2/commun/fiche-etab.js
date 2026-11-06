@@ -122,10 +122,9 @@
       : v == null
         ? "—"
         : typeof v === "number" && /^Date/.test(ty)
-          ? new Date(v * 1000).toLocaleString(
-              "fr-FR",
-              ty === "Date" ? { timeZone: "UTC", dateStyle: "short" } : { dateStyle: "short", timeStyle: "short" },
-            )
+          ? ty === "Date"
+            ? new Date(v * 1000).toLocaleString("fr-FR", { timeZone: "UTC", dateStyle: "short" }) // jour seul
+            : Outils.dates.dateHeure(v, { dateStyle: "short", timeStyle: "short" })
           : typeof v === "object"
             ? JSON.stringify(v)
             : String(v);
@@ -136,7 +135,7 @@
       ctl = `<input type="number" id="${id}" data-fe="${esc(c.colId)}" step="${ty === "Int" ? 1 : "any"}" value="${v ?? ""}">`;
     else if (ty === "Date") ctl = `<input type="date" id="${id}" data-fe="${esc(c.colId)}" value="${versDate(v)}">`;
     else if (ty === "DateTime")
-      ctl = `<input type="datetime-local" id="${id}" data-fe="${esc(c.colId)}" value="${typeof v === "number" ? ((d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16))(new Date(v * 1000)) : ""}">`;
+      ctl = `<input type="datetime-local" id="${id}" data-fe="${esc(c.colId)}" value="${typeof v === "number" ? Outils.dates.valeurChamp(v, true) : ""}">`;
     else if (ty === "Choice") {
       let ch = [];
       try {
@@ -202,7 +201,7 @@
         else if (ty === "Int" || ty === "Numeric")
           v = el.value === "" ? null : ty === "Int" ? parseInt(el.value, 10) : parseFloat(el.value);
         else if (ty === "Date") v = el.value ? Date.parse(el.value + "T00:00:00Z") / 1000 : null;
-        else if (ty === "DateTime") v = el.value ? new Date(el.value).getTime() / 1000 : null;
+        else if (ty === "DateTime") v = el.value ? Outils.dates.depuisChamp(el.value) / 1000 : null;
         else if (ty === "Ref") v = +el.value || 0;
         else if (el.dataset.liste) {
           const l = el.value
