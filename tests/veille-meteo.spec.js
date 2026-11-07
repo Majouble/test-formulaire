@@ -6,6 +6,8 @@ const { chromium } = require('playwright'); const fs = require('fs');
 const { docValidation } = require('./validation-et-campagnes.spec');
 
 const M = Math.floor(Date.now() / 1000);
+// fin de la vigilance de demain : demain à midi (heure de Paris), quelle que soit l'heure du test
+const DEMAIN_MIDI = Date.parse(`${new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(Date.now() + 86400000)}T12:00:00Z`) / 1000;
 function ajouterTable(doc, tid, cols, lignes) {
   const T = doc._grist_Tables, C = doc._grist_Tables_column, ref = Math.max(...T.id) + 1; T.id.push(ref); T.tableId.push(tid);
   cols.forEach(([colId, type, wo], k) => { C.id.push(Math.max(...C.id) + 1); C.parentId.push(ref); C.colId.push(colId); C.type.push(type); C.label.push(colId); C.isFormula.push(false); C.formula.push(''); C.widgetOptions.push(wo ? JSON.stringify(wo) : ''); C.visibleCol.push(0); C.parentPos.push(k); });
@@ -25,7 +27,7 @@ function docVeille() {
     ['78', 'Yvelines', 'Vent violent', 'Orange', 3, "Aujourd'hui", M - 3600, M + 20000, M - 900, false],
     ['91', 'Essonne', 'Vent violent', 'Orange', 3, "Aujourd'hui", M - 3600, M + 20000, M - 900, false],
     ['78', 'Yvelines', 'Orages', 'Jaune', 2, "Aujourd'hui", M - 3600, M + 20000, M - 900, false],
-    ['94', 'Val-de-Marne', 'Crues', 'Rouge', 4, 'Demain', M + 30000, M + 116400, M - 900, false],
+    ['94', 'Val-de-Marne', 'Crues', 'Rouge', 4, 'Demain', M + 30000, DEMAIN_MIDI, M - 900, false],
     ['13', 'Bouches-du-Rhône', 'Canicule', 'Orange', 3, "Aujourd'hui", M - 3600, M + 20000, M - 900, false]]);
   ajouterTable(doc, 'Vigilances_journal', COLS_J, [[M - 900, '94', 'Val-de-Marne', 'Crues', 'Demain', 'Orange', 'Rouge', 4], [M - 4000, '78', 'Yvelines', 'Vent violent', "Aujourd'hui", 'Jaune', 'Orange', 3]]);
   const g = JSON.parse(doc.__data.Config.Valeur[0]); g.vigilances = 'Vigilances'; g.vigilances_journal = 'Vigilances_journal'; doc.__data.Config.Valeur[0] = JSON.stringify(g);
@@ -81,7 +83,7 @@ async function executerRelais(jsCode, etatGrist) {
   // campagne pré-ciblée sur les départements de demain
   await page.click('#veille [data-vg=campagne]'); await page.waitForTimeout(2500);
   console.log('ONGLET :', await page.$eval('nav button[aria-selected=true]', b => b.textContent), '| PROJET :', (await texte(page, '#cp-projet')).split('\n').slice(0, 2).join(' | '),
-    '| nom :', await page.inputValue('#cp-nom'), '| mode :', await page.inputValue('#cp-mode'), '| fin :', await page.inputValue('#cp-fin'));
+    '| nom :', await page.inputValue('#cp-nom'), '| mode :', await page.inputValue('#cp-mode'), '| fin :', await page.evaluate(() => { const f = document.getElementById('cp-fin').value; if (!f) return '(aucune)'; const j = Math.round((Date.parse(f + 'T00:00:00Z') - Date.parse(Outils.dates.aujourdhui() + 'T00:00:00Z')) / 86400000); return `aujourd'hui + ${j} j`; }));
   // réglages : seuil jaune
   await page.click('nav button[data-onglet=veille]'); await page.waitForTimeout(1500);
   await page.selectOption('#vg-seuil', '2'); await page.click('#veille [data-vg=reglages]'); await page.waitForTimeout(1200);
