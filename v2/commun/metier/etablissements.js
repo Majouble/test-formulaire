@@ -143,12 +143,19 @@
     "La Réunion": ["La Réunion", "Réunion"],
     Mayotte: ["Mayotte"],
   };
+  // Académie comparable : sans accents, majuscules ni « Académie de », lettres seulement
+  // (« Académie d'Aix-Marseille » → « aix marseille »)
+  const cleAcademie = (academie) =>
+    normaliser(academie)
+      .replace(/^academie_(de_la_|de_|d_)?/, "")
+      .replace(/[^a-z]+/g, " ")
+      .trim();
   const REGION_PAR_ACADEMIE = new Map(
     Object.entries(REGIONS_ACADEMIQUES).flatMap(([region, academies]) =>
-      academies.map((academie) => [normaliser(academie), region]),
+      academies.map((academie) => [cleAcademie(academie), region]),
     ),
   );
-  const regionDeAcademie = (academie) => REGION_PAR_ACADEMIE.get(normaliser(academie)) || "";
+  const regionDeAcademie = (academie) => REGION_PAR_ACADEMIE.get(cleAcademie(academie)) || "";
 
   Object.assign(window.Socle, {
     genreSection,

@@ -210,39 +210,6 @@ function valeursEtab(etablissement) {
 }
 /* Région académique : colonne du référentiel si elle existe (Region_academique, « Région académique (siège) »…),
    sinon déduite de l'académie (13 régions académiques métropolitaines et 5 d'outre-mer). */
-const REGIONS_ACADEMIQUES = {
-  "Auvergne-Rhône-Alpes": ["Clermont-Ferrand", "Grenoble", "Lyon"],
-  "Bourgogne-Franche-Comté": ["Besançon", "Dijon"],
-  Bretagne: ["Rennes"],
-  "Centre-Val de Loire": ["Orléans-Tours"],
-  Corse: ["Corse"],
-  "Grand Est": ["Nancy-Metz", "Reims", "Strasbourg"],
-  "Hauts-de-France": ["Amiens", "Lille"],
-  "Île-de-France": ["Créteil", "Paris", "Versailles"],
-  Normandie: ["Normandie", "Caen", "Rouen"],
-  "Nouvelle-Aquitaine": ["Bordeaux", "Limoges", "Poitiers"],
-  Occitanie: ["Montpellier", "Toulouse"],
-  "Pays de la Loire": ["Nantes"],
-  "Provence-Alpes-Côte d'Azur": ["Aix-Marseille", "Nice"],
-  Guadeloupe: ["Guadeloupe"],
-  Martinique: ["Martinique"],
-  Guyane: ["Guyane"],
-  "La Réunion": ["La Réunion", "Réunion"],
-  Mayotte: ["Mayotte"],
-};
-const cleAcademie = (academie) =>
-  String(academie || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/^academie\s+(de\s+la\s+|de\s+|d['’]\s*)?/, "")
-    .replace(/[^a-z]+/g, " ")
-    .trim();
-const REGION_PAR_ACADEMIE = new Map(
-  Object.entries(REGIONS_ACADEMIQUES).flatMap(([region, academies]) =>
-    academies.map((academie) => [cleAcademie(academie), region]),
-  ),
-);
 function colonneRegion() {
   const minusculesSansAccents = (colonne) =>
     String(colonne)
@@ -260,7 +227,7 @@ function regionAcademique(etablissement) {
   const colonne = colonneRegion(),
     valeur = colonne ? etablissement[colonne] : null;
   if (valeur != null && valeur !== "" && typeof valeur !== "object") return String(valeur);
-  return REGION_PAR_ACADEMIE.get(cleAcademie(etablissement[colonnesEtab.academie])) || "";
+  return Socle.regionDeAcademie(etablissement[colonnesEtab.academie]);
 }
 const CHAMPS_NOUVEL_ETAB = ["type", "uai", "academie", "departement"];
 const etabDe = (id) => etatSaisie.indexEtabs.get(id) || null;

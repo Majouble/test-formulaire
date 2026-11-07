@@ -132,14 +132,8 @@
 
   /* ---------- outils ---------- */
   const { esc, $ } = Outils;
-  const normaliser = (texte) =>
-    String(texte ?? "")
-      .normalize("NFD")
-      .replace(/[̀-ͯ]/g, "")
-      .toLowerCase()
-      .replace(/[’']/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
+  // Texte comparable : sans accents ni majuscules, apostrophes et espaces ramenés à une espace (règle commune)
+  const normaliser = Socle.texteComparable;
   const typeBase = (typeColonne) => (typeColonne || "Any").split(":")[0];
   const nouvelId = () => "b" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   const copie = (objet) => JSON.parse(JSON.stringify(objet));
@@ -282,6 +276,44 @@
     ]);
   }
   const actions = (actionsGrist) => Donnees.ecrire(actionsGrist);
+  /* ---------- écritures dans le document : structure (tables, colonnes) et table Formulaires ----------
+     Une écriture de structure est suivie d'une relecture de la structure (lireMeta). */
+  async function ecrireStructure(actionsGrist) {
+    await actions(actionsGrist);
+    await lireMeta();
+  }
+  const ajouterColonne = (table, colId, info) => ecrireStructure([["AddColumn", table, colId, info]]);
+  const modifierColonne = (table, colId, champs) => ecrireStructure([["ModifyColumn", table, colId, champs]]);
+  const retirerColonneDeTable = (table, colId) => ecrireStructure([["RemoveColumn", table, colId]]);
+  const renommerTable = (ancien, nouveau) => ecrireStructure([["RenameTable", ancien, nouveau]]);
+  // Libellé d'une colonne : l'identifiant est d'abord détaché du libellé, pour ne pas changer avec lui
+  const renommerLibelleColonne = (table, colId, libelle) =>
+    ecrireStructure([
+      ["ModifyColumn", table, colId, { untieColIdFromLabel: true }],
+      ["ModifyColumn", table, colId, { label: libelle }],
+    ]);
+  // Table des lignes d'une question tableau : chaque ligne renvoie à son dossier (Dossier), avec Ligne_id et Ordre
+  const creerTableLignes = (nom, tableReponses) =>
+    ecrireStructure([
+      [
+        "AddTable",
+        nom,
+        [
+          { id: "Dossier", type: `Ref:${tableReponses}`, isFormula: false },
+          { id: "Ligne_id", type: "Text", isFormula: false },
+          { id: "Ordre", type: "Int", isFormula: false },
+        ],
+      ],
+    ]);
+  // Table Formulaires : modifier une ligne, en créer une (renvoie son identifiant)
+  const modifierLigneFormulaire = (id, champs) =>
+    actions([["UpdateRecord", etatFormulaires.tableFormulaires, id, champs]]);
+  async function creerLigneFormulaire(champs) {
+    const resultat = await actions([["AddRecord", etatFormulaires.tableFormulaires, null, champs]]);
+    return resultat && resultat.retValues && resultat.retValues[0];
+  }
+  // Valeurs d'une colonne d'une table (liste vide si la colonne est absente ou illisible)
+  const lireValeursColonne = async (table, colId) => (await Donnees.lire(table))[colId] || [];
 
   /* ---------- reprise des repères écrits dans les descriptions (formulaires existants) ---------- */
   // Lecture et évaluation des conditions : règles communes avec le widget de saisie (commun/metier/formulaire.js)
@@ -2011,15 +2043,11 @@
       if (!analyse.ligne)
         listeActions.push(["AddColumn", tableExistante, "Ligne_id", { type: "Text", isFormula: false }]);
       if (!analyse.ordre) listeActions.push(["AddColumn", tableExistante, "Ordre", { type: "Int", isFormula: false }]);
-      if (listeActions.length) {
-        await actions(listeActions);
-        await lireMeta();
-      }
+      if (listeActions.length) await ecrireStructure(listeActions);
       // historique : une ligne par version (Version, Mouvement, Etat_actuel, Date_version)
       const actionsHistorique = actionsHistoriqueTableau(tableExistante, analyse.colDossier || "Dossier");
       if (actionsHistorique.length) {
-        await actions(actionsHistorique);
-        await lireMeta();
+        await ecrireStructure(actionsHistorique);
         listeActions.push(...actionsHistorique);
       }
       bloc.genre = "question";
@@ -2042,23 +2070,9 @@
         nomTable || texte,
         etatFormulaires.tables.concat(Object.keys(etatFormulaires.meta)),
       );
-      await actions([
-        [
-          "AddTable",
-          nomNouvelleTable,
-          [
-            { id: "Dossier", type: `Ref:${etatFormulaires.courant.table}`, isFormula: false },
-            { id: "Ligne_id", type: "Text", isFormula: false },
-            { id: "Ordre", type: "Int", isFormula: false },
-          ],
-        ],
-      ]);
-      await lireMeta();
+      await creerTableLignes(nomNouvelleTable, etatFormulaires.courant.table);
       const actionsHistorique = actionsHistoriqueTableau(nomNouvelleTable, "Dossier"); // historique : une ligne par version et par ligne saisie
-      if (actionsHistorique.length) {
-        await actions(actionsHistorique);
-        await lireMeta();
-      }
+      if (actionsHistorique.length) await ecrireStructure(actionsHistorique);
       bloc.genre = "question";
       bloc.colonne = await creerColonne(etatFormulaires.courant.table, texte, "Text", null);
       bloc.reglages = { libelle: texte, tableau: { table: nomNouvelleTable } };
@@ -2296,9 +2310,7 @@
         const nouveauNom = $("pf-nom").value.trim();
         if (!nouveauNom) return;
         try {
-          await actions([
-            ["UpdateRecord", etatFormulaires.tableFormulaires, etatFormulaires.courant.id, { Nom: nouveauNom }],
-          ]);
+          await modifierLigneFormulaire(etatFormulaires.courant.id, { Nom: nouveauNom });
           etatFormulaires.courant.nom = nouveauNom;
           const formulaire = etatFormulaires.formulaires.find((candidat) => candidat.id === etatFormulaires.courant.id);
           if (formulaire) formulaire.nom = nouveauNom;
@@ -2691,15 +2703,12 @@
         boutonLibre.disabled = true;
         try {
           const id = identifiant("Site_libre", Object.keys(colonnesDe(identifiantTable)));
-          await actions([
-            [
-              "AddColumn",
-              identifiantTable,
-              id,
-              { type: "Text", isFormula: false, label: "Site hors référentiel", untieColIdFromLabel: true },
-            ],
-          ]);
-          await lireMeta();
+          await ajouterColonne(identifiantTable, id, {
+            type: "Text",
+            isFormula: false,
+            label: "Site hors référentiel",
+            untieColIdFromLabel: true,
+          });
           reglages.tableau.sites.libre = id;
           miseAJour();
           dessinerPanneau();
@@ -2722,15 +2731,12 @@
         boutonRelier.disabled = true;
         try {
           const id = identifiant("Site", Object.keys(colonnesDe(identifiantTable)));
-          await actions([
-            [
-              "AddColumn",
-              identifiantTable,
-              id,
-              { type: `Ref:${referentielSites}`, isFormula: false, label: "Site", untieColIdFromLabel: true },
-            ],
-          ]);
-          await lireMeta();
+          await ajouterColonne(identifiantTable, id, {
+            type: `Ref:${referentielSites}`,
+            isFormula: false,
+            label: "Site",
+            untieColIdFromLabel: true,
+          });
           const avant = reglages.tableau.sites.site; // ancienne colonne du site en texte : devient la colonne « hors référentiel »
           if (avant && !reglages.tableau.sites.libre) reglages.tableau.sites.libre = avant;
           reglages.tableau.sites.site = id;
@@ -3012,15 +3018,9 @@
       $("pq-couleur").addEventListener("change", async (evenement) => {
         const sans = colonne.description.replace(/\[\s*couleurs?\b[^\]]*\]\s*/gi, "").trim();
         try {
-          await actions([
-            [
-              "ModifyColumn",
-              etatFormulaires.courant.table,
-              etatFormulaires.meta.Qualification.colId,
-              { description: evenement.target.checked ? `[couleur] ${sans}`.trim() : sans },
-            ],
-          ]);
-          await lireMeta();
+          await modifierColonne(etatFormulaires.courant.table, etatFormulaires.meta.Qualification.colId, {
+            description: evenement.target.checked ? `[couleur] ${sans}`.trim() : sans,
+          });
           etatFormulaires.meta = metaCourante();
         } catch (erreur) {
           message(`Réglage refusé : ${erreur.message || erreur}`, "err");
@@ -3060,8 +3060,7 @@
     const element = $("pa-nb-rep");
     if (!element) return;
     try {
-      const donneesTable = await Donnees.lire(etatFormulaires.courant.table);
-      const nombre = (donneesTable[bloc.colonne] || []).filter(
+      const nombre = (await lireValeursColonne(etatFormulaires.courant.table, bloc.colonne)).filter(
         (valeur) => lisible(valeur) && !estVideValeur(valeur),
       ).length;
       if (!$("pa-nb-rep")) return;
@@ -3514,8 +3513,7 @@
         if (caseAuto) reglages.auto = caseAuto.checked;
         reglages.masque = blocSousColonne.querySelector(".sc-masque").checked;
         try {
-          await actions([["ModifyColumn", table, colId, { description: descriptionSousColonne(reglages) }]]);
-          await lireMeta();
+          await modifierColonne(table, colId, { description: descriptionSousColonne(reglages) });
           majBloc(bloc);
         } catch (erreur) {
           message(`Réglage refusé : ${erreur.message || erreur}`, "err");
@@ -3537,7 +3535,7 @@
           if (i < 0 || j < 0 || j >= liste.length) return;
           [liste[i], liste[j]] = [liste[j], liste[i]];
           try {
-            await actions(
+            await ecrireStructure(
               liste.map((colonneListe, numero) => [
                 "ModifyColumn",
                 table,
@@ -3550,7 +3548,6 @@
                 },
               ]),
             );
-            await lireMeta();
             majBloc(bloc);
             dessinerSousColonnes(bloc);
             const nouveauBouton = $("pa-sous").querySelector(
@@ -3569,11 +3566,7 @@
       blocSousColonne.querySelector(".cond-sc").addEventListener("change", majDesc);
       blocSousColonne.querySelector(".sc-lib").addEventListener("change", async (evenement) => {
         try {
-          await actions([
-            ["ModifyColumn", table, colId, { untieColIdFromLabel: true }],
-            ["ModifyColumn", table, colId, { label: evenement.target.value.trim() || colonne.libelle }],
-          ]);
-          await lireMeta();
+          await renommerLibelleColonne(table, colId, evenement.target.value.trim() || colonne.libelle);
           majBloc(bloc);
         } catch (erreur) {
           message(`Renommage refusé : ${erreur.message || erreur}`, "err");
@@ -3598,8 +3591,7 @@
         )
           return;
         try {
-          await actions([["RemoveColumn", table, colId]]);
-          await lireMeta();
+          await retirerColonneDeTable(table, colId);
           majBloc(bloc);
           dessinerPanneau();
         } catch (erreur) {
@@ -3620,8 +3612,7 @@
         const info = { type, label: libelle, isFormula: false, untieColIdFromLabel: true };
         if (type === "Choice" || type === "ChoiceList")
           info.widgetOptions = JSON.stringify({ choices: ["Option 1", "Option 2"] });
-        await actions([["AddColumn", table, colId, info]]);
-        await lireMeta();
+        await ajouterColonne(table, colId, info);
         majBloc(bloc);
         dessinerPanneau();
         const champ = $("panneau").querySelector(`.sous-col[data-col="${colId}"] .choix-sc`) || $("sc-nouveau-lib");
@@ -3719,8 +3710,7 @@
           await lireMeta();
         }
         if (!colonnesDe(etatFormulaires.tableFormulaires).Type) {
-          await actions([["AddColumn", etatFormulaires.tableFormulaires, "Type", { type: "Text", isFormula: false }]]);
-          await lireMeta();
+          await ajouterColonne(etatFormulaires.tableFormulaires, "Type", { type: "Text", isFormula: false });
         }
         let table = etatFormulaires.duplication ? etatFormulaires.courant.table : $("nf-table").value;
         const type = etatFormulaires.duplication ? etatFormulaires.courant.type : $("nf-type").value;
@@ -3749,15 +3739,13 @@
           configuration.blocs.forEach((bloc) => {
             bloc.id = nouvelId();
           });
-        const resultat = await actions([
-          [
-            "AddRecord",
-            etatFormulaires.tableFormulaires,
-            null,
-            { Nom: nom, Table: table, Type: type, Brouillon: JSON.stringify(configuration), Modifie_le: maintenant() },
-          ],
-        ]);
-        const id = resultat && resultat.retValues && resultat.retValues[0];
+        const id = await creerLigneFormulaire({
+          Nom: nom,
+          Table: table,
+          Type: type,
+          Brouillon: JSON.stringify(configuration),
+          Modifie_le: maintenant(),
+        });
         await lireFormulaires();
         const formulaire =
           etatFormulaires.formulaires.find((candidat) => candidat.id === id) ||
@@ -4158,6 +4146,91 @@
     if (/^[0-9]/.test(nom)) nom = "T_" + nom;
     return nom ? nom.charAt(0).toUpperCase() + nom.slice(1) : "";
   };
+  /* Renommage de la table d'une question tableau : règles (sans page ni Grist) */
+  // Configuration d'un formulaire (JSON) dont les questions tableau visent l'ancienne table : réécrite vers la nouvelle
+  function remplacerTableDansConfiguration(json, ancien, nouveau) {
+    if (!json) return json;
+    let configuration;
+    try {
+      configuration = JSON.parse(json);
+    } catch (_) {
+      return json;
+    }
+    let nombre = 0;
+    (configuration.blocs || []).forEach((bloc) => {
+      if (bloc.reglages && bloc.reglages.tableau && bloc.reglages.tableau.table === ancien) {
+        bloc.reglages.tableau.table = nouveau;
+        nombre++;
+      }
+    });
+    return nombre ? JSON.stringify(configuration) : json;
+  }
+  // Réglage de Config : copie où toute clé « table » qui vaut l'ancien nom vaut le nouveau ; null si rien ne change
+  function remplacerTableDansReglage(valeur, ancien, nouveau) {
+    let nombre = 0;
+    const marcher = (noeud) => {
+      if (Array.isArray(noeud)) noeud.forEach(marcher);
+      else if (noeud && typeof noeud === "object")
+        for (const k of Object.keys(noeud)) {
+          if (k === "table" && noeud[k] === ancien) {
+            noeud[k] = nouveau;
+            nombre++;
+          } else marcher(noeud[k]);
+        }
+    };
+    const copieValeur = JSON.parse(JSON.stringify(valeur));
+    marcher(copieValeur);
+    return nombre ? copieValeur : null;
+  }
+  /* Renommage de la table d'une question tableau : données. Renomme la table dans Grist, puis reporte le nouveau nom
+     dans les formulaires (brouillons et versions publiées) et dans Config ; renvoie le nom retenu par Grist. */
+  async function renommerTableEtReferences(ancien, voulu) {
+    await clearTimeout(etatFormulaires.minuterie);
+    await etatFormulaires.enregistrementEnCours; // brouillon en attente : écrit avant
+    const avant = new Set(etatFormulaires.tables);
+    await renommerTable(ancien, voulu);
+    const nouveau = etatFormulaires.tables.includes(voulu)
+      ? voulu
+      : etatFormulaires.tables.find((identifiantTable) => !avant.has(identifiantTable)) || voulu; // nom éventuellement ajusté par Grist
+    // formulaires : réglages.tableau.table, brouillons et versions publiées
+    etatFormulaires.courant.conf.blocs.forEach((bloc) => {
+      if (bloc.reglages && bloc.reglages.tableau && bloc.reglages.tableau.table === ancien)
+        bloc.reglages.tableau.table = nouveau;
+    });
+    const listeActions = [];
+    for (const formulaire of etatFormulaires.formulaires) {
+      const brouillon =
+          formulaire.id === etatFormulaires.courant.id
+            ? JSON.stringify(etatFormulaires.courant.conf)
+            : remplacerTableDansConfiguration(formulaire.brouillon, ancien, nouveau),
+        publie = remplacerTableDansConfiguration(formulaire.publie, ancien, nouveau);
+      if (brouillon !== formulaire.brouillon || publie !== formulaire.publie) {
+        listeActions.push([
+          "UpdateRecord",
+          etatFormulaires.tableFormulaires,
+          formulaire.id,
+          { Brouillon: brouillon, Publie: publie },
+        ]);
+        formulaire.brouillon = brouillon;
+        formulaire.publie = publie;
+      }
+      if (formulaire.id === etatFormulaires.courant.id) etatFormulaires.courant.publie = publie;
+    }
+    // Config : profils de l'atlas (marques.table, sites.table) et tout autre réglage dont une clé « table » vaut l'ancien nom
+    try {
+      const configuration = await Socle.lireConfig();
+      if (configuration)
+        for (const [cle, valeur] of Object.entries(configuration.valeurs || {})) {
+          if (!valeur || typeof valeur !== "object") continue;
+          const nouvelleValeur = remplacerTableDansReglage(valeur, ancien, nouveau);
+          if (nouvelleValeur) listeActions.push(Socle.actionConfig(configuration, cle, nouvelleValeur));
+        }
+    } catch (_) {
+      /* sans Config : formulaires seulement */
+    }
+    if (listeActions.length) await actions(listeActions);
+    return nouveau;
+  }
   async function renommerTableTableau(bloc, saisi) {
     const ancien = bloc.reglages.tableau.table,
       voulu = identifiantTable(saisi);
@@ -4185,80 +4258,7 @@
     )
       return;
     try {
-      await clearTimeout(etatFormulaires.minuterie);
-      await etatFormulaires.enregistrementEnCours; // brouillon en attente : écrit avant
-      const avant = new Set(etatFormulaires.tables);
-      await actions([["RenameTable", ancien, voulu]]);
-      await lireMeta();
-      const nouveau = etatFormulaires.tables.includes(voulu)
-        ? voulu
-        : etatFormulaires.tables.find((identifiantTable) => !avant.has(identifiantTable)) || voulu; // nom éventuellement ajusté par Grist
-      // formulaires : réglages.tableau.table, brouillons et versions publiées
-      const remplacer = (j) => {
-        if (!j) return j;
-        let configuration;
-        try {
-          configuration = JSON.parse(j);
-        } catch (_) {
-          return j;
-        }
-        let nombre = 0;
-        (configuration.blocs || []).forEach((bloc) => {
-          if (bloc.reglages && bloc.reglages.tableau && bloc.reglages.tableau.table === ancien) {
-            bloc.reglages.tableau.table = nouveau;
-            nombre++;
-          }
-        });
-        return nombre ? JSON.stringify(configuration) : j;
-      };
-      etatFormulaires.courant.conf.blocs.forEach((bloc) => {
-        if (bloc.reglages && bloc.reglages.tableau && bloc.reglages.tableau.table === ancien)
-          bloc.reglages.tableau.table = nouveau;
-      });
-      const listeActions = [];
-      for (const formulaire of etatFormulaires.formulaires) {
-        const brouillon =
-            formulaire.id === etatFormulaires.courant.id
-              ? JSON.stringify(etatFormulaires.courant.conf)
-              : remplacer(formulaire.brouillon),
-          publie = remplacer(formulaire.publie);
-        if (brouillon !== formulaire.brouillon || publie !== formulaire.publie) {
-          listeActions.push([
-            "UpdateRecord",
-            etatFormulaires.tableFormulaires,
-            formulaire.id,
-            { Brouillon: brouillon, Publie: publie },
-          ]);
-          formulaire.brouillon = brouillon;
-          formulaire.publie = publie;
-        }
-        if (formulaire.id === etatFormulaires.courant.id) etatFormulaires.courant.publie = publie;
-      }
-      // Config : profils de l'atlas (marques.table, sites.table) et tout autre réglage dont une clé « table » vaut l'ancien nom
-      try {
-        const configuration = await Socle.lireConfig();
-        if (configuration)
-          for (const [cle, valeur] of Object.entries(configuration.valeurs || {})) {
-            if (!valeur || typeof valeur !== "object") continue;
-            let nombre = 0;
-            const marcher = (noeud) => {
-              if (Array.isArray(noeud)) noeud.forEach(marcher);
-              else if (noeud && typeof noeud === "object")
-                for (const k of Object.keys(noeud)) {
-                  if (k === "table" && noeud[k] === ancien) {
-                    noeud[k] = nouveau;
-                    nombre++;
-                  } else marcher(noeud[k]);
-                }
-            };
-            const copieVal = JSON.parse(JSON.stringify(valeur));
-            marcher(copieVal);
-            if (nombre) listeActions.push(Socle.actionConfig(configuration, cle, copieVal));
-          }
-      } catch (_) {
-        /* sans Config : formulaires seulement */
-      }
-      if (listeActions.length) await actions(listeActions);
+      const nouveau = await renommerTableEtReferences(ancien, voulu);
       etatFormulaires.meta = metaCourante();
       dessinerApercu();
       dessinerPanneau();
@@ -5349,8 +5349,7 @@
         if (["Choice", "ChoiceList"].includes(typeBase(colonneSource.type)))
           info.widgetOptions = JSON.stringify(colonneSource.opts || {});
         try {
-          await actions([["ModifyColumn", etatFormulaires.courant.table, colonne.colId, info]]);
-          await lireMeta();
+          await modifierColonne(etatFormulaires.courant.table, colonne.colId, info);
           etatFormulaires.meta = metaCourante();
           majBloc(bloc);
           dessinerPanneau();
@@ -5627,44 +5626,11 @@
           type: "Collège",
         };
   // Région académique : colonne du référentiel, sinon déduite de l'académie (comme le widget de saisie)
-  const REGIONS_ACADEMIQUES = {
-    "Auvergne-Rhône-Alpes": ["Clermont-Ferrand", "Grenoble", "Lyon"],
-    "Bourgogne-Franche-Comté": ["Besançon", "Dijon"],
-    Bretagne: ["Rennes"],
-    "Centre-Val de Loire": ["Orléans-Tours"],
-    Corse: ["Corse"],
-    "Grand Est": ["Nancy-Metz", "Reims", "Strasbourg"],
-    "Hauts-de-France": ["Amiens", "Lille"],
-    "Île-de-France": ["Créteil", "Paris", "Versailles"],
-    Normandie: ["Normandie", "Caen", "Rouen"],
-    "Nouvelle-Aquitaine": ["Bordeaux", "Limoges", "Poitiers"],
-    Occitanie: ["Montpellier", "Toulouse"],
-    "Pays de la Loire": ["Nantes"],
-    "Provence-Alpes-Côte d'Azur": ["Aix-Marseille", "Nice"],
-    Guadeloupe: ["Guadeloupe"],
-    Martinique: ["Martinique"],
-    Guyane: ["Guyane"],
-    "La Réunion": ["La Réunion", "Réunion"],
-    Mayotte: ["Mayotte"],
-  };
-  const cleAcademie = (academie) =>
-    normaliser(academie)
-      .replace(/^academie\s+(de\s+la\s+|de\s+|d\s+)?/, "")
-      .replace(/[^a-z]+/g, " ")
-      .trim();
-  const REGION_PAR_ACADEMIE = new Map(
-    Object.entries(REGIONS_ACADEMIQUES).flatMap(([region, academies]) =>
-      academies.map((academie) => [cleAcademie(academie), region]),
-    ),
-  );
   function regionTest(etablissement) {
     const colonneRegion = etatFormulaires.colonnesEtablissementTest.region,
       valeur = colonneRegion ? etablissement[colonneRegion] : null;
     if (valeur != null && valeur !== "" && typeof valeur !== "object") return String(valeur);
-    return (
-      REGION_PAR_ACADEMIE.get(cleAcademie(colonneDuRole("academie") ? etablissement[colonneDuRole("academie")] : "")) ||
-      ""
-    );
+    return Socle.regionDeAcademie(colonneDuRole("academie") ? etablissement[colonneDuRole("academie")] : "");
   }
   function valeursEtablissementTest(etablissement) {
     const valeurs = {};
