@@ -374,7 +374,7 @@ function decisionTableEtab(choisie, cible, colonneEtablissement) {
   if (cible) return { table: cible, origine: `table visée par la colonne « ${colonneEtablissement} »`, alerte: "" };
   return { table: TABLE_ETAB_DEFAUT, origine: "table par défaut", alerte: "" };
 }
-// Signalements dont la référence ne correspond à aucune ligne du référentiel lu (autre table visée, réglage ⚙ forcé…)
+// Signalements dont la référence ne correspond à aucune ligne du référentiel lu (autre table visée, table forcée dans l'administration…)
 function alerteLiensEtab() {
   if (!colonneDe("Etablissement") || !etatSaisie.etabs.length || !etatSaisie.enregistrements.length) return "";
   const avec = etatSaisie.enregistrements.filter(

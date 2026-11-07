@@ -5,14 +5,14 @@
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
    Définit : etatSaisie, idsCreesIci. */
 const etatSaisie = {
-  // ---------- module 02 : Outils de base : accès aux colonnes, valeurs Grist, dates au format des colonnes
+  // ---------- outils de base (fondations/outils.js) : accès aux colonnes, valeurs Grist, dates au format des colonnes
   colonnesReconnues: {},
   colonnesParContenu: new Set(), // clé → colonne retenue quand elle diffère de l'identifiant par défaut
 
-  // ---------- module 03 : Spécificités du formulaire : établissements scolaires ou enseignement supérieur
+  // ---------- variante du formulaire, établissements scolaires ou enseignement supérieur (domaines/formulaire)
   versionPage: null, // option « version » de la page (administration, onglet Installation), utilisée quand le formulaire publié ne fixe pas la version
 
-  // ---------- module 05 : État du widget et périmètre de la page (agent, académies, départements)
+  // ---------- état général du widget et périmètre de la page : agent, académies, départements (tous les domaines)
   mappings: null,
   signatureMappings: null,
   tableId: null,
@@ -71,8 +71,8 @@ const etatSaisie = {
   // des réponses qui reprend le nom (« Nom » = $Etablissement.Nom), sinon le texte de la cellule (référence invalide)
   colNomReponses: null,
 
-  // ---------- module 06 : Liaison avec Grist (colonnes, réception des lignes) et lecture de la configuration
-  file: null, // sérialise les traitements asynchrones ; posée par le module 06
+  // ---------- liaison avec Grist : colonnes, réception des lignes, file d'attente (fondations/grist.js, demarrage.js)
+  file: null, // sérialise les traitements asynchrones ; posée par fondations/grist.js
   idsPrecedents: null, // lignes connues avant le dernier envoi de Grist
   idsNouveaux: new Set(), // lignes apparues lors du dernier envoi
   // Envois rapprochés de Grist (plusieurs enregistrements à la suite) : seul le plus récent est traité
@@ -87,11 +87,11 @@ const etatSaisie = {
   // copie des colonnes utiles rangée par l'administration dans la clé « schema » de Config, au même format.
   metaCopie: false,
 
-  // ---------- module 07 : Formulaires construits dans l'administration : socle, rôles des colonnes, questions
+  // ---------- formulaire publié : socle, rôles des colonnes, questions (domaines/formulaire, fondations/grist.js)
   TABLE_FORMULAIRES: "Formulaires", // remplacé par la clé « general » de Config
   /* ---------- Socle v2 : Config, tables et règles communes ---------- */
   socleConfig: null,
-  socleGeneral: null, // posée par le module 07
+  socleGeneral: null, // posée par fondations/grist.js (lireSocleSaisie)
   formulaireActif: null,
   signatureFormulaire: "",
   decorsQ: { avant: {}, fin: [] },
@@ -112,15 +112,15 @@ const etatSaisie = {
   dernierChargementEtabs: 0,
   idEtabMax: 0,
 
-  // ---------- module 08 : Référentiel des établissements conservé dans le navigateur
+  // ---------- copie du référentiel des établissements gardée dans le navigateur (domaines/etablissement/donnees.js)
   referentielDuCache: null, // date de la copie utilisée, ou null (lecture du serveur)
   etabsCharges: false,
   promesseEtabs: null,
 
-  // ---------- module 09 : Données du dossier et qualification initiale
+  // ---------- dossier ouvert et qualification initiale (domaines/dossier)
   demandeAffichage: 0,
 
-  // ---------- module 14 : Établissement : identification, mail et lien d'accès
+  // ---------- établissement : identification, mail et lien d'accès (domaines/etablissement)
   ligneAnnuaire: null, // sans objet dans la version ESR (pas de recherche dans les annuaires en ligne)
   sectionGardee: null,
   sectionCalculee: { id: null, r: null },
@@ -129,13 +129,13 @@ const etatSaisie = {
   deux fois ; la composante est rappelée, reprise dans la question « site » et ses sites sont proposés en premier. */
   composanteChoisie: null,
 
-  // ---------- module 15 : Onglets, affichage du dossier, en-tête
+  // ---------- onglets, affichage du dossier, en-tête (composants/onglets.js, domaines/dossier)
   dateFaitsTouchee: false, // la date a-t-elle été changée à la main depuis l'ouverture du formulaire ?
 
-  // ---------- module 16 : Description automatique, résumé des modifications, jour de mobilisation, doublons
+  // ---------- description automatique, résumé des modifications, jour de mobilisation, doublons (domaines/enregistrement)
   ligneParametres: null,
   colsParametres: [],
-  optionsAuto: null, // posée par le module 16
+  optionsAuto: null, // posée par fondations/reglages.js (appliquerOptions)
   /* ---------- Description rédigée à partir des réponses ---------- */
   // Tant que l'utilisateur n'a pas modifié la description à la main, elle suit les réponses.
   // Dès qu'il la modifie, elle n'est plus réécrite ; le bouton « Régénérer » la recalcule à la demande.
@@ -146,10 +146,10 @@ const etatSaisie = {
   un second. La création reste possible après confirmation explicite. */
   doublonConfirme: null, // clé « établissement|jour » confirmée par l'utilisateur
 
-  // ---------- module 17 : Réglages du formulaire (table Parametres) : bornes des nombres, options, panneau ⚙
+  // ---------- réglages communs lus (fondations/reglages.js) : options de la description, limites des nombres
   optionsParametres: null,
 
-  // ---------- module 18 : Menu et recherche des signalements
+  // ---------- liste et recherche des signalements (domaines/dossier)
   // Menu des signalements, dessiné par le widget. Il rend la sélection possible sans « Sélectionner par » :
   // un widget lié est recouvert par Grist dès qu'aucune ligne n'est sélectionnée, ce qui empêcherait
   // toute création quand la vue est vide ou filtrée.
@@ -159,10 +159,10 @@ const etatSaisie = {
   de la version initiale comme de la dernière version. Tous les mots tapés doivent être présents (sans accents). */
   indexRecherche: null,
 
-  // ---------- module 23 : Couleur du formulaire selon une réponse
+  // ---------- couleur du formulaire selon une réponse (domaines/formulaire)
   reglesCouleur: [],
 
-  // ---------- module 24 : Filtre des signalements et navigation d'une fiche à l'autre
+  // ---------- filtres de la liste et navigation d'une fiche à l'autre (domaines/dossier)
   // Plusieurs filtres, combinés par ET ; dans un même filtre, plusieurs valeurs combinées par OU.
   // Chaque filtre : { colonne, valeurs: [clés], libelles: { clé: texte }, contient: "" }
   filtres: [],
@@ -172,7 +172,7 @@ const etatSaisie = {
   filtreOuvert: null,
   minuterieContient: null,
 
-  // ---------- module 26 : Formulaire par site (enseignement supérieur)
+  // ---------- formulaire par site, enseignement supérieur (domaines/sites-esr)
   /* « Une ligne par site connu » : nouveau dossier d'un établissement déjà signalé, le tableau des sites se remplit seul
   du dernier état connu de chaque site (sites revenus à la normale compris, sauf réglage contraire). Reprise
   réglable (reglages.tableau.sites.reprise) : "auto", "bouton" (proposée par un bouton), "non" (désactivée, par défaut :
@@ -181,11 +181,11 @@ const etatSaisie = {
   sitesAutoPour: null,
   qualifTouchee: false,
 
-  // ---------- module 28 : Signalement : création, puis mise à jour par nouvelle version
+  // ---------- enregistrement : création, puis mise à jour par nouvelle version (domaines/enregistrement)
   // Le formulaire reflète toujours l'état courant, c'est-à-dire la dernière version enregistrée.
   versionAffichee: null, // copie de la version sur laquelle l'agent travaille
 
-  // ---------- module 30 : Visas départementaux et académiques
+  // ---------- visas départementaux et académiques (domaines/visas)
   monNiveau: null, // niveau : "departement" | "academie" | "region" | null
   /* Viseur (onglet Validation de l'administration, 2.41) : l'agent de la page porte un échelon (Départemental, Académique)
   et un périmètre de visa (départements, académies ; vide = tous) ; il prime sur l'ancienne table Utilisateurs.
@@ -198,20 +198,20 @@ const etatSaisie = {
   vigilancesPage: null,
   dernierVeille: 0,
 
-  // ---------- module 31 : Recherche d'établissement (autocomplétion)
+  // ---------- recherche d'établissement, saisie semi-automatique (composants/recherche-etablissement.js)
   resultats: [],
   index: -1,
   minuterie: null,
   requete: 0,
 
-  // ---------- module 33 : Corriger l'établissement d'un signalement
+  // ---------- correction de l'établissement d'un signalement (domaines/etablissement/affichage.js)
   reaffectation: false,
   etabPropose: null,
   dossierCorrection: undefined,
   // ---------- Fiche de l'établissement
   champsFiche: [], // [cle (rôle ou colonne), libellé, colonne]
 
-  // ---------- module 34 : Parcours : accueil, vue de saisie, bandeaux, démarrage du widget
+  // ---------- parcours : accueil, vue de saisie, bandeaux (demarrage.js, domaines/dossier, domaines/etablissement)
   vue: "accueil",
   nbCartes: 30,
   ficheDepliee: false,

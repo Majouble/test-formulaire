@@ -23,7 +23,7 @@ const ETAB = {
   },
 };
 // Recherche : référentiel du document, complété si le formulaire le prévoit par les annuaires en ligne
-// (API OpenDataSoft v2.1). Clé du réglage ⚙ « Référentiel des établissements » dans la table Parametres :
+// (API OpenDataSoft v2.1). Clé de la table de recherche forcée (réglages communs, affichée dans l'administration) :
 const CLE_TABLE_ETAB = "tableEtablissementsESR";
 const TABLE_ETAB_DEFAUT = "Etablissements";
 const colonnesEtab = ETAB.colonnes;
