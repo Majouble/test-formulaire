@@ -3853,6 +3853,8 @@
         </div>
       </section>
 
+      <section class="carte" id="carte-reglages-saisie"></section>
+
       <section class="carte" id="carte-configuration"></section>
 
       <section class="carte" id="carte-secours"></section>
@@ -4024,6 +4026,7 @@
     <main id="qualite" hidden></main>
     <script src="repartition.js"></script>
     <script src="installation.js"></script>
+    <script src="reglages-saisie.js"></script>
     <script src="configuration.js"></script>
     <script src="secours.js"></script>
     <script src="point-situation.js"></script>
@@ -4082,6 +4085,7 @@
             if (window.OngletSitesESR) window.OngletSitesESR.afficher();
             if (window.OngletEffectifs) window.OngletEffectifs.afficher();
           }
+          if (b.dataset.onglet === "installation" && window.CarteReglagesSaisie) window.CarteReglagesSaisie.afficher();
           if (b.dataset.onglet === "onglet-equipe") window.OngletEquipeGroupe.afficher();
           if (b.dataset.onglet === "acces") window.OngletAcces.afficher();
           if (b.dataset.onglet === "liens") {

@@ -100,7 +100,7 @@ function signalerErreurChargement(erreur, contexte) {
   etatSaisie.erreursChargement.push(message);
   const zoneAlerte = $("alerte");
   if (zoneAlerte) {
-    zoneAlerte.textContent = `${zoneAlerte.hidden ? "" : zoneAlerte.textContent + " "}Le formulaire n'a pas pu se charger entièrement (${message}). Copiez ce message pour l'administrateur du document ; « ⚙ Réglages » reste accessible.`;
+    zoneAlerte.textContent = `${zoneAlerte.hidden ? "" : zoneAlerte.textContent + " "}Le formulaire n'a pas pu se charger entièrement (${message}). Copiez ce message pour l'administrateur du document ; « ⚙ Diagnostic » reste accessible.`;
     zoneAlerte.hidden = false;
   }
   const boutonConfig = $("btn-config");

@@ -56,7 +56,7 @@ async function lireCibleEtab() {
   }
   return { colonneEtablissement, cible };
 }
-// Lit la table du référentiel choisie dans les réglages (Config, sinon Parametres), null si aucune
+// Lit la table du référentiel choisie dans l'administration (Config : table forcée de resume_auto, sinon référentiel des réglages généraux ; documents non installés : Parametres), null si aucune
 async function lireTableEtabChoisie() {
   let choisie = null;
   if (reglagesDansConfig()) {
@@ -132,7 +132,7 @@ async function rafraichirEtabs(forcer) {
 /* ---------- Référentiel conservé dans le navigateur ----------
    La lecture complète du référentiel peut prendre plusieurs secondes au serveur : chaque navigateur le garde
    24 heures (IndexedDB) et ne le relit qu'ensuite, ou quand un établissement inconnu apparaît (créé par un
-   collègue), ou avant la création d'un établissement, ou sur demande (⚙ › « Relire le référentiel »).
+   collègue), ou avant la création d'un établissement, ou sur demande (⚙ Diagnostic › « Relire le référentiel »).
    Les colonnes de clé et de lien d'accès ne sont jamais conservées : elles sont lues à la demande, pour
    l'établissement affiché. Jamais utilisé en accès par lien d'établissement (une seule ligne visible). */
 const DUREE_CACHE_REFERENTIEL = 24 * 3600 * 1000;

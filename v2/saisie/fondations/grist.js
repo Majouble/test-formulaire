@@ -5,7 +5,7 @@
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
    Définit : ecrireEtape, COLONNES, enFile, OPTIONS, ACTIVITE, traiterEnvoi, lireMeta, metaDeSecours, metaColonnes,
      mesurerArriveeEnvoi, lireSocleSaisie, cacheTables, lireTableSQL, lireTableRapide, lireTableReference,
-     tableDepuisEnregistrements, libellesTable, listerTablesDuDocument, colonnesDeTable.
+     tableDepuisEnregistrements, libellesTable, colonnesDeTable.
    Utilise :
      fondations/outils : texteComparable, typeBase.
      fondations/etat : etatSaisie.
@@ -350,15 +350,6 @@ async function libellesTable(tid, colAffichee) {
   return new Map(
     tableReference.id.map((id, i) => [id, colonneLibelle ? String(tableReference[colonneLibelle][i] ?? "") : ""]),
   );
-}
-// Lit dans le document Grist la liste des noms de tables (liste vide si indisponible)
-async function listerTablesDuDocument() {
-  try {
-    return await grist.docApi.listTables();
-  } catch (_) {
-    // liste des tables indisponible : liste vide
-    return [];
-  }
 }
 // Colonnes d'une table, dans l'ordre de Grist
 async function colonnesDeTable(tid) {

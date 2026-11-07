@@ -997,7 +997,7 @@
         o = optionsDescription();
       const aideD = !o.actif
         ? "Saisie libre : le pré-remplissage est désactivé."
-        : `Rédigée automatiquement à partir des réponses ci-dessus ; l'agent peut la compléter ou la modifier. Réglages ${perso ? "propres à ce formulaire" : "communs (⚙ du widget de saisie)"}.`;
+        : `Rédigée automatiquement à partir des réponses ci-dessus ; l'agent peut la compléter ou la modifier. Réglages ${perso ? "propres à ce formulaire" : "communs à tous les formulaires"}.`;
       h =
         `<div class="champ"><label${modeTest ? ' for="test-description"' : ""}>${esc(c.libelle)} <span class="req">*</span><span class="aide">${esc(aideD)}</span></label>` +
         (modeTest
@@ -2686,7 +2686,7 @@
       Date_faits:
         "Jour des faits signalés, aujourd'hui par défaut. Sert au classement des versions, au décompte des jours de mobilisation et au point de situation.",
       Description:
-        "Rédigée automatiquement à partir des réponses ; son format se règle dans ⚙ Réglages du widget de saisie, et pour chaque question dans « Données et diffusion ».",
+        "Rédigée automatiquement à partir des réponses ; son format se règle en cliquant sur la description de l'aperçu, et pour chaque question dans « Données et diffusion ».",
       Qualification: "Qualification du signalement, obligatoire. Ses choix et leurs couleurs se règlent ici.",
     };
     p.innerHTML = `<h2>${esc(c ? c.libelle : colId)}</h2><p class="sous">Champ commun du questionnaire établissement · colonne ${esc(colId)}</p><p class="note">${esc(textes[colId] || "")}</p>
@@ -4245,12 +4245,13 @@
   }
 
   /* =========================================================
-   Description automatique : réglages communs (table Parametres) ou propres au formulaire
+   Description automatique : réglages communs (clé resume_auto de Config, autrefois table Parametres) ou propres au formulaire
    ---------------------------------------------------------
    conf.description = { perso: true, actif, format, separateur, puce, entete, qualification, questions, mobilisation, formatsType } ;
    le format de chaque question reste dans ses réglages (reglages.format), celui des champs d'un tableau dans
    reglages.descTableau = { colonne: { ligne, decompte } }. Le widget de saisie applique ces réglages à la place
-   de ceux de ⚙ quand perso est vrai.
+   des réglages communs quand perso est vrai. Les réglages communs se modifient dans le panneau Description (mode
+   « Communs ») et s'enregistrent pour tous les formulaires, sans publication.
    ========================================================= */
   const DESC_DEFAUT = {
     actif: true,
@@ -4291,9 +4292,28 @@
       reglagesCommuns = socleConfig ? {} : null;
     }
   }
+  /* Réglages communs modifiés dans le panneau Description, pas encore enregistrés (null : aucune modification).
+     Ils s'appliquent à tous les formulaires sans réglages propres, dès l'enregistrement (clé resume_auto de Config). */
+  let brouillonCommuns = null;
+  function demarrerBrouillonCommuns() {
+    if (!brouillonCommuns) {
+      const actuels = { ...DESC_DEFAUT, ...(reglagesCommuns || {}) };
+      brouillonCommuns = {};
+      for (const k of [...CLES_DESC, "formatsTableau"]) brouillonCommuns[k] = copie(actuels[k] ?? DESC_DEFAUT[k]);
+    }
+    return brouillonCommuns;
+  }
+  async function enregistrerReglagesCommuns() {
+    if (!brouillonCommuns) return;
+    const valeur = { ...(reglagesCommuns || {}), ...brouillonCommuns, description: false };
+    await window.Socle.ecrireConfig("resume_auto", valeur);
+    if (socleConfig && socleConfig.valeurs) socleConfig.valeurs.resume_auto = valeur;
+    reglagesCommuns = valeur;
+    brouillonCommuns = null;
+  }
   const descPerso = () => !!(courant && courant.conf.description && courant.conf.description.perso);
   function optionsDescription() {
-    const communs = { ...DESC_DEFAUT, ...(reglagesCommuns || {}) };
+    const communs = { ...DESC_DEFAUT, ...(reglagesCommuns || {}), ...(brouillonCommuns || {}) };
     if (!descPerso()) return communs;
     const d = courant.conf.description,
       o = { ...communs, formatsQuestion: {}, formatsTableau: {} };
@@ -4538,7 +4558,7 @@
   // Choix du format d'une question dans la description (panneau de la question et panneau Description)
   function choixFormatQuestion(b) {
     const r = (b && b.reglages) || {},
-      defaut = descPerso() ? "Par défaut (réglage du formulaire)" : "Par défaut (réglage du widget de saisie)";
+      defaut = descPerso() ? "Par défaut (réglage du formulaire)" : "Par défaut (réglages communs)";
     return r.tableau
       ? [
           ["defaut", defaut],
@@ -4558,7 +4578,9 @@
       c = meta.Description,
       perso = descPerso(),
       o = optionsDescription(),
-      d = courant.conf.description;
+      d = courant.conf.description,
+      // réglages communs : modifiables ici dès que le document a sa table Config
+      communsModifiables = !!socleConfig;
     const sel = (id, opts, v, lib) =>
       `<label class="l" for="${id}">${lib}</label><select id="${id}">${opts.map(([k, l]) => `<option value="${k}"${k === v ? " selected" : ""}>${l}</option>`).join("")}</select>`;
     const inter = (cle, lib) =>
@@ -4584,7 +4606,7 @@
             `<option value="${v}"${(r.format || "defaut") === v ? " selected" : ""}>${v === "defaut" ? "Par défaut" : l}</option>`,
         )
         .join("")}</select></div>`;
-      if (perso && r.tableau && r.tableau.table)
+      if ((perso || communsModifiables) && r.tableau && r.tableau.table)
         h += sousColonnes(r.tableau.table)
           .filter((x) => !x.r.masque)
           .map((sc) => {
@@ -4613,10 +4635,14 @@
     p.innerHTML = `<h2>${esc(c ? c.libelle : "Description")}</h2><p class="sous">Champ commun · colonne Description</p>
     <p class="note">Rédigée automatiquement à partir des réponses ; l'agent peut la compléter ou la modifier avant d'enregistrer.</p>
     <div class="groupe"><div class="t">Réglages de la description automatique</div>
-      <div class="seg2" role="group" aria-label="Origine des réglages"><button type="button" data-perso="0" aria-pressed="${!perso}">Communs (⚙ du widget)</button><button type="button" data-perso="1" aria-pressed="${perso}">Propres à ce formulaire</button></div>
+      <div class="seg2" role="group" aria-label="Origine des réglages"><button type="button" data-perso="0" aria-pressed="${!perso}">Communs à tous les formulaires</button><button type="button" data-perso="1" aria-pressed="${perso}">Propres à ce formulaire</button></div>
       ${
-        perso
-          ? `${inter("actif", "Pré-remplir la description")}
+        perso || communsModifiables
+          ? `${
+              perso
+                ? ""
+                : `<p class="note" style="margin:0 0 8px">Réglages communs à tous les formulaires qui n'ont pas leurs propres réglages (clé resume_auto de Config). Ils s'appliquent dès leur enregistrement, sans publication.</p>`
+            }${inter("actif", "Pré-remplir la description")}
         <div class="grille2"><div>${sel(
           "pd-format",
           [
@@ -4644,24 +4670,56 @@
         ${inter("qualification", "Inclure la qualification")}
         ${inter("questions", "Inclure les questions du formulaire")}
         ${inter("mobilisation", "Terminer par le jour de mobilisation")}`
-          : `<p class="note" style="margin:0">Ce formulaire suit les réglages ⚙ du widget de saisie, communs à tous les formulaires du document (clé resume_auto de Config)${reglagesCommuns === null ? " — table illisible ou absente : réglages par défaut" : ""}.
-         Choisissez « Propres à ce formulaire » pour les régler ici : ils partent des réglages communs actuels et s'appliquent à la publication.</p>`
+          : `<p class="note" style="margin:0">Ce formulaire suit les réglages communs du document. Ils se modifient ici une fois la table Config créée (onglet Installation) ; en attendant, réglages par défaut.
+         Choisissez « Propres à ce formulaire » pour les régler pour ce formulaire seulement : ils partent des réglages communs actuels et s'appliquent à la publication.</p>`
+      }
+      ${
+        !perso && communsModifiables
+          ? `<div class="actions" style="margin-top:8px"><button type="button" class="primaire petit" id="pd-communs-ok"${brouillonCommuns ? "" : " disabled"}>Enregistrer pour tous les formulaires</button>
+        <span class="statut" id="pd-communs-statut" role="status">${brouillonCommuns ? "Modifications non enregistrées." : ""}</span></div>`
+          : ""
       }
     </div>
-    ${perso && familles.length ? `<div class="groupe"><div class="t">Format par type de question</div>${familles.map((f) => `<div class="reglage-q"><div><span>${FAMILLES[f]}</span><select data-famille="${f}" aria-label="Format des ${FAMILLES[f].toLowerCase()}">${optFmt((o.formatsType || {})[f])}</select></div></div>`).join("")}</div>` : ""}
+    ${(perso || communsModifiables) && familles.length ? `<div class="groupe"><div class="t">Format par type de question</div>${familles.map((f) => `<div class="reglage-q"><div><span>${FAMILLES[f]}</span><select data-famille="${f}" aria-label="Format des ${FAMILLES[f].toLowerCase()}">${optFmt((o.formatsType || {})[f])}</select></div></div>`).join("")}</div>` : ""}
     <div class="groupe"><div class="t">Question par question</div>${qs.map(ligneQ).join("") || `<p class="note" style="margin:0">Aucune question dans le formulaire.</p>`}
-      <p class="note" style="margin:6px 0 0">Prioritaire sur le format par type. Les champs d'un tableau se règlent ici avec les réglages propres au formulaire.</p></div>
+      <p class="note" style="margin:6px 0 0">Prioritaire sur le format par type. Le format de chaque question est enregistré avec le formulaire ; celui des champs d'un tableau suit l'origine des réglages choisie plus haut.</p></div>
     ${groupeEnteteHtml()}
     <div class="groupe"><div class="t">Exemple</div><div class="exemple-desc" id="pd-exemple"></div>
       <p class="note" style="margin:6px 0 0">Avec des réponses fictives. En mode ▶ Tester, la description suit vos réponses.</p></div>`;
-    const maj = () => {
-      sauver();
+    // formulaireModifie : le changement porte sur le formulaire (enregistré en brouillon), pas sur les réglages communs
+    const maj = (formulaireModifie = perso) => {
+      if (formulaireModifie) sauver();
+      else if ($("pd-communs-ok")) {
+        $("pd-communs-ok").disabled = false;
+        statutCommuns("Modifications non enregistrées.");
+      }
       $("pd-exemple").textContent = exempleDescription();
       const ex = document.querySelector('[data-commun="commun:Description"] .exemple-desc');
       if (ex) ex.textContent = exempleDescription();
     };
     $("pd-exemple").textContent = exempleDescription();
-    lierEntete(p, maj);
+    lierEntete(p, () => maj(true));
+    const statutCommuns = (texte, type) => {
+      const zone = $("pd-communs-statut");
+      if (!zone) return;
+      zone.textContent = texte || "";
+      zone.className = `statut ${type || ""}`;
+    };
+    if ($("pd-communs-ok"))
+      $("pd-communs-ok").addEventListener("click", async () => {
+        $("pd-communs-ok").disabled = true;
+        try {
+          await enregistrerReglagesCommuns();
+          statutCommuns(
+            "Réglages communs enregistrés : ils s'appliquent aux pages de saisie à leur prochaine lecture.",
+            "ok",
+          );
+          dessinerApercu();
+        } catch (e) {
+          $("pd-communs-ok").disabled = false;
+          statutCommuns(`Échec : ${e.message || e}`, "err");
+        }
+      });
     p.querySelectorAll("[data-perso]").forEach((x) =>
       x.addEventListener("click", () => {
         const oui = x.dataset.perso === "1";
@@ -4675,7 +4733,7 @@
         panneauDescription();
       }),
     );
-    const dd = () => courant.conf.description;
+    const dd = () => (perso ? courant.conf.description : demarrerBrouillonCommuns());
     p.querySelectorAll("[data-desc]").forEach((x) =>
       x.addEventListener("change", () => {
         dd()[x.dataset.desc] = x.checked;
@@ -4710,12 +4768,17 @@
       x.addEventListener("change", () => {
         const b = blocDe(x.dataset.formatQ);
         b.reglages.format = x.value === "defaut" ? undefined : x.value;
-        maj();
+        maj(true);
       }),
     );
+    // champs d'un tableau : dans le formulaire (réglages propres) ou dans les réglages communs, par colonne de la question
     const majSous = (bid, sc) => {
       const b = blocDe(bid),
-        t = (b.reglages.descTableau = b.reglages.descTableau || {});
+        communs = perso ? null : demarrerBrouillonCommuns();
+      if (communs) communs.formatsTableau = { ...(communs.formatsTableau || {}) };
+      const t = perso
+        ? (b.reglages.descTableau = b.reglages.descTableau || {})
+        : (communs.formatsTableau[b.colonne] = { ...(communs.formatsTableau[b.colonne] || {}) });
       const ligne = p.querySelector(`[data-dt-ligne="${CSS.escape(bid)}"][data-sc="${CSS.escape(sc)}"]`).value,
         dec = p.querySelector(`[data-dt-dec="${CSS.escape(bid)}"][data-sc="${CSS.escape(sc)}"]`);
       const v = { ligne, decompte: !!(dec && dec.checked) };
@@ -4723,7 +4786,10 @@
       const qualif = estQualifSous(sousColonnes(b.reglages.tableau.table).find((x) => x.colId === sc));
       if (v.ligne === "defaut" && v.decompte === qualif) delete t[sc];
       else t[sc] = v;
-      if (!Object.keys(t).length) delete b.reglages.descTableau;
+      if (!Object.keys(t).length) {
+        if (perso) delete b.reglages.descTableau;
+        else delete communs.formatsTableau[b.colonne];
+      }
       maj();
     };
     p.querySelectorAll("[data-dt-ligne]").forEach((x) =>

@@ -287,6 +287,16 @@
           [f],
           `Dossier sur ${libEtab(x)}`,
           `${autres.length} version(s) sur ${[...new Set(autres.map((l) => libEtab(info(l.etab))))].join(", ")}.`,
+          {
+            action: c("Dossier")
+              ? {
+                  genre: "separer",
+                  lignes: autres.map((l) => l.id),
+                  libelle:
+                    autres.length > 1 ? `En faire ${autres.length} dossiers à part` : "En faire un dossier à part",
+                }
+              : null,
+          },
         );
       if (x && x.section) {
         const p = parent(x);
@@ -449,6 +459,30 @@
     if (acts.length) await Donnees.ecrire(acts);
     return acts.length;
   }
+  /* Séparation : une version saisie sur un autre établissement que son dossier est en réalité un nouveau signalement
+     de son propre établissement ; elle devient un dossier à part entière (colonne Dossier pointant sur elle-même, nature
+     « Nouveau signalement »). Renvoie le nombre de lignes modifiées. */
+  async function separer(etat, liste) {
+    const acts = [];
+    for (const a of liste) {
+      if (!a.action || a.action.genre !== "separer") continue;
+      const esp = etat.espaces.find((x) => x.espace === a.espace || x.espace.reponses === a.espace.reponses),
+        rr = esp.colonnes.rr || {},
+        colDossier = rr.Dossier && rr.Dossier.col,
+        colNature = rr.Nature && rr.Nature.col,
+        mNature = colNature && esp.colonnes.tMeta.colonnes[colNature];
+      if (!colDossier) continue;
+      for (const id of a.action.lignes)
+        acts.push([
+          "UpdateRecord",
+          esp.espace.reponses,
+          id,
+          { [colDossier]: id, ...(mNature && !mNature.isFormula ? { [colNature]: Socle.NATURES[0] } : {}) },
+        ]);
+    }
+    if (acts.length) await Donnees.ecrire(acts);
+    return acts.length;
+  }
   /* Suppression d'une saisie erronée : une version d'un dossier (versionId), ou le dossier entier (sans versionId, ou dossier
      d'une seule saisie). Les lignes des autres tables qui renvoient vers les saisies supprimées partent avec elles, en une
      seule action Grist : sous-tables des questions tableau (colonne Version pour une version ; Dossier aussi pour le dossier
@@ -579,6 +613,7 @@
     statuts,
     marquer,
     rattacher,
+    separer,
     fusionner,
     supprimer,
     dateFr,

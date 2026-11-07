@@ -178,7 +178,7 @@ function majApercuAuto() {
     auto ||
     (etatSaisie.optionsAuto.actif
       ? "Aucune réponse modifiée pour l'instant : modifiez la qualification, la description ou une question, le résumé s'écrira ici."
-      : "Résumé automatique désactivé (bouton « ⚙ Réglages »).");
+      : "Résumé automatique désactivé (administration, onglet Formulaires, panneau Description).");
 }
 // Réponses du formulaire, au format enregistré (sans établissement, dossier ni date)
 function valeursSaisies(manquants = []) {

@@ -4,15 +4,15 @@
    Chargé par saisie/index.html dans l'ordre : fondations, composants, domaines, demarrage.js. Les fichiers partagent
    leurs noms (scripts classiques, sans import) : au chargement, un fichier ne fait que définir. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
-   Définit : afficherSaisieEnCours, afficherDossierOuvert, rafraichir, ouvrirDossier, afficherCoherence,
-     preparerNouveauSignalement, avertirFaitsAnterieurs, majListeDossiers, surligneMots, afficherResultatsRecherche,
-     fermerRecherche, ouvrirResultat, bandeCouleur, sauverFiltre, restaurerFiltre, majFiltre, appliquerFiltre,
-     remplirPanneauFiltre, ouvrirPanneauFiltre, fermerPanneauFiltre, majNavigation, allerA, afficherOptionsDossiers,
-     menuOuvert, fermerMenuDossiers, optionsMenu, focusOption, ouvrirMenuDossiers, choisirOption,
-     plusieursJoursActif, joursSuivants, erreurPlusieursJours, majAideJours, reinitialiserJours, joursReport,
-     erreurReport, majAideReport, ouvrirReport, reprendreReponses, remplirFormulaire, creerElementHistorique,
-     afficherHistorique, abandonAccepte, allerNouveau, ouvrirDepuisListe, afficherCartes, confirmerCloture,
-     basculerClos, majProposition, brancherEvenementsDossier.
+   Définit : afficherSaisieEnCours, afficherDossierOuvert, rafraichir, ouvrirDossier, preparerNouveauSignalement,
+     avertirFaitsAnterieurs, majListeDossiers, surligneMots, afficherResultatsRecherche, fermerRecherche,
+     ouvrirResultat, bandeCouleur, sauverFiltre, restaurerFiltre, majFiltre, appliquerFiltre, remplirPanneauFiltre,
+     ouvrirPanneauFiltre, fermerPanneauFiltre, majNavigation, allerA, afficherOptionsDossiers, menuOuvert,
+     fermerMenuDossiers, optionsMenu, focusOption, ouvrirMenuDossiers, choisirOption, plusieursJoursActif,
+     joursSuivants, erreurPlusieursJours, majAideJours, reinitialiserJours, joursReport, erreurReport,
+     majAideReport, ouvrirReport, reprendreReponses, remplirFormulaire, creerElementHistorique, afficherHistorique,
+     abandonAccepte, allerNouveau, ouvrirDepuisListe, afficherCartes, confirmerCloture, basculerClos,
+     majProposition, brancherEvenementsDossier.
    Utilise :
      fondations/configuration : colonnesEtab.
      fondations/outils : colonneDe, dateFr, idDossierDe, jourCle, jourCourt, listeQualif, pluriel, refId,
@@ -28,8 +28,7 @@
      domaines/formulaire/donnees : verifierFormulairePublie.
      domaines/formulaire/affichage : cocherQualif, focusPremiereQuestion, lireQualificationInitiale, majCouleur,
        styleChoix.
-     domaines/etablissement/regles : CHAMPS_NOUVEL_ETAB, etabDe, etabDeLigne, etablissementDuFormulaire,
-       texteEtabBrut.
+     domaines/etablissement/regles : CHAMPS_NOUVEL_ETAB, etabDeLigne, etablissementDuFormulaire, texteEtabBrut.
      domaines/etablissement/donnees : rafraichirEtabs.
      domaines/etablissement/affichage : afficherEtablissement, majBandeauCampagne.
      domaines/dossier/regles : MAX_VALEURS_FILTRE, RENSEIGNE_FILTRE, UN_JOUR, VIDE_FILTRE, actualiserChampsFiltre,
@@ -37,11 +36,11 @@
        compterVersionsParDossier, construireIndexRecherche, dernierJourAvecSignalement,
        diagnostiquerFaitsAnterieurs, dossierClos, dossiersFiltres, entreesHistorique, erreurJours,
        erreurReportJours, filtreActif, filtreEffectif, jourDesFaits, jourDuDossierOuvert, jourDuFormulaire,
-       jourFaits, joursDejaSignales, joursEntre, joursReportSansDossier, libelleDossier, lignesIncoherentes,
-       propositionsDeReprise, reinitialiserEtatCreation, resumeFiltre, texteSerie, typeChamp, valeursDisponibles,
-       valeursDossier, versionsDe, voisins.
+       jourFaits, joursDejaSignales, joursEntre, joursReportSansDossier, libelleDossier, propositionsDeReprise,
+       reinitialiserEtatCreation, resumeFiltre, texteSerie, typeChamp, valeursDisponibles, valeursDossier,
+       versionsDe, voisins.
      domaines/dossier/donnees : ecrireClos.
-     domaines/enregistrement/regles : NATURE, cleDoublon.
+     domaines/enregistrement/regles : cleDoublon.
      domaines/enregistrement/donnees : reprendreSurJours.
      domaines/enregistrement/affichage : cacherConfirmation, confirmer, evaluerDescriptionManuelle, majApercuAuto,
        majDescriptionAuto, valeursSaisies, verifierDoublons.
@@ -143,24 +142,6 @@ async function ouvrirDossier(idDossier, force) {
   if (!meme || !etatSaisie.modifieVisa) await remplirVisas();
   if (demande !== etatSaisie.demandeAffichage) return;
   afficherDossier();
-}
-function afficherCoherence() {
-  if (!$("coherence-dossiers").open) return;
-  const nomEtab = (id) => (etabDe(id) || {})[colonnesEtab.nom] || `n° ${id}`;
-  const liste = lignesIncoherentes();
-  $("coherence-lignes").innerHTML = liste.length
-    ? liste
-        .map(
-          ({
-            ligne,
-            dossier,
-          }) => `<tr><td>${ligne.id}</td><td>${esc(nomEtab(refId(valeurLigne(ligne, "Etablissement"))))}</td>
-        <td>n° ${dossier.id}</td><td>${esc(nomEtab(refId(valeurLigne(dossier, "Etablissement"))))}</td></tr>`,
-        )
-        .join("")
-    : `<tr><td colspan="4" class="ok">Aucune incohérence : chaque version appartient au dossier de son établissement.</td></tr>`;
-  $("btn-reparer").hidden = !liste.length;
-  $("btn-reparer").textContent = `Réparer ${liste.length > 1 ? "ces " + liste.length + " lignes" : "cette ligne"}`;
 }
 async function preparerNouveauSignalement() {
   reinitialiserEtatCreation();
@@ -936,30 +917,6 @@ function majProposition() {
 
 // Événements de la page traités ici ; appelé une fois par demarrage.js
 function brancherEvenementsDossier() {
-  $("coherence-dossiers").addEventListener("toggle", afficherCoherence);
-  $("btn-reparer").addEventListener("click", () =>
-    enFile(async () => {
-      const liste = lignesIncoherentes();
-      if (!liste.length) return;
-      if (
-        !confirm(
-          `Faire de ${liste.length > 1 ? "ces " + liste.length + " lignes des dossiers" : "cette ligne un dossier"} à part entière ?`,
-        )
-      )
-        return;
-      const maj = liste.map(({ ligne }) => {
-        const fields = { [colonneDe("Dossier")]: ligne.id };
-        if (colonneDe("Nature")) fields[colonneDe("Nature")] = NATURE.initial;
-        return { id: ligne.id, fields };
-      });
-      try {
-        await grist.getTable().update(maj);
-        statut("statut-coherence", `${maj.length} ligne(s) réparée(s).`, "ok");
-      } catch (erreur) {
-        statut("statut-coherence", `Échec : ${erreur.message || erreur}`, "err");
-      }
-    }),
-  );
   $("description").addEventListener("input", () => appliquerConditions("q", etatSaisie.defsQuestions));
   $("qualifs-initiales").addEventListener("change", () => appliquerConditions("q", etatSaisie.defsQuestions));
   $("recherche-signalements").addEventListener("input", afficherResultatsRecherche);

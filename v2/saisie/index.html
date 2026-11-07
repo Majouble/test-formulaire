@@ -28,23 +28,20 @@
           <p class="marque-app" id="marque-app"></p>
         </div>
         <p class="bandeau-perimetre" id="bandeau-perimetre" hidden></p>
-        <button type="button" class="secondaire petit" id="btn-config" title="Réglages du formulaire" hidden>
-          ⚙ Réglages
+        <button type="button" class="secondaire petit" id="btn-config" title="Diagnostic de la page" hidden>
+          ⚙ Diagnostic
         </button>
       </div>
       <div class="bandeau" id="alerte-page-etab" hidden></div>
       <div class="bandeau" id="alerte" hidden></div>
 
-      <!-- ===== Configuration du résumé automatique (ouverte depuis le panneau de Grist) ===== -->
+      <!-- ===== Diagnostic de la page (bouton ⚙ ; les réglages se font dans l'administration) ===== -->
       <section class="config" id="config" hidden>
         <div class="bandeau" id="cfg-alertes" hidden></div>
-        <h2>Référentiel des établissements</h2>
-        <div class="champ">
-          <label for="cfg-table-etab">Table dans laquelle porte la recherche d'établissement</label>
-          <select id="cfg-table-etab"></select>
-          <p class="note" id="cfg-table-etab-info"></p>
-        </div>
-        <p class="bandeau" id="cfg-desc-formulaire" hidden></p>
+        <p class="note">
+          Ce que cette page lit et mesure en ce moment. Les réglages (description automatique, nombres, formulaire et
+          version de chaque page) se font dans l'administration : onglets Installation et Formulaires.
+        </p>
         <h2>Activité du widget</h2>
         <div class="note" id="cfg-activite" style="margin: 0 0 6px"></div>
         <button type="button" class="secondaire petit" id="btn-activite" style="margin: 0 0 14px">
@@ -52,94 +49,6 @@
         </button>
         <h2>Colonnes et référentiel utilisés</h2>
         <div class="note" id="cfg-diagnostic" style="margin: 0 0 6px"></div>
-        <div id="cfg-bloc-description">
-          <h2>Pré-remplissage de la description</h2>
-          <p class="note">
-            La description est rédigée à partir des réponses saisies plus haut dans le formulaire. Ces réglages sont
-            enregistrés dans la table Parametres et s'appliquent à tous les utilisateurs du document.
-          </p>
-          <label class="case"><input type="checkbox" id="cfg-actif" /> Pré-remplir la description</label>
-          <div class="grille" style="margin-top: 12px">
-            <div class="champ">
-              <label for="cfg-format">Contenu de chaque élément</label>
-              <select id="cfg-format">
-                <option value="libelle">Libellé : valeur</option>
-                <option value="valeur">Valeur seule</option>
-              </select>
-            </div>
-            <div class="champ">
-              <label for="cfg-separateur">Séparateur entre éléments</label>
-              <select id="cfg-separateur">
-                <option value="ligne">Retour à la ligne</option>
-                <option value="pv">Point-virgule</option>
-                <option value="virgule">Virgule</option>
-                <option value="barre">Barre oblique</option>
-                <option value="espace">Espace</option>
-                <option value="point">Point</option>
-              </select>
-            </div>
-            <div class="champ">
-              <label for="cfg-puce">Puce devant chaque élément</label>
-              <input type="text" id="cfg-puce" maxlength="4" placeholder="Aucune" />
-            </div>
-          </div>
-          <label class="case"
-            ><input type="checkbox" id="cfg-entete" />
-            <span id="cfg-entete-texte">Commencer par l'en-tête de l'établissement</span></label
-          >
-          <label class="case" style="margin-top: 6px"
-            ><input type="checkbox" id="cfg-qualification" /> Inclure la qualification</label
-          >
-          <label class="case" style="margin-top: 6px"
-            ><input type="checkbox" id="cfg-questions" /> Inclure les questions supplémentaires</label
-          >
-          <label class="case" style="margin-top: 6px"
-            ><input type="checkbox" id="cfg-mobilisation" /> Terminer par le jour de mobilisation de l'établissement,
-            par exemple « (3e jour de mobilisation) »</label
-          >
-          <div class="champ" style="margin-top: 14px">
-            <span class="apercu-titre">Exemple</span>
-            <div class="apercu-auto"><div id="cfg-exemple"></div></div>
-          </div>
-          <div class="champ" style="margin-top: 16px">
-            <span class="apercu-titre">Format par type de colonne</span>
-            <p class="note" style="margin: 2px 0 8px">
-              S'applique aux questions de ce type, sauf réglage particulier ci-dessous. « Par défaut » reprend le
-              contenu choisi plus haut.
-            </p>
-            <div class="table-diag">
-              <table>
-                <tbody id="cfg-types"></tbody>
-              </table>
-            </div>
-          </div>
-          <div class="champ">
-            <span class="apercu-titre">Format question par question</span>
-            <p class="note" style="margin: 2px 0 8px">
-              Prioritaire sur le réglage par type. « Ne pas inclure » retire la question de la description.
-            </p>
-            <div class="table-diag">
-              <table>
-                <tbody id="cfg-par-question"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-        <h2 style="margin-top: 22px">Formulaire affiché</h2>
-        <div class="champ">
-          <label for="cfg-formulaire">Formulaire affiché sur cette page</label>
-          <select id="cfg-formulaire"></select>
-          <p class="note" id="cfg-formulaire-info"></p>
-        </div>
-        <div class="champ">
-          <label for="cfg-version">Version du formulaire</label>
-          <select id="cfg-version">
-            <option value="">Automatique</option>
-            <option value="en">Établissements scolaires</option>
-            <option value="esr">Enseignement supérieur et recherche</option>
-          </select>
-          <p class="note" id="cfg-version-info"></p>
-        </div>
         <h2 style="margin-top: 22px">Questions « tableau »</h2>
         <p class="note">
           Chaque enregistrement tient à jour la table associée à une question « tableau » (repère [tableau Table]). Ce
@@ -153,55 +62,6 @@
           </button>
           <span class="statut" id="statut-tableaux" role="status"></span>
         </div>
-        <h2 style="margin-top: 22px">Saisie des nombres</h2>
-        <label class="case"
-          ><input type="checkbox" id="cfg-positifs" /> Interdire les valeurs négatives dans toutes les questions
-          numériques</label
-        >
-        <div class="champ" style="margin-top: 12px">
-          <span class="apercu-titre">Limites question par question</span>
-          <p class="note" style="margin: 2px 0 8px">
-            Laissez vide pour ne pas limiter. Une limite indiquée ici remplace le réglage général pour cette question.
-            Un repère [positif], [min …] ou [max …] écrit dans la description de la colonne reste prioritaire.
-          </p>
-          <div class="table-diag">
-            <table>
-              <thead>
-                <tr>
-                  <th>Question</th>
-                  <th>Minimum</th>
-                  <th>Maximum</th>
-                </tr>
-              </thead>
-              <tbody id="cfg-bornes"></tbody>
-            </table>
-          </div>
-        </div>
-        <details class="diagnostic" id="coherence-dossiers">
-          <summary>Cohérence des dossiers</summary>
-          <p class="note">
-            Repère les versions rattachées au dossier d'un autre établissement. Une telle version est en réalité un
-            nouveau signalement de son propre établissement : la réparation en fait un dossier à part entière (colonne
-            Dossier pointant sur elle-même, nature « nouveau signalement »). Rien n'est modifié sans confirmation.
-          </p>
-          <div class="table-diag">
-            <table>
-              <thead>
-                <tr>
-                  <th>Ligne</th>
-                  <th>Établissement de la ligne</th>
-                  <th>Dossier actuel</th>
-                  <th>Établissement du dossier</th>
-                </tr>
-              </thead>
-              <tbody id="coherence-lignes"></tbody>
-            </table>
-          </div>
-          <div class="actions" style="margin-top: 8px">
-            <button type="button" class="secondaire petit" id="btn-reparer" hidden>Réparer ces lignes</button>
-            <span class="statut" id="statut-coherence" role="status"></span>
-          </div>
-        </details>
         <details class="diagnostic" id="diagnostic-conditions">
           <summary>Diagnostic des questions conditionnelles</summary>
           <p class="note">
@@ -224,9 +84,7 @@
           </div>
         </details>
         <div class="actions">
-          <button type="button" class="primaire" id="cfg-enregistrer">Enregistrer</button>
-          <button type="button" class="secondaire" id="cfg-annuler">Annuler</button>
-          <span class="statut" id="cfg-statut" role="status"></span>
+          <button type="button" class="secondaire" id="cfg-fermer">Fermer</button>
         </div>
       </section>
 

@@ -278,11 +278,32 @@
   // rattachement d'une section : toutes les versions du dossier passent sur l'établissement proposé ; les colonnes
   // recopiées du référentiel (non formules) sont mises à jour avec lui
   async function corriger(liste) {
+    if (liste.every((a) => a.action && a.action.genre === "separer")) return separer(liste);
     try {
       const n = await Q.rattacher(etat, liste);
       if (!n) return;
       await marquer(liste, "corrige", "rattaché à l'établissement");
       await relancer(`${liste.length} signalement(s) rattaché(s) à leur établissement (${n} ligne(s) modifiée(s)).`);
+    } catch (e) {
+      dire(`Correction refusée par Grist (${e.message || e}).`, true);
+    }
+  }
+
+  // versions saisies sur un autre établissement que leur dossier : chacune devient un dossier à part entière
+  async function separer(liste) {
+    const n = liste.reduce((somme, a) => somme + a.action.lignes.length, 0);
+    if (
+      !confirm(
+        `Faire de ${n > 1 ? `ces ${n} versions des dossiers` : "cette version un dossier"} à part entière ?\n\nUne version saisie sur un autre établissement que son dossier est en réalité un nouveau signalement de son propre établissement : elle devient le premier signalement de son propre dossier (nature « Nouveau signalement »).`,
+      )
+    )
+      return;
+    try {
+      const k = await Q.separer(etat, liste);
+      if (!k) return;
+      await marquer(liste, "corrige", "versions séparées en dossiers");
+      Donnees.viderCache();
+      await relancer(`${k} version(s) devenue(s) des dossiers à part entière.`);
     } catch (e) {
       dire(`Correction refusée par Grist (${e.message || e}).`, true);
     }

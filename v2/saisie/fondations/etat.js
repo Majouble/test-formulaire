@@ -10,7 +10,7 @@ const etatSaisie = {
   colonnesParContenu: new Set(), // clé → colonne retenue quand elle diffère de l'identifiant par défaut
 
   // ---------- module 03 : Spécificités du formulaire : établissements scolaires ou enseignement supérieur
-  versionPage: null, // option « version » de la page (⚙), utilisée quand le formulaire publié ne fixe pas la version
+  versionPage: null, // option « version » de la page (administration, onglet Installation), utilisée quand le formulaire publié ne fixe pas la version
 
   // ---------- module 05 : État du widget et périmètre de la page (agent, académies, départements)
   mappings: null,
@@ -97,7 +97,7 @@ const etatSaisie = {
   decorsQ: { avant: {}, fin: [] },
   formulairesDispo: [],
   dernierControleFormulaire: 0,
-  /* Filet de sécurité : une erreur pendant le chargement ne doit pas laisser un formulaire vide et sans « ⚙ Réglages ».
+  /* Filet de sécurité : une erreur pendant le chargement ne doit pas laisser un formulaire vide et sans « ⚙ Diagnostic ».
   Le message est affiché (à transmettre à l'administrateur) et les réglages restent ouverts. */
   erreursChargement: [],
   // Table des établissements : 1) choisie dans les réglages ; 2) table visée par la colonne « Établissement »

@@ -6,15 +6,15 @@
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
    Définit : NATURE, fusionnerAvecVersionRecente, seulementModifies, formatValeur, SEPARATEURS, joindre,
      memeReponse, mettreEnForme, element, calculerModifications, modificationsSaisies, texteAutomatique,
-     commentaireComplet, FAMILLES, famille, formatPour, questionsDescription, construireElements,
-     elementsDescription, MOTIF_MOBILISATION, ordinal, dateParGrist, cleSite, memeSite, calculerDoublonsDuJour,
-     doublonsDuJour, cleDoublon, extraitDescription, jourDeMobilisation, mentionMobilisation, qualificationRas,
-     signalementEnCoursRas, ajouterMobilisation, identiteDe, identiteDuFormulaire, enTeteDescription,
-     elementsTableau, descriptionGeneree, texteSousValeur, syntheseTableau, TYPES_DECOMPTE, decomptable, modeSous,
-     estQualifSous, valeursLigneTableau, texteAutoLigne, texteTableauDescription, erreurColonneEtablissement,
-     manquantsDeBase, erreurDateFaitsSaisie, qualificationVide, valeursAEnregistrer, erreurDossierAffiche,
-     doublonAConfirmer, erreurPrerequisEcriture, champsACorriger, nouvelleVersionDevientDerniere, aucuneMiseAJour,
-     champsNouvelleVersion, champsCreation, conseilEchecEnregistrement, champsModifiesParRapportADerniere.
+     commentaireComplet, famille, formatPour, construireElements, elementsDescription, MOTIF_MOBILISATION, ordinal,
+     dateParGrist, cleSite, memeSite, calculerDoublonsDuJour, doublonsDuJour, cleDoublon, extraitDescription,
+     jourDeMobilisation, mentionMobilisation, qualificationRas, signalementEnCoursRas, ajouterMobilisation,
+     identiteDe, identiteDuFormulaire, enTeteDescription, elementsTableau, descriptionGeneree, texteSousValeur,
+     syntheseTableau, TYPES_DECOMPTE, decomptable, modeSous, estQualifSous, valeursLigneTableau, texteAutoLigne,
+     texteTableauDescription, erreurColonneEtablissement, manquantsDeBase, erreurDateFaitsSaisie, qualificationVide,
+     valeursAEnregistrer, erreurDossierAffiche, doublonAConfirmer, erreurPrerequisEcriture, champsACorriger,
+     nouvelleVersionDevientDerniere, aucuneMiseAJour, champsNouvelleVersion, champsCreation,
+     conseilEchecEnregistrement, champsModifiesParRapportADerniere.
    Utilise :
      fondations/configuration : ETAB, OPTIONS_DEFAUT.
      fondations/outils : colonneDe, dateFr, egal, idDossierDe, listeQualif, refId, secondes, texteComparable,
@@ -22,7 +22,7 @@
      fondations/etat : etatSaisie.
      composants/date-faits : lireDateFaits.
      composants/champs : estVide, valeurOuNull.
-     composants/conditions-formules : evaluerConditionLigne, formuleConnue.
+     composants/conditions-formules : evaluerConditionLigne.
      composants/pieces-jointes : piecesJointes.
      composants/tableaux-structure : lireTableauJson, videSous.
      domaines/formulaire/regles : appliquerModele, varianteSaisie.
@@ -211,14 +211,6 @@ function commentaireComplet() {
   return parties.filter(Boolean).join(sep);
 }
 /* ---------- Format de chaque élément : par question, sinon par type de colonne, sinon général ---------- */
-const FAMILLES = {
-  nombre: "Nombres",
-  date: "Dates",
-  choix: "Choix",
-  case: "Cases à cocher",
-  reference: "Références",
-  texte: "Textes",
-};
 function famille(definition) {
   const typeColonne = typeBase(definition && definition.type);
   if (typeColonne === "Numeric" || typeColonne === "Int") return "nombre";
@@ -235,16 +227,6 @@ function formatPour(definition, options = etatSaisie.optionsAuto) {
   const parType = definition && !definition.tableau && (options.formatsType || {})[famille(definition)];
   if (parType && parType !== "defaut") return parType;
   return options.format;
-}
-// Questions concernées par la description : qualification puis questions supplémentaires
-function questionsDescription() {
-  const definitionQualification = etatSaisie.metaSig[colonneDe("Qualification")];
-  return [
-    ...(definitionQualification
-      ? [{ ...definitionQualification, libelle: definitionQualification.libelle || "Qualification" }]
-      : []),
-    ...etatSaisie.defsQuestions.filter((question) => !question.formule || formuleConnue(question)),
-  ];
 }
 // Construit les éléments de la description [{ libelle, valeur, def }] d'après les réponses lues et les options
 function construireElements(reponses, options) {
@@ -535,7 +517,7 @@ function syntheseTableau(sousDefs, lignes, court) {
     : [`Total : ${nombreLignes}`, ...parts].join(" · ");
 }
 /* ---------- Description automatique d'une question « tableau » ----------
-   Pour chaque colonne de la table (réglage ⚙ « Format question par question ») :
+   Pour chaque colonne de la table (administration, panneau Description du formulaire) :
    dans la ligne de chaque élément : « Libellé : valeur », « Valeur seule », ou rien (« Par défaut » suit le
    format de la question) ; et, en option, un décompte en tête (somme pour un nombre).
    Les colonnes [confidentiel] ne sont jamais incluses. */
@@ -741,7 +723,7 @@ function texteTableauDescription(questionTableau, lignesBrutes, options = etatSa
 function erreurColonneEtablissement() {
   return colonneDe("Etablissement")
     ? ""
-    : `Colonne de l'établissement introuvable dans la table « ${etatSaisie.tableId || "?"} » : voir ⚙ Réglages › « Colonnes et référentiel utilisés ».`;
+    : `Colonne de l'établissement introuvable dans la table « ${etatSaisie.tableId || "?"} » : voir ⚙ Diagnostic › « Colonnes et référentiel utilisés ».`;
 }
 // Libellés des informations de base absentes : établissement, description, date des faits (valeurs lues dans le formulaire)
 function manquantsDeBase(nom, description, dateFaits) {

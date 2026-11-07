@@ -9,8 +9,8 @@
    Utilise :
      fondations/outils : typeBase.
      fondations/etat : etatSaisie. */
-/* ---------- Réglages : lus et enregistrés dans la table Parametres ---------- */
-/* ---------- Limites des nombres : description de la colonne > réglage de la question > réglage général ---------- */
+/* ---------- Limites des nombres : description de la colonne ou réglage de la question dans le formulaire, sinon
+   réglages communs (administration, onglet Installation : limites anciennes par question, valeurs négatives) ---------- */
 const questionsNumeriques = () =>
   [...etatSaisie.defsQuestions, ...etatSaisie.defsDep, ...etatSaisie.defsAca].filter(
     (question) => !question.formule && ["Numeric", "Int"].includes(typeBase(question.type)),

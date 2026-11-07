@@ -1,0 +1,9 @@
+BOUTON : ⚙ Diagnostic | 1 point(s) technique(s) à vérifier dans le diagnostic
+PANNEAU visible : true
+RUBRIQUES : Activité du widget | Colonnes et référentiel utilisés | Questions « tableau » | Diagnostic des questions conditionnelles
+AUCUN RÉGLAGE : 0 champ(s)
+INTRODUCTION : Ce que cette page lit et mesure en ce moment. Les réglages (description automatique, nombres, formulaire et version de chaque page) se font dans l'administration : onglets Installation et Formulaires.
+COLONNES : Widget : version du v2 · <VERSION> (<DATE>) · table des réponses Reponses · formulaire « Signalements » (publié). Référentiel : Etablissements (choisie dans l'administration) ; colonnes utilisées : nom → Nom, UAI → UAI, commune → Commune, type → Type, académie → Academie, département → Departement, mail → Mail, 3 établissement(s) lus ; 2 signalement(s) sur 2 y retrouvent leur établissement. Établissement : Etablissement (référence vers Etablissements, associée dans l'administration) — renseignée sur 2 lignes sur 2, par exemple 2 Dossier : Dossier (référence vers Reponses, associée dans l'administration) — renseignée sur 0 ligne sur 2 Date des faits : Date_faits (Date, associée dans l'administration) — renseignée sur 2 lignes sur 2, par exemple <EPOCH> Date de saisie : Cree_le (DateTime:Europe/Paris, associée dans l'administration) — renseignée sur 2 lignes sur 2, par exemple <EPOCH> Qualification : Qualification (Choice, associée dans l'administration) — renseignée sur 2 lignes sur 2, par exemple "RAS" Description : Description (Text, associée dans l'administration) — renseignée sur 2 lignes sur 2, par exemple "Calme à Ivry" Nature : Nature (Choice, associée dans l'administration) — renseignée sur 2 lignes sur 2, par exemple "Nouveau signalement" Commentaire : non trouvée Auteur : non trouvée Site / bâtiment : non trouvée Clos : non trouvée
+ACTIVITÉ affichée : true
+CONDITIONS : Aucune question conditionnelle.
+PANNEAU visible après « Fermer » : false

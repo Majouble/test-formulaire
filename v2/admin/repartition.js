@@ -264,6 +264,7 @@
             perimetre: wo.perimetre || {},
             libelle: wo.libelle || "",
             agent: wo.agent || null,
+            version: wo.version || null,
           };
         })
         .filter(Boolean);

@@ -66,8 +66,8 @@ function finaliserReferentiel(erreur, alertes) {
   $("cfg-alertes").hidden = !techniques.length;
   $("btn-config").classList.toggle("a-signaler", techniques.length > 0);
   $("btn-config").title = techniques.length
-    ? `${techniques.length} point(s) technique(s) à vérifier dans les réglages`
-    : "Réglages du formulaire";
+    ? `${techniques.length} point(s) technique(s) à vérifier dans le diagnostic`
+    : "Diagnostic de la page";
 }
 // Le référentiel vient d'arriver : on complète ce qui en dépend, sans perdre une saisie en cours
 async function apresChargementEtabs() {

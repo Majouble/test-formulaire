@@ -1,0 +1,41 @@
+CARTE : Saisie : réglages communs et pages Réglages des pages de saisie, communs à tous les formulaires (clé resume_auto de Config) ou propres à chaque page. La description automatique se règle dans l'onglet Formulaires (panneau Description). SAISIE DES NOMBRES Interdire les valeurs négatives dans toutes les questions numériques Les limites d'une question (minimum, maximum) se règlent dans son formulaire : onglet Formulaires, réglages de la question. Elles priment sur ce réglage. Limites réglées autrefois dans le widget de saisie, appliquées quand le formulaire n'en fixe pas : Question Minimum Maximum Nb_eleves 1 900 Effacer ces limites RECHERCHE D'ÉTABLISSEMENT La recherche d'établissement des pages de saisie porte sur la table Etablissements, choisie autrefois dans le widget de saisie, et non sur la table du référentiel des réglages généraux (Etablissements). Utiliser la table du référentiel PAGES DE SAISIE Formulaire affiché et version de chaque page. « Automatique » : premier formulaire publié pour la table de la page ; version déduite de la table (colonne Site, ou référentiel autre que « Etablissements » : enseignement supérieur). Enregistré dans la page, qui le garde si elle est dupliquée. Page Formulaire affiché Version Formulaire Alice (Versailles – Public) table Reponses Automatique (premier formulaire publié pour Reponses) Signalements Enseignement supérieur et recherche fixée par le formulaire Formulaire Bob (Créteil) table Reponses Automatique (premier formulaire publié pour Reponses) Signalements Enseignement supérieur et recherche fixée par le formulaire
+NOMBRES : Valeurs négatives interdites.
+CONFIRMATION : Effacer les limites communes ? Les limites réglées dans les formulaires ne changent pas.
+STATUT : La recherche d'établissement porte désormais sur la table du référentiel.
+RÉGLAGES COMMUNS : {
+  "actif": true,
+  "format": "libelle",
+  "separateur": "ligne",
+  "entete": true,
+  "qualification": true,
+  "questions": true,
+  "mobilisation": true,
+  "nombresPositifs": true,
+  "bornes": {}
+}
+PAGES AVANT : vue 1 : formulaire Signalements, version (automatique) ; vue 2 : formulaire Signalements, version (automatique)
+PAGES APRÈS : vue 1 : formulaire Signalements, version (automatique) ; vue 2 : formulaire (automatique), version (automatique) | Formulaire de la page enregistré : il s'affiche à la prochaine ouverture de la page.
+CARTE APRÈS : Saisie : réglages communs et pages Réglages des pages de saisie, communs à tous les formulaires (clé resume_auto de Config) ou propres à chaque page. La description automatique se règle dans l'onglet Formulaires (panneau Description). SAISIE DES NOMBRES Interdire les valeurs négatives dans toutes les questions numériques Les limites d'une question (minimum, maximum) se règlent dans son formulaire : onglet Formulaires, réglages de la question. Elles priment sur ce réglage. PAGES DE SAISIE Formulaire affiché et version de chaque page. « Automatique » : premier formulaire publié pour la table de la page ; version déduite de la table (colonne Site, ou référentiel autre que « Etablissements » : enseignement supérieur). Enregistré dans la page, qui le garde si elle est dupliquée. Page Formulaire affiché Version Formulaire Alice (Versailles – Public) table Reponses Automatique (premier formulaire publié pour Reponses) Signalements Enseignement supérieur et recherche fixée par le formulaire Formulaire Bob (Créteil) table Reponses Automatique (premier formulaire publié pour Reponses) Signalements Automatique Établissements scolaires Enseignement supérieur et recherche Formulaire de la page enregistré : il s'affiche à la prochaine ouverture de la page.
+PANNEAU : ← Réglages du formulaire Description Champ commun · colonne Description Rédigée automatiquement à partir des réponses ; l'agent peut la compléter ou la modifier avant d'enregistrer. RÉGLAGES DE LA DESCRIPTION AUTOMATIQUE Communs à tous les formulaires Propres à ce formulaire Réglages communs à tous les formulaires qui n'ont pas leurs propres réglages (clé resume_auto de Config). Ils s'appliquent dès leur enregistrement, sans publication. Pré-remplir la description Contenu de chaque élément Libellé : valeur Valeur seule Séparateur Retour à la ligne Point-virgule Virgule Barre oblique Espace Point Puce devant chaque élément Commencer par le nom de l'établissement et sa commune Inclure la quali
+AVANT ENREGISTREMENT : Modifications non enregistrées. | **Collège Jean Rostand**, **Draguignan** : Qualification : Blocage total
+ENREGISTRÉ : Réglages communs enregistrés : ils s'appliquent aux pages de saisie à leur prochaine lecture.
+RÉGLAGES COMMUNS : {
+  "actif": true,
+  "format": "libelle",
+  "separateur": "pv",
+  "entete": true,
+  "qualification": true,
+  "questions": true,
+  "mobilisation": false,
+  "nombresPositifs": true,
+  "bornes": {},
+  "puce": "",
+  "formatsType": {},
+  "formatsTableau": {},
+  "description": false
+}
+ANOMALIE : Haute Dossier sur Collège Jean Moulin (0781234A) — Versailles 1 version(s) sur Lycée Romain Rolland (0941111B) — Ivry-sur-Seine. Dossier n° 4 · mer. 21 oct. · Blocage partiel Mouvement Modifier ou supprimer une saisie… En faire un dossier à part Vérifié, c'est correct
+CONFIRMATION : Faire de cette version un dossier à part entière ? | Une version saisie sur un autre établissement que son dossier est en réalité un nouveau signalement de son propre établissement : elle devient le premier signalement de son propre dossier (nature « Nouveau signalement »).
+MESSAGE : 1 version(s) devenue(s) des dossiers à part entière.
+SAISIE : n° 8 : dossier 8, Nouveau signalement, établissement 2
+RESTE : 0 anomalie(s) « Dossier sur »

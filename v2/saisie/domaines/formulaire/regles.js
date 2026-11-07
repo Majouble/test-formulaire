@@ -5,11 +5,11 @@
    leurs noms (scripts classiques, sans import) : au chargement, un fichier ne fait que définir. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
    Définit : commentaireActive, FICHE_DEFAUT, PRESETS, confSaisie, versionSaisie, varianteSaisie, appliquerModele,
-     identiteExemple, champWidget, avecRegles, defsDe, retenirFormulairePublie, calculerFormulaireActif,
-     signatureDuFormulaire, reperesDepuisReglages, defDepuisBloc, PARTIES_DEFAUT, partiesDe, defsDepuisFormulaire,
-     ROLES_SIGNALEMENT, reconnaitreColonnesSignalement, calculerAlerteStructureIllisible,
-     calculerAlerteAutresFormulaires, calculerRolesColonnes, calculerAlerteFormulaireNonPublie,
-     calculerAlertesColonnesEssentielles, calculerAlerteHorloge, calculerChoixQualification, calculerChampsVersion,
+     champWidget, avecRegles, defsDe, retenirFormulairePublie, calculerFormulaireActif, signatureDuFormulaire,
+     reperesDepuisReglages, defDepuisBloc, PARTIES_DEFAUT, partiesDe, defsDepuisFormulaire, ROLES_SIGNALEMENT,
+     reconnaitreColonnesSignalement, calculerAlerteStructureIllisible, calculerAlerteAutresFormulaires,
+     calculerRolesColonnes, calculerAlerteFormulaireNonPublie, calculerAlertesColonnesEssentielles,
+     calculerAlerteHorloge, calculerChoixQualification, calculerChampsVersion,
      calculerAlertesConditionsIntrouvables, stylePastille, carteOuiNon, CLES_DESCRIPTION, descriptionDuFormulaire,
      COULEURS_NOMMEES, hexVersRvb, versHex, teinteClaire, couleurNommee, nombreRegle, lireRegleCouleur,
      construireReglesCouleur, libelleDepuisCache, textesValeur, couleurDe, valeurLisible, couleurLigne,
@@ -143,26 +143,6 @@ function appliquerModele(modele, valeurs) {
     .replace(/\s{2,}/g, " ")
     .trim();
 }
-const identiteExemple = () =>
-  varianteSaisie().version === "esr"
-    ? {
-        nom: "Université de Rennes",
-        commune: "Rennes",
-        site: "Campus de Beaulieu",
-        uai: "0352480A",
-        academie: "Rennes",
-        region: "Bretagne",
-        departement: "Ille-et-Vilaine",
-      }
-    : {
-        nom: "Collège Jean Rostand",
-        commune: "Draguignan",
-        site: "",
-        uai: "0830001A",
-        academie: "Nice",
-        region: "Provence-Alpes-Côte d'Azur",
-        departement: "Var",
-      };
 // Champ de ce formulaire (EN, ESR) : un agent mobilisé sur l'autre champ pendant le créneau en est averti
 const champWidget = () => {
   try {
@@ -658,7 +638,7 @@ function carteOuiNon(question) {
   return carte;
 }
 /* Description réglée dans l'administration des formulaires (« Réglages propres à ce formulaire ») :
-   ces réglages remplacent ceux de ⚙ (table Parametres) pour la description et le résumé des mises à jour.
+   ces réglages remplacent les réglages communs (clé resume_auto de Config) pour la description et le résumé des mises à jour.
    Le format de chaque question vient de ses réglages dans le formulaire, celui des champs d'un tableau de descTableau. */
 const CLES_DESCRIPTION = [
   "actif",

@@ -7,7 +7,7 @@
    Définit : lireFormulaires, listerFormulairesDeLaTable, lireOptionFormulaireVoulu, lireOptionsPageGrist,
      choisirFormulaire, verifierFormulairePublie, chargerConfiguration, lancerLecturesConfiguration,
      lireStructureTableReponses, lireAlerteAutresFormulaires, attendreProfilEtReglages, chargerConfigurationEtapes,
-     lireChoixFormulaire, cacheLibelles, libellesDemandes, chargerLibellesReference, libelleRef.
+     cacheLibelles, libellesDemandes, chargerLibellesReference, libelleRef.
    Utilise :
      fondations/etat : etatSaisie.
      fondations/grist : lireMeta, lireSocleSaisie, metaColonnes.
@@ -196,17 +196,6 @@ async function chargerConfigurationEtapes() {
   await afficherReferentielQuandPret(pEtabs, alertes);
   if (!etatSaisie.dossierId) await preparerNouveauSignalement();
   majCouleur();
-}
-// Lit dans Grist le formulaire choisi pour la page (option) et la liste des formulaires de la table
-async function lireChoixFormulaire() {
-  let voulu = null;
-  try {
-    voulu = grist.getOption ? await grist.getOption("formulaire") : null;
-  } catch (_) {
-    // option absente ou page ouverte hors de Grist : formulaire par défaut
-  }
-  const liste = (await lireFormulaires()).filter((formulaire) => formulaire.table === etatSaisie.tableId);
-  return { voulu, liste };
 }
 // Libellés des colonnes Référence (lus une fois, à la demande)
 const cacheLibelles = new Map(),

@@ -780,8 +780,7 @@ button[aria-disabled="true"] {
   color: var(--bleu);
   margin-bottom: 4px;
 }
-#apercu-texte,
-#cfg-exemple {
+#apercu-texte {
   white-space: pre-wrap;
 }
 .config {
@@ -1236,19 +1235,6 @@ dialog#dlg-reporter .actions {
   padding: 8px 12px;
   margin: 0 0 16px;
 }
-#cfg-bornes input {
-  width: 7rem;
-  padding: 5px 8px;
-}
-#cfg-par-question tr.sous-reglage td:first-child {
-  padding-left: 22px;
-  color: var(--gris);
-}
-#cfg-par-question .case-decompte {
-  display: inline-flex;
-  margin-left: 10px;
-  font-size: 0.85rem;
-}
 /* Question « tableau » : une ligne = une carte */
 .tableau-rep {
   border: 1px solid var(--trait);
@@ -1603,9 +1589,6 @@ dialog#dlg-reporter .actions {
   .actions-ligne {
     margin-top: 0;
   }
-}
-#cfg-bornes input:disabled {
-  color: var(--gris);
 }
 .erreur-champ {
   display: block;

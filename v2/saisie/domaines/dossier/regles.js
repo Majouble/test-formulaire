@@ -4,7 +4,7 @@
    Chargé par saisie/index.html dans l'ordre : fondations, composants, domaines, demarrage.js. Les fichiers partagent
    leurs noms (scripts classiques, sans import) : au chargement, un fichier ne fait que définir. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
-   Définit : decisionLigneCliquee, jourDesFaits, comparerVersions, calculerVersions, lignesIncoherentes, auteurDe,
+   Définit : decisionLigneCliquee, jourDesFaits, comparerVersions, calculerVersions, auteurDe,
      reinitialiserEtatCreation, diagnostiquerFaitsAnterieurs, jourCalendaire, jourFaits, jourDuFormulaire,
      jourDeLaVersion, libelleDossier, calculerDossiersInit, construireIndexRecherche, versionDuJour,
      lignesPrecedentes, VIDE_FILTRE, RENSEIGNE_FILTRE, CHAMPS_ETAB_FILTRE, MAX_VALEURS_FILTRE, derniereDe,
@@ -73,21 +73,6 @@ function calculerVersions() {
   etatSaisie.versions = lignes;
   etatSaisie.initiale = lignes.find((ligne) => ligne.id === etatSaisie.dossierId) || lignes[0] || null;
   etatSaisie.derniere = lignes[lignes.length - 1] || null;
-}
-/* ---------- Cohérence des dossiers ---------- */
-function lignesIncoherentes() {
-  const colonneDossier = colonneDe("Dossier"),
-    colonneEtablissement = colonneDe("Etablissement");
-  if (!colonneDossier || !colonneEtablissement) return [];
-  const parId = new Map(etatSaisie.enregistrements.map((ligne) => [ligne.id, ligne]));
-  return etatSaisie.enregistrements
-    .filter((ligne) => {
-      const idDossier = refId(ligne[colonneDossier]);
-      if (!idDossier || idDossier === ligne.id) return false;
-      const init = parId.get(idDossier);
-      return init && refId(init[colonneEtablissement]) !== refId(ligne[colonneEtablissement]);
-    })
-    .map((ligne) => ({ ligne: ligne, dossier: parId.get(refId(ligne[colonneDossier])) }));
 }
 const auteurDe = (ligne) => {
   const auteur = ligne && colonneDe("Auteur") ? valeurLigne(ligne, "Auteur") : "";

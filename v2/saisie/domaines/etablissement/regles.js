@@ -364,7 +364,7 @@ function decisionTableEtab(choisie, cible, colonneEtablissement) {
   if (choisie)
     return {
       table: choisie,
-      origine: "choisie dans les réglages",
+      origine: "choisie dans l'administration",
       alerte:
         cible && cible !== choisie
           ? `La recherche porte sur la table « ${choisie} », mais la colonne « ${colonneEtablissement} » renvoie vers la table « ${cible} » : ` +
@@ -382,7 +382,7 @@ function alerteLiensEtab() {
   );
   const perdus = avec.filter((enregistrement) => !etabDeLigne(enregistrement));
   return perdus.length > avec.length / 2
-    ? `${perdus.length} signalement(s) sur ${avec.length} renvoient à des établissements absents de la table « ${ETAB.table} » : la colonne « ${colonneDe("Etablissement")} » vise sans doute une autre table. Vérifiez ⚙ Réglages › « Colonnes et référentiel utilisés ».`
+    ? `${perdus.length} signalement(s) sur ${avec.length} renvoient à des établissements absents de la table « ${ETAB.table} » : la colonne « ${colonneDe("Etablissement")} » vise sans doute une autre table. Vérifiez ⚙ Diagnostic › « Colonnes et référentiel utilisés ».`
     : "";
 }
 // Dit si le lien d'accès de l'établissement reste à lire (référentiel venu du cache, lien absent et pas déjà demandé)

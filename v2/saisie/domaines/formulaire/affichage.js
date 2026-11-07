@@ -7,8 +7,8 @@
    Définit : appliquerVersion, NOMS_VISA, appliquerNomsParties, decorHtml, relancerChargementConfiguration,
      remplirPageDepuisStructure, construireQuestionsPage, dessinerChampsPage, appliquerReglagesPage,
      afficherAlertes, afficherReferentielQuandPret, styleChoix, afficherChoix, lireChoix, lireChoixMulti,
-     lireQualificationInitiale, cocherQualif, focusPremiereQuestion, remplirChoixFormulaire,
-     rafraichirApresLibellesReference, valeursEnCours, majCouleur, brancherEvenementsFormulaire.
+     lireQualificationInitiale, cocherQualif, focusPremiereQuestion, rafraichirApresLibellesReference,
+     valeursEnCours, majCouleur, brancherEvenementsFormulaire.
    Utilise :
      fondations/outils : colonneDe, jourCle, listeQualif, statut.
      fondations/etat : etatSaisie.
@@ -22,7 +22,7 @@
      domaines/formulaire/regles : calculerAlerteHorloge, calculerChampsVersion, calculerChoixQualification,
        commentaireActive, construireReglesCouleur, couleurDe, defsDe, defsDepuisFormulaire, partiesDe, teinteClaire,
        textesValeur, valeurLisible, varianteSaisie.
-     domaines/formulaire/donnees : chargerConfiguration, lireChoixFormulaire, verifierFormulairePublie.
+     domaines/formulaire/donnees : chargerConfiguration, verifierFormulairePublie.
      domaines/etablissement/regles : CHAMPS_NOUVEL_ETAB, appliquerColonnesForcees.
      domaines/etablissement/affichage : apresChargementEtabs, finaliserReferentiel.
      domaines/dossier/regles : UN_JOUR.
@@ -235,24 +235,6 @@ function focusPremiereQuestion() {
   const bloc = cible.closest("fieldset, .champ") || cible;
   if (bloc.scrollIntoView) bloc.scrollIntoView({ block: "center" });
 }
-async function remplirChoixFormulaire() {
-  const selecteurFormulaire = $("cfg-formulaire");
-  const { voulu, liste } = await lireChoixFormulaire();
-  selecteurFormulaire.innerHTML =
-    `<option value="">Automatique (premier formulaire publié pour la table ${esc(etatSaisie.tableId || "")})</option>` +
-    liste
-      .map(
-        (formulaire) =>
-          `<option value="${esc(formulaire.nom)}"${formulaire.nom === voulu ? " selected" : ""}${formulaire.publie ? "" : " disabled"}>${esc(formulaire.nom)}${formulaire.publie ? "" : " (jamais publié)"}</option>`,
-      )
-      .join("");
-  selecteurFormulaire.value = voulu || "";
-  $("cfg-formulaire-info").textContent =
-    (etatSaisie.formulaireActif
-      ? `Affiché actuellement : « ${etatSaisie.formulaireActif.nom} ». `
-      : "Aucun formulaire publié pour cette table : questions issues des associations du widget. ") +
-    "Ce choix est enregistré avec la page (il suit la page dupliquée). Il nécessite un widget ouvert depuis une adresse (pas le Custom Widget Builder, dont les options contiennent le code).";
-}
 // Rafraîchit la liste des signalements et la couleur une fois les libellés chargés
 function rafraichirApresLibellesReference() {
   enFile(async () => {
@@ -347,16 +329,4 @@ function brancherEvenementsFormulaire() {
       avertirFaitsAnterieurs();
     }),
   );
-  $("cfg-formulaire").addEventListener("change", async () => {
-    try {
-      await grist.setOption("formulaire", $("cfg-formulaire").value || null);
-      statut("cfg-statut", "Formulaire de la page enregistré.", "ok");
-      enFile(async () => {
-        await chargerConfiguration();
-        await rafraichir();
-      });
-    } catch (erreur) {
-      statut("cfg-statut", `Choix non enregistré : ${erreur.message || erreur}`, "err");
-    }
-  });
 }

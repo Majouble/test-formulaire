@@ -49,11 +49,13 @@ Un fichier `nom.spec.js` par scénario, nommé d'après ce qu'il vérifie ; son 
 | `atlas-etablissements-sous-table` | Atlas : établissements cités dans une sous-table (référence au référentiel) : points propres, pages, encarts, étiquettes |
 | `a-verifier-anomalies` | Onglet « À vérifier » : sections (SEGPA), doublons, établissements, qualifications, saisies d'essai |
 | `saisie-segpa` | Saisie : SEGPA choisie à la création → alerte et bascule sur le collège |
+| `saisie-diagnostic` | Saisie : bouton ⚙ Diagnostic (activité, colonnes et référentiel utilisés, questions conditionnelles), sans réglage modifiable |
 | `question-tableau-historisee` | Question tableau historisée : une copie des lignes par version, mouvements Ajout / Modification / Inchangée / Retrait |
 | `installation-historiser-sous-table` | Installation : étape « Historiser la sous-table » puis colonnes créées |
 | `sites-esr-reprise-dernier-etat` | Formulaire par site (ESR) : reprise du dernier état connu de chaque site, qualification déduite en bas, contrôle de cohérence |
 | `admin-rapprochement-sites` | Admin : rapprochement des sites saisis (Référentiel), modèle de formulaire « Enseignement supérieur par site » |
 | `admin-changer-modele-formulaire` | Admin : changer le modèle d'un formulaire existant (standard ↔ enseignement supérieur par site) |
+| `admin-reglages-saisie` | Admin : réglages de la saisie venus de son panneau ⚙ (nombres, limites et table forcée hérités, formulaire et version de chaque page, description automatique commune) ; « À vérifier » : version sur un autre établissement séparée en dossier à part |
 | `referentiel-sites-recherche-adresse` | Widget « Référentiel des sites » : recherche par adresse robuste (texte nettoyé, 3 caractères minimum, coordonnées hors limites ignorées, message du service affiché) |
 | `sites-esr-sites-mis-de-cote` | Formulaire par site : sites repris laissés de côté dans un nouveau signalement (✕), remis, non enregistrés, de nouveau proposés ensuite |
 | `secours-kit-deux-postes` | Mode secours : kit hors ligne sur deux postes et un dossier partagé (saisie et mise à jour croisées, tableau de bord, tableau des signalements de A à Z et son .docx, rechargement, exports), copies en couches, puis réintégration dans Grist (renumérotation, références, sans doublon). Lancer d'abord `node ../outils/construire-secours.js` |
