@@ -1,0 +1,24 @@
+CONDITIONS POSÉES :
+  Détail violence -> {"ref":"Nature_des_faits","op":"=","valeurs":["Violence"]}
+  Détail intrusion -> {"ref":"Nature_des_faits","op":"=","valeurs":["Intrusion, effraction"]}
+  Détail lieu -> {"ref":"Lieu","op":"=","valeurs":["Salle 1","Salle 2"]}
+  Suites police -> {"ref":"Police_prevenue","op":"=","valeurs":["Oui"]}
+  Détail intrusion ou violence -> {"ref":"Nature_des_faits","op":"=","valeurs":["Intrusion, effraction","Violence"]}
+PASTILLES DE CONDITION : si Nature des faits = Violence ; si Nature des faits = Intrusion, effraction ; si Lieu = Salle 1 ou Salle 2 ; si Police prévenue = Oui ; si Nature des faits = Intrusion, effraction ou Violence
+BOUTON : ✎ Éditer | aria-pressed = true
+PANNEAU : Mode test | Répondez dans l'aperçu : les questions conditionnelles apparaissent comme dans le widget de saisie. Rien n'est enregistré. | Choisissez un établissement à l'étape 1 : les données de sa fiche s'affichent et la description se rédige au fil de vos réponses. | Revenir à l'édition
+OUTILS D'ÉDITION PRÉSENTS : 0
+DÉBUT                                        | visibles : Nature des faits / Lieu / Police prévenue
+NATURE = Violence                            | visibles : Nature des faits / Lieu / Police prévenue / Détail violence / Détail intrusion ou violence
+NATURE = Intrusion, effraction (choix à virgule) | visibles : Nature des faits / Lieu / Police prévenue / Détail intrusion / Détail intrusion ou violence
+NATURE = Option 1                            | visibles : Nature des faits / Lieu / Police prévenue
+LIEU = Salle 1                               | visibles : Nature des faits / Lieu / Police prévenue / Détail lieu
+LIEU = Salle 2                               | visibles : Nature des faits / Lieu / Police prévenue / Détail lieu
+LIEU = Salle 1, Salle 2 (saisie avec virgule) | visibles : Nature des faits / Lieu / Police prévenue
+POLICE PRÉVENUE = Oui                        | visibles : Nature des faits / Lieu / Police prévenue / Suites police
+DESCRIPTION : Nature des faits : Violence
+Lieu : Salle 1, Salle 2
+Police prévenue : Oui
+(1er jour de mobilisation)
+BROUILLON MODIFIÉ PAR LE TEST : false
+RETOUR ÉDITION : ▶ Tester | outils présents : true | masqués restants : 0

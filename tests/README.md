@@ -56,6 +56,11 @@ Un fichier `nom.spec.js` par scénario, nommé d'après ce qu'il vérifie ; son 
 | `sites-esr-reprise-dernier-etat` | Formulaire par site (ESR) : reprise du dernier état connu de chaque site, qualification déduite en bas, contrôle de cohérence |
 | `admin-rapprochement-sites` | Admin : rapprochement des sites saisis (Référentiel), modèle de formulaire « Enseignement supérieur par site » |
 | `admin-changer-modele-formulaire` | Admin : changer le modèle d'un formulaire existant (standard ↔ enseignement supérieur par site) |
+| `admin-formulaire-creer` | Admin › Formulaires : création d'un formulaire (boîte « Nouveau », nouvelle table, référentiel), liste, aperçu initial, table Formulaires et colonnes créées |
+| `admin-formulaire-questions` | Admin › Formulaires : ajout de questions de tous types, libellé / obligatoire / choix / minimum-maximum, titre et texte, déplacement (boutons, Alt+flèches), condition d'affichage |
+| `admin-formulaire-mode-test` | Admin › Formulaires : mode « ▶ Tester », questions conditionnelles qui apparaissent / disparaissent, choix et texte contenant une virgule |
+| `admin-formulaire-publier` | Admin › Formulaires : publication (état, colonne Publie, Publie_le, libellé reporté dans la colonne), puis brouillon modifié depuis la publication |
+| `admin-formulaire-dupliquer` | Admin › Formulaires : duplication (même table, brouillon copié avec nouveaux identifiants, rien de publié, copie indépendante) |
 | `admin-reglages-saisie` | Admin : réglages de la saisie venus de son panneau ⚙ (nombres, limites et table forcée hérités, formulaire et version de chaque page, description automatique commune) ; « À vérifier » : version sur un autre établissement séparée en dossier à part |
 | `referentiel-sites-recherche-adresse` | Widget « Référentiel des sites » : recherche par adresse robuste (texte nettoyé, 3 caractères minimum, coordonnées hors limites ignorées, message du service affiché) |
 | `sites-esr-sites-mis-de-cote` | Formulaire par site : sites repris laissés de côté dans un nouveau signalement (✕), remis, non enregistrés, de nouveau proposés ensuite |
