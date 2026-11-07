@@ -1,0 +1,29 @@
+ADMIN SOURCES : Sites_signales › Site (référence aux sites) | *Sites › Nom du site (référence aux sites) — 5 à rattacher | Sites_signales › Site_libre
+ADMIN LIBELLÉS :
+   ☐ Collège Jean Moulin « Annexe Rue Dupont × 2 ancien nom <DATE> · RAS · Mise à jour — Mouvement n°5 : blocage de l'entrée principale, une cinquantaine d'étudiants devant le bâtiment 1 autre signalement » → — aucun (hors référentiel)
+   ☑ Collège Jean Moulin « campus beaulieu, bât. 12 × 1 ancien nom <DATE> · Blocage total — Mouvement n°4 : blocage de l'entrée principale, une cinquantaine d'étudiants devant le bâtiment » → Campus Beaulieu
+   ☑ Collège Jean Moulin « Villejean × 1 ancien nom <DATE> · Rassemblement — Mouvement n°4 : blocage de l'entrée principale, une cinquantaine d'étudiants devant le bâtiment » → Site Villejean
+   ☑ Lycée Romain Rolland « Bâtiment Ivry × 1 ancien nom <DATE> · RAS — Calme à Ivry n°2 : blocage de l'entrée principale, une cinquantaine d'étudiants devant le bâtiment » → Campus Ivry
+ADMIN CONTEXTE :
+   <DATE> · RAS · Mise à jour — Mouvement n°5 : blocage de l'entrée principale, une cinquantaine d'étudiants devant le bâtiment 1 autre signalement
+   <DATE> · Blocage total — Mouvement n°4 : blocage de l'entrée principale, une cinquantaine d'étudiants devant le bâtiment
+   <DATE> · Rassemblement — Mouvement n°4 : blocage de l'entrée principale, une cinquantaine d'étudiants devant le bâtiment
+   <DATE> · RAS — Calme à Ivry n°2 : blocage de l'entrée principale, une cinquantaine d'étudiants devant le bâtiment
+ADMIN STATUT : 3 correspondance(s) validée(s), 3 ligne(s) de saisie complétée(s).
+ADMIN TABLE Sites : 1:2  2:"Annexe Rue Dupont"  3:2  4:3  5:5  6:"Annexe rue Dupont"
+ADMIN CORRESPONDANCES : 1|Campus Beaulieu bat 12→2(Validé)  1|campus beaulieu, bât. 12→2(Validé)  1|Villejean→3(Validé)  2|Bâtiment Ivry→5(Validé)
+WIDGET SANS ÉTABLISSEMENT : Choisissez d'abord un établissement (onglet « Établissements et sites »).
+WIDGET SOURCES : Sites_signales › Site (référence aux sites) | *Sites › Nom du site (référence aux sites) — 5 à rattacher | Sites_signales › Site_libre
+WIDGET LIBELLÉS :
+   ☐ Collège Jean Moulin Annexe Rue Dupont × 2 ancien nom <DATE> · RAS · Mise à jour — Mouvement n°5 : blocage de l'entrée principale, une cinquantaine d'étudiants devant le bâtiment 1 autre signalement → — aucun (hors référentiel)
+   ☑ Collège Jean Moulin campus beaulieu, bât. 12 × 1 ancien nom <DATE> · Blocage total — Mouvement n°4 : blocage de l'entrée principale, une cinquantaine d'étudiants devant le bâtiment → Campus Beaulieu
+   ☑ Collège Jean Moulin Villejean × 1 ancien nom <DATE> · Rassemblement — Mouvement n°4 : blocage de l'entrée principale, une cinquantaine d'étudiants devant le bâtiment → Site Villejean
+   ☑ Lycée Romain Rolland Bâtiment Ivry × 1 ancien nom <DATE> · RAS — Calme à Ivry n°2 : blocage de l'entrée principale, une cinquantaine d'étudiants devant le bâtiment → Campus Ivry
+FICHE / MOTS-CLÉS DANS LE WIDGET : non / non
+WIDGET STATUT : 3 correspondance(s) validée(s), 1 site(s) créé(s) dans le référentiel, 3 ligne(s) de saisie complétée(s).
+WIDGET TABLE Sites : 1:2  2:"Annexe Rue Dupont"  3:2  4:3  5:6  6:"Annexe rue Dupont"
+WIDGET CORRESPONDANCES : 1|Campus Beaulieu bat 12→2(Validé)  1|campus beaulieu, bât. 12→2(Validé)  1|Villejean→3(Validé)  2|Bâtiment Ivry→6(Validé)
+RESTE À TRAITER : 1 | à traiter (1)
+MODE ÉTABLISSEMENT : Choisissez d'abord un établissement (onglet « Établissements et sites »).
+ÉTABLISSEMENT CHOISI, CONTEXTE :
+   Annexe Rue Dupont 2 lignes Variantes : Annexe Rue Dupont ; Annexe rue Dupont <DATE> · RAS · Mise à jour — Mouvement n°5 : blocage de l'entrée principale, une cinquantaine d'étudiants devant le bâtiment 1 autre signalement Aucun site proposé

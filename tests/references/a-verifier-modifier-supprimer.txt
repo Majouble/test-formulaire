@@ -1,0 +1,12 @@
+ANOMALIES : Haute 2 dossiers pour Collège Jean Moulin (0781234A) — Versailles le mer. 21 oct. | Moyenne Collège Jean Moulin (0781234A) — Versailles : mar. 20 oct. et mer. 21 oct. | Moyenne Collège Jean Moulin (0781234A) — Versailles : mer. 21 oct. et jeu. 22 oct. | Basse Collège Jean Moulin (0781234A) — Versailles
+SAISIES DU DOSSIER 4 : Première saisie n° 4 <DATE> <HEURE> [supprimer désactivé] | Mise à jour n° 5 <DATE> <HEURE> · dernière version [supprimer possible]
+CHAMPS MODIFIABLES : Date_faits, Cree_le (non modifiable ici) (lecture), Nature, Qualification, Description, Detail_des_sites (non modifiable ici) (lecture), Ancien_detail (non modifiable ici) (lecture)
+ENREGISTRÉ : Rassemblement devant le hall, saisi deux fois
+APRÈS « Terminer » : Saisie n° 8 modifiée. | Haute 2 dossiers pour Collège Jean Moulin (0781234A) — Versailles le mer. 21 oct. | Moyenne Collège Jean Moulin (0781234A) — Versailles : mar. 20 oct. et mer. 21 oct. | Moyenne Collège Jean Moulin (0781234A) — Versailles : mer. 21 oct. et jeu. 22 oct.
+CONFIRMATION : Supprimer la mise à jour n° 5 du <DATE> <HEURE> ? | Le dossier garde ses autres saisies ; la saisie précédente redevient la dernière version. Les lignes liées à cette saisie (sites, tableaux…) sont supprimées avec elle.
+APRÈS SUPPRESSION DE LA MISE À JOUR : Saisie n° 5 supprimée, avec 1 ligne(s) de « Sites_signales ».
+CONFIRMATION : Supprimer tout le dossier n° 8 (1 saisie(s)) ? | Toutes ses saisies et les lignes liées (sites, tableaux…) sont supprimées. À réserver à une saisie erronée ou en double.
+APRÈS SUPPRESSION DU DOSSIER : Dossier n° 8 supprimé (1 saisie(s)), avec 1 ligne(s) de « Sites_signales ». | anomalies : Moyenne Collège Jean Moulin (0781234A) — Versailles : mar. 20 oct. et mer. 21 oct. | Moyenne Collège Jean Moulin (0781234A) — Versailles : mer. 21 oct. et jeu. 22 oct.
+RÉPONSES : 1,2,3,4,6,7 | SITES : 1:d4/v4
+WIDGET, SAISIES : 4:Modifier/Supprimer | 5:Modifier/Supprimer | 8:Modifier/Supprimer
+WIDGET, APRÈS : Dossier n° 8 supprimé (1 saisie(s)), avec 1 ligne(s) de « Sites_signales ». Anomalie résolue : « 2 dossiers pour Collège Jean Moulin (0781234A) — Versailles le  | réponses 1,2,3,4,5,6,7

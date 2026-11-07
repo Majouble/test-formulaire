@@ -1,0 +1,29 @@
+[Alice Martin] fenêtre : Mise en route du mode secours
+[Alice Martin] pages : Formulaire Alice (Versailles – Public) | Formulaire Bob (Créteil) | Formulaire « Signalements » (sans page d'agent)
+[Alice Martin] bandeau : Mode secours Alice Martin · Formulaire Alice (Versailles – Public) · copie du <DATE> <HEURE> Dossier partagé « partage » · 1 poste(s) · lu à <HEURE> SaisieTableau de bordTableau des signalements ExporterRéglages
+[A] confirmation : Signalement enregistré Dossier n° <N13> créé pour Collège Jean Moulin. Vous pouvez
+[A] dossier partagé : Saisies hors ligne - Alice Martin (poste <N>).json
+[A] journal : AddRecord Reponses ; UpdateRecord Reponses ; AddRecord Sites_signales | Cree_le écrit : true
+[Bob Durand] fenêtre : Mise en route du mode secours
+[Bob Durand] pages : Formulaire Alice (Versailles – Public) | Formulaire Bob (Créteil) | Formulaire « Signalements » (sans page d'agent)
+[Bob Durand] bandeau : Mode secours Bob Durand · Formulaire « Signalements » (sans page d'agent) · copie du <DATE> <HEURE> Dossier partagé « partage » · 2 poste(s) · lu à <HEURE> SaisieTableau de bordTableau des signalements ExporterRéglages
+[B] signalements : 6 | Collège Jean Moulin RAS Versailles · n° <N13> · dernière saisie le <DATE> · au
+[B] statut : Mise à jour enregistrée : une nouvelle étape a été ajoutée.
+[B] tableau de bord : PRISME Plateforme de recueil d’information et de suivi multi-échelle Tableau de bord 9 lignes Exporter en Word Nombre de
+[B] tableau des signalements : 6 dossier(s), triés par nom d'établissement. | Collège Jean Moulin ; Blocage total ; Rassemblement ; RAS ; RAS ; Lycée Romain Rolland
+[B] Word : <HORODATAGE>_Signalements_Education_nationale.docx
+[A] versions du dossier : [["Nouveau signalement","Saisie en mode secours par Alice"],["Mise à jour","Mise à jour par Bob"]]
+[A] après rechargement, lignes du mode secours : 2
+[A] CSV : secours-Reponses-<HORODATAGE>.csv | <N13>;Collège Jean Moulin;<DATE>;<DATE> <HEURE>;Nouveau signalement;RAS;Saisie en mode secours par Alic
+[Grist] aperçu : 5 saisie(s) à réintégrer, par 2 agent(s), du <DATE> <HEURE> au <DATE> <HEURE>. Table Lignes créées Compléments de ces lignes Lignes existantes modifiées Suppressions Reponses 2 1 0 0 Sites_signales 2 0 0 0
+[Grist] bilan : 5 saisie(s) réintégrée(s), 4 ligne(s) créée(s).
+[Grist] réponses : [[8,8,"Saisie en mode secours par Alice","<ISO>"],[9,8,"Mise à jour par Bob","<ISO>"]]
+[Grist] sites (dossier, version) : ["8/8","8/9"]
+[Grist] second passage : Rien à réintégrer : les 5 saisie(s) de ces fichiers sont déjà dans le document.
+[A] après le complément : {"lignesSecours":0,"reintegrees":5,"saisieAlice":1,"sitesDossier8":2}
+[A] bandeau : Mode secours Alice Martin · Formulaire Alice (Versailles – Public) · copie du <DATE> <HEURE> · dossiers de <HEURE> · 5 saisie(s) déjà réintégrée(s) Dossier partagé « partage » · 2 poste(s) · lu à <HEURE> SaisieTableau de bordTableau des signalements ExporterRéglages
+[Claire Petit] fenêtre : Mise en route du mode secours
+[Claire Petit] copies prises d'office : 3. Copie du document Rien à charger : le poste en mode veille dépose les copies dans le dossier partagé (référentiels et réglages une fois par jour, signalements toutes les heures) et chaque kit prend d'office la plus récente. Référentiels et réglages : <JJ/MM>/
+[Claire Petit] pages : Formulaire Alice (Versailles – Public) | Formulaire Bob (Créteil) | Formulaire « Signalements » (sans page d'agent)
+[Claire Petit] bandeau : Mode secours Claire Petit · Formulaire « Signalements » (sans page d'agent) · copie du <DATE> <HEURE> · dossiers de <HEURE> · 5 saisie(s) déjà réintégrée(s) Dossier partagé « partage » · 3 poste(s) · lu à <HEURE> SaisieTableau des signalements ExporterRéglages
+[C] état : {"lignesSecours":0,"reintegrees":5,"saisieAlice":1,"sitesDossier8":2} | signalements : 6

@@ -1,0 +1,7 @@
+ADMIN :
+   ☐ « Annexe Rue Dupont » → — aucun (hors référentiel) | choix : — aucun (hors référentiel), Campus centre, Campus Beaulieu, + Nouveau site du référentiel
+   ☑ « campus beaulieu, bât. 12 » → Campus Beaulieu | choix : — aucun (hors référentiel), Campus centre, Campus Beaulieu, + Nouveau site du référentiel
+   ☐ « Villejean » → — aucun (hors référentiel) | choix : — aucun (hors référentiel), Campus centre, Campus Beaulieu, + Nouveau site du référentiel
+   ☑ « Bâtiment Ivry » → Campus Ivry | choix : — aucun (hors référentiel), Campus Ivry, + Nouveau site du référentiel
+REPRIS : Campus Beaulieu [Dernier état : Blocage total (<JJ/MM> <HEURE>) · Confirmer cet état] | Annexe Rue Dupont [Dernier état : Rassemblement (<JJ/MM> <HEURE>) · Confirmer cet état] | Campus centre [Dernier état : RAS (<JJ/MM> <HEURE>) · revenu à la normale]
+SUGGESTIONS : Campus BeaulieuAussi : Campus Beaulieu bat 12 | Campus centre

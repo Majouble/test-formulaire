@@ -1,0 +1,16 @@
+CARTE : Effectifs des établissements | Nombre d'élèves ou d'étudiants de chaque établissement, tiré de l'open data du ministère et écrit dans le référentiel (colonnes Effectif et Effectif_rentree). Utile pour dire combien d'élèves sont concernés par une fermeture : tableau de bord, point de situation, exports. Mise à jour une fois par an, après la publication des effectifs de rentrée. | Éducation nationale — table Etablissements | Effectifs d'élèves (DEPP, data.education.gouv.fr). Rapprochement par UAI ; un lycée polyvalent présent dans deux jeux reçoit la somme. Colonne Effectif pas encore créée.
+JEUX : Écoles / fr-en-ecoles-effectifs-nb_classes / numero_ecole / nombre_total_eleves / 2025
+      Collèges / fr-en-college-effectifs-niveau-sexe-lv / numero_college / nombre_eleves_total / 2025
+      Lycées généraux et technologiques / fr-en-lycee_gt-effectifs-niveau-sexe-lv / numero_lycee / nombre_d_eleves / 2025
+      Voie professionnelle (lycées professionnels, BTS) / fr-en-lycee_pro-effectifs-niveau-sexe-lv / numero_lycee / nombre_d_eleves / 2025
+BILAN :  | Écoles : 1 ligne(s) · Collèges : 3 ligne(s) · Lycées généraux et technologiques : 1 ligne(s) · Voie professionnelle (lycées professionnels, BTS) : 1 ligne(s). | 4 établissement(s) du référentiel sur 4 ont un effectif (2025) ; 4 à écrire. 1 établissement(s) des jeux ne sont pas dans le référentiel (hors périmètre ou non importés). | Établissement Avant Effectif | Lycée Hoche somme de plusieurs jeux — 1 350 | Collège Albert Camus — 600 | Collège Paul Éluard — 420 | École Jules Ferry — 210 | Les plus gros effectifs, pour contrôle. Colonnes créées dans Etablissements : Effectif, Effectif_rentree. | 3. Écrire 4 effectif(s) dans Etablissements
+REQUÊTES : fr-en-ecoles-effectifs-nb_classes/exports/json?where=rentree_scolaire="2025" AND (academie="Versailles" OR academie="Créteil")
+          fr-en-college-effectifs-niveau-sexe-lv/exports/json?where=rentree_scolaire=2025 AND (academie="Versailles" OR academie="Créteil")
+          fr-en-lycee_gt-effectifs-niveau-sexe-lv/exports/json?where=rentree_scolaire=2025 AND (academie="Versailles" OR academie="Créteil")
+          fr-en-lycee_pro-effectifs-niveau-sexe-lv/exports/json?where=rentree_scolaire=2025 AND (academie="Versailles" OR academie="Créteil")
+ÉCRIT : Effectifs écrits dans le référentiel. | Collège Albert Camus = 600 (2025) ; Lycée Hoche = 1350 (2025) ; Collège Paul Éluard = 420 (2025) ; École Jules Ferry = 210 (2025)
+CONFIG effectifs : { "EN": { "jeux": { "ecoles": { "dataset": "fr-en-ecoles-effectifs-nb_classes", "cle": "numero_ecole", "total": "nombre_total_eleves", "annee": "rentree_scolaire", "ignore": false }, "colleges": { "dataset": "fr-en-college-effectifs-niveau-sexe-lv", "cle": "numero_college", "total": "nombre_eleves_t
+RÉPONSES : Colonne Effectif ajoutée à Reponses. | Int formule $Etablissement.Effectif
+SECOND PASSAGE : 3. Écrire 0 effectif(s) dans Etablissements
+ESR, JEUX : Établissements publics sous tutelle du ministère (hors doubles inscriptions CPGE) / fr-esr-statistiques-sur-les-effectifs-d-etudiants-inscrits-par-etablissement-hcp / etablissement_id_paysage / effectif / 2024-25
+ESR, ÉCRIT : Université Paris-Saclay = 48000 (2024-25) ; INSA Lyon = 6000 (2024-25) ; École sans Paysage = — () ; IUT d'Orsay = — ()

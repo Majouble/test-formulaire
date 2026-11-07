@@ -1,0 +1,13 @@
+MENU : Aucune page n'affiche encore ce tableau.Créer la page dédiéeCréer la page CartographieCréer la page Extractions
+CRÉATION : Page « Extractions » créée : elle apparaît dans la liste des pages de Grist, à gauche (renommable dans Grist). | Extractions → …/v2/extractions/ (accès full)
+VERSION : socle <VERSION> (<DATE>) | TABLES : Reponses, Etablissements
+RÉGLAGES PROPOSÉS : {"cle":"UAI","date":"Date_faits","qual":"Qualification","id":["Nom_etablissement","Departement","Academie"],"exclure":"RAS","gravite":["RAS","Perturbé","Fermé"]}
+RÉSULTAT : 4 établissement(s) retenu(s) sur 4 · 5 ligne(s) source(s)
+  UAI ¦ Nom_etablissement ¦ Département ¦ Académie ¦ Nb jours de mobilisation (hors jours RAS) ¦ Premier jour ¦ Dernier jour ¦ Qualification la plus grave ¦ Dernière qualification
+  0782222B ¦ Lycée Hoche ¦ Yvelines ¦ Versailles ¦ 1 ¦ <DATE> ¦ <DATE> ¦ Fermé ¦ Fermé
+  0781111A ¦ Collège Albert Camus ¦ Yvelines ¦ Versailles ¦ 2 ¦ <DATE> ¦ <DATE> ¦ Perturbé ¦ Perturbé
+  0913333C ¦ Collège Paul Éluard ¦ Essonne ¦ Versailles ¦ 1 ¦ <DATE> ¦ <DATE> ¦ Perturbé ¦ Perturbé
+  0944444D ¦ École Jules Ferry ¦ Val-de-Marne ¦ Créteil ¦ 1 ¦ <DATE> ¦ <DATE> ¦ Perturbé ¦ Perturbé
+2 JOURS OU PLUS : 1 établissement(s) retenu(s) sur 4 · 5 ligne(s) source(s)
+MODÈLE : Modèle « Mobilisés deux jours » enregistré pour tout le document. | Config : Mobilisés deux jours | liste : — Modèle d'extraction — / Mobilisés deux jours · document
+EXCEL : extraction_Reponses_<JOUR>.xlsx | Extraction (2 lignes), Paramètres (7 lignes) | ["0781111A","Collège Albert Camus","Yvelines","Versailles",2,"<ISO>","<ISO>"]

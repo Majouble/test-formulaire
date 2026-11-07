@@ -1,0 +1,2 @@
+ÉTAPE : Historiser la sous-table Blesses : Version, Mouvement, Etat_actuel, Date_versionUne ligne par version du signalement et par ligne du tableau (Version), avec son mouvement (ajout, modification, inchangée, retrait) : stock (Etat_actuel), flux et évolution mesurables. Les lignes existantes sont rattach
+COLONNES : Dossier:Ref:Reponses, Ligne_id:Text, Gravite:Choice, Version:Ref:Reponses, Mouvement:Choice, Etat_actuel:Bool (formule), Date_version:Date (formule)

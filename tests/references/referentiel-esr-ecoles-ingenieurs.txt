@@ -1,0 +1,34 @@
+RÈGLE cochée : true
+BILAN : Écoles d'ingénieurs3 école(s) comptée(s) comme établissement (rattachement effacé, groupe dans la colonne Groupe)
+        Coordonnées reprises d'un site6 (établissements sans coordonnées : site de la même commune)
+        Lignes fusionnées1 ligne(s) existante(s) absorbée(s) par un autre établissement : marquées dans la colonne
+APRÈS IMPORT (règle) :
+   ETAB-0001 Université de Rennes | Établissement | Université | ratt=— | groupe=—
+   ETAB-0004 IUT de Rennes | Composante interne | IUT | ratt=Université de Rennes | groupe=—
+   ETAB-0006 École supérieure d'ingénieurs  | Établissement | École d'ingénieurs | ratt=— | groupe=Université de Rennes
+   ETAB-0007 Institut Mines-Télécom, au pér | Établissement | Grand établissement | ratt=— | groupe=—
+   ETAB-0008 IMT Atlantique | Établissement | École d'ingénieurs | ratt=— | groupe=Institut Mines-Télécom
+   ETAB-0009 Institut Mines-Télécom Busines | Établissement | École | ratt=— | groupe=Institut Mines-Télécom
+   ETAB-0010 IMT Atlantique - Campus de Ren | Site ou campus | Campus ou site | ratt=IMT Atlantique | groupe=—
+   SITES : SITE-0003 IUT Beaulieu → etab Université de Rennes / comp IUT de Rennes ; SITE-0008 ESIR Beaulieu → etab École supérieure d'ingénieur / comp — ; SITE-0009 Campus de Brest → etab IMT Atlantique / comp —
+APRÈS IMPORT (sans règle) :
+   ETAB-0001 Université de Rennes | Établissement | Université | ratt=— | groupe=∅
+   ETAB-0004 IUT de Rennes | Composante interne | IUT | ratt=Université de Rennes | groupe=∅
+   ETAB-0006 École supérieure d'ingénieurs  | Composante interne | École d'ingénieurs interne | ratt=Université de Rennes | groupe=∅
+   ETAB-0007 Institut Mines-Télécom, au pér | Établissement | Grand établissement | ratt=— | groupe=∅
+   ETAB-0008 IMT Atlantique | Composante interne | École d'ingénieurs interne | ratt=Institut Mines-Télécom, au p | groupe=∅
+   ETAB-0009 Institut Mines-Télécom Busines | Composante interne | Autre composante interne | ratt=Institut Mines-Télécom, au p | groupe=∅
+   ETAB-0010 IMT Atlantique - Campus de Ren | Site ou campus | Campus ou site | ratt=Institut Mines-Télécom, au p | groupe=∅
+   SITES : SITE-0003 IUT Beaulieu → etab Université de Rennes / comp IUT de Rennes ; SITE-0008 ESIR Beaulieu → etab Université de Rennes / comp École supérieure d'ingénieur ; SITE-0009 Campus de Brest → etab Institut Mines-Télécom, au p / comp IMT Atlantique
+CONFIRMATION : 3 école(s) deviendront des établissements à part entière (groupe d'origine gardé dans la colonne Groupe), 1 campus rattaché(s) à leur école, 2 site(s) repris par leur école :
+STATUT : 3 école(s) devenue(s) établissement(s), 1 campus et 2 site(s) rattachés à leur école.
+APRÈS « Appliquer au référentiel actuel » :
+   ETAB-0001 Université de Rennes | Établissement | Université | ratt=— | groupe=—
+   ETAB-0004 IUT de Rennes | Composante interne | IUT | ratt=Université de Rennes | groupe=—
+   ETAB-0006 École supérieure d'ingénieurs  | Établissement | École d'ingénieurs | ratt=— | groupe=Université de Rennes
+   ETAB-0007 Institut Mines-Télécom, au pér | Établissement | Grand établissement | ratt=— | groupe=—
+   ETAB-0008 IMT Atlantique | Établissement | École d'ingénieurs | ratt=— | groupe=Institut Mines-Télécom
+   ETAB-0009 Institut Mines-Télécom Busines | Établissement | École | ratt=— | groupe=Institut Mines-Télécom
+   ETAB-0010 IMT Atlantique - Campus de Ren | Site ou campus | Campus ou site | ratt=IMT Atlantique | groupe=—
+   SITES : SITE-0003 IUT Beaulieu → etab Université de Rennes / comp IUT de Rennes ; SITE-0008 ESIR Beaulieu → etab École supérieure d'ingénieur / comp — ; SITE-0009 Campus de Brest → etab IMT Atlantique / comp —
+CONFIG : { "ecoles_ingenieurs": true }

@@ -1,0 +1,9 @@
+GET /v2/cartographie/atlas.js
+ATLAS options :  | nov. 2026
+défauts : 22 true
+download désactivé ? false | entités 15
+GET /v2/cartographie/atlas/atlas.qgs
+GET /v2/cartographie/atlas/academies.geojson
+GET /v2/cartographie/atlas/departements.geojson
+ZIP : export.zip 2198878
+MESSAGES :

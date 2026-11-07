@@ -1,0 +1,9 @@
+COPIE PÉRIMÉE | alerte : (aucune)
+COPIE PÉRIMÉE | enregistré : true | colonne Photos (formule) non écrite : undefined | envoi : 51:<sha1 ok>
+COPIE À JOUR | alerte : (aucune)
+COPIE À JOUR | enregistré : true | colonne Photos (formule) non écrite : undefined | envoi : 51:<sha1 ok>
+LIEN D'ÉTABLISSEMENT | alerte : (aucune)
+LIEN D'ÉTABLISSEMENT | mode établissement : true | établissement : Collège Jean Moulin
+LIEN D'ÉTABLISSEMENT | dossier rouvert, pièce : IMG_0050.jpg [vignette affichée]
+LIEN D'ÉTABLISSEMENT | jeton dans la page : false
+LIEN D'ÉTABLISSEMENT | téléchargement : 51/download?auth=…&Etab_=abc123 | clic : onglet ouvert true (blob:…) | état : (rien) | jeton non limité à la lecture : true

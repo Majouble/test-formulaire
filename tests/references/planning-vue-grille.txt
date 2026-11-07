@@ -1,0 +1,21 @@
+LIGNES 51 | COLONNES Matin,Après-midi,Matin,Après-midi,Matin,Après-midi,Matin,Après-midi,Matin,Après-midi,Journée,Journée
+OUTILS C · Coordinateur | R · Rédacteur PS | O · Opérateur | S · Chef de salle
+CASES REMPLIES 3 | affectations 9
+APRÈS lettre C : focus 2,1 | case C
+APRÈS 2 : CESR
+SÉLECTION 6
+BLOC REN REN REN REN REN REN | modif 7
+COPIE "R EN\tR EN\nR EN\tR EN\nR EN\tR EN"
+COLLÉ 2 ligne(s) collée(s) ; 1 case(s) non reconnue(s), laissées telles quelles. | C CESR C CESR         C
+TOTAUX 5C2 R3EN 4 · ESR 2 || 7C1 R6EN 6 · ESR 1 || 3R3EN 3 · ESR 0 || 0 | manque 11
+BOUTON Enregistrer (15 cases)
+FILTRE sophie 9 | bouton gardé Enregistrer (15 cases)
+ENREGISTRÉ Enregistré : 15 mobilisation(s) ajoutée(s), 0 modifiée(s), 0 retirée(s). | affectations 9 → 24 | modif restants 0
+DERNIÈRES 1045 14 Rédacteur PS ["L","EN"] {} || 3 13 Coordinateur ["L","EN","ESR"] {} || 3 14 Coordinateur ["L","ESR"] {}
+SUPPR Enregistré : 0 mobilisation(s) ajoutée(s), 0 modifiée(s), 1 retirée(s).
+DBLCLIC → édition true | vue fonction
+CODE INPUTS 4
+BTN [ 'pl-reg-enregistrer' ]
+REG Réglages enregistrés.
+OUTILS2 C · Coordinateur | R · Rédacteur PS | O · Opérateur | CS · Chef de salle
+CS puis C : CS | C

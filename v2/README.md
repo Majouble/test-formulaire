@@ -2,18 +2,18 @@
 
 Ce dossier contient la version de développement des widgets v2. La version figée pour la production est dans `prod/` (même contenu, adresses `…/prod/…`), mise à jour seulement lors d'une publication. La version 1 (`index.html` à la racine du dépôt) reste en service tant que les documents MEN et ESR n'ont pas basculé.
 
-| Widget | Production (version figée) | Développement (bouge à chaque mise à jour) |
-| --- | --- | --- |
-| Administration | `https://majouble.github.io/test-formulaire/prod/admin/` | `https://majouble.github.io/test-formulaire/v2/admin/` |
-| Saisie | `https://majouble.github.io/test-formulaire/prod/saisie/` | `https://majouble.github.io/test-formulaire/v2/saisie/` |
-| Point de situation | `https://majouble.github.io/test-formulaire/prod/point-situation/` | `https://majouble.github.io/test-formulaire/v2/point-situation/` |
-| Tableau de bord | `https://majouble.github.io/test-formulaire/prod/tableau-de-bord/` | `https://majouble.github.io/test-formulaire/v2/tableau-de-bord/` |
-| Cartographie | `https://majouble.github.io/test-formulaire/prod/cartographie/` | `https://majouble.github.io/test-formulaire/v2/cartographie/` |
-| Référentiel des sites | `https://majouble.github.io/test-formulaire/prod/sites/` | `https://majouble.github.io/test-formulaire/v2/sites/` |
-| Réintégration du mode secours | `https://majouble.github.io/test-formulaire/prod/reintegration/` | `https://majouble.github.io/test-formulaire/v2/reintegration/` |
-| Tableau des signalements de A à Z (aussi dans le kit) | `https://majouble.github.io/test-formulaire/prod/secours/liste.html` | `https://majouble.github.io/test-formulaire/v2/secours/liste.html` |
+| Widget                                                | Production (version figée)                                                 | Développement (bouge à chaque mise à jour)                               |
+| ----------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Administration                                        | `https://majouble.github.io/test-formulaire/prod/admin/`                   | `https://majouble.github.io/test-formulaire/v2/admin/`                   |
+| Saisie                                                | `https://majouble.github.io/test-formulaire/prod/saisie/`                  | `https://majouble.github.io/test-formulaire/v2/saisie/`                  |
+| Point de situation                                    | `https://majouble.github.io/test-formulaire/prod/point-situation/`         | `https://majouble.github.io/test-formulaire/v2/point-situation/`         |
+| Tableau de bord                                       | `https://majouble.github.io/test-formulaire/prod/tableau-de-bord/`         | `https://majouble.github.io/test-formulaire/v2/tableau-de-bord/`         |
+| Cartographie                                          | `https://majouble.github.io/test-formulaire/prod/cartographie/`            | `https://majouble.github.io/test-formulaire/v2/cartographie/`            |
+| Référentiel des sites                                 | `https://majouble.github.io/test-formulaire/prod/sites/`                   | `https://majouble.github.io/test-formulaire/v2/sites/`                   |
+| Réintégration du mode secours                         | `https://majouble.github.io/test-formulaire/prod/reintegration/`           | `https://majouble.github.io/test-formulaire/v2/reintegration/`           |
+| Tableau des signalements de A à Z (aussi dans le kit) | `https://majouble.github.io/test-formulaire/prod/secours/liste.html`       | `https://majouble.github.io/test-formulaire/v2/secours/liste.html`       |
 | Kit de secours (fichier à enregistrer sur les postes) | `https://majouble.github.io/test-formulaire/prod/secours/kit-secours.html` | `https://majouble.github.io/test-formulaire/v2/secours/kit-secours.html` |
-| Version 1 | `https://majouble.github.io/test-formulaire/` | — |
+| Version 1                                             | `https://majouble.github.io/test-formulaire/`                              | —                                                                        |
 
 Un document de production n'utilise que des adresses `…/prod/…` ; un document de test, des adresses `…/v2/…`. Ne pas mélanger les deux dans un même document : l'administration crée les pages (saisie, tableau de bord, cartographie, établissements) à côté d'elle-même, donc dans le même dossier.
 
@@ -32,28 +32,35 @@ Bascule d'un document v1 vers la v2 : exporter le document en sauvegarde (.grist
 ```
 v2/                      développement (prod/ = copie figée, voir « Mise en production »)
 ├── README.md            ce fichier
-├── commun/socle.js      code partagé : lecture de Config, rôles, plan d'installation
+├── commun/outils.js     petits outils communs, chargés en premier par chaque page : esc (texte → HTML sûr), $ (élément par identifiant), stockage (préférences du navigateur)
+├── commun/donnees.js    accès au document : toutes les lectures (Donnees.lire) et écritures (Donnees.ecrire) passent par là ; cache de l'administration, écouteurs d'écriture, compteurs de lectures
+├── commun/socle.js      contrat entre le document et les widgets : noms des tables, colonnes attendues et leur association aux colonnes du document, champs suivis (EN, ESR), lecture et écriture de Config
+├── commun/metier/       règles métier partagées par plusieurs widgets, ajoutées à window.Socle : etablissements.js (sections SEGPA…, régions académiques), planning.js, validation.js, veille.js, campagnes.js, tableaux-de-bord.js, point-de-situation.js
 ├── commun/theme.js      thème clair ou sombre de tous les widgets (data-theme sur <html>)
 ├── commun/marque.js     logo PRISME en haut à gauche de tous les widgets (variantes bloc, compact, spectre, centre)
-├── commun/geo.js        fond de carte commun : départements et académies (Lambert-93, encarts), placement d'un point latitude / longitude
-├── saisie/              formulaire de saisie
-├── admin/               administration : installation.js, configuration.js, referentiel.js, equipe.js, planning.js, pages-agents.js (onglet Équipe, Pages de saisie), actions.js, acces.js, liens.js, campagnes.js (onglet Établissements, carte Campagnes), effectifs.js (onglet Référentiel, carte Effectifs), veille.js (onglet Veille), validation.js (onglet Validation), repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css), secours.js (carte « Mode secours » : kit, relais, page de réintégration)
+├── commun/geo-fond.js   données du fond de carte : départements et académies (Lambert-93, encarts)
+├── commun/geo.js        fond de carte commun : correspondances département / académie, placement d'un point latitude / longitude
+├── saisie/              formulaire de saisie : index.html (structure de la page), saisie.css, et le code rangé en quatre groupes chargés dans cet ordre : fondations/ (configuration, outils, état etatSaisie, liaison avec Grist, réglages), composants/ (briques réutilisées : champs, conditions, pièces jointes, recherche d'établissement, questions « tableau »…), domaines/<domaine>/ (agent, formulaire, etablissement, dossier, enregistrement, visas, sites-esr, veille ; chacun en regles.js, donnees.js, affichage.js), demarrage.js (branche les événements puis Grist) ; voir l'en-tête de chaque fichier
+├── admin/               administration : metier/ (règles propres à l'administration, ajoutées à window.Socle : agents.js, actions.js, schema-public.js, plan-installation.js), installation.js, reglages-saisie.js (onglet Installation, réglages communs de la saisie et pages de saisie), configuration.js, referentiel.js, equipe.js, planning.js, pages-agents.js (onglet Équipe, Pages de saisie), actions.js, acces.js, liens.js, campagnes.js (onglet Établissements, carte Campagnes), effectifs.js (onglet Référentiel, carte Effectifs), veille.js (onglet Veille), validation.js (onglet Validation), repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css), admin.css (styles de la page, autrefois en ligne dans index.html), secours.js (carte « Mode secours » : kit, relais, page de réintégration)
 ├── point-situation/     production du point de situation
 ├── cartographie/        carte et export cartographique (reprise du widget « Export cartographique ») ; atlas/ : projet QGIS de l'atlas par académie et contours
-├── tableau-de-bord/     tableau de bord : tableau.js (module partagé, édition dans l'administration, lecture dans le widget)
-├── secours/             mode secours sans réseau : grist-hors-ligne.js (Grist simulé, mode veille), relais-n8n.json (relais à importer dans n8n), kit-secours.html (assemblé par outils/construire-secours.js), liste.html (tableau des signalements de A à Z), demo.json, vendor/ (sql.js, MIT)
+├── tableau-de-bord/     tableau de bord : tableau.js (monte un tableau de bord : crée l'objet « tableau », état du tableau affiché, puis construit les modules dans l'ordre), modules/ (15 modules numérotés qui reçoivent « tableau » et y ajoutent leurs fonctions), tableau.css, index.html (widget)
+├── secours/             mode secours sans réseau : grist-hors-ligne.js (Grist simulé, mode veille), relais-n8n.json (relais à importer dans n8n), kit-secours.html (assemblé par outils/construire-secours.js), liste.html (tableau des signalements de A à Z), demo.json
 ├── reintegration/       réintégration dans Grist des saisies du mode secours
 ├── extractions/        widget « Extractions » : une ligne par établissement, filtres, export Excel (page créée depuis l'onglet Tableau de bord)
+├── vendor/              bibliothèques tierces copiées à version figée (Leaflet, PizZip, docxtemplater, ExcelJS, JSZip, shp-write, sql.js) : voir vendor/README.md
 ├── veille/              relais-vigilance-n8n.json : workflow n8n Météo-France → table Vigilances (onglet Veille)
 └── modeles/             exemples de configuration à importer (à venir)
 ```
 
 ## Règles
 
-1. Un widget ne lit jamais une colonne par son nom en dur : il passe par un rôle (voir le contrat du socle).
+1. Un widget ne lit jamais une colonne par son nom en dur : il passe par une colonne attendue et son association (voir le contrat du socle).
 2. Un réglage commun au document s'écrit dans la table `Config`, sous la clé de son module. Un réglage propre à une page (formulaire, périmètre, libellé) reste dans les options du widget de cette page.
 3. Un module ne dépend que du socle, jamais d'un autre module.
 4. Chaque widget affiche son numéro de version dans son panneau de diagnostic. Le numéro (`VERSION` de `commun/socle.js`) est incrémenté à chaque mise à jour publiée.
+5. Toutes les dates et heures s'affichent et se saisissent **à l'heure de Paris**, quel que soit le fuseau du poste (un agent de La Réunion ou de Guyane voit les mêmes heures qu'un agent parisien). Elles passent par `Outils.dates` (`commun/outils.js`), jamais par `toLocaleString` ou `getHours` directement. Exception : les colonnes Date de Grist (jour sans heure, rangé à minuit UTC), lues en UTC, ce qui donne le bon jour partout.
+6. Lectures et écritures du document : par `Donnees` (`commun/donnees.js`), jamais par `grist.docApi` directement.
 
 ## Architecture
 
@@ -64,43 +71,44 @@ Les widgets sont des pages statiques (HTML et JavaScript, sans serveur propre) a
 ### Le socle (`commun/socle.js`, `window.Socle`)
 
 - **Config** : seule table au nom fixe (`Cle`, `Valeur` en JSON, `Modifie_le`). Chaque module y range ses réglages sous sa clé (tableau ci-dessous). `lireConfig()`, `ecrireConfig(cle, valeur)`, `general(config)` (réglages généraux complétés par `DEFAUTS_GENERAL`).
-- **Rôles** : un widget ne lit jamais une colonne par son nom ; il demande la colonne qui joue un rôle (`resoudreRoles("reponses" | "referentiel", meta, ctx, associations)`). Les rôles (`ROLES`) décrivent ce qu'ils acceptent, les motifs de reconnaissance et, au besoin, comment créer la colonne (type, formule). Une association choisie dans l'onglet Installation (clé `roles`) prime sur la reconnaissance.
+- **Colonnes attendues** : un widget ne lit jamais une colonne par son nom ; il demande la colonne du document associée à une colonne attendue (`associerColonnes("reponses" | "referentiel", meta, contexte, associations)`). Les colonnes attendues (`COLONNES_ATTENDUES`) décrivent le type qu'elles acceptent, les motifs de reconnaissance du nom et, au besoin, comment créer la colonne (type, formule). Une association choisie dans l'onglet Installation (clé `roles` de Config, nom gardé pour les documents existants) prime sur la reconnaissance.
 - **Espaces** : un champ (EN, ESR) = une table de réponses, un référentiel et ses formulaires (`espaces(general)`) ; un document peut en suivre deux.
 - **Formules du socle** : dernière version d'un dossier, description marquée (`Description_Word_`), état le plus grave, jours de mobilisation, auteur, liens d'invité et d'établissement.
-- **Plan d'installation** : ce qui manque au document (tables, colonnes, formules), proposé par l'onglet Installation, jamais appliqué sans accord ; rien n'est renommé ni supprimé.
+- **Règles métier** : planning, validation, veille, campagnes… sont dans `commun/metier/` (partagées par plusieurs widgets) ou `admin/metier/` (administration seulement) ; chaque fichier ajoute ses fonctions à `window.Socle` et liste en en-tête ce qu'il définit et ce qu'il utilise.
+- **Plan d'installation** (`admin/metier/plan-installation.js`) : ce qui manque au document (tables, colonnes, formules), proposé par l'onglet Installation, jamais appliqué sans accord ; rien n'est renommé ni supprimé.
 - **Copie du schéma** (clé `schema`) : les liens d'établissement ne lisent pas les métadonnées de Grist ; la copie est rafraîchie à la publication d'un formulaire, à l'adaptation d'une question et à l'application des règles d'accès.
 
 ### Tables du socle
 
-| Table (nom par défaut) | Rôle | Créée par |
-| --- | --- | --- |
-| `Config` | Réglages de tous les modules | Installation |
-| `Reponses` | Une ligne par version de signalement ; `Dossier` renvoie à la première saisie | Installation (nom réglable) |
-| `Etablissements` | Référentiel ; clé `UUID` et `Lien` des établissements | Installation, onglet Référentiel |
-| `Referentiel_sites`, `Sites_correspondances` | Sites du supérieur ; libellés saisis rapprochés d'un site | Import du classeur ESR, widget Référentiel des sites |
-| `Formulaires` | Brouillon et version publiée de chaque formulaire (JSON) | Installation |
-| Tables des questions tableau | Lignes d'un tableau (sites…), historisées par version (`Dossier`, `Version`, `Ligne_id`, `Mouvement`) | Onglet Formulaires |
-| `Agents`, `Creneaux`, `Affectations`, `Emargements` | Équipe, planning, émargement | Onglet Équipe |
-| `Actions` | Suivi des actions de la cellule | Onglet Actions |
-| `Vigilances`, `Vigilances_journal` | Veille météo, écrites par le relais n8n | Onglet Veille |
-| `Administration`, `Cellule` | Tables vides qui portent les pages réservées (règles d'accès) | Installation |
+| Table (nom par défaut)                              | Rôle                                                                                                  | Créée par                                            |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `Config`                                            | Réglages de tous les modules                                                                          | Installation                                         |
+| `Reponses`                                          | Une ligne par version de signalement ; `Dossier` renvoie à la première saisie                         | Installation (nom réglable)                          |
+| `Etablissements`                                    | Référentiel ; clé `UUID` et `Lien` des établissements                                                 | Installation, onglet Référentiel                     |
+| `Referentiel_sites`, `Sites_correspondances`        | Sites du supérieur ; libellés saisis rapprochés d'un site                                             | Import du classeur ESR, widget Référentiel des sites |
+| `Formulaires`                                       | Brouillon et version publiée de chaque formulaire (JSON)                                              | Installation                                         |
+| Tables des questions tableau                        | Lignes d'un tableau (sites…), historisées par version (`Dossier`, `Version`, `Ligne_id`, `Mouvement`) | Onglet Formulaires                                   |
+| `Agents`, `Creneaux`, `Affectations`, `Emargements` | Équipe, planning, émargement                                                                          | Onglet Équipe                                        |
+| `Actions`                                           | Suivi des actions de la cellule                                                                       | Onglet Actions                                       |
+| `Vigilances`, `Vigilances_journal`                  | Veille météo, écrites par le relais n8n                                                               | Onglet Veille                                        |
+| `Administration`, `Cellule`                         | Tables vides qui portent les pages réservées (règles d'accès)                                         | Installation                                         |
 
 ### Clés de Config
 
-| Clé | Module | Contenu |
-| --- | --- | --- |
-| `general` | Installation | Situation, préréglage, académies, tables, qualifications de retour à la normale, second champ |
-| `roles` | Installation | Associations colonne → rôle choisies à la main |
-| `schema` | Socle | Copie des colonnes lue par les liens d'établissement |
-| `annuaire_en`, `referentiel_esr`, `regles_esr`, `effectifs` | Référentiel | Réglages des imports (dont le traitement des écoles d'ingénieurs du classeur ESR) |
-| `planning`, `repartition` | Équipe | Fonctions, modèles de journée ; critères de périmètre |
-| `liens`, `campagnes`, `acces_invites` | Établissements, Équipe | Mise en place des liens, publipostage, campagnes ; durée des liens invités |
-| `validation` | Validation | Circuits de visas |
-| `veille` | Veille | Seuil, phénomènes suivis |
-| `actions` | Actions | Colonnes du kanban |
-| `point_situation`, `tableau_de_bord`, `extractions`, `resume_auto` | Sorties, saisie | Brouillon et version publiée de chaque sortie ; description automatique |
-| `qualite` | À vérifier | Statuts des anomalies (vérifiée, corrigée) |
-| `secours` | Réintégration | Saisies hors ligne déjà réintégrées, correspondances de numéros |
+| Clé                                                                | Module                 | Contenu                                                                                       |
+| ------------------------------------------------------------------ | ---------------------- | --------------------------------------------------------------------------------------------- |
+| `general`                                                          | Installation           | Situation, préréglage, académies, tables, qualifications de retour à la normale, second champ |
+| `roles`                                                            | Installation           | Associations colonne → rôle choisies à la main                                                |
+| `schema`                                                           | Socle                  | Copie des colonnes lue par les liens d'établissement                                          |
+| `annuaire_en`, `referentiel_esr`, `regles_esr`, `effectifs`        | Référentiel            | Réglages des imports (dont le traitement des écoles d'ingénieurs du classeur ESR)             |
+| `planning`, `repartition`                                          | Équipe                 | Fonctions, modèles de journée ; critères de périmètre                                         |
+| `liens`, `campagnes`, `acces_invites`                              | Établissements, Équipe | Mise en place des liens, publipostage, campagnes ; durée des liens invités                    |
+| `validation`                                                       | Validation             | Circuits de visas                                                                             |
+| `veille`                                                           | Veille                 | Seuil, phénomènes suivis                                                                      |
+| `actions`                                                          | Actions                | Colonnes du kanban                                                                            |
+| `point_situation`, `tableau_de_bord`, `extractions`, `resume_auto` | Sorties, saisie        | Brouillon et version publiée de chaque sortie ; description automatique                       |
+| `qualite`                                                          | À vérifier             | Statuts des anomalies (vérifiée, corrigée)                                                    |
+| `secours`                                                          | Réintégration          | Saisies hors ligne déjà réintégrées, correspondances de numéros                               |
 
 ### Accès
 
@@ -108,11 +116,11 @@ Les règles d'accès Grist sont générées par l'onglet Accès (`admin/acces.js
 
 ### Dépendances extérieures
 
-Bibliothèques chargées à la demande, en version figée : JSZip, Leaflet (cdnjs) ; PizZip, docxtemplater, ExcelJS, shp-write (jsDelivr) ; API des widgets Grist (docs.getgrist.com). Services : Géoplateforme de l'IGN (fonds de carte, géocodage), Overpass (OpenStreetMap), portails open data de l'éducation nationale et de l'enseignement supérieur ; par les relais n8n : API Météo-France, Tchap (Matrix).
+Bibliothèques tierces : copiées dans `vendor/`, à version figée, sans appel à un CDN (voir `vendor/README.md`), sauf l'API des widgets Grist, encore chargée depuis docs.getgrist.com. Services : Géoplateforme de l'IGN (fonds de carte, géocodage), Overpass (OpenStreetMap), portails open data de l'éducation nationale et de l'enseignement supérieur ; par les relais n8n : API Météo-France, Tchap (Matrix).
 
 ### Tests
 
-Scénarios Playwright avec un Grist simulé (`tests/mock.js`, `tests/fakeapi.js`) : voir `tests/README.md`. Lancer `sh tests/lancer.sh` avant chaque publication.
+Scénarios Playwright avec un Grist simulé (`tests/mock.js`, `tests/fakeapi.js`) : voir `tests/README.md`. Avant chaque publication : `node tests/verifier.js` (comparaison aux journaux de référence) et `node tests/fuseaux.js` (même affichage à l'heure de Paris et de La Réunion). Pour renommer sans risque pendant la relecture du code : `outils/renommer.js` (renommage d'après la portée des noms) et `outils/equivalence.js` (vérifie que deux versions d'un fichier ne diffèrent que par les noms).
 
 ### Documentation utilisateur
 

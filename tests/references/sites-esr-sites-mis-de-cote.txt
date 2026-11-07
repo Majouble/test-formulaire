@@ -1,0 +1,8 @@
+REPRIS : Campus Beaulieu ✕ | Annexe Rue Dupont ✕ | Campus centre ✕ | Site Villejean ✕ | Site Lorient ✕
+APRÈS RETRAIT : Campus Beaulieu ✕ | Annexe Rue Dupont ✕ | Site Villejean ✕ | NOTE : 2 sites laissés de côté pour ce signalement (Site Lorient, Campus centre) : ils ne seront plus proposés ensuite. Remettre
+APRÈS « Remettre » : Campus Beaulieu ✕ | Annexe Rue Dupont ✕ | Campus centre ✕ | Site Villejean ✕ | Site Lorient ✕
+DIALOG : 1 site repris du dernier état connu n'a été ni confirmé ni modifié. | Enregistrer quand même ?
+STATUT :
+ENREGISTRÉ (dossier 9) : 2/Blocage total ; undefined/Rassemblement ; 3/RAS
+SOUS-TABLE du dossier : 2/Blocage total ; 0/Rassemblement ; 3/RAS
+SIGNALEMENT SUIVANT, REPRIS : Campus Beaulieu [Dernier état : Blocage total (<JJ/MM> <HEURE>) · Confirmer cet état] | Annexe Rue Dupont [Dernier état : Rassemblement (<JJ/MM> <HEURE>) · Confirmer cet état] | Campus centre [Dernier état : RAS (<JJ/MM> <HEURE>) · revenu à la normale] | Site Villejean [Dernier état : RAS (<JJ/MM> <HEURE>) · revenu à la normale] | Site Lorient [Dernier état : RAS (<JJ/MM> <HEURE>) · revenu à la normale]

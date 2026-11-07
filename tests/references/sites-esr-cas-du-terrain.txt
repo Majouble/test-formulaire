@@ -1,0 +1,21 @@
+CHAMPS D'UNE LIGNE : Site | Qualification | Site_libre | Precisions
+BANDEAU : Colonne « Site (Site_2) » de la table « Sites_signales » écartée du formulaire : elle désigne aussi un site, en double avec « Site » (voir l'administration des formulaires).
+LISTE (champ vide) : Campus Beaulieu Rennes Aussi : Bâtiment 12, Campus Beaulieu bat 12 | Campus centre Rennes | Site Lorient Lorient | Site Villejean Rennes
+« lorient » : Site Lorient Lorient
+« batiment » : Campus Beaulieu Rennes Aussi : Bâtiment 12, Campus Beaulieu bat 12
+« Gymnase » : Aucun site de cet établissement ne correspond. Complétez le référentiel des sites. | état : absent du référentiel : choisissez un site dans la liste
+CONTRÔLE :
+  ✓Établissement du formulaire : référentiel « Etablissements » (colonne Établissement de Reponses).
+  ✓Sous-table « Sites_signales ».
+  ✓Colonne du site « Site » → table « Referentiel_sites », reliée à « Etablissements » : seuls les sites de l'établissement sont proposés, avec recherche par nom, mot-clé et commune.
+  !Pas de colonne hors référentiel : seuls les sites de la liste sont acceptés (bouton « Accepter les noms hors référentiel »).
+  ✓Qualification du site : « Qualification » (Blocage total, Blocage partiel, Rassemblement, RAS).
+  !Colonne « Site » (Site_2) : elle désigne aussi un site, en double ; le formulaire l'écarte. Supprimez-la dans Grist si elle ne sert pas.
+  ✓Formulaire publié, à jour.
+CONTRÔLE (référentiel des sites relié à une autre table) :
+  ✓Établissement du formulaire : référentiel « Etablissements » (colonne Établissement de Reponses).
+  ✓Sous-table « Sites_signales ».
+  ✗Colonne du site « Site » : elle renvoie vers « Referentiel_sites », dont aucune colonne ne renvoie vers « Etablissements » (elle renvoie vers « Config ») : les sites ne peuvent pas être filtrés par établissement, le formulaire les propose tous. Réimportez le classeur ESR vers « Etablissements », ou changez la référence de la colonne Etablissement de « Referentiel_sites » dans Grist.
+  !Pas de colonne hors référentiel : seuls les sites de la liste sont acceptés (bouton « Accepter les noms hors référentiel »).
+  ✓Qualification du site : « Qualification » (Blocage total, Blocage partiel, Rassemblement, RAS).
+  ✓Formulaire publié, à jour.

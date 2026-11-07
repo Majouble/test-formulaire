@@ -1,0 +1,8 @@
+RECHERCHE : Collège Jean Moulin · 4 sites
+PRINCIPALES : Nom | Type | Établissement de rattachement | Statut_public_prive | Tutelle | Effectif étudiants | Academie | Region_academique | Departement | Commune | UAI | Mail | Latitude | Longitude
+AUTRES : Autres informations (4) | Ajouter une information au référentiel
+STATUT : Effectif étudiants enregistré.
+AJOUT : Information « Effectif 2026 (rentrée) » ajoutée (colonne Effectif_2026_rentree).
+FICHE TOUJOURS OUVERTE : Collège Jean Moulin | champ créé : oui
+MOTS-CLÉS DES SITES : 0
+TABLE : effectif 12650 | tutelle Culture | rattachement 2

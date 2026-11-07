@@ -3,10 +3,10 @@
 // Routes : /o/<org>/api/docs/<doc>[ /tables | /tables/T/columns | /tables/T/records | /sql (POST) | /download ]
 // Contrôle des essais : faux.etat.panne = true (connexions coupées), faux.etat.reponsesEnPlus = n, faux.appels.
 const http = require("http"), fs = require("fs"), path = require("path");
-const initSqlJs = require("../v2/secours/vendor/sql-wasm.js");
+const initSqlJs = require("../v2/vendor/sql.js/sql-wasm.js");
 
 async function documentGrist(tables) {
-  const S = await initSqlJs({ wasmBinary: fs.readFileSync(path.join(__dirname, "../v2/secours/vendor/sql-wasm.wasm")) });
+  const S = await initSqlJs({ wasmBinary: fs.readFileSync(path.join(__dirname, "../v2/vendor/sql.js/sql-wasm.wasm")) });
   const db = new S.Database();
   for (const [n, t] of Object.entries(tables)) {
     const cols = Object.keys(t), q = c => `"${c.replace(/"/g, '""')}"`;

@@ -1,0 +1,16 @@
+SOURCE : Signalements ✓ | Questionnaire établissement · table Reponses · 2 questions | Publié, à jour
+BOÎTE : Dupliquer « Signalements » | nom proposé : Signalements (copie) | bouton : Dupliquer
+CHAMPS VISIBLES : (aucun)
+NOM PRIS : boîte ouverte = true | erreur : Un formulaire porte déjà ce nom.
+LISTE APRÈS : Signalements | Signalements intrusion ✓
+NOUVEAU : Questionnaire établissement · table Reponses · 2 questions | Jamais publié | Publier désactivé : false
+MESSAGE : Formulaire dupliqué (mêmes colonnes, même table). Publiez-le pour l'utiliser sur une page.
+APERÇU : … Qualification * | RAS | + Ajouter une question | Nature des faits | Option 1 | Option 2 | Intrusion | + Ajouter une question | Détails | + Ajouter une question | Précisions *si Nature des faits = Intrusion | + Ajouter une question
+COPIE : Table = Reponses | Type = etablissement | Publie = null | Publie_le = null
+BROUILLON COPIÉ = BROUILLON SOURCE (hors identifiants) : true | identifiants de blocs distincts : true
+  {"genre":"question","colonne":"Nature_des_faits","reglages":{"libelle":"Nature des faits"}}
+  {"genre":"titre","texte":"Détails"}
+  {"genre":"question","colonne":"Precisions","reglages":{"libelle":"Précisions","obligatoire":true,"condition":{"ref":"Nature_des_faits","op":"=","valeurs":["Intrusion"]}}}
+SOURCE INCHANGÉE (Publie = Brouillon) : true | TABLES INCHANGÉES : true | COLONNES INCHANGÉES : true
+PARTIES / RÔLES COPIÉS : true true
+APRÈS MODIFICATION DE LA COPIE : copie = 4 blocs | source = 3 blocs | Jamais publié
