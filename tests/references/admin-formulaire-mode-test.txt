@@ -14,8 +14,8 @@ NATURE = Intrusion, effraction (choix à virgule) | visibles : Nature des faits 
 NATURE = Option 1                            | visibles : Nature des faits / Lieu / Police prévenue
 LIEU = Salle 1                               | visibles : Nature des faits / Lieu / Police prévenue / Détail lieu
 LIEU = Salle 2                               | visibles : Nature des faits / Lieu / Police prévenue / Détail lieu
-LIEU = Salle 1, Salle 2 (saisie avec virgule) | visibles : Nature des faits / Lieu / Police prévenue
-POLICE PRÉVENUE = Oui                        | visibles : Nature des faits / Lieu / Police prévenue / Suites police
+LIEU = Salle 1, Salle 2 (saisie avec virgule) | visibles : Nature des faits / Lieu / Police prévenue / Détail lieu
+POLICE PRÉVENUE = Oui                        | visibles : Nature des faits / Lieu / Police prévenue / Détail lieu / Suites police
 DESCRIPTION : Nature des faits : Violence
 Lieu : Salle 1, Salle 2
 Police prévenue : Oui

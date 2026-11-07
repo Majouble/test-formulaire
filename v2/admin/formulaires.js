@@ -256,41 +256,16 @@
   const actions = (actionsGrist) => Donnees.ecrire(actionsGrist);
 
   /* ---------- reprise des repères écrits dans les descriptions (formulaires existants) ---------- */
-  const sansGuillemets = (valeur) =>
-    String(valeur)
-      .trim()
-      .replace(/^["'«“‘\s]+|["'»”’\s]+$/g, "")
-      .trim();
+  // Lecture et évaluation des conditions : règles communes avec le widget de saisie (commun/metier/formulaire.js)
+  const { sansGuillemets } = Socle;
   function lireReperes(txt) {
     txt = String(txt || "").trim();
     const reperes = {};
     if (txt.startsWith("*")) reperes.obligatoire = true;
-    let correspondance = txt.match(/\[\s*si\s+([^\]]+)\]/i);
-    if (correspondance) {
-      const corps = correspondance[1].trim();
-      let correspondanceCorps;
-      if (
-        (correspondanceCorps = corps.match(/^(.+?)\s*(!=|≠|>=|<=|=|>|<)\s*(.+)$/)) ||
-        (correspondanceCorps = corps.match(/^([^:]+?)\s*(:)\s*(.+)$/))
-      )
-        reperes.condition = {
-          ref: sansGuillemets(correspondanceCorps[1]),
-          op: correspondanceCorps[2] === "≠" ? "!=" : correspondanceCorps[2] === ":" ? "=" : correspondanceCorps[2],
-          valeurs: correspondanceCorps[3]
-            .split(/\s*,\s*/)
-            .map(sansGuillemets)
-            .filter(Boolean),
-        };
-      else if (
-        (correspondanceCorps = corps.match(
-          /^(.+?)\s+(?:n['’]est\s+pas\s+vide|non\s+vide|est\s+renseign[ée]e?|renseign[ée]e?)$/i,
-        ))
-      )
-        reperes.condition = { ref: sansGuillemets(correspondanceCorps[1]), op: "rempli", valeurs: [] };
-      else if ((correspondanceCorps = corps.match(/^(.+?)\s+(?:est\s+)?vide$/i)))
-        reperes.condition = { ref: sansGuillemets(correspondanceCorps[1]), op: "vide", valeurs: [] };
-      else reperes.condition = { ref: sansGuillemets(corps), op: "rempli", valeurs: [] };
-    }
+    // condition « [si … ] » : forme enregistrée dans le brouillon { ref, op, valeurs }
+    const condition = Socle.lireConditionRepere(txt);
+    if (condition) reperes.condition = { ref: condition.ref, op: condition.op, valeurs: condition.valeurs || [] };
+    let correspondance;
     if (/\[liste\]/i.test(txt)) reperes.affichage = "liste";
     if (/\[boutons\]/i.test(txt)) reperes.affichage = "boutons";
     if (/\[case\]/i.test(txt)) reperes.affichage = "case";
@@ -327,51 +302,9 @@
     return reperes;
   }
 
-  /* ---------- conditions (mêmes règles que le widget de saisie) ---------- */
-  function evaluerCondition(valeur, cond) {
-    if ((cond.op === "=" || cond.op === "!=") && typeof valeur === "number") {
-      const valeursNormalisees = (cond.valeurs || []).map(normaliser),
-        oui = ["oui", "vrai", "true"],
-        non = ["non", "faux", "false"];
-      if (
-        valeursNormalisees.length &&
-        valeursNormalisees.every((texte) => oui.includes(texte) || non.includes(texte))
-      ) {
-        const res =
-          (valeursNormalisees.some((texte) => oui.includes(texte)) && valeur > 0) ||
-          (valeursNormalisees.some((texte) => non.includes(texte)) && valeur <= 0);
-        return cond.op === "!=" ? !res : res;
-      }
-    }
-    if ([">", ">=", "<", "<="].includes(cond.op)) {
-      const valeurNumerique = typeof valeur === "number" ? valeur : parseFloat(String(valeur ?? "").replace(",", "."));
-      const seuil = parseFloat(String((cond.valeurs || [])[0] ?? "").replace(",", "."));
-      if (isNaN(valeurNumerique) || isNaN(seuil)) return false;
-      return cond.op === ">"
-        ? valeurNumerique > seuil
-        : cond.op === ">="
-          ? valeurNumerique >= seuil
-          : cond.op === "<"
-            ? valeurNumerique < seuil
-            : valeurNumerique <= seuil;
-    }
-    let liste, renseignee;
-    if (typeof valeur === "boolean") {
-      liste = valeur ? ["oui", "vrai", "true", "1"] : ["non", "faux", "false", "0"];
-      renseignee = valeur;
-    } else if (Array.isArray(valeur)) {
-      liste = valeur;
-      renseignee = liste.length > 0;
-    } else {
-      liste = valeur == null || valeur === "" ? [] : [String(valeur)];
-      renseignee = liste.length > 0;
-    }
-    if (cond.op === "vide") return !renseignee;
-    if (cond.op === "rempli") return !!renseignee;
-    const valeurs = liste.map(normaliser);
-    const trouve = (cond.valeurs || []).some((texte) => valeurs.includes(normaliser(texte)));
-    return cond.op === "!=" ? !trouve : trouve;
-  }
+  /* ---------- conditions ---------- */
+  const evaluerCondition = (valeur, condition) => Socle.evaluerCondition(valeur, condition);
+
   function colonneDeRef(ref) {
     if (!ref) return null;
     if (meta[ref]) return meta[ref];
