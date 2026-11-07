@@ -10,9 +10,13 @@ const espree = require("espree");
 const fs = require("fs");
 const path = require("path");
 
-// Modules de la saisie (v2/saisie/modules/) : un seul script découpé en fichiers, chargés dans l'ordre ; ce que
-// chacun déclare au premier niveau est visible des autres. Ces noms sont relevés ici dans les fichiers eux-mêmes.
-const MODULES_SAISIE = path.join(__dirname, "v2/saisie/modules");
+// Code de la saisie (v2/saisie/ : fondations/, composants/, domaines/, demarrage.js) : un seul script découpé en
+// fichiers, chargés dans l'ordre ; ce que chacun déclare au premier niveau est visible des autres. Ces noms sont relevés
+// ici dans les fichiers eux-mêmes.
+const SAISIE = path.join(__dirname, "v2/saisie");
+const FICHIERS_SAISIE = ["fondations/*.js", "composants/*.js", "domaines/*/*.js", "demarrage.js"].map(
+  (m) => `v2/saisie/${m}`,
+);
 function nomsDePremierNiveau(fichier) {
   const ast = espree.parse(fs.readFileSync(fichier, "utf8"), { ecmaVersion: "latest" });
   const noms = (p) =>
@@ -37,12 +41,22 @@ function nomsDePremierNiveau(fichier) {
         : [],
   );
 }
-const NOMS_SAISIE = fs.existsSync(MODULES_SAISIE)
-  ? fs
-      .readdirSync(MODULES_SAISIE)
-      .filter((f) => f.endsWith(".js"))
-      .flatMap((f) => nomsDePremierNiveau(path.join(MODULES_SAISIE, f)))
-  : [];
+const fichiersSaisie = (dossier) =>
+  fs.existsSync(dossier)
+    ? fs
+        .readdirSync(dossier, { withFileTypes: true })
+        .flatMap((e) =>
+          e.isDirectory()
+            ? fichiersSaisie(path.join(dossier, e.name))
+            : e.name.endsWith(".js")
+              ? [path.join(dossier, e.name)]
+              : [],
+        )
+    : [];
+const NOMS_SAISIE = ["fondations", "composants", "domaines", "demarrage.js"]
+  .map((d) => path.join(SAISIE, d))
+  .flatMap((d) => (d.endsWith(".js") ? (fs.existsSync(d) ? [d] : []) : fichiersSaisie(d)))
+  .flatMap(nomsDePremierNiveau);
 
 const PARTAGES = [
   // API Grist (grist-plugin-api.js) et bibliothèques tierces
@@ -107,10 +121,10 @@ module.exports = [
     },
   },
   {
-    files: ["v2/saisie/modules/*.js"],
+    files: FICHIERS_SAISIE,
     languageOptions: { globals: Object.fromEntries(NOMS_SAISIE.map((n) => [n, "writable"])) },
     rules: {
-      // chaque module déclare ce que les autres utilisent : ni « redéclaration », ni « inutilisé » au premier niveau
+      // chaque fichier déclare ce que les autres utilisent : ni « redéclaration », ni « inutilisé » au premier niveau
       "no-redeclare": ["error", { builtinGlobals: false }],
       "no-unused-vars": ["warn", { vars: "local", args: "none", caughtErrors: "none", ignoreRestSiblings: true }],
     },
