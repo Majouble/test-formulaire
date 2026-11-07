@@ -10,4 +10,4 @@ RÉSULTAT : 4 établissement(s) retenu(s) sur 4 · 5 ligne(s) source(s)
   0944444D ¦ École Jules Ferry ¦ Val-de-Marne ¦ Créteil ¦ 1 ¦ <DATE> ¦ <DATE> ¦ Perturbé ¦ Perturbé
 2 JOURS OU PLUS : 1 établissement(s) retenu(s) sur 4 · 5 ligne(s) source(s)
 MODÈLE : Modèle « Mobilisés deux jours » enregistré pour tout le document. | Config : Mobilisés deux jours | liste : — Modèle d'extraction — / Mobilisés deux jours · document
-EXCEL : extraction_Reponses_2026-11-06.xlsx | Extraction (2 lignes), Paramètres (7 lignes) | ["0781111A","Collège Albert Camus","Yvelines","Versailles",2,"<ISO>","<ISO>"]
+EXCEL : extraction_Reponses_<JOUR>.xlsx | Extraction (2 lignes), Paramètres (7 lignes) | ["0781111A","Collège Albert Camus","Yvelines","Versailles",2,"<ISO>","<ISO>"]

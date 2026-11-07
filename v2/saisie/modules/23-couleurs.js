@@ -3,8 +3,9 @@
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
    Définit : COULEURS_NOMMEES, hexVersRvb, versHex, teinteClaire, couleurNommee, nombreRegle, lireRegleCouleur,
-     construireReglesCouleur, cacheLibelles, libellesDemandes, libelleRef, textesValeur, valeursEnCours, couleurDe,
-     valeurLisible, couleurLigne, bandeCouleur, majCouleur.
+     construireReglesCouleur, cacheLibelles, libellesDemandes, libelleDepuisCache, chargerLibellesReference,
+     rafraichirApresLibellesReference, libelleRef, textesValeur, valeursEnCours, couleurDe, valeurLisible,
+     couleurLigne, bandeCouleur, majCouleur.
    Utilise :
      03 variantes : lisible.
      04 date-faits : dateFr, lireDateFaits, secondes.
@@ -131,20 +132,34 @@ function construireReglesCouleur(alertes) {
 // Libellés des colonnes Référence (lus une fois, à la demande)
 const cacheLibelles = new Map(),
   libellesDemandes = new Set();
-function libelleRef(definitionColonne, id) {
-  if (definitionColonne._labels && definitionColonne._labels.has(id)) return definitionColonne._labels.get(id);
+// Lit le libellé d'une référence dans les libellés de la colonne ou le cache ({ libelle }), null si le cache n'est pas rempli
+function libelleDepuisCache(definitionColonne, id) {
+  if (definitionColonne._labels && definitionColonne._labels.has(id))
+    return { libelle: definitionColonne._labels.get(id) };
   const libellesColonne = cacheLibelles.get(definitionColonne.colId);
-  if (libellesColonne) return libellesColonne.get(id) || `n° ${id}`;
+  if (libellesColonne) return { libelle: libellesColonne.get(id) || `n° ${id}` };
+  return null;
+}
+// Lit les options de la colonne Référence dans le document et remplit le cache des libellés
+function chargerLibellesReference(definitionColonne) {
+  return optionsReference({ ...definitionColonne }).then((options) => {
+    cacheLibelles.set(definitionColonne.colId, new Map(options.map((option) => [option.id, option.libelle])));
+  });
+}
+// Rafraîchit la liste des signalements et la couleur une fois les libellés chargés
+function rafraichirApresLibellesReference() {
+  enFile(async () => {
+    majListeDossiers();
+    majCouleur();
+  });
+}
+function libelleRef(definitionColonne, id) {
+  const connu = libelleDepuisCache(definitionColonne, id);
+  if (connu) return connu.libelle;
   if (!libellesDemandes.has(definitionColonne.colId) && /^Ref(List)?:/.test(definitionColonne.type || "")) {
     libellesDemandes.add(definitionColonne.colId);
-    optionsReference({ ...definitionColonne })
-      .then((options) => {
-        cacheLibelles.set(definitionColonne.colId, new Map(options.map((option) => [option.id, option.libelle])));
-        enFile(async () => {
-          majListeDossiers();
-          majCouleur();
-        });
-      })
+    chargerLibellesReference(definitionColonne)
+      .then(rafraichirApresLibellesReference)
       .catch(() => {});
   }
   return `n° ${id}`;

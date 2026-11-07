@@ -4,8 +4,8 @@
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
    Définit : sansAccentBas, classerNiveau, chargerProfil, chargerProfilViseur, lieuDe, statutDe, peutViser,
      aViserParMoi, majBandeauVisa, lireVeille, majBandeauVeille, campagnesDeLEtab, majBandeauCampagne,
-     qualificationRetourNormale, rienASignaler, remplirVisas, champVerdict, activerVerdictRapide,
-     enregistrerVerdict, enregistrerVisa.
+     qualificationRetourNormale, rienASignaler, echelonsAffichables, remplirVisas, champVerdict,
+     activerVerdictRapide, ecrireVerdict, enregistrerVerdict, ecrireVisa, enregistrerVisa.
    Utilise :
      01 configuration : ETAB, UTILISATEURS.
      02 utilitaires : colonnesEtab.
@@ -264,6 +264,23 @@ async function rienASignaler() {
   });
 }
 
+// Échelons de visa à afficher (montrerDep, montrerAca) selon le profil, le périmètre du viseur et les questions lisibles
+function echelonsAffichables(questionsVisaDep, questionsVisaAca) {
+  // Un profil identifié dans « Utilisateurs » décide du périmètre : département → son échelon
+  // seulement ; académie et région académique → les deux échelons. Sans profil reconnu (ex. le
+  // propriétaire du document), on retombe sur ce que les règles d'accès laissent lire.
+  let montrerDep = questionsVisaDep.length > 0;
+  let montrerAca = questionsVisaAca.length > 0 && (!etatSaisie.monNiveau || etatSaisie.monNiveau !== "departement");
+  // Viseur de l'onglet Validation : son échelon, sur les établissements de son périmètre seulement
+  if (etatSaisie.monPerimetreVisa) {
+    montrerDep =
+      montrerDep &&
+      (!etatSaisie.reglageValidation || etatSaisie.reglageValidation.echelons === "dep_aca") &&
+      peutViser("dep");
+    montrerAca = montrerAca && peutViser("aca");
+  }
+  return { montrerDep, montrerAca };
+}
 async function remplirVisas() {
   // Un bloc n'est affiché que si les règles d'accès laissent lire ses colonnes
   const visibles = (questions, prefix) =>
@@ -279,19 +296,7 @@ async function remplirVisas() {
     });
   const questionsVisaDep = visibles(etatSaisie.defsDep, "vd"),
     questionsVisaAca = visibles(etatSaisie.defsAca, "va");
-  // Un profil identifié dans « Utilisateurs » décide du périmètre : département → son échelon
-  // seulement ; académie et région académique → les deux échelons. Sans profil reconnu (ex. le
-  // propriétaire du document), on retombe sur ce que les règles d'accès laissent lire.
-  let montrerDep = questionsVisaDep.length > 0;
-  let montrerAca = questionsVisaAca.length > 0 && (!etatSaisie.monNiveau || etatSaisie.monNiveau !== "departement");
-  // Viseur de l'onglet Validation : son échelon, sur les établissements de son périmètre seulement
-  if (etatSaisie.monPerimetreVisa) {
-    montrerDep =
-      montrerDep &&
-      (!etatSaisie.reglageValidation || etatSaisie.reglageValidation.echelons === "dep_aca") &&
-      peutViser("dep");
-    montrerAca = montrerAca && peutViser("aca");
-  }
+  const { montrerDep, montrerAca } = echelonsAffichables(questionsVisaDep, questionsVisaAca);
   $("form-visa-dep").hidden = !montrerDep;
   $("form-visa-aca").hidden = !montrerAca;
   $("onglet-visas").hidden = !(montrerDep || montrerAca);
@@ -382,6 +387,11 @@ function activerVerdictRapide(prefix, questions, statutId) {
       "Un clic sur une valeur l'enregistre immédiatement. Au clavier : flèches pour choisir, Entrée pour valider.";
 }
 
+// Écrit le verdict choisi sur la ligne
+async function ecrireVerdict(ligneId, colId, valeur) {
+  await grist.getTable().update({ id: ligneId, fields: { [colId]: valeur } });
+}
+
 async function enregistrerVerdict(questionVerdict, id, statutId) {
   if (!etatSaisie.derniere) return;
   const valeurChoisie = lireChoix(id);
@@ -392,7 +402,7 @@ async function enregistrerVerdict(questionVerdict, id, statutId) {
     return;
   statut(statutId, "Enregistrement…");
   try {
-    await grist.getTable().update({ id: etatSaisie.derniere.id, fields: { [questionVerdict.colId]: valeurChoisie } });
+    await ecrireVerdict(etatSaisie.derniere.id, questionVerdict.colId, valeurChoisie);
     etatSaisie.derniere[questionVerdict.colId] = valeurChoisie; // évite qu'« Enregistrer » ne renvoie inutilement cette même valeur
     statut(statutId, `Visa enregistré : ${valeurChoisie}.`, "ok");
   } catch (erreur) {
@@ -402,6 +412,11 @@ async function enregistrerVerdict(questionVerdict, id, statutId) {
       "err",
     );
   }
+}
+
+// Écrit les champs du visa sur la ligne
+async function ecrireVisa(ligneId, fields) {
+  await grist.getTable().update({ id: ligneId, fields });
 }
 
 async function enregistrerVisa(prefix, questions, statutId) {
@@ -418,7 +433,7 @@ async function enregistrerVisa(prefix, questions, statutId) {
     return;
   }
   try {
-    await grist.getTable().update({ id: etatSaisie.derniere.id, fields });
+    await ecrireVisa(etatSaisie.derniere.id, fields);
     etatSaisie.modifieVisa = false;
     statut(statutId, "Visa enregistré.", "ok");
   } catch (erreur) {

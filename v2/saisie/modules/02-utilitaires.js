@@ -2,7 +2,8 @@
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
-   Définit : colonnesEtab, COLONNES_ETAB_DEFAUT, RECONNAISSANCE_ETAB, normColonne, reconnaitreColonnesEtab.
+   Définit : colonnesEtab, COLONNES_ETAB_DEFAUT, RECONNAISSANCE_ETAB, normColonne, lireMetaColonnesEtab,
+     calculerColonnesEtabReconnues, reconnaitreColonnesEtab.
    Utilise :
      01 configuration : ETAB.
      05 etat : etatSaisie.
@@ -54,16 +55,21 @@ const normColonne = (valeur) =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_|_$/g, "");
-async function reconnaitreColonnesEtab(donneesTable) {
-  Object.assign(colonnesEtab, COLONNES_ETAB_DEFAUT);
-  etatSaisie.colonnesReconnues = {};
-  etatSaisie.colonnesParContenu = new Set();
+// Lit la structure de la table des établissements (null si illisible : lien d'établissement, règles d'accès)
+async function lireMetaColonnesEtab() {
   let meta = null;
   try {
     meta = await metaColonnes(ETAB.table);
   } catch (_) {
     // structure illisible (lien d'établissement, règles d'accès) : on continue sans
   }
+  return meta;
+}
+// Calcule les colonnes reconnues de la table des établissements (nom des champs → colonne, et ceux trouvés par le contenu)
+function calculerColonnesEtabReconnues(donneesTable, meta) {
+  const colonnesCourantes = { ...colonnesEtab };
+  const trouvees = {};
+  const parContenu = [];
   const colonnes = Object.keys(donneesTable).filter(
     (colonne) => colonne !== "id" && colonne !== "manualSort" && !colonne.startsWith("gristHelper"),
   );
@@ -83,7 +89,7 @@ async function reconnaitreColonnesEtab(donneesTable) {
       : 0;
   };
   for (const [k, reconnaissance] of Object.entries(RECONNAISSANCE_ETAB)) {
-    if (colonnes.includes(colonnesEtab[k])) continue;
+    if (colonnes.includes(colonnesCourantes[k])) continue;
     let trouve = null;
     for (const motif of reconnaissance.motifs) {
       const cands = colonnes.filter(
@@ -120,8 +126,8 @@ async function reconnaitreColonnesEtab(donneesTable) {
           .filter(
             (colonne) =>
               !pris.has(colonne) &&
-              colonne !== colonnesEtab.cle &&
-              colonne !== colonnesEtab.lien &&
+              colonne !== colonnesCourantes.cle &&
+              colonne !== colonnesCourantes.lien &&
               !/uuid|lien|mail|url/i.test(colonne),
           )
           .map((colonne) => [colonne, score(colonne)])
@@ -130,11 +136,22 @@ async function reconnaitreColonnesEtab(donneesTable) {
           .map(([colonne]) => colonne)[0] || null;
     }
     if (trouve && !noms(trouve).some((nomNormalise) => reconnaissance.motifs.some((motif) => motif.test(nomNormalise))))
-      etatSaisie.colonnesParContenu.add(k);
+      parContenu.push(k);
     if (trouve) {
-      colonnesEtab[k] = trouve;
+      colonnesCourantes[k] = trouve;
       pris.add(trouve);
-      etatSaisie.colonnesReconnues[k] = trouve;
+      trouvees[k] = trouve;
     }
   }
+  return { trouvees, parContenu };
+}
+async function reconnaitreColonnesEtab(donneesTable) {
+  Object.assign(colonnesEtab, COLONNES_ETAB_DEFAUT);
+  etatSaisie.colonnesReconnues = {};
+  etatSaisie.colonnesParContenu = new Set();
+  const meta = await lireMetaColonnesEtab();
+  const { trouvees, parContenu } = calculerColonnesEtabReconnues(donneesTable, meta);
+  Object.assign(colonnesEtab, trouvees);
+  Object.assign(etatSaisie.colonnesReconnues, trouvees);
+  parContenu.forEach((k) => etatSaisie.colonnesParContenu.add(k));
 }

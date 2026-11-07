@@ -2,8 +2,9 @@
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
-   Définit : infoSection, alerterSection, colRattachement, rattachementDe, versEtablissement, nomEtabId,
-     alerterRattachement, afficherEtablissement, extraireUrl, nettoieMail, carteHtml, majBoutonEnvoi, etabParUai,
+   Définit : infoSection, calculerRattachementSection, alerterSection, colRattachement, rattachementDe,
+     versEtablissement, nomEtabId, alerterRattachement, afficherEtablissement, extraireUrl, nettoieMail, carteHtml,
+     construireMailto, majBoutonEnvoi, etabParUai, lireSaisieNouvelEtab, creerEtablissement,
      etablissementPourCreation.
    Utilise :
      01 configuration : ETAB, MESSAGE, ORIGINE.
@@ -43,15 +44,8 @@ function infoSection(etablissement) {
     lon: isFinite(lon) && lon ? lon : null,
   };
 }
-function alerterSection(etablissement) {
-  const bloc = $("alerte-section");
-  const section = etablissement && Socle && Socle.genreSection ? infoSection(etablissement) : null,
-    genre = section ? Socle.genreSection(section.nature, section.type, section.nom) : null;
-  if (!genre || etatSaisie.sectionGardee === section.id) {
-    bloc.hidden = !(genre && etatSaisie.sectionGardee === section.id);
-    if (bloc.hidden) bloc.innerHTML = "";
-    return;
-  }
+// Calcule (avec cache dans etatSaisie.sectionCalculee) l'établissement de rattachement proposé pour une section
+function calculerRattachementSection(section, genre) {
   if (etatSaisie.sectionCalculee.id !== section.id) {
     const cLat = (etatSaisie.colsEtab || []).find((k) => /^(etab_)?lat(itude)?$/i.test(k));
     const proches = etatSaisie.etabs
@@ -66,7 +60,18 @@ function alerterSection(etablissement) {
       r: Socle.rattachementSection({ ...section, section: genre }, proches),
     };
   }
-  const rattachementPropose = etatSaisie.sectionCalculee.r;
+  return etatSaisie.sectionCalculee.r;
+}
+function alerterSection(etablissement) {
+  const bloc = $("alerte-section");
+  const section = etablissement && Socle && Socle.genreSection ? infoSection(etablissement) : null,
+    genre = section ? Socle.genreSection(section.nature, section.type, section.nom) : null;
+  if (!genre || etatSaisie.sectionGardee === section.id) {
+    bloc.hidden = !(genre && etatSaisie.sectionGardee === section.id);
+    if (bloc.hidden) bloc.innerHTML = "";
+    return;
+  }
+  const rattachementPropose = calculerRattachementSection(section, genre);
   bloc.innerHTML = `<strong>⚠ Vous avez choisi une ${esc(genre)}</strong>, section rattachée à un ${genre === "SEP" || genre === "SGT" ? "lycée" : "collège"} :
     le signalement doit porter sur l'établissement, sinon il est compté à part (et souvent deux fois).
     ${
@@ -223,19 +228,8 @@ function carteHtml(etablissement) {
     .join("");
 }
 
-function majBoutonEnvoi() {
-  const boutonEnvoi = $("btn-envoyer");
-  const lien = $("lien").value,
-    mail = $("mail").value.trim();
-  const nomEtab = etatSaisie.etabCourant ? etatSaisie.etabCourant[colonnesEtab.nom] : $("nom").value.trim();
-  if (!lien || !mail) {
-    boutonEnvoi.setAttribute("aria-disabled", "true");
-    boutonEnvoi.removeAttribute("href");
-    boutonEnvoi.title = !mail ? "Renseignez le mail de l'établissement" : "Le lien n'est pas encore disponible";
-    return;
-  }
-  boutonEnvoi.removeAttribute("aria-disabled");
-  boutonEnvoi.title = "";
+// Calcule le lien mailto (objet et corps d'après les modèles de message) pour le mail, le lien et le nom donnés
+function construireMailto(mail, lien, nomEtab) {
   // message réglé dans l'administration (onglet Établissements, clé « liens » de Config), sinon message par défaut
   const messageConfigure =
       etatSaisie.socleConfig && etatSaisie.socleConfig.valeurs.liens && etatSaisie.socleConfig.valeurs.liens.message,
@@ -255,7 +249,22 @@ function majBoutonEnvoi() {
     );
   const objet = messageConfigure && messageConfigure.objet ? remplir(messageConfigure.objet) : MESSAGE.objet(nomEtab),
     corps = messageConfigure && messageConfigure.corps ? remplir(messageConfigure.corps) : MESSAGE.corps(nomEtab, lien);
-  boutonEnvoi.href = `mailto:${encodeURIComponent(mail)}?subject=${encodeURIComponent(objet)}&body=${encodeURIComponent(corps)}`;
+  return `mailto:${encodeURIComponent(mail)}?subject=${encodeURIComponent(objet)}&body=${encodeURIComponent(corps)}`;
+}
+function majBoutonEnvoi() {
+  const boutonEnvoi = $("btn-envoyer");
+  const lien = $("lien").value,
+    mail = $("mail").value.trim();
+  const nomEtab = etatSaisie.etabCourant ? etatSaisie.etabCourant[colonnesEtab.nom] : $("nom").value.trim();
+  if (!lien || !mail) {
+    boutonEnvoi.setAttribute("aria-disabled", "true");
+    boutonEnvoi.removeAttribute("href");
+    boutonEnvoi.title = !mail ? "Renseignez le mail de l'établissement" : "Le lien n'est pas encore disponible";
+    return;
+  }
+  boutonEnvoi.removeAttribute("aria-disabled");
+  boutonEnvoi.title = "";
+  boutonEnvoi.href = construireMailto(mail, lien, nomEtab);
 }
 
 $("mail").addEventListener("input", () => {
@@ -314,36 +323,21 @@ function etabParUai(uai) {
     : null;
 }
 
-// Retourne l'identifiant de l'établissement du signalement, en le créant si besoin
-async function etablissementPourCreation() {
-  if (etatSaisie.modeEtab) return etatSaisie.etabs[0] ? etatSaisie.etabs[0].id : null;
-  if (etatSaisie.etabCourant) return etatSaisie.etabCourant.id;
-  await chargerEtabs(); // un collègue l'a peut-être créé entre-temps
-  const existant = etabParUai($("uai").value);
-  if (existant) {
-    etatSaisie.etabCourant = existant;
-    return existant.id;
-  }
-  const uai = $("uai").value.trim().toUpperCase();
-  // Origine « annuaire » seulement si l'établissement vient d'une suggestion et que l'UAI n'a pas été modifié
-  const depuisAnnuaire =
-    etatSaisie.ligneAnnuaire &&
-    etatSaisie.ligneAnnuaire.uai &&
-    String(etatSaisie.ligneAnnuaire.uai).toUpperCase() === uai;
-  const candidats = {
-    [colonnesEtab.nom]: $("nom").value.trim(),
-    [colonnesEtab.uai]: uai,
-    [colonnesEtab.type]: $("type").value.trim(),
-    [colonnesEtab.academie]: $("academie").value.trim(),
-    [colonnesEtab.departement]: $("departement").value.trim(),
-    [colonnesEtab.mail]: $("mail").value.trim(),
-    [colonnesEtab.commune]: depuisAnnuaire ? etatSaisie.ligneAnnuaire.commune || "" : "",
-    [colonnesEtab.origine]: depuisAnnuaire
-      ? ORIGINE[etatSaisie.ligneAnnuaire.source] || ORIGINE.manuel
-      : ORIGINE.manuel,
-    [colonnesEtab.present]: depuisAnnuaire ? true : null,
-    [colonnesEtab.mailAnnuaire]: depuisAnnuaire ? etatSaisie.ligneAnnuaire.mail || "" : "",
+// Lit dans la page les champs de l'établissement à créer (uai brut et valeurs nettoyées)
+function lireSaisieNouvelEtab() {
+  return {
+    uaiBrut: $("uai").value,
+    uai: $("uai").value.trim().toUpperCase(),
+    nom: $("nom").value.trim(),
+    type: $("type").value.trim(),
+    academie: $("academie").value.trim(),
+    departement: $("departement").value.trim(),
+    mail: $("mail").value.trim(),
   };
+}
+
+// Crée l'établissement dans le référentiel (colonnes connues seulement), le recharge et renvoie son identifiant
+async function creerEtablissement(candidats) {
   const fields = {};
   for (const [colonne, valeur] of Object.entries(candidats))
     if (etatSaisie.colsEtab.includes(colonne) && valeur !== null) fields[colonne] = valeur;
@@ -353,6 +347,41 @@ async function etablissementPourCreation() {
     ),
   );
   await chargerEtabs(); // récupère la clé et le lien calculés par Grist
+  return id;
+}
+
+// Retourne l'identifiant de l'établissement du signalement, en le créant si besoin
+async function etablissementPourCreation() {
+  if (etatSaisie.modeEtab) return etatSaisie.etabs[0] ? etatSaisie.etabs[0].id : null;
+  if (etatSaisie.etabCourant) return etatSaisie.etabCourant.id;
+  await chargerEtabs(); // un collègue l'a peut-être créé entre-temps
+  const saisie = lireSaisieNouvelEtab();
+  const existant = etabParUai(saisie.uaiBrut);
+  if (existant) {
+    etatSaisie.etabCourant = existant;
+    return existant.id;
+  }
+  const uai = saisie.uai;
+  // Origine « annuaire » seulement si l'établissement vient d'une suggestion et que l'UAI n'a pas été modifié
+  const depuisAnnuaire =
+    etatSaisie.ligneAnnuaire &&
+    etatSaisie.ligneAnnuaire.uai &&
+    String(etatSaisie.ligneAnnuaire.uai).toUpperCase() === uai;
+  const candidats = {
+    [colonnesEtab.nom]: saisie.nom,
+    [colonnesEtab.uai]: uai,
+    [colonnesEtab.type]: saisie.type,
+    [colonnesEtab.academie]: saisie.academie,
+    [colonnesEtab.departement]: saisie.departement,
+    [colonnesEtab.mail]: saisie.mail,
+    [colonnesEtab.commune]: depuisAnnuaire ? etatSaisie.ligneAnnuaire.commune || "" : "",
+    [colonnesEtab.origine]: depuisAnnuaire
+      ? ORIGINE[etatSaisie.ligneAnnuaire.source] || ORIGINE.manuel
+      : ORIGINE.manuel,
+    [colonnesEtab.present]: depuisAnnuaire ? true : null,
+    [colonnesEtab.mailAnnuaire]: depuisAnnuaire ? etatSaisie.ligneAnnuaire.mail || "" : "",
+  };
+  const id = await creerEtablissement(candidats);
   etatSaisie.etabCourant = etabDe(id);
   return id;
 }

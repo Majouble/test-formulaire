@@ -2,10 +2,11 @@
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
-   Définit : etatSaisie, colonneDe, valeurLigne, champWidget, majCreneau, lireEmargementAgent, htmlEmargement,
-     basculerService, heureCourte, texteCreneau, perimetre, perimetreActif, dansPerimetre, resumePerimetre,
-     afficherBandeauPerimetre, etabDe, cleTexteEtab, etabParTexte, trouverColNomReponses, texteEtabBrut,
-     etabDeLigne, nomEtabLigne.
+   Définit : etatSaisie, colonneDe, valeurLigne, champWidget, lirePlanningCreneau, choisirCreneauAgent,
+     calculerPerimetreCreneau, signatureCreneau, afficherChangementCreneau, majCreneau, lireEmargementAgent,
+     htmlEmargement, ecrireEmargement, messageErreurEmargement, basculerService, heureCourte, texteCreneau,
+     perimetre, perimetreActif, dansPerimetre, resumePerimetre, afficherBandeauPerimetre, etabDe, cleTexteEtab,
+     etabParTexte, trouverColNomReponses, texteEtabBrut, etabDeLigne, nomEtabLigne.
    Utilise :
      02 utilitaires : colonnesEtab, normColonne.
      03 variantes : refId, reglagesSaisie.
@@ -251,17 +252,18 @@ const champWidget = () => {
     return "";
   }
 };
-async function majCreneau(redessiner) {
-  if (etatSaisie.agentPage == null) {
-    etatSaisie.creneauPage = null;
-    return;
-  }
+// Lit le planning du socle (null si illisible)
+async function lirePlanningCreneau() {
   let planning = null;
   try {
     planning = await window.Socle.lirePlanning(etatSaisie.socleGeneral);
   } catch (_) {
     planning = null;
   }
+  return planning;
+}
+// Choisit le créneau en cours de l'agent, de préférence dans le champ de ce formulaire
+function choisirCreneauAgent(planning) {
   const enCours = window.Socle.affectationsEnCours(planning, etatSaisie.agentPage),
     champFormulaire = champWidget();
   // de préférence une affectation qui couvre le champ de ce formulaire
@@ -269,11 +271,10 @@ async function majCreneau(redessiner) {
     (affectationEnCours) =>
       !champFormulaire || window.Socle.champsDe(affectationEnCours.affectation).includes(champFormulaire),
   );
-  const creneauRetenu = dansChamp || (enCours[0] ? { ...enCours[0], horsChamp: true } : null);
-  const avant = JSON.stringify([
-    etatSaisie.creneauPage && etatSaisie.creneauPage.affectation.id,
-    etatSaisie.perimetreBrut,
-  ]);
+  return dansChamp || (enCours[0] ? { ...enCours[0], horsChamp: true } : null);
+}
+// Calcule le périmètre porté par le créneau retenu (celui de la fiche s'il est hors champ ou absent)
+function calculerPerimetreCreneau(creneauRetenu) {
   let perimetreAffectation = etatSaisie.perimetreFiche;
   if (creneauRetenu && !creneauRetenu.horsChamp) {
     try {
@@ -284,16 +285,32 @@ async function majCreneau(redessiner) {
       perimetreAffectation = {};
     }
   }
-  etatSaisie.creneauPage = creneauRetenu;
-  etatSaisie.perimetreBrut = perimetreAffectation;
-  await lireEmargementAgent();
-  if (
-    redessiner &&
-    avant !== JSON.stringify([creneauRetenu && creneauRetenu.affectation.id, etatSaisie.perimetreBrut])
-  ) {
+  return perimetreAffectation;
+}
+// Calcule la signature (affectation, périmètre) qui sert à détecter un changement de créneau
+function signatureCreneau(creneau, perimetreBrut) {
+  return JSON.stringify([creneau && creneau.affectation.id, perimetreBrut]);
+}
+// Redessine le bandeau de périmètre, et la liste des dossiers si le créneau ou le périmètre a changé
+function afficherChangementCreneau(redessiner, avant, creneauRetenu) {
+  if (redessiner && avant !== signatureCreneau(creneauRetenu, etatSaisie.perimetreBrut)) {
     afficherBandeauPerimetre();
     majListeDossiers();
   } else if (redessiner) afficherBandeauPerimetre();
+}
+async function majCreneau(redessiner) {
+  if (etatSaisie.agentPage == null) {
+    etatSaisie.creneauPage = null;
+    return;
+  }
+  const planning = await lirePlanningCreneau();
+  const creneauRetenu = choisirCreneauAgent(planning);
+  const avant = signatureCreneau(etatSaisie.creneauPage, etatSaisie.perimetreBrut);
+  const perimetreAffectation = calculerPerimetreCreneau(creneauRetenu);
+  etatSaisie.creneauPage = creneauRetenu;
+  etatSaisie.perimetreBrut = perimetreAffectation;
+  await lireEmargementAgent();
+  afficherChangementCreneau(redessiner, avant, creneauRetenu);
 }
 setInterval(() => {
   if (!document.hidden && etatSaisie.agentPage != null) majCreneau(true).catch(() => {});
@@ -328,32 +345,38 @@ function htmlEmargement() {
     `</span>`
   );
 }
+// Écrit l'émargement : fin de service si un émargement est ouvert, sinon prise de service
+async function ecrireEmargement(nomTableEmargements, maintenant) {
+  if (etatSaisie.emargementOuvert)
+    await Donnees.ecrire([["UpdateRecord", nomTableEmargements, etatSaisie.emargementOuvert.id, { Fin: maintenant }]]);
+  else
+    await Donnees.ecrire([
+      [
+        "AddRecord",
+        nomTableEmargements,
+        null,
+        {
+          Agent: etatSaisie.agentPage,
+          Creneau: (etatSaisie.creneauPage && etatSaisie.creneauPage.creneau.id) || 0,
+          Debut: maintenant,
+        },
+      ],
+    ]);
+}
+// Compose le message d'erreur d'émargement affiché à l'agent
+function messageErreurEmargement(erreur) {
+  return /ACL|access|accès|denied|refus/i.test(String((erreur && erreur.message) || erreur))
+    ? `émargement refusé : seul ${etatSaisie.libellePage || "l'agent de cette page"} peut émarger ici, avec son propre compte`
+    : `émargement impossible (${erreur.message || erreur})`;
+}
 async function basculerService() {
   const nomTableEmargements = window.Socle.general(etatSaisie.socleConfig).emargements || "Emargements",
     maintenant = Date.now() / 1000;
   etatSaisie.erreurEmargement = "";
   try {
-    if (etatSaisie.emargementOuvert)
-      await Donnees.ecrire([
-        ["UpdateRecord", nomTableEmargements, etatSaisie.emargementOuvert.id, { Fin: maintenant }],
-      ]);
-    else
-      await Donnees.ecrire([
-        [
-          "AddRecord",
-          nomTableEmargements,
-          null,
-          {
-            Agent: etatSaisie.agentPage,
-            Creneau: (etatSaisie.creneauPage && etatSaisie.creneauPage.creneau.id) || 0,
-            Debut: maintenant,
-          },
-        ],
-      ]);
+    await ecrireEmargement(nomTableEmargements, maintenant);
   } catch (erreur) {
-    etatSaisie.erreurEmargement = /ACL|access|accès|denied|refus/i.test(String((erreur && erreur.message) || erreur))
-      ? `émargement refusé : seul ${etatSaisie.libellePage || "l'agent de cette page"} peut émarger ici, avec son propre compte`
-      : `émargement impossible (${erreur.message || erreur})`;
+    etatSaisie.erreurEmargement = messageErreurEmargement(erreur);
   }
   await lireEmargementAgent();
   afficherBandeauPerimetre();

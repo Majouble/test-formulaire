@@ -3,8 +3,10 @@
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
    Définit : DUREE_CACHE_REFERENTIEL, ouvrirBaseCache, cleCacheReferentiel, lireCacheReferentiel,
-     ecrireCacheReferentiel, copieEncoreValable, oublierCacheReferentiel, liensDemandes, completerLienEtab,
-     chargerEtabs, lireEtabs.
+     ecrireCacheReferentiel, copieEncoreValable, oublierCacheReferentiel, liensDemandes, lienEtabAcompleter,
+     lireCleEtLienEtab, completerLienEtab, chargerEtabs, lireTablesReferencesDuReferentiel,
+     lireCopieValideReferentiel, memoriserTableReferentiel, calculerIndexEtabs, calculerModeEtab,
+     calculerTexteAlerteStructure, ecrireCopieReferentielSiBesoin, lireEtabs.
    Utilise :
      01 configuration : ETAB.
      02 utilitaires : colonnesEtab, reconnaitreColonnesEtab.
@@ -113,37 +115,44 @@ async function oublierCacheReferentiel() {
 }
 // Clé et lien d'accès de l'établissement affiché, quand le référentiel vient du navigateur (non conservés)
 const liensDemandes = new Set();
-async function completerLienEtab(etablissement) {
-  if (
+// Dit si le lien d'accès de l'établissement reste à lire (référentiel venu du cache, lien absent et pas déjà demandé)
+function lienEtabAcompleter(etablissement) {
+  return !(
     !etatSaisie.referentielDuCache ||
     !etablissement ||
     liensDemandes.has(etablissement.id) ||
     !(colonnesEtab.lien in etablissement) ||
     (etablissement[colonnesEtab.lien] != null && etablissement[colonnesEtab.lien] !== "")
-  )
-    return;
+  );
+}
+// Lit sur le serveur la clé et le lien d'accès de l'établissement et les reporte dans sa ligne
+async function lireCleEtLienEtab(etablissement) {
+  const j = await grist.docApi.getAccessToken({ readOnly: true });
+  const lire = async (filtre) => {
+    const reponse = await fetch(
+      `${j.baseUrl}/tables/${encodeURIComponent(ETAB.table)}/records?filter=${encodeURIComponent(JSON.stringify(filtre))}&auth=${encodeURIComponent(j.token)}`,
+    );
+    if (!reponse.ok) throw new Error(`erreur ${reponse.status}`);
+    return ((await reponse.json()).records || []).find((enregistrement) => enregistrement.id === etablissement.id);
+  };
+  // filtre sur le numéro de ligne, sinon sur l'UAI
+  let rec = null;
+  try {
+    rec = await lire({ id: [etablissement.id] });
+  } catch (_) {
+    // ligne illisible (règles d'accès) : établissement non trouvé
+  }
+  if (!rec && colonnesEtab.uai && etablissement[colonnesEtab.uai])
+    rec = await lire({ [colonnesEtab.uai]: [etablissement[colonnesEtab.uai]] });
+  const champsLus = (rec && rec.fields) || {};
+  for (const colonne of [colonnesEtab.cle, colonnesEtab.lien])
+    if (colonne && colonne in champsLus) etablissement[colonne] = champsLus[colonne];
+}
+async function completerLienEtab(etablissement) {
+  if (!lienEtabAcompleter(etablissement)) return;
   liensDemandes.add(etablissement.id);
   try {
-    const j = await grist.docApi.getAccessToken({ readOnly: true });
-    const lire = async (filtre) => {
-      const reponse = await fetch(
-        `${j.baseUrl}/tables/${encodeURIComponent(ETAB.table)}/records?filter=${encodeURIComponent(JSON.stringify(filtre))}&auth=${encodeURIComponent(j.token)}`,
-      );
-      if (!reponse.ok) throw new Error(`erreur ${reponse.status}`);
-      return ((await reponse.json()).records || []).find((enregistrement) => enregistrement.id === etablissement.id);
-    };
-    // filtre sur le numéro de ligne, sinon sur l'UAI
-    let rec = null;
-    try {
-      rec = await lire({ id: [etablissement.id] });
-    } catch (_) {
-      // ligne illisible (règles d'accès) : établissement non trouvé
-    }
-    if (!rec && colonnesEtab.uai && etablissement[colonnesEtab.uai])
-      rec = await lire({ [colonnesEtab.uai]: [etablissement[colonnesEtab.uai]] });
-    const champsLus = (rec && rec.fields) || {};
-    for (const colonne of [colonnesEtab.cle, colonnesEtab.lien])
-      if (colonne && colonne in champsLus) etablissement[colonne] = champsLus[colonne];
+    await lireCleEtLienEtab(etablissement);
     if (etatSaisie.etabCourant && etatSaisie.etabCourant.id === etablissement.id) afficherEtablissement();
   } catch (erreur) {
     console.warn("Lien d'accès non lu", erreur);
@@ -164,9 +173,8 @@ function chargerEtabs(avecCache) {
       });
   return etatSaisie.promesseEtabs;
 }
-async function lireEtabs(avecCache) {
-  etatSaisie.dernierChargementEtabs = Date.now();
-  // tables visées par les colonnes Référence du référentiel (académies…) : lues en parallèle, pas après lui
+// Lance la lecture des tables visées par les colonnes Référence du référentiel (académies…), sans l'attendre
+function lireTablesReferencesDuReferentiel() {
   metaColonnes(ETAB.table)
     .then((metaTable) => {
       for (const metaColonne of Object.values(metaTable || {})) {
@@ -175,39 +183,49 @@ async function lireEtabs(avecCache) {
       }
     })
     .catch(() => {});
-  let copie = avecCache ? await lireCacheReferentiel() : null;
+}
+// Lit la copie du référentiel gardée dans le navigateur (null si absente ou périmée, et alors oubliée)
+async function lireCopieValideReferentiel() {
+  let copie = await lireCacheReferentiel();
   if (copie && !(await copieEncoreValable(copie))) {
     copie = null;
     oublierCacheReferentiel();
   }
-  etatSaisie.referentielDuCache = copie ? copie.t : null;
-  liensDemandes.clear();
-  const tableReferentiel = copie ? copie.table : await lireTableRapide(ETAB.table);
+  return copie;
+}
+// Place la table du référentiel dans le cache des tables
+function memoriserTableReferentiel(tableReferentiel) {
   cacheTables.set(ETAB.table, { t: Date.now(), p: Promise.resolve(tableReferentiel) }); // réutilisée par les listes de choix qui visent le référentiel
+}
+// Calcule les lignes d'établissements, leur index par identifiant, le plus grand identifiant et la liste des colonnes
+function calculerIndexEtabs(tableReferentiel) {
   const colonnes = Object.keys(tableReferentiel);
-  etatSaisie.etabs = tableReferentiel.id.map((id, i) => {
+  const etabs = tableReferentiel.id.map((id, i) => {
     const ligne = {};
     colonnes.forEach((colonne) => (ligne[colonne] = tableReferentiel[colonne][i]));
     return ligne;
   });
-  etatSaisie.indexEtabs = new Map(etatSaisie.etabs.map((etablissement) => [etablissement.id, etablissement]));
-  etatSaisie.idEtabMax = etatSaisie.etabs.reduce((idMax, etablissement) => Math.max(idMax, etablissement.id), 0);
-  etatSaisie.colsEtab = colonnes;
-  await reconnaitreColonnesEtab(tableReferentiel);
-  appliquerColonnesForcees();
-  await resoudreRefsEtab();
+  const indexEtabs = new Map(etabs.map((etablissement) => [etablissement.id, etablissement]));
+  const idEtabMax = etabs.reduce((idMax, etablissement) => Math.max(idMax, etablissement.id), 0);
+  return { colonnes, etabs, indexEtabs, idEtabMax };
+}
+// Détermine le mode établissement : une seule ligne visible et sa clé illisible (absente ou censurée)
+function calculerModeEtab(colonnes) {
   // Mode établissement : une seule ligne est visible (celle de l'établissement du lien), et sa clé
   // n'est pas lisible — soit la colonne est absente du schéma transmis, soit sa valeur est censurée
   // par une règle d'accès de colonne (cas le plus courant : le rôle « colonne » sur UUID/Lien).
   const uneSeuleLigne = etatSaisie.etabs.length === 1;
   const cleLisible =
     uneSeuleLigne && colonnes.includes(colonnesEtab.cle) && lisible(etatSaisie.etabs[0][colonnesEtab.cle]);
-  etatSaisie.modeEtab = uneSeuleLigne && !cleLisible;
+  return uneSeuleLigne && !cleLisible;
+}
+// Calcule le texte d'alerte sur la structure du référentiel (colonnes devinées ou introuvables)
+function calculerTexteAlerteStructure(colonnes) {
   const colsLisibles = colonnes
     .filter((colonne) => colonne !== "id" && colonne !== "manualSort" && !colonne.startsWith("gristHelper"))
     .join(", ");
   const devinees = [...etatSaisie.colonnesParContenu].filter((k) => ["nom", "uai"].includes(k));
-  etatSaisie.alerteStructure = [
+  return [
     !etatSaisie.modeEtab && devinees.length
       ? `Dans la table « ${ETAB.table} », ${devinees.map((k) => `la colonne « ${colonnesEtab[k]} » est utilisée comme ${k === "nom" ? "nom de l'établissement" : "UAI"}`).join(" et ")}, d'après son contenu. Renommez-la « ${devinees.map((k) => (k === "nom" ? "Nom" : "UAI")).join(" » / « ")} » si ce n'est pas la bonne.`
       : "",
@@ -220,6 +238,9 @@ async function lireEtabs(avecCache) {
   ]
     .filter(Boolean)
     .join(" ");
+}
+// Garde une copie du référentiel dans le navigateur (jamais en accès par lien d'établissement), sans clé ni lien d'accès
+function ecrireCopieReferentielSiBesoin(copie, tableReferentiel, colonnes) {
   // copie conservée dans le navigateur (jamais en accès par lien d'établissement), sans clé ni lien d'accès
   if (!copie && !etatSaisie.modeEtab && etatSaisie.etabs.length > 1)
     ecrireCacheReferentiel(
@@ -228,4 +249,25 @@ async function lireEtabs(avecCache) {
         .filter((colonne) => colonne && colonnes.includes(colonne))
         .concat(colonnes.filter((colonne) => /uuid|lien_?(d_?)?acces|link_?key|cle_?(d_?)?acces|token/i.test(colonne))),
     );
+}
+async function lireEtabs(avecCache) {
+  etatSaisie.dernierChargementEtabs = Date.now();
+  // tables visées par les colonnes Référence du référentiel (académies…) : lues en parallèle, pas après lui
+  lireTablesReferencesDuReferentiel();
+  const copie = avecCache ? await lireCopieValideReferentiel() : null;
+  etatSaisie.referentielDuCache = copie ? copie.t : null;
+  liensDemandes.clear();
+  const tableReferentiel = copie ? copie.table : await lireTableRapide(ETAB.table);
+  memoriserTableReferentiel(tableReferentiel);
+  const { colonnes, etabs, indexEtabs, idEtabMax } = calculerIndexEtabs(tableReferentiel);
+  etatSaisie.etabs = etabs;
+  etatSaisie.indexEtabs = indexEtabs;
+  etatSaisie.idEtabMax = idEtabMax;
+  etatSaisie.colsEtab = colonnes;
+  await reconnaitreColonnesEtab(tableReferentiel);
+  appliquerColonnesForcees();
+  await resoudreRefsEtab();
+  etatSaisie.modeEtab = calculerModeEtab(colonnes);
+  etatSaisie.alerteStructure = calculerTexteAlerteStructure(colonnes);
+  ecrireCopieReferentielSiBesoin(copie, tableReferentiel, colonnes);
 }

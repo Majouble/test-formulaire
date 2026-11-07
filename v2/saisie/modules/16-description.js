@@ -3,13 +3,14 @@
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
    Définit : PARAMETRES, OPTIONS_DEFAUT, SEPARATEURS, joindre, memeReponse, mettreEnForme, element,
-     modificationsSaisies, texteAutomatique, commentaireComplet, FAMILLES, famille, formatPour,
-     questionsDescription, elementsDescription, MOTIF_MOBILISATION, ordinal, jourCalendaire, preparerRefSite,
-     sitesDeLEtablissement, etablissementDuFormulaire, dateParGrist, jourFaits, jourDuFormulaire, jourDeLaVersion,
-     cleSite, memeSite, doublonsDuJour, cleDoublon, extraitDescription, lieuDoublon, verifierDoublons,
+     lireReponsesSaisies, calculerModifications, modificationsSaisies, texteAutomatique, commentaireComplet,
+     FAMILLES, famille, formatPour, questionsDescription, lireReponsesPourDescription, construireElements,
+     elementsDescription, MOTIF_MOBILISATION, ordinal, jourCalendaire, preparerRefSite, sitesDeLEtablissement,
+     etablissementDuFormulaire, dateParGrist, jourFaits, jourDuFormulaire, jourDeLaVersion, cleSite, memeSite,
+     calculerDoublonsDuJour, doublonsDuJour, cleDoublon, extraitDescription, lieuDoublon, verifierDoublons,
      jourDeMobilisation, mentionMobilisation, qualificationRas, signalementEnCoursRas, ajouterMobilisation,
-     identiteDuFormulaire, enTeteDescription, elementsTableau, descriptionGeneree, majEtatDescription,
-     majDescriptionAuto, evaluerDescriptionManuelle, majApercuAuto.
+     lireIdentiteSaisie, identiteDe, identiteDuFormulaire, enTeteDescription, elementsTableau, descriptionGeneree,
+     majEtatDescription, majDescriptionAuto, evaluerDescriptionManuelle, majApercuAuto.
    Utilise :
      01 configuration : ETAB.
      03 variantes : appliquerModele, refId, reglagesSaisie, statut, valeursEtab.
@@ -94,13 +95,28 @@ function element(libelle, valeur, options = etatSaisie.optionsAuto) {
   return `${options.puce || ""}${options.format === "valeur" ? valeurFormatee : `${libelle} : ${valeurFormatee}`}`;
 }
 
-// Réponses modifiées par rapport à la version précédente : [{ libelle, valeur }]
-function modificationsSaisies() {
-  const ligneReference = etatSaisie.derniere || etatSaisie.initiale;
+// Lit dans la page les réponses utiles au résumé des modifications (qualification, description, champs, formules en direct)
+function lireReponsesSaisies() {
+  const defQ = etatSaisie.metaSig[colonneDe("Qualification")];
+  const reponses = { qualification: undefined, description: undefined, valeurs: null, directes: new Map() };
+  if (defQ && etatSaisie.optionsAuto.qualification) reponses.qualification = lireQualificationInitiale();
+  const defD = etatSaisie.metaSig[colonneDe("Description")];
+  if (defD && etatSaisie.optionsAuto.description) reponses.description = $("description").value.trim();
+  if (etatSaisie.optionsAuto.questions) {
+    reponses.valeurs = lireChamps("q", etatSaisie.defsQuestions, []); // questions visibles uniquement
+    for (const question of etatSaisie.defsQuestions)
+      if (question.formule && formuleConnue(question) && !question.confidentiel && questionVisible("q", question))
+        reponses.directes.set(question.colId, valeurFormuleEnDirect(question));
+  }
+  return reponses;
+}
+
+// Calcule les réponses modifiées par rapport à la ligne de référence d'après les réponses saisies : [{ libelle, valeur }]
+function calculerModifications(saisies, ligneReference) {
   const modifications = [];
   const defQ = etatSaisie.metaSig[colonneDe("Qualification")];
   if (defQ && etatSaisie.optionsAuto.qualification) {
-    const saisie = lireQualificationInitiale();
+    const saisie = saisies.qualification;
     const apres = Array.isArray(saisie) ? saisie : saisie ? [saisie] : [];
     const avant = listeQualif(ligneReference ? valeurLigne(ligneReference, "Qualification") : "");
     if (apres.length && JSON.stringify([...apres].map(String).sort()) !== JSON.stringify([...avant].map(String).sort()))
@@ -108,16 +124,16 @@ function modificationsSaisies() {
   }
   const defD = etatSaisie.metaSig[colonneDe("Description")];
   if (defD && etatSaisie.optionsAuto.description) {
-    const nouvelle = $("description").value.trim();
+    const nouvelle = saisies.description;
     const avant = String((ligneReference ? valeurLigne(ligneReference, "Description") : "") ?? "").trim();
     if (nouvelle.replace(/\s+/g, " ") !== avant.replace(/\s+/g, " "))
       modifications.push({ libelle: defD.libelle || "Description", valeur: nouvelle || "(vide)" });
   }
   if (etatSaisie.optionsAuto.questions) {
-    const valeurs = lireChamps("q", etatSaisie.defsQuestions, []); // questions visibles uniquement
+    const valeurs = saisies.valeurs;
     for (const question of etatSaisie.defsQuestions) {
-      if (question.formule && formuleConnue(question) && !question.confidentiel && questionVisible("q", question)) {
-        const valeurDirecte = valeurFormuleEnDirect(question),
+      if (saisies.directes.has(question.colId)) {
+        const valeurDirecte = saisies.directes.get(question.colId),
           avant = ligneReference ? ligneReference[question.colId] : null;
         if (valeurDirecte != null && valeurDirecte !== "" && String(valeurDirecte) !== String(avant ?? ""))
           modifications.push({ libelle: question.libelle, valeur: formatValeur(question, valeurDirecte) });
@@ -138,6 +154,12 @@ function modificationsSaisies() {
     }
   }
   return modifications;
+}
+
+// Réponses modifiées par rapport à la version précédente : [{ libelle, valeur }]
+function modificationsSaisies() {
+  const ligneReference = etatSaisie.derniere || etatSaisie.initiale;
+  return calculerModifications(lireReponsesSaisies(), ligneReference);
 }
 
 function texteAutomatique(options = etatSaisie.optionsAuto, modifs = modificationsSaisies()) {
@@ -194,11 +216,26 @@ function questionsDescription() {
   ];
 }
 
-function elementsDescription(options = etatSaisie.optionsAuto) {
+// Lit dans la page les réponses utiles à la description (qualification saisie, champs, valeurs de formules en direct)
+function lireReponsesPourDescription(options) {
+  const defQ = etatSaisie.metaSig[colonneDe("Qualification")];
+  const reponses = { qualification: undefined, valeurs: null, directes: new Map() };
+  if (options.qualification && defQ) reponses.qualification = lireQualificationInitiale();
+  if (options.questions) {
+    reponses.valeurs = lireChamps("q", etatSaisie.defsQuestions, []); // questions visibles uniquement
+    for (const question of etatSaisie.defsQuestions)
+      if (question.formule && formuleConnue(question) && !question.confidentiel && questionVisible("q", question))
+        reponses.directes.set(question.colId, valeurFormuleEnDirect(question));
+  }
+  return reponses;
+}
+
+// Construit les éléments de la description [{ libelle, valeur, def }] d'après les réponses lues et les options
+function construireElements(reponses, options) {
   const items = [];
   const defQ = etatSaisie.metaSig[colonneDe("Qualification")];
   if (options.qualification && defQ) {
-    const qualification = lireQualificationInitiale();
+    const qualification = reponses.qualification;
     const qualifications = Array.isArray(qualification) ? qualification : qualification ? [qualification] : [];
     const avecFleche = etatSaisie.defsQuestions.some(
       (question) => question.tableau && (question._sousDefs || []).some(estQualifSous),
@@ -216,10 +253,10 @@ function elementsDescription(options = etatSaisie.optionsAuto) {
       });
   }
   if (options.questions) {
-    const valeurs = lireChamps("q", etatSaisie.defsQuestions, []); // questions visibles uniquement
+    const valeurs = reponses.valeurs;
     for (const question of etatSaisie.defsQuestions) {
-      if (question.formule && formuleConnue(question) && !question.confidentiel && questionVisible("q", question)) {
-        const valeurDirecte = valeurFormuleEnDirect(question);
+      if (reponses.directes.has(question.colId)) {
+        const valeurDirecte = reponses.directes.get(question.colId);
         if (valeurDirecte != null && valeurDirecte !== "")
           items.push({ libelle: question.libelle, valeur: formatValeur(question, valeurDirecte), def: question });
         continue;
@@ -238,6 +275,10 @@ function elementsDescription(options = etatSaisie.optionsAuto) {
     }
   }
   return items;
+}
+
+function elementsDescription(options = etatSaisie.optionsAuto) {
+  return construireElements(lireReponsesPourDescription(options), options);
 }
 
 /* ---------- Jour de mobilisation ----------
@@ -401,12 +442,9 @@ function memeSite(siteA, siteB) {
     [court, long] = motsA.length <= motsB.length ? [motsA, motsB] : [motsB, motsA];
   return cleA === cleB || court.every((mot) => long.includes(mot));
 }
-function doublonsDuJour() {
-  if (etatSaisie.dossierId) return [];
-  const etabId = etablissementDuFormulaire();
-  if (!etabId) return [];
-  const jour = jourDuFormulaire(),
-    colonneDossier = colonneDe("Dossier"),
+// Calcule les dossiers du même établissement, du même jour et du même site que celui du formulaire
+function calculerDoublonsDuJour(etabId, jour, siteSaisi) {
+  const colonneDossier = colonneDe("Dossier"),
     parDossier = new Map();
   for (const ligne of etatSaisie.enregistrements) {
     if (refId(valeurLigne(ligne, "Etablissement")) !== etabId) continue;
@@ -418,10 +456,16 @@ function doublonsDuJour() {
   for (const [idDossier, lignes] of parDossier) {
     if (!lignes.some((ligne) => jourDeLaVersion(ligne) === jour)) continue;
     const derniere = [...lignes].sort(comparerVersions).pop();
-    if (colonneDe("Site") && !memeSite($("site").value, valeurLigne(derniere, "Site"))) continue; // autre site du même établissement
+    if (colonneDe("Site") && !memeSite(siteSaisi, valeurLigne(derniere, "Site"))) continue; // autre site du même établissement
     doublons.push({ dossier: idDossier, derniere, nb: lignes.length });
   }
   return doublons;
+}
+function doublonsDuJour() {
+  if (etatSaisie.dossierId) return [];
+  const etabId = etablissementDuFormulaire();
+  if (!etabId) return [];
+  return calculerDoublonsDuJour(etabId, jourDuFormulaire(), $("site").value);
 }
 const cleDoublon = () =>
   `${etablissementDuFormulaire()}|${jourDuFormulaire()}|${colonneDe("Site") ? cleSite($("site").value) : ""}`;
@@ -555,19 +599,34 @@ function ajouterMobilisation(texte, options = etatSaisie.optionsAuto, rang = jou
 
 // Établissement et commune du formulaire : établissement connu, ou établissement choisi dans l'annuaire
 // (ou saisi à la main) en cours de création
-function identiteDuFormulaire() {
-  const etablissement = etatSaisie.etabCourant || (etatSaisie.modeEtab ? etatSaisie.etabs[0] : null);
-  const site = colonneDe("Site") ? $("site").value.trim() : "";
-  if (etablissement) return { ...valeursEtab(etablissement), site };
+// Lit dans la page le site et les champs d'établissement saisis
+function lireIdentiteSaisie() {
   return {
+    site: colonneDe("Site") ? $("site").value.trim() : "",
     nom: $("nom").value.trim(),
-    commune: (etatSaisie.ligneAnnuaire && etatSaisie.ligneAnnuaire.commune) || "",
-    site,
     uai: $("uai").value.trim(),
     type: $("type").value.trim(),
     academie: $("academie").value.trim(),
     departement: $("departement").value.trim(),
   };
+}
+// Calcule l'identité du formulaire : établissement connu, sinon valeurs saisies
+function identiteDe(saisie) {
+  const etablissement = etatSaisie.etabCourant || (etatSaisie.modeEtab ? etatSaisie.etabs[0] : null);
+  const site = saisie.site;
+  if (etablissement) return { ...valeursEtab(etablissement), site };
+  return {
+    nom: saisie.nom,
+    commune: (etatSaisie.ligneAnnuaire && etatSaisie.ligneAnnuaire.commune) || "",
+    site,
+    uai: saisie.uai,
+    type: saisie.type,
+    academie: saisie.academie,
+    departement: saisie.departement,
+  };
+}
+function identiteDuFormulaire() {
+  return identiteDe(lireIdentiteSaisie());
 }
 // En-tête : modèle du formulaire (« **{nom}**, **{commune}** », « **{nom}** ({site})»…), en gras au format Markdown
 function enTeteDescription(ident) {

@@ -4,7 +4,7 @@
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
    Définit : questionsNumeriques, nombreOuNul, bornesDe, appliquerBornes, remplirBornesConfig, lireBornesConfig,
      CLES_DESCRIPTION, descriptionDuFormulaire, garderDescriptionCommune, appliquerOptions, chargerReglages,
-     remplirChoixTable, ouvrirConfig, lireConfig, dateCourteExemple, majExempleConfig.
+     listerTablesDuDocument, remplirChoixTable, ouvrirConfig, lireConfig, dateCourteExemple, majExempleConfig.
    Utilise :
      01 configuration : CLE_TABLE_ETAB, ETAB, TABLE_ETAB_DEFAUT.
      02 utilitaires : colonnesEtab.
@@ -173,14 +173,18 @@ async function chargerReglages() {
   }
   appliquerOptions(optionsLues);
 }
-async function remplirChoixTable() {
-  const menuTable = $("cfg-table-etab");
-  let tables = [];
+// Lit dans le document Grist la liste des noms de tables (liste vide si indisponible)
+async function listerTablesDuDocument() {
   try {
-    tables = (await grist.docApi.listTables()).filter((nomTable) => !nomTable.startsWith("_grist"));
+    return await grist.docApi.listTables();
   } catch (_) {
     // liste des tables indisponible : liste vide
+    return [];
   }
+}
+async function remplirChoixTable() {
+  const menuTable = $("cfg-table-etab");
+  const tables = (await listerTablesDuDocument()).filter((nomTable) => !nomTable.startsWith("_grist"));
   const choisie = etatSaisie.optionsAuto[CLE_TABLE_ETAB] || "";
   menuTable.innerHTML =
     `<option value="">Automatique (table visée par la colonne Établissement)</option>` +

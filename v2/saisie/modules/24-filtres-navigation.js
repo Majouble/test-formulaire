@@ -4,9 +4,9 @@
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
    Définit : VIDE_FILTRE, RENSEIGNE_FILTRE, CHAMPS_ETAB_FILTRE, MAX_VALEURS_FILTRE, derniereDe, champsFiltrables,
      typeChamp, valeursDossier, champDe, filtreEffectif, filtreActif, passeUn, passeFiltre, dossiersFiltres,
-     resumeFiltre, sauverFiltre, restaurerFiltre, valeursDisponibles, majFiltre, appliquerFiltre,
-     remplirPanneauFiltre, ouvrirPanneauFiltre, fermerPanneauFiltre, voisins, majNavigation, allerA,
-     afficherOptionsDossiers, menuOuvert, fermerMenuDossiers, optionsMenu, focusOption, ouvrirMenuDossiers,
+     resumeFiltre, sauverFiltre, restaurerFiltre, valeursDisponibles, actualiserChampsFiltre, majFiltre,
+     appliquerFiltre, remplirPanneauFiltre, ouvrirPanneauFiltre, fermerPanneauFiltre, voisins, majNavigation,
+     allerA, afficherOptionsDossiers, menuOuvert, fermerMenuDossiers, optionsMenu, focusOption, ouvrirMenuDossiers,
      choisirOption.
    Utilise :
      02 utilitaires : colonnesEtab.
@@ -225,13 +225,17 @@ function valeursDisponibles(filtre) {
   });
   return { entrees, vides, renseignes, trop };
 }
-function majFiltre() {
+// Recalcule la liste des champs filtrables et retire les filtres portant sur une colonne disparue
+function actualiserChampsFiltre() {
   etatSaisie.listeChampsFiltre = champsFiltrables();
   // Filtre sur une colonne disparue (associations modifiées) : retiré
   if (Object.keys(etatSaisie.metaSig).length)
     etatSaisie.filtres = etatSaisie.filtres.filter(
       (filtre) => champDe(filtre) || (filtre.colonne.startsWith("e:") && !etatSaisie.etabsCharges),
     );
+}
+function majFiltre() {
+  actualiserChampsFiltre();
   // Pastilles des filtres
   $("filtres-actifs").innerHTML = etatSaisie.filtres
     .map(

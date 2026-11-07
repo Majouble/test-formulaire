@@ -4,7 +4,8 @@
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
    Définit : COLONNES, enFile, OPTIONS, idsCreesIci, ACTIVITE, traiterEnvoi, lireMeta, metaDeSecours, idColonne,
      colonneEnvoiPj, completerPjCopie, metaColonnes, sansGuillemets, lireCondition, lireBorne, lireRepereTableau,
-     avecRegles, defsDe, brancherGrist.
+     avecRegles, defsDe, mesurerArriveeEnvoi, decisionLigneCliquee, afficherSaisieEnCours, afficherDossierOuvert,
+     brancherGrist.
    Utilise :
      03 variantes : refId, statut.
      05 etat : colonneDe, etatSaisie.
@@ -403,20 +404,61 @@ const defsDe = (cle) =>
         .map(avecRegles)
     : [];
 
+// Enregistre l'arrivée d'un envoi de lignes dans la mesure d'activité et renvoie son relevé
+function mesurerArriveeEnvoi(recs) {
+  const arrive = {
+    t: Date.now(),
+    lignes: (recs || []).length,
+    colonnes: recs && recs[0] ? Object.keys(recs[0]).length : 0,
+    ms: null,
+  };
+  ACTIVITE.envois.push(arrive);
+  if (ACTIVITE.envois.length > 300) ACTIVITE.envois.shift();
+  return arrive;
+}
+// Décide quoi faire de la ligne cliquée : dossier visé et action (ignorer, relire, saisie en cours, ouvrir)
+function decisionLigneCliquee(rec) {
+  const ligneCourante = etatSaisie.enregistrements.find((ligne) => ligne.id === rec.id) || rec;
+  const idDossier = refId(colonneDe("Dossier") && ligneCourante[colonneDe("Dossier")]) || ligneCourante.id;
+  const renvoi = rec.id === etatSaisie.dernierCurseur;
+  // même signalement : un simple renvoi (après une modification de la table) est déjà traité par onRecords,
+  // qui rafraîchit le dossier ouvert ; seul un clic sur une autre ligne du même dossier le relit
+  if (idDossier === etatSaisie.dossierId)
+    return { idDossier, action: renvoi ? "ignorer-renvoi-meme-dossier" : "relire" };
+  // Ligne tout juste créée par une autre vue : Grist a pu y décaler le curseur lors de l'insertion.
+  const creeeAilleurs =
+    (etatSaisie.idsNouveaux.has(rec.id) || !etatSaisie.enregistrements.some((ligne) => ligne.id === rec.id)) &&
+    !idsCreesIci.has(rec.id);
+  if (creeeAilleurs) return { idDossier, action: "ignorer" };
+  if (renvoi) return { idDossier, action: "ignorer" }; // curseur inchangé, mais le widget affiche autre chose (nouveau signalement, menu)
+  // Vrai déplacement du curseur : on ne l'applique pas si une saisie est en cours, pour ne rien perdre
+  if (etatSaisie.modifie) return { idDossier, action: "saisie-en-cours" };
+  return { idDossier, action: "ouvrir" };
+}
+// Affiche le message de saisie en cours non enregistrée
+function afficherSaisieEnCours() {
+  statut(
+    "statut-signalement",
+    "Saisie en cours non enregistrée : enregistrez-la ou cliquez sur « " +
+      $("btn-effacer").textContent +
+      " » avant d'ouvrir un autre signalement.",
+    "err",
+  );
+}
+// Après ouverture d'un autre signalement, masque la confirmation et passe à la vue de saisie
+function afficherDossierOuvert(premiereSelection, idDossier) {
+  if (!premiereSelection && etatSaisie.dossierId === idDossier) {
+    cacherConfirmation();
+    montrerVue("saisie");
+  }
+}
 /* Branchement sur Grist : appelé par le dernier module (34-parcours.js), une fois TOUS les modules chargés.
    Grist peut envoyer les lignes dès ce branchement ; le navigateur traiterait alors cet envoi entre deux fichiers
    si le branchement était fait ici, avant que les modules suivants (visas, parcours…) soient définis. */
 function brancherGrist() {
   grist.ready({ requiredAccess: "full", columns: COLONNES });
   grist.onRecords((recs, mappingsRecus) => {
-    const arrive = {
-      t: Date.now(),
-      lignes: (recs || []).length,
-      colonnes: recs && recs[0] ? Object.keys(recs[0]).length : 0,
-      ms: null,
-    };
-    ACTIVITE.envois.push(arrive);
-    if (ACTIVITE.envois.length > 300) ACTIVITE.envois.shift();
+    const arrive = mesurerArriveeEnvoi(recs);
     const dejaPrevu = !!etatSaisie.envoiEnAttente;
     etatSaisie.envoiEnAttente = { recs, m: mappingsRecus, arrive };
     if (dejaPrevu) {
@@ -441,42 +483,23 @@ function brancherGrist() {
         if (!rec || (!etatSaisie.mappings && !Object.keys(etatSaisie.colsParDefaut).length)) return;
         const premiereSelection = !etatSaisie.curseurInitialVu;
         etatSaisie.curseurInitialVu = true;
-        const ligneCourante = etatSaisie.enregistrements.find((ligne) => ligne.id === rec.id) || rec;
-        const idDossier = refId(colonneDe("Dossier") && ligneCourante[colonneDe("Dossier")]) || ligneCourante.id;
-        const renvoi = rec.id === etatSaisie.dernierCurseur;
+        const { idDossier, action } = decisionLigneCliquee(rec);
         etatSaisie.dernierCurseur = rec.id;
-        // même signalement : un simple renvoi (après une modification de la table) est déjà traité par onRecords,
-        // qui rafraîchit le dossier ouvert ; seul un clic sur une autre ligne du même dossier le relit
-        if (idDossier === etatSaisie.dossierId) {
-          if (renvoi) {
-            ACTIVITE.curseurIgnores++;
-            return;
-          }
+        if (action === "ignorer-renvoi-meme-dossier") {
+          ACTIVITE.curseurIgnores++;
+          return;
+        }
+        if (action === "relire") {
           await ouvrirDossier(idDossier);
           return;
         }
-        // Ligne tout juste créée par une autre vue : Grist a pu y décaler le curseur lors de l'insertion.
-        const creeeAilleurs =
-          (etatSaisie.idsNouveaux.has(rec.id) || !etatSaisie.enregistrements.some((ligne) => ligne.id === rec.id)) &&
-          !idsCreesIci.has(rec.id);
-        if (creeeAilleurs) return;
-        if (renvoi) return; // curseur inchangé, mais le widget affiche autre chose (nouveau signalement, menu)
-        // Vrai déplacement du curseur : on ne l'applique pas si une saisie est en cours, pour ne rien perdre
-        if (etatSaisie.modifie) {
-          statut(
-            "statut-signalement",
-            "Saisie en cours non enregistrée : enregistrez-la ou cliquez sur « " +
-              $("btn-effacer").textContent +
-              " » avant d'ouvrir un autre signalement.",
-            "err",
-          );
+        if (action === "ignorer") return;
+        if (action === "saisie-en-cours") {
+          afficherSaisieEnCours();
           return;
         }
         await ouvrirDossier(idDossier);
-        if (!premiereSelection && etatSaisie.dossierId === idDossier) {
-          cacherConfirmation();
-          montrerVue("saisie");
-        }
+        afficherDossierOuvert(premiereSelection, idDossier);
       }),
     OPTIONS,
   );

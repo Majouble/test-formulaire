@@ -66,7 +66,7 @@ Une réponse attendue chaque jour
 CAMPAGNE : {"nom":"Tempête Ciaran — situation des établissements","mode":"quotidienne","crit":{"Academie":["Versailles"]},"avecMail":true}
 SUIVI (lancement) : Tempête Ciaran — situation des établissements | en cours | Une réponse attendue chaque jour | lancée le <DATE> <HEURE> | Etablissements : Académie : Versailles · avec une adresse. | Jour suivi | <DATE> (aujourd'hui) | 0 réponse(s) sur 3 établissement(s) visé(s) — 0 % le <DATE>. | Académie par département Visés Répondu Sans réponse Taux
 SUIVI (2 réponses) : lancée le <DATE> <HEURE> | Etablissements : Académie : Versailles · avec une adresse. | Jour suivi | <DATE> (aujourd'hui) | 2 réponse(s) sur 3 établissement(s) visé(s) — 67 % le <DATE>. | Académie par département Visés Répondu Sans réponse Taux | Versailles 3 2 1  |  67 % | Sans réponse (1)
-RELANCE : relance-tempete_ciaran_situation_des_etablisseme-2026-11-06.csv
+RELANCE : relance-tempete_ciaran_situation_des_etablisseme-<JOUR>.csv
 ﻿UAI;Nom;Commune;Mail;Lien;Objet;Message
 0781111A;Collège Albert Camus;Versailles;ce.0781111a@ac-versailles.fr;https://grist/p/9?Etab_=k1;Relance — Tempête Ciaran — situation des établissements : Collège Albert Camus;"Bonjour,
 

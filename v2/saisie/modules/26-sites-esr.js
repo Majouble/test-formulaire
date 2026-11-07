@@ -4,7 +4,7 @@
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
    Définit : sitesCtrl, formulaireParSite, modeRepriseSites, retourNormale, rangGravite, plusGrave, texteQualifSite,
      dernierEtatSites, reprendreEtatSites, reprendreSitesAuto, placerQualification, qualifDesSites,
-     majQualifDeduite, controleSites.
+     ecartQualification, majQualifDeduite, messagesControleSites, confirmerControleSites, controleSites.
    Utilise :
      03 variantes : refId, reglagesSaisie.
      04 date-faits : lireDateFaits, secondes.
@@ -203,6 +203,10 @@ function qualifDesSites() {
     .flatMap((ligne) => listeQualif(ligne.valeurs[controleur.sites.qualif]));
   return { nb: controleur.lignesValides().length, plusGrave: plusGrave(qualifications) };
 }
+// Écart entre la qualification choisie et la plus grave des sites (valeur vraie s'il y a un écart)
+function ecartQualification(syntheseSites, actuel) {
+  return syntheseSites.plusGrave && actuel && actuel !== syntheseSites.plusGrave;
+}
 function majQualifDeduite() {
   const paragrapheQualification = $("qualif-sites");
   if (!paragrapheQualification || paragrapheQualification.hidden) return;
@@ -215,7 +219,7 @@ function majQualifDeduite() {
   if (syntheseSites.plusGrave && !etatSaisie.qualifTouchee)
     cocherQualif(etatSaisie.qualifMultiple ? [syntheseSites.plusGrave] : syntheseSites.plusGrave);
   const actuel = plusGrave(listeQualif(lireQualificationInitiale()));
-  const ecart = syntheseSites.plusGrave && actuel && actuel !== syntheseSites.plusGrave;
+  const ecart = ecartQualification(syntheseSites, actuel);
   paragrapheQualification.innerHTML = syntheseSites.plusGrave
     ? `Qualification la plus grave des sites : <strong>${esc(syntheseSites.plusGrave)}</strong>${ecart ? ` — différente de celle choisie (${esc(actuel)}) : vérifiez avant d'enregistrer. <button type="button" class="lien-texte" id="btn-qualif-sites">Reprendre ${esc(syntheseSites.plusGrave)}</button>` : etatSaisie.qualifTouchee ? "" : " (reprise automatiquement)"}`
     : "Aucun site n'a de qualification.";
@@ -232,13 +236,9 @@ $("qualifs-initiales").addEventListener("change", () => {
   etatSaisie.qualifTouchee = true;
   majQualifDeduite();
 });
-// avant l'enregistrement : qualification incohérente avec les sites, sites repris ni confirmés ni modifiés
-function controleSites() {
-  const controleur = sitesCtrl();
-  if (!controleur) return true;
-  const msgs = [],
-    syntheseSites = qualifDesSites(),
-    actuel = plusGrave(listeQualif(lireQualificationInitiale()));
+// Messages du contrôle avant enregistrement : qualification incohérente avec les sites, sites repris ni confirmés ni modifiés
+function messagesControleSites(controleur, syntheseSites, actuel) {
+  const msgs = [];
   if (syntheseSites && syntheseSites.nb && syntheseSites.plusGrave && actuel !== syntheseSites.plusGrave)
     msgs.push(
       `La qualification de l'établissement (${actuel || "aucune"}) ne correspond pas à celle du site le plus grave (${syntheseSites.plusGrave}).`,
@@ -250,5 +250,18 @@ function controleSites() {
     msgs.push(
       `${enAttente} site${enAttente > 1 ? "s" : ""} repris du dernier état connu ${enAttente > 1 ? "n'ont été" : "n'a été"} ni confirmé${enAttente > 1 ? "s" : ""} ni modifié${enAttente > 1 ? "s" : ""}.`,
     );
-  return !msgs.length || confirm(`${msgs.join("\n\n")}\n\nEnregistrer quand même ?`);
+  return msgs;
+}
+// Demande confirmation à l'utilisateur avec les messages du contrôle
+function confirmerControleSites(msgs) {
+  return confirm(`${msgs.join("\n\n")}\n\nEnregistrer quand même ?`);
+}
+// avant l'enregistrement : qualification incohérente avec les sites, sites repris ni confirmés ni modifiés
+function controleSites() {
+  const controleur = sitesCtrl();
+  if (!controleur) return true;
+  const syntheseSites = qualifDesSites(),
+    actuel = plusGrave(listeQualif(lireQualificationInitiale()));
+  const msgs = messagesControleSites(controleur, syntheseSites, actuel);
+  return !msgs.length || confirmerControleSites(msgs);
 }

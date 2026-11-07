@@ -2,15 +2,15 @@
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
-   Définit : remplirChoixFormulaire.
+   Définit : lireChoixFormulaire, remplirChoixFormulaire.
    Utilise :
      03 variantes : statut.
      05 etat : etatSaisie.
      06 grist : enFile.
      07 formulaires : chargerConfiguration, lireFormulaires.
      09 dossier : rafraichir. */
-async function remplirChoixFormulaire() {
-  const selecteurFormulaire = $("cfg-formulaire");
+// Lit dans Grist le formulaire choisi pour la page (option) et la liste des formulaires de la table
+async function lireChoixFormulaire() {
   let voulu = null;
   try {
     voulu = grist.getOption ? await grist.getOption("formulaire") : null;
@@ -18,6 +18,11 @@ async function remplirChoixFormulaire() {
     // option absente ou page ouverte hors de Grist : formulaire par défaut
   }
   const liste = (await lireFormulaires()).filter((formulaire) => formulaire.table === etatSaisie.tableId);
+  return { voulu, liste };
+}
+async function remplirChoixFormulaire() {
+  const selecteurFormulaire = $("cfg-formulaire");
+  const { voulu, liste } = await lireChoixFormulaire();
   selecteurFormulaire.innerHTML =
     `<option value="">Automatique (premier formulaire publié pour la table ${esc(etatSaisie.tableId || "")})</option>` +
     liste

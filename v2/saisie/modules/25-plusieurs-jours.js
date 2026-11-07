@@ -3,9 +3,10 @@
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
    Définit : UN_JOUR, MAX_JOURS, LIMITE_FUTUR_JOURS, jourCle, jourCourt, aideFaitsDefaut, plusieursJoursActif,
-     estWeekEnd, joursEntre, joursSuivants, erreurJours, erreurPlusieursJours, versionsDe, dossierDuJour,
-     majAideJours, reinitialiserJours, valeursSaisies, reprendreSurJours, pluriel, texteSerie, joursReport,
-     erreurReport, majAideReport, ouvrirReport.
+     estWeekEnd, joursEntre, joursSuivants, erreurJours, erreurPlusieursJours, versionsDe, dossierDuJourPourSite,
+     dossierDuJour, dernierJourAvecSignalement, joursDejaSignales, majAideJours, reinitialiserJours, valeursSaisies,
+     planifierSerie, ecrireSerie, reprendreSurJours, pluriel, texteSerie, joursReport, jourDuDossierOuvert,
+     joursReportSansDossier, erreurReportJours, erreurReport, majAideReport, ouvrirReport.
    Utilise :
      01 configuration : NATURE.
      03 variantes : etape, refId, reglagesSaisie, statut.
@@ -91,7 +92,8 @@ const versionsDe = (dossierId) => {
     (ligne) => (refId(colonneDossier && ligne[colonneDossier]) || ligne.id) === dossierId,
   );
 };
-function dossierDuJour(etabId, jourEnSecondes) {
+// Dossier de l'établissement qui a un signalement ce jour-là (hors dossier ouvert, même site que celui saisi), ou null
+function dossierDuJourPourSite(etabId, jourEnSecondes, siteSaisi) {
   if (!etabId) return null;
   const k = jourFaits(jourEnSecondes),
     colonneDossier = colonneDe("Dossier"),
@@ -106,10 +108,31 @@ function dossierDuJour(etabId, jourEnSecondes) {
   for (const [dossierId, lignesDuDossier] of par) {
     if (!lignesDuDossier.some((ligne) => jourDeLaVersion(ligne) === k)) continue;
     const der = [...lignesDuDossier].sort(comparerVersions).pop();
-    if (colonneDe("Site") && !memeSite($("site").value, valeurLigne(der, "Site"))) continue; // autre site du même établissement
+    if (colonneDe("Site") && !memeSite(siteSaisi, valeurLigne(der, "Site"))) continue; // autre site du même établissement
     return { d: dossierId, derniere: der };
   }
   return null;
+}
+// Lit le site saisi dans le formulaire, puis cherche le dossier du jour
+function dossierDuJour(etabId, jourEnSecondes) {
+  return dossierDuJourPourSite(etabId, jourEnSecondes, colonneDe("Site") ? $("site").value : null);
+}
+// Dernier jour consécutif (week-ends passés) après le jour choisi où l'établissement a un signalement, ou null
+function dernierJourAvecSignalement(etabId, choisi, siteSaisi) {
+  let fin = null;
+  for (
+    let jourEnSecondes = choisi + UN_JOUR, compteur = 0;
+    compteur < MAX_JOURS;
+    jourEnSecondes += UN_JOUR, compteur++
+  ) {
+    if (dossierDuJourPourSite(etabId, jourEnSecondes, siteSaisi)) fin = jourEnSecondes;
+    else if (!estWeekEnd(jourEnSecondes)) break;
+  }
+  return fin;
+}
+// Jours parmi ceux donnés où l'établissement a déjà un signalement (même site que celui saisi)
+function joursDejaSignales(etabId, jours, siteSaisi) {
+  return jours.filter((jour) => dossierDuJourPourSite(etabId, jour, siteSaisi));
 }
 function majAideJours() {
   if ($("bloc-plusieurs-jours").hidden) return;
@@ -122,15 +145,7 @@ function majAideJours() {
   // mise à jour d'un dossier alors que l'établissement a des signalements les jours suivants : proposer de les mettre à jour aussi
   sug.hidden = true;
   if (!actif && etatSaisie.dossierId && etabId && choisi != null) {
-    let fin = null;
-    for (
-      let jourEnSecondes = choisi + UN_JOUR, compteur = 0;
-      compteur < MAX_JOURS;
-      jourEnSecondes += UN_JOUR, compteur++
-    ) {
-      if (dossierDuJour(etabId, jourEnSecondes)) fin = jourEnSecondes;
-      else if (!estWeekEnd(jourEnSecondes)) break;
-    }
+    const fin = dernierJourAvecSignalement(etabId, choisi, colonneDe("Site") ? $("site").value : null);
     if (fin) {
       sug.hidden = false;
       sug.innerHTML = `Cet établissement a aussi des signalements les jours suivants, jusqu'au ${esc(jourCourt(fin))}. <button type="button" class="lien-texte" id="btn-jusqu-derniere">Leur appliquer aussi cette mise à jour</button>`;
@@ -154,7 +169,7 @@ function majAideJours() {
     aide.textContent = messageErreur;
     return;
   }
-  const deja = jours.filter((jour) => dossierDuJour(etabId, jour));
+  const deja = joursDejaSignales(etabId, jours, colonneDe("Site") ? $("site").value : null);
   aide.textContent =
     `${jours.length + 1} signalements, un par jour : ${[choisi, ...jours].map(jourCourt).join(", ")}${etatSaisie.dossierId ? " (le premier est cette mise à jour)" : ""}.` +
     (deja.length
@@ -179,10 +194,9 @@ function valeursSaisies(manquants = []) {
     valeurs[colonneDe("Qualification")] = Array.isArray(qualif) ? (qualif.length ? ["L", ...qualif] : null) : qualif;
   return valeurs;
 }
-// Un signalement par jour : nouveau dossier, ou mise à jour du signalement que l'établissement a déjà ce jour-là
-async function reprendreSurJours(etabId, valeurs, jours, origine) {
-  const table = grist.getTable(),
-    colonneDescription = colonneDe("Description"),
+// Règle : pour chaque jour, ce qu'il faut créer (nouveau dossier), compléter (mise à jour du dossier du jour) ou laisser
+function planifierSerie(etabId, valeurs, jours, origine, siteSaisi) {
+  const colonneDescription = colonneDe("Description"),
     colonneDateFaits = colonneDe("Date_faits"),
     cDos = colonneDe("Dossier");
   const creer = [],
@@ -203,7 +217,7 @@ async function reprendreSurJours(etabId, valeurs, jours, origine) {
       );
     const champsAEnregistrer = { ...valeursDuJour, [colonneDe("Etablissement")]: etabId };
     if (colonneDe("Date") && !dateParGrist()) champsAEnregistrer[colonneDe("Date")] = Date.now() / 1000;
-    const dossierExistant = dossierDuJour(etabId, jourEnSecondes);
+    const dossierExistant = dossierDuJourPourSite(etabId, jourEnSecondes, siteSaisi);
     if (dossierExistant) {
       const { [colonneDateFaits]: _, ...sansDate } = valeursDuJour;
       if (!Object.keys(seulementModifies(etatSaisie.champsVersion, sansDate, dossierExistant.derniere)).length) {
@@ -221,6 +235,13 @@ async function reprendreSurJours(etabId, valeurs, jours, origine) {
       creer.push({ t: jourEnSecondes, fields: champsAEnregistrer });
     }
   }
+  return { creer, completer, inchanges };
+}
+// Écrit dans la table les signalements planifiés (création, rattachement au dossier, mises à jour, tableaux liés) ;
+// renvoie les identifiants créés et les erreurs des tableaux
+async function ecrireSerie(creer, completer) {
+  const table = grist.getTable(),
+    cDos = colonneDe("Dossier");
   const ids = (reponse) =>
     (Array.isArray(reponse) ? reponse : [reponse])
       .map((valeur) => (valeur && typeof valeur === "object" ? valeur.id : valeur))
@@ -250,6 +271,18 @@ async function reprendreSurJours(etabId, valeurs, jours, origine) {
   for (const idNouveau of nouveaux) errT.push(...(await synchroniserTableaux(idNouveau, true, idNouveau)));
   for (const [k, jourACompleter] of completer.entries())
     errT.push(...(await synchroniserTableaux(jourACompleter.d, true, idsCompletes[k] || null)));
+  return { nouveaux, errT };
+}
+// Un signalement par jour : nouveau dossier, ou mise à jour du signalement que l'établissement a déjà ce jour-là
+async function reprendreSurJours(etabId, valeurs, jours, origine) {
+  const { creer, completer, inchanges } = planifierSerie(
+    etabId,
+    valeurs,
+    jours,
+    origine,
+    colonneDe("Site") ? $("site").value : null,
+  );
+  const { nouveaux, errT } = await ecrireSerie(creer, completer);
   return {
     jours,
     crees: nouveaux.length,
@@ -280,15 +313,20 @@ const texteSerie = (resultat) =>
 
 /* ---------- « Reporter sur d'autres jours » ---------- */
 const joursReport = () => joursEntre($("rep-debut").value, $("rep-fin").value, $("rep-ouvres").checked);
-function erreurReport() {
-  const debut = $("rep-debut").value,
-    fin = $("rep-fin").value;
+// Jour (clé AAAA-MM-JJ) des faits du dossier ouvert, ou null
+function jourDuDossierOuvert() {
+  return etatSaisie.derniere && jourDesFaits(etatSaisie.derniere) != null
+    ? jourCle(jourDesFaits(etatSaisie.derniere))
+    : null;
+}
+// Jours à reporter : les jours demandés, sauf celui du dossier ouvert
+function joursReportSansDossier(jours, jourDossier) {
+  return jours.filter((jour) => jourCle(jour) !== jourDossier);
+}
+// Message d'erreur du report sur d'autres jours (vide si la période convient)
+function erreurReportJours(debut, fin, jours, jourDossier) {
   if (!debut) return "Indiquez le premier jour.";
-  const jourDossier =
-    etatSaisie.derniere && jourDesFaits(etatSaisie.derniere) != null
-      ? jourCle(jourDesFaits(etatSaisie.derniere))
-      : null;
-  const joursAReporter = joursReport().filter((jour) => jourCle(jour) !== jourDossier);
+  const joursAReporter = joursReportSansDossier(jours, jourDossier);
   if (fin < debut) return "Le dernier jour doit suivre le premier.";
   return erreurJours(
     joursAReporter,
@@ -296,6 +334,11 @@ function erreurReport() {
     fin,
     jourCle(Date.parse(debut + "T00:00:00Z") / 1000 - UN_JOUR),
   );
+}
+function erreurReport() {
+  const debut = $("rep-debut").value,
+    fin = $("rep-fin").value;
+  return erreurReportJours(debut, fin, joursReport(), jourDuDossierOuvert());
 }
 function majAideReport() {
   const aide = $("rep-aide"),
@@ -305,13 +348,9 @@ function majAideReport() {
     aide.textContent = messageErreur;
     return;
   }
-  const jourDossier =
-    etatSaisie.derniere && jourDesFaits(etatSaisie.derniere) != null
-      ? jourCle(jourDesFaits(etatSaisie.derniere))
-      : null;
-  const joursAReporter = joursReport().filter((jour) => jourCle(jour) !== jourDossier),
+  const joursAReporter = joursReportSansDossier(joursReport(), jourDuDossierOuvert()),
     etabId = refId(valeurLigne(etatSaisie.initiale, "Etablissement"));
-  const deja = joursAReporter.filter((jour) => dossierDuJour(etabId, jour));
+  const deja = joursDejaSignales(etabId, joursAReporter, colonneDe("Site") ? $("site").value : null);
   aide.textContent =
     `${pluriel(joursAReporter.length, "jour", "jours")} : ${joursAReporter.map(jourCourt).join(", ")}.` +
     (deja.length

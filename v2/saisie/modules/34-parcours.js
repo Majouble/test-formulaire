@@ -2,9 +2,11 @@
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
-   Définit : JOURS_EN_COURS, montrerVue, abandonAccepte, allerNouveau, ouvrirDepuisListe, afficherCartes,
-     dossierClos, majModeSaisie, fermerMenuActions, basculerClos, planifierMarques, majMarquesModif, resumeEtabHtml,
-     majResumeEtab, dossiersEnCours, majProposition, confirmer, cacherConfirmation.
+   Définit : JOURS_EN_COURS, montrerVue, abandonAccepte, allerNouveau, ouvrirDepuisListe, cartesAffichees,
+     compterVersionsParDossier, afficherCartes, dossierClos, majModeSaisie, fermerMenuActions, ecrireClos,
+     confirmerCloture, basculerClos, planifierMarques, champsModifiesParRapportADerniere, majMarquesModif,
+     resumeEtabHtml, majResumeEtab, dossiersEnCours, propositionsDeReprise, majProposition, confirmer,
+     cacherConfirmation.
    Utilise :
      02 utilitaires : colonnesEtab.
      03 variantes : CHAMPS_NOUVEL_ETAB, refId, reglagesSaisie, statut.
@@ -94,6 +96,26 @@ $("btn-retour-liste").addEventListener("click", () => {
 });
 
 // ---------- Liste des signalements de l'accueil (cartes)
+// Cartes à afficher : mots de la recherche, dossiers à viser ou tous (base0), après filtre, recherche et tri (plus récents d'abord)
+function cartesAffichees(index, recherche) {
+  const mots = sansAccent(recherche).split(/\s+/).filter(Boolean);
+  const base0 = etatSaisie.fileVisa ? index.filter((entree) => aViserParMoi(entree.l)) : index;
+  const base = filtreActif() ? base0.filter((entree) => passeFiltre(entree.l)) : base0;
+  const trouves = mots.length ? base.filter((entree) => mots.every((mot) => entree.cle.includes(mot))) : base;
+  const activite = (entree) => secondes(valeurLigne(entree.der, "Date")) ?? jourDesFaits(entree.der) ?? 0;
+  const tries = [...trouves].sort((a, b) => activite(b) - activite(a) || b.l.id - a.l.id);
+  return { mots, base0, trouves, tries };
+}
+// Nombre de versions (lignes) de chaque dossier, par identifiant de dossier
+function compterVersionsParDossier() {
+  const colonneDossier = colonneDe("Dossier"),
+    nombreVersionsParDossier = new Map();
+  for (const ligne of etatSaisie.enregistrements) {
+    const dossierId = refId(colonneDossier && ligne[colonneDossier]) || ligne.id;
+    nombreVersionsParDossier.set(dossierId, (nombreVersionsParDossier.get(dossierId) || 0) + 1);
+  }
+  return nombreVersionsParDossier;
+}
 function afficherCartes() {
   const listeCartes = $("cartes-signalements");
   if (!listeCartes) return;
@@ -108,21 +130,9 @@ function afficherCartes() {
   majBandeauVisa();
   majBandeauCampagne();
   majBandeauVeille();
-  const recherche = $("recherche-signalements").value.trim(),
-    mots = sansAccent(recherche).split(/\s+/).filter(Boolean);
-  const base0 = etatSaisie.fileVisa
-    ? etatSaisie.indexRecherche.filter((entree) => aViserParMoi(entree.l))
-    : etatSaisie.indexRecherche;
-  const base = filtreActif() ? base0.filter((entree) => passeFiltre(entree.l)) : base0;
-  const trouves = mots.length ? base.filter((entree) => mots.every((mot) => entree.cle.includes(mot))) : base;
-  const activite = (entree) => secondes(valeurLigne(entree.der, "Date")) ?? jourDesFaits(entree.der) ?? 0;
-  const tries = [...trouves].sort((a, b) => activite(b) - activite(a) || b.l.id - a.l.id);
-  const colonneDossier = colonneDe("Dossier"),
-    nombreVersionsParDossier = new Map();
-  for (const ligne of etatSaisie.enregistrements) {
-    const dossierId = refId(colonneDossier && ligne[colonneDossier]) || ligne.id;
-    nombreVersionsParDossier.set(dossierId, (nombreVersionsParDossier.get(dossierId) || 0) + 1);
-  }
+  const recherche = $("recherche-signalements").value.trim();
+  const { mots, base0, trouves, tries } = cartesAffichees(etatSaisie.indexRecherche, recherche);
+  const nombreVersionsParDossier = compterVersionsParDossier();
   const total = base0.length;
   $("titre-liste").textContent = etatSaisie.fileVisa ? "Dossiers à viser" : $("titre-liste").textContent;
   $("nb-liste").textContent = !total
@@ -279,18 +289,22 @@ $("act-clore").addEventListener("click", () => {
   fermerMenuActions(false);
   enFile(basculerClos);
 });
+// Écrit l'état clos ou rouvert sur la ligne
+async function ecrireClos(ligneId, clore) {
+  await grist.getTable().update({ id: ligneId, fields: { [colonneDe("Clos")]: clore } });
+}
+// Demande à l'utilisateur de confirmer la clôture du signalement
+function confirmerCloture() {
+  return confirm(
+    "Clore ce signalement ? La situation sera considérée comme terminée ; une nouvelle mise à jour le rouvrira.",
+  );
+}
 async function basculerClos() {
   if (!colonneDe("Clos") || !etatSaisie.derniere) return;
   const clore = !dossierClos();
-  if (
-    clore &&
-    !confirm(
-      "Clore ce signalement ? La situation sera considérée comme terminée ; une nouvelle mise à jour le rouvrira.",
-    )
-  )
-    return;
+  if (clore && !confirmerCloture()) return;
   try {
-    await grist.getTable().update({ id: etatSaisie.derniere.id, fields: { [colonneDe("Clos")]: clore } });
+    await ecrireClos(etatSaisie.derniere.id, clore);
     etatSaisie.derniere[colonneDe("Clos")] = clore;
     etatSaisie.indexRecherche = null;
     afficherDossier();
@@ -309,6 +323,37 @@ function planifierMarques() {
   clearTimeout(etatSaisie.minuterieMarques);
   etatSaisie.minuterieMarques = setTimeout(majMarquesModif, 0);
 }
+// Champs modifiés par rapport à la dernière version, dans l'ordre : qualification, site, questions, description.
+// Chaque élément : { cle: "qualification" | "site" | "description" | "q-" suivi de l'identifiant de colonne de la question, nom }.
+// reponsesLues : réponses lues pour les questions affichées (identifiant de colonne → valeur).
+function champsModifiesParRapportADerniere(qualification, site, reponsesLues, description) {
+  const modifs = [];
+  const tri = (valeur) => listeQualif(valeur).map(String).sort().join("|");
+  if (colonneDe("Qualification") && tri(qualification) !== tri(valeurLigne(etatSaisie.derniere, "Qualification")))
+    modifs.push({
+      cle: "qualification",
+      nom: (etatSaisie.metaSig[colonneDe("Qualification")] || {}).libelle || "Qualification",
+    });
+  if (colonneDe("Site") && site.trim() !== String(valeurLigne(etatSaisie.derniere, "Site") || "").trim())
+    modifs.push({ cle: "site", nom: "Site / bâtiment" });
+  for (const question of etatSaisie.defsQuestions) {
+    if (question.formule) continue;
+    if (!reponsesLues.has(question.colId)) continue;
+    if (!memeReponse(question, reponsesLues.get(question.colId), etatSaisie.derniere[question.colId]))
+      modifs.push({ cle: `q-${question.colId}`, nom: question.libelle || question.colId });
+  }
+  const sansMention = (texte) =>
+    String(texte || "")
+      .replace(MOTIF_MOBILISATION, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  if (
+    colonneDe("Description") &&
+    sansMention(description) !== sansMention(valeurLigne(etatSaisie.derniere, "Description"))
+  )
+    modifs.push({ cle: "description", nom: "Description" });
+  return modifs;
+}
 function majMarquesModif() {
   document
     .querySelectorAll("#form-signalement .modifie")
@@ -318,39 +363,32 @@ function majMarquesModif() {
     recap.hidden = true;
     return;
   }
-  const noms = [],
-    marquer = (cible, nom) => {
-      if (cible) cible.classList.add("modifie");
-      noms.push(nom);
-    };
-  const tri = (valeur) => listeQualif(valeur).map(String).sort().join("|");
-  if (
-    colonneDe("Qualification") &&
-    tri(lireQualificationInitiale()) !== tri(valeurLigne(etatSaisie.derniere, "Qualification"))
-  )
-    marquer(
-      $("qualifs-initiales").closest("fieldset"),
-      (etatSaisie.metaSig[colonneDe("Qualification")] || {}).libelle || "Qualification",
-    );
-  if (colonneDe("Site") && $("site").value.trim() !== String(valeurLigne(etatSaisie.derniere, "Site") || "").trim())
-    marquer($("bloc-site"), "Site / bâtiment");
+  const reponsesLues = new Map();
   for (const question of etatSaisie.defsQuestions) {
     if (question.formule) continue;
     const bloc = document.querySelector(`[data-champ="q-${question.colId}"]`);
     if (!bloc || bloc.hidden) continue;
-    if (!memeReponse(question, lireUnChamp("q", question), etatSaisie.derniere[question.colId]))
-      marquer(bloc, question.libelle || question.colId);
+    reponsesLues.set(question.colId, lireUnChamp("q", question));
   }
-  const sansMention = (texte) =>
-    String(texte || "")
-      .replace(MOTIF_MOBILISATION, "")
-      .replace(/\s+/g, " ")
-      .trim();
-  if (
-    colonneDe("Description") &&
-    sansMention($("description").value) !== sansMention(valeurLigne(etatSaisie.derniere, "Description"))
-  )
-    marquer($("description").closest(".champ"), "Description");
+  const modifs = champsModifiesParRapportADerniere(
+    colonneDe("Qualification") ? lireQualificationInitiale() : null,
+    $("site").value,
+    reponsesLues,
+    $("description").value,
+  );
+  const noms = [];
+  for (const modif of modifs) {
+    const cible =
+      modif.cle === "qualification"
+        ? $("qualifs-initiales").closest("fieldset")
+        : modif.cle === "site"
+          ? $("bloc-site")
+          : modif.cle === "description"
+            ? $("description").closest(".champ")
+            : document.querySelector(`[data-champ="${modif.cle}"]`);
+    if (cible) cible.classList.add("modifie");
+    noms.push(modif.nom);
+  }
   recap.hidden = false;
   recap.classList.toggle("avec", noms.length > 0);
   recap.textContent = noms.length
@@ -432,14 +470,27 @@ function dossiersEnCours(etabId) {
     }))
     .sort((a, b) => comparerVersions(b.l, a.l));
 }
-function majProposition() {
-  const bloc = $("proposition-encours");
+// Propositions de reprise pour l'établissement courant : signalements en cours, ceux du jour du formulaire (memeJour),
+// les autres (avant), et masquer si rien n'est à reprendre des jours précédents (formulaire par site, reprise désactivée)
+function propositionsDeReprise(jour) {
   const enCreation =
     !etatSaisie.dossierId &&
     etatSaisie.etabCourant &&
     !etatSaisie.reaffectation &&
     etatSaisie.propositionMasquee !== etatSaisie.etabCourant.id;
   const liste = enCreation ? dossiersEnCours(etatSaisie.etabCourant.id) : [];
+  const memeJour = liste.filter((dossierPropose) =>
+      versionsDe(dossierPropose.d).some((version) => jourDeLaVersion(version) === jour),
+    ),
+    avant = liste.filter((dossierPropose) => !memeJour.includes(dossierPropose));
+  const masquer = !memeJour.length && formulaireParSite() && modeRepriseSites() === "non";
+  return { liste, memeJour, avant, masquer };
+}
+function majProposition() {
+  const bloc = $("proposition-encours");
+  // Un dossier par jour : celui du même jour s'actualise ; celui d'un jour précédent sert de point de départ
+  const jour = jourDuFormulaire();
+  const { liste, memeJour, avant, masquer } = propositionsDeReprise(jour);
   bloc.hidden = !liste.length;
   document.body.classList.toggle("proposition-visible", liste.length > 0);
   if (!liste.length) {
@@ -451,14 +502,8 @@ function majProposition() {
       qualificationsTexte = listeQualif(valeurLigne(dossierPropose.l, "Qualification")).join(", ");
     return `Dossier n° ${dossierPropose.d}${qualificationsTexte ? " · " + qualificationsTexte : ""}${debut != null ? " · du " + jourFaits(debut) : ""} · ${dossierPropose.n > 1 ? `${dossierPropose.n - 1} mise${dossierPropose.n > 2 ? "s" : ""} à jour` : "aucune mise à jour"}`;
   };
-  // Un dossier par jour : celui du même jour s'actualise ; celui d'un jour précédent sert de point de départ
-  const jour = jourDuFormulaire(),
-    memeJour = liste.filter((dossierPropose) =>
-      versionsDe(dossierPropose.d).some((version) => jourDeLaVersion(version) === jour),
-    ),
-    avant = liste.filter((dossierPropose) => !memeJour.includes(dossierPropose));
   // formulaire par site, reprise désactivée : rien à reprendre des jours précédents (seul le signalement du même jour est proposé)
-  if (!memeJour.length && formulaireParSite() && modeRepriseSites() === "non") {
+  if (masquer) {
     bloc.hidden = true;
     bloc.innerHTML = "";
     document.body.classList.remove("proposition-visible");

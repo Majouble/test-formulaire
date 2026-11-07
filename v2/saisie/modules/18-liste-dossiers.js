@@ -2,8 +2,8 @@
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
-   Définit : libelleDossier, majListeDossiers, construireIndexRecherche, surligneMots, afficherResultatsRecherche,
-     fermerRecherche, ouvrirResultat.
+   Définit : libelleDossier, calculerDossiersInit, majListeDossiers, construireIndexRecherche, surligneMots,
+     afficherResultatsRecherche, fermerRecherche, ouvrirResultat.
    Utilise :
      02 utilitaires : colonnesEtab.
      03 variantes : refId.
@@ -28,16 +28,20 @@ function libelleDossier(ligne) {
     detail: `${dateSignalement ? "du " + dateSignalement + " — " : ""}${texte}`,
   };
 }
+// Calcule les versions initiales des dossiers du périmètre, triées de la plus récente à la plus ancienne
+function calculerDossiersInit() {
+  const colonneDossier = colonneDe("Dossier");
+  return etatSaisie.enregistrements
+    .filter((ligne) => (refId(colonneDossier && ligne[colonneDossier]) || ligne.id) === ligne.id)
+    .filter((ligne) => !perimetreActif() || dansPerimetre(etabDeLigne(ligne)))
+    .sort((a, b) => (secondes(valeurLigne(b, "Date")) ?? 0) - (secondes(valeurLigne(a, "Date")) ?? 0));
+}
 function majListeDossiers() {
   $("menu-dossiers").hidden = true; // remplacé par la liste de l'accueil
   $("barre-recherche").hidden = false;
   etatSaisie.indexRecherche = null; // reconstruit à la prochaine frappe
   etatSaisie.cacheDernieres = null;
-  const colonneDossier = colonneDe("Dossier");
-  etatSaisie.dossiersInit = etatSaisie.enregistrements
-    .filter((ligne) => (refId(colonneDossier && ligne[colonneDossier]) || ligne.id) === ligne.id)
-    .filter((ligne) => !perimetreActif() || dansPerimetre(etabDeLigne(ligne)))
-    .sort((a, b) => (secondes(valeurLigne(b, "Date")) ?? 0) - (secondes(valeurLigne(a, "Date")) ?? 0));
+  etatSaisie.dossiersInit = calculerDossiersInit();
   majFiltre();
   if (!$("resultats-signalements").hidden) afficherResultatsRecherche();
   const courant = etatSaisie.dossiersInit.find((ligne) => ligne.id === etatSaisie.dossierId);

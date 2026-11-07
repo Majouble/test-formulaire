@@ -2,7 +2,8 @@
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
-   Définit : afficherOnglet, passerEnCreation, afficherDossier, focusPremiereQuestion, avertirFaitsAnterieurs.
+   Définit : afficherOnglet, reinitialiserEtatCreation, passerEnCreation, afficherDossier, focusPremiereQuestion,
+     diagnostiquerFaitsAnterieurs, avertirFaitsAnterieurs.
    Utilise :
      01 configuration : afficherCommentaire.
      02 utilitaires : colonnesEtab.
@@ -59,7 +60,8 @@ $("onglets").addEventListener("keydown", (evenement) => {
   $(`onglet-${onglet}`).addEventListener("click", () => afficherOnglet(onglet)),
 );
 
-async function passerEnCreation() {
+// Remet à zéro l'état du dossier courant pour un nouveau signalement
+function reinitialiserEtatCreation() {
   etatSaisie.dossierId = null;
   etatSaisie.versions = [];
   etatSaisie.initiale = null;
@@ -67,6 +69,9 @@ async function passerEnCreation() {
   etatSaisie.doublonConfirme = null; // chaque nouveau signalement demande sa propre confirmation
   etatSaisie.qualifTouchee = false; // formulaire par site : qualification déduite des sites
   etatSaisie.sitesAutoPour = null; // formulaire par site : reprise automatique des sites connus
+}
+async function passerEnCreation() {
+  reinitialiserEtatCreation();
   queueMicrotask(() => {
     if (typeof majQualifDeduite === "function") majQualifDeduite();
   });
@@ -207,13 +212,8 @@ $("plusieurs-jours").addEventListener("change", () => {
     avertirFaitsAnterieurs();
   }),
 );
-function avertirFaitsAnterieurs() {
-  const aide = $("aide-date-faits");
-  if (!aide.dataset.base) aide.dataset.base = aide.textContent;
-  const nouvelle = lireDateFaits(),
-    jourDerniereVersion = etatSaisie.derniere && jourDesFaits(etatSaisie.derniere);
-  // une série « plusieurs jours » qui va jusqu'à l'étape la plus récente (ou au-delà) la remplace : pas d'avertissement
-  const finSerie = joursSuivants().slice(-1)[0];
+// Détermine si les faits saisis sont antérieurs, d'un autre jour que le dossier, ou à venir
+function diagnostiquerFaitsAnterieurs(nouvelle, jourDerniereVersion, finSerie, faitsFuturs) {
   const anterieur =
     etatSaisie.dossierId &&
     etatSaisie.derniere &&
@@ -228,7 +228,22 @@ function avertirFaitsAnterieurs() {
     jourDerniereVersion != null &&
     jourFaits(nouvelle) !== jourFaits(jourDerniereVersion) &&
     !anterieur;
-  const futur = !anterieur && !autreJourDossier && dateFaitsFuture();
+  const futur = !anterieur && !autreJourDossier && faitsFuturs;
+  return { anterieur, autreJourDossier, futur };
+}
+function avertirFaitsAnterieurs() {
+  const aide = $("aide-date-faits");
+  if (!aide.dataset.base) aide.dataset.base = aide.textContent;
+  const nouvelle = lireDateFaits(),
+    jourDerniereVersion = etatSaisie.derniere && jourDesFaits(etatSaisie.derniere);
+  // une série « plusieurs jours » qui va jusqu'à l'étape la plus récente (ou au-delà) la remplace : pas d'avertissement
+  const finSerie = joursSuivants().slice(-1)[0];
+  const { anterieur, autreJourDossier, futur } = diagnostiquerFaitsAnterieurs(
+    nouvelle,
+    jourDerniereVersion,
+    finSerie,
+    dateFaitsFuture(),
+  );
   aide.textContent = autreJourDossier
     ? `Ce signalement concerne le ${jourCourt(jourDerniereVersion)}. Pour un autre jour, créez plutôt un nouveau signalement (« Autres actions › Reporter sur d'autres jours ») : un dossier par jour.`
     : anterieur

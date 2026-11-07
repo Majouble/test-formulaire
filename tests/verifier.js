@@ -46,6 +46,7 @@ const VERSION = fs
 const REMPLACEMENTS = [
   [new RegExp(`\\b${VERSION.replace(/\./g, "\\.")}\\b`, "g"), "<VERSION>"],
   [/\b\d{4}_\d{2}_\d{2}_\d{2}h\d{2}/g, "<HORODATAGE>"], // noms de fichiers exportés (2026_11_06_18h26_…)
+  [/([-_])20\d{2}-\d{2}-\d{2}(\.(csv|xlsx|docx|json|zip|geojson|html))\b/g, "$1<JOUR>$2"], // date du jour dans un nom de fichier exporté
   [/\b20\d{6}-\d{4}\b/g, "<HORODATAGE>"], // noms de fichiers exportés (…-20261106-1740.csv)
   [/(\.jpe?g \(|photo d'origine : )\d+ Ko/gi, "$1<N> Ko"], // photo d'essai fabriquée puis recompressée : poids variable
   [/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?/g, "<ISO>"],
