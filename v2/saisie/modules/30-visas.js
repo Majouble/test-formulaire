@@ -2,21 +2,21 @@
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
-   Définit : sansAccentBas, classerNiveau, chargerProfil, chargerProfilViseur, lieuDe, statutDe, peutViser,
-     aViserParMoi, majBandeauVisa, lireVeille, majBandeauVeille, campagnesDeLEtab, majBandeauCampagne,
-     qualificationRetourNormale, rienASignaler, echelonsAffichables, remplirVisas, champVerdict,
-     activerVerdictRapide, ecrireVerdict, enregistrerVerdict, ecrireVisa, enregistrerVisa.
+   Définit : classerNiveau, chargerProfil, chargerProfilViseur, lieuDe, statutDe, peutViser, aViserParMoi,
+     majBandeauVisa, lireVeille, majBandeauVeille, campagnesDeLEtab, majBandeauCampagne, qualificationRetourNormale,
+     rienASignaler, echelonsAffichables, remplirVisas, champVerdict, activerVerdictRapide, ecrireVerdict,
+     enregistrerVerdict, ecrireVisa, enregistrerVisa.
    Utilise :
      01 configuration : ETAB, UTILISATEURS.
-     02 utilitaires : colonnesEtab.
+     02 utilitaires : colonnesEtab, sansAccents.
      03 variantes : lisible, statut.
      04 date-faits : dateFr, secondes.
      05 etat : etabDeLigne, etatSaisie, valeurLigne.
      06 grist : enFile.
      09 dossier : cocherQualif, lireChoix, ouvrirDossier.
-     10 champs : egal, lireChamps, norm, remplirChamps, typeBase.
+     10 champs : egal, lireChamps, remplirChamps, typeBase, valeurOuNull.
      13 coherence : seulementModifies.
-     15 onglets : afficherOnglet, passerEnCreation.
+     15 onglets : afficherOnglet, preparerNouveauSignalement.
      16 description : majEtatDescription.
      24 filtres-navigation : derniereDe.
      25 plusieurs-jours : dossierDuJour.
@@ -28,13 +28,8 @@
 /* =========================================================
    Visas : portent sur la dernière version, jamais recopiés dans les suivis
    ========================================================= */
-const sansAccentBas = (texte) =>
-  String(texte ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
 function classerNiveau(valeur) {
-  const texteSansAccent = sansAccentBas(valeur);
+  const texteSansAccent = sansAccents(valeur);
   if (texteSansAccent.includes("region")) return "region"; // avant "academie" : "région académique" contient aussi "academie"
   if (texteSansAccent.includes("departement")) return "departement";
   if (texteSansAccent.includes("academie")) return "academie";
@@ -250,7 +245,7 @@ async function rienASignaler() {
   await enFile(async () => {
     cacherConfirmation();
     if (duJour) await ouvrirDossier(duJour.d, true);
-    else await passerEnCreation();
+    else await preparerNouveauSignalement();
     montrerVue("saisie");
   });
   if (duJour && etatSaisie.dossierId !== duJour.d) return;
@@ -372,7 +367,10 @@ function activerVerdictRapide(prefix, questions, statutId) {
       const encours = lireChoix(id);
       const deja =
         etatSaisie.derniere &&
-        egal(norm(questionVerdict, encours), norm(questionVerdict, etatSaisie.derniere[questionVerdict.colId]));
+        egal(
+          valeurOuNull(questionVerdict, encours),
+          valeurOuNull(questionVerdict, etatSaisie.derniere[questionVerdict.colId]),
+        );
       statut(statutId, deja ? "" : `« ${encours} » sélectionné, non enregistré : appuyez sur Entrée pour valider.`);
     });
     choixRadio.addEventListener("keydown", (evenement) => {
@@ -397,7 +395,10 @@ async function enregistrerVerdict(questionVerdict, id, statutId) {
   const valeurChoisie = lireChoix(id);
   if (
     !valeurChoisie ||
-    egal(norm(questionVerdict, valeurChoisie), norm(questionVerdict, etatSaisie.derniere[questionVerdict.colId]))
+    egal(
+      valeurOuNull(questionVerdict, valeurChoisie),
+      valeurOuNull(questionVerdict, etatSaisie.derniere[questionVerdict.colId]),
+    )
   )
     return;
   statut(statutId, "Enregistrement…");

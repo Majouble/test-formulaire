@@ -2,10 +2,10 @@
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
-   Définit : afficherOnglet, reinitialiserEtatCreation, passerEnCreation, afficherDossier, focusPremiereQuestion,
-     diagnostiquerFaitsAnterieurs, avertirFaitsAnterieurs.
+   Définit : afficherOnglet, reinitialiserEtatCreation, preparerNouveauSignalement, afficherDossier,
+     focusPremiereQuestion, diagnostiquerFaitsAnterieurs, avertirFaitsAnterieurs.
    Utilise :
-     01 configuration : afficherCommentaire.
+     01 configuration : commentaireActive.
      02 utilitaires : colonnesEtab.
      03 variantes : CHAMPS_NOUVEL_ETAB, statut.
      04 date-faits : dateFaitsFuture, dateFr, initialiserDateFaits, lireDateFaits, secondes.
@@ -25,7 +25,7 @@
      28 enregistrement : remplirFormulaire.
      29 historique : afficherHistorique.
      30 visas : statutDe.
-     31 autocompletion : fermer.
+     31 autocompletion : fermerSuggestions.
      34 parcours : allerNouveau, majModeSaisie, majProposition.
    Modifie etatSaisie : dateFaitsTouchee, derniere, descriptionManuelle, dossierId, doublonConfirme, etabCourant,
      initiale, ligneAnnuaire, modifie, modifieVisa, qualifTouchee, sitesAutoPour, versions. */
@@ -70,7 +70,7 @@ function reinitialiserEtatCreation() {
   etatSaisie.qualifTouchee = false; // formulaire par site : qualification déduite des sites
   etatSaisie.sitesAutoPour = null; // formulaire par site : reprise automatique des sites connus
 }
-async function passerEnCreation() {
+async function preparerNouveauSignalement() {
   reinitialiserEtatCreation();
   queueMicrotask(() => {
     if (typeof majQualifDeduite === "function") majQualifDeduite();
@@ -117,7 +117,7 @@ function afficherDossier() {
   $("btn-corriger").hidden = false;
   $("aide-correction").hidden = false;
   $("btn-effacer").textContent = "Revenir à l'état actuel";
-  $("bloc-commentaire").hidden = !(afficherCommentaire() && colonneDe("Commentaire"));
+  $("bloc-commentaire").hidden = !(commentaireActive() && colonneDe("Commentaire"));
   $("btn-nouveau").hidden = false;
   $("onglets").hidden = false;
   $("nb-suivis").textContent = Math.max(0, etatSaisie.versions.length - 1);
@@ -175,11 +175,11 @@ $("btn-nouveau").addEventListener("click", () => allerNouveau());
 
 $("btn-effacer").addEventListener("click", () =>
   enFile(async () => {
-    fermer();
+    fermerSuggestions();
     if (etatSaisie.dossierId && etatSaisie.initiale) {
       await remplirFormulaire();
       statut("statut-signalement", "Corrections annulées.");
-    } else await passerEnCreation();
+    } else await preparerNouveauSignalement();
   }),
 );
 

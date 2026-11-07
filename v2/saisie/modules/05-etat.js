@@ -2,16 +2,15 @@
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
-   Définit : etatSaisie, colonneDe, valeurLigne, champWidget, lirePlanningCreneau, choisirCreneauAgent,
+   Définit : etatSaisie, colonneDe, valeurLigne, idDossierDe, champWidget, lirePlanningCreneau, choisirCreneauAgent,
      calculerPerimetreCreneau, signatureCreneau, afficherChangementCreneau, majCreneau, lireEmargementAgent,
      htmlEmargement, ecrireEmargement, messageErreurEmargement, basculerService, heureCourte, texteCreneau,
      perimetre, perimetreActif, dansPerimetre, resumePerimetre, afficherBandeauPerimetre, etabDe, cleTexteEtab,
      etabParTexte, trouverColNomReponses, texteEtabBrut, etabDeLigne, nomEtabLigne.
    Utilise :
-     02 utilitaires : colonnesEtab, normColonne.
-     03 variantes : refId, reglagesSaisie.
-     18 liste-dossiers : majListeDossiers.
-     31 autocompletion : sansAccent. */
+     02 utilitaires : colonnesEtab, normColonne, sansAccents.
+     03 variantes : refId, varianteSaisie.
+     18 liste-dossiers : majListeDossiers. */
 /* =========================================================
    État du widget
    ---------------------------------------------------------
@@ -244,10 +243,12 @@ const colonneDe = (cle) =>
     ? etatSaisie.mappings[cle]
     : etatSaisie.colsParDefaut[cle] || null;
 const valeurLigne = (ligne, cle) => (ligne && colonneDe(cle) ? ligne[colonneDe(cle)] : null);
+// Identifiant du dossier d'une ligne de signalement : la référence Dossier, sinon la ligne elle-même (première version)
+const idDossierDe = (ligne) => refId(colonneDe("Dossier") && ligne[colonneDe("Dossier")]) || ligne.id;
 // Champ de ce formulaire (EN, ESR) : un agent mobilisé sur l'autre champ pendant le créneau en est averti
 const champWidget = () => {
   try {
-    return (window.Socle.CHAMPS.find((champ) => champ.version === reglagesSaisie().version) || {}).id || "";
+    return (window.Socle.CHAMPS.find((champ) => champ.version === varianteSaisie().version) || {}).id || "";
   } catch (_) {
     return "";
   }
@@ -419,7 +420,7 @@ function dansPerimetre(etablissement) {
     if (
       !valeursAutorisees.some(
         (valeurAutorisee) =>
-          sansAccent(String(valeurAutorisee)) === sansAccent(String(valeurEtablissement ?? "").trim()),
+          sansAccents(String(valeurAutorisee)) === sansAccents(String(valeurEtablissement ?? "").trim()),
       )
     )
       return false;
@@ -472,10 +473,7 @@ function afficherBandeauPerimetre() {
 }
 const etabDe = (id) => etatSaisie.indexEtabs.get(id) || null;
 const cleTexteEtab = (texteEtablissement) =>
-  String(texteEtablissement ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
+  sansAccents(texteEtablissement)
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 function etabParTexte(texteEtablissement) {

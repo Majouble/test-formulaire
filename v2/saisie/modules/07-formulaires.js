@@ -1,4 +1,4 @@
-/* PRISME — widget de saisie, module 07/34 : Formulaires construits dans l'administration : socle, rôles des colonnes, questions.
+/* PRISME — widget de saisie, module 07/34 : Formulaires construits dans l'administration : socle, colonnes attendues, questions.
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
@@ -19,19 +19,19 @@
      cacheTables, lireTableSQL, lireTableRapide, lireTableReference, tableDepuisEnregistrements, libellesTable,
      resoudreRefsEtab, rafraichirEtabs.
    Utilise :
-     01 configuration : CLE_TABLE_ETAB, ETAB, TABLE_ETAB_DEFAUT, afficherCommentaire.
+     01 configuration : CLE_TABLE_ETAB, ETAB, TABLE_ETAB_DEFAUT, commentaireActive.
      02 utilitaires : colonnesEtab, normColonne.
-     03 variantes : appliquerVersion, colonneChampFiche, colonneRegion, refId, reglagesSaisie.
+     03 variantes : appliquerVersion, colonneChampFiche, colonneRegion, refId, varianteSaisie.
      04 date-faits : faitsAvecHeure.
      05 etat : colonneDe, etabDeLigne, etatSaisie, majCreneau, texteEtabBrut, trouverColNomReponses, valeurLigne.
      06 grist : ACTIVITE, avecRegles, completerPjCopie, defsDe, enFile, lireMeta, metaColonnes.
      08 referentiel-local : DUREE_CACHE_REFERENTIEL, chargerEtabs, oublierCacheReferentiel.
      09 dossier : afficherChoix, rafraichir.
      10 champs : rendreChamps, typeBase.
-     12 conditions-formules : normaliser, resoudreColonne.
+     12 conditions-formules : resoudreColonne, texteComparable.
      13 coherence : appliquerConditions.
      14 etablissement : afficherEtablissement.
-     15 onglets : afficherDossier, passerEnCreation.
+     15 onglets : afficherDossier, preparerNouveauSignalement.
      16 description : PARAMETRES, dateParGrist.
      17 reglages : appliquerBornes, appliquerOptions, chargerReglages.
      18 liste-dossiers : majListeDossiers.
@@ -849,14 +849,14 @@ function remplirPageDepuisStructure() {
   });
   etatSaisie.metaDate = etatSaisie.metaSig[colonneDe("Date")] || null;
   etatSaisie.alerteHorloge = calculerAlerteHorloge();
-  $("bloc-commentaire").hidden = !(afficherCommentaire() && colonneDe("Commentaire"));
+  $("bloc-commentaire").hidden = !(commentaireActive() && colonneDe("Commentaire"));
   etatSaisie.metaFaits = etatSaisie.metaSig[colonneDe("Date_faits")] || null;
   $("bloc-date-faits").hidden = !colonneDe("Date_faits");
   $("bloc-site").hidden = !colonneDe("Site");
   appliquerVersion();
   $("date-faits").type =
     etatSaisie.metaFaits && (etatSaisie.metaFaits.type || "").startsWith("DateTime") ? "datetime-local" : "date";
-  $("bloc-plusieurs-jours").hidden = !(colonneDe("Date_faits") && reglagesSaisie().plusieursJours && !faitsAvecHeure());
+  $("bloc-plusieurs-jours").hidden = !(colonneDe("Date_faits") && varianteSaisie().plusieursJours && !faitsAvecHeure());
   if (!$("aide-date-faits").dataset.base) $("aide-date-faits").textContent = aideFaitsDefaut();
   const metaQualification = etatSaisie.metaSig[colonneDe("Qualification")];
   const { choix, couleurs, qualifMultiple } = calculerChoixQualification(metaQualification);
@@ -975,7 +975,7 @@ async function chargerConfigurationEtapes() {
   afficherAlertes(alertes);
 
   await afficherReferentielQuandPret(pEtabs, alertes);
-  if (!etatSaisie.dossierId) await passerEnCreation();
+  if (!etatSaisie.dossierId) await preparerNouveauSignalement();
   majCouleur();
 }
 
@@ -1211,7 +1211,7 @@ async function libellesTable(tid, colAffichee) {
     (tableReference[colonne] || []).some((valeur) => typeof valeur === "string" && valeur.trim());
   const colonneLibelle =
     colonnes.find(
-      (colonne) => /^(nom|libelle|intitule)(_|$)/.test(normaliser(colonne).replace(/ /g, "_")) && texte(colonne),
+      (colonne) => /^(nom|libelle|intitule)(_|$)/.test(texteComparable(colonne).replace(/ /g, "_")) && texte(colonne),
     ) ||
     (colAffichee && tableReference[colAffichee] ? colAffichee : null) ||
     colonnes.find(texte);
@@ -1233,7 +1233,7 @@ async function resoudreRefsEtab() {
     [
       ...Object.values(colonnesEtab),
       colonneRegion(),
-      ...reglagesSaisie().fiche.map((champFiche) => colonneChampFiche(champFiche.col)),
+      ...varianteSaisie().fiche.map((champFiche) => colonneChampFiche(champFiche.col)),
       ...colsPerimetre,
     ].filter(Boolean),
   )) {

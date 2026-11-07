@@ -2,8 +2,8 @@
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
-   Définit : typeBase, cheminsRef, estVide, egal, norm, optionsReference, rendreChamps, remplirChamps, boolRepondu,
-     carteOuiNon, horsBornes, lireUnChamp, lireChamps.
+   Définit : typeBase, cheminsRef, estVide, egal, valeurOuNull, optionsReference, rendreChamps, remplirChamps,
+     boolRepondu, carteOuiNon, horsBornes, lireUnChamp, lireChamps.
    Utilise :
      03 variantes : lisible.
      04 date-faits : secondes.
@@ -11,7 +11,7 @@
      07 formulaires : decorHtml, lireTableReference.
      09 dossier : styleChoix.
      11 pieces-jointes : piecesJointes.
-     12 conditions-formules : normaliser, resoudreColonne.
+     12 conditions-formules : resoudreColonne, texteComparable.
      13 coherence : appliquerConditions, formatValeur.
      17 reglages : bornesDe.
      19 tableaux : Tableau, lireTableauJson, tableaux.
@@ -30,7 +30,7 @@ function estVide(question, valeur) {
   return false;
 }
 const egal = (valeurA, valeurB) => JSON.stringify(valeurA ?? null) === JSON.stringify(valeurB ?? null);
-const norm = (question, valeur) => (estVide(question, valeur) ? null : valeur);
+const valeurOuNull = (question, valeur) => (estVide(question, valeur) ? null : valeur);
 
 async function optionsReference(question) {
   const tableReference = await lireTableReference(question.type.split(":")[1]);
@@ -282,7 +282,7 @@ function carteOuiNon(question) {
     for (const libelle of ["Oui", "Non"]) {
       const regle = regleCouleur.regles.find(
         (regleCandidate) =>
-          (regleCandidate.type === "egal" && regleCandidate.valeur === normaliser(libelle)) ||
+          (regleCandidate.type === "egal" && regleCandidate.valeur === texteComparable(libelle)) ||
           regleCandidate.type === "rempli",
       );
       const couleur = regle && regle.couleur,

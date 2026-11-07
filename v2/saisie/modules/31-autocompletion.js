@@ -2,13 +2,14 @@
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
-   Définit : champNom, liste, sansAccent, odsq, clauses, appeler, interroger, sourcesActives, rechercheLocale,
-     libelleEtabDeRepli, rechercher, afficherResultats, etat, ouvrir, fermer, surligner, choisir.
+   Définit : champNom, liste, odsq, clauses, appeler, interroger, sourcesActives, rechercheLocale,
+     libelleEtabDeRepli, rechercher, afficherResultats, etat, ouvrirSuggestions, fermerSuggestions, surligner,
+     choisir.
    Utilise :
      01 configuration : COLONNES_RECHERCHE_EN_PLUS, MIN_CARACTERES, MIN_CARACTERES_ANNUAIRE, NB_RESULTATS,
        NB_RESULTATS_ANNUAIRE, SOURCES.
-     02 utilitaires : colonnesEtab.
-     03 variantes : CHAMPS_NOUVEL_ETAB, reglagesSaisie.
+     02 utilitaires : colonnesEtab, sansAccents.
+     03 variantes : CHAMPS_NOUVEL_ETAB, varianteSaisie.
      05 etat : dansPerimetre, etabDe, etatSaisie, perimetre, perimetreActif.
      14 etablissement : afficherEtablissement, etabParUai, rattachementDe, versEtablissement.
      15 onglets : focusPremiereQuestion.
@@ -21,11 +22,6 @@
 const champNom = $("nom"),
   liste = $("liste");
 // Recherche dans le référentiel du document (sans accents, tous les mots doivent être présents)
-const sansAccent = (texte) =>
-  String(texte ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
 const odsq = (texte) => texte.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 function clauses(src, recherche) {
   const champsSource = src.champs;
@@ -64,9 +60,9 @@ async function interroger(src, recherche) {
     mail: champsSource.mail ? rec[champsSource.mail] : "",
   }));
 }
-const sourcesActives = () => SOURCES.filter((source) => reglagesSaisie().annuaires.includes(source.cle));
+const sourcesActives = () => SOURCES.filter((source) => varianteSaisie().annuaires.includes(source.cle));
 function rechercheLocale(recherche) {
-  const mots = sansAccent(recherche).split(/\s+/).filter(Boolean);
+  const mots = sansAccents(recherche).split(/\s+/).filter(Boolean);
   if (!mots.length) return [];
   const colsRecherche = etatSaisie.colsEtab.includes(colonnesEtab.nom)
     ? [
@@ -75,7 +71,7 @@ function rechercheLocale(recherche) {
           colonnesEtab.commune,
           colonnesEtab.uai,
           ...COLONNES_RECHERCHE_EN_PLUS,
-          ...reglagesSaisie().recherche,
+          ...varianteSaisie().recherche,
         ]),
       ]
     : etatSaisie.colsEtab.filter(
@@ -89,7 +85,7 @@ function rechercheLocale(recherche) {
   // lignes fusionnées dans un autre établissement (référentiel ESR, colonne Etat) : plus proposées
   const trouves = etatSaisie.etabs.filter((ligneEtablissement) => {
     if (typeof ligneEtablissement.Etat === "string" && /^fusionn/i.test(ligneEtablissement.Etat.trim())) return false;
-    const texte = sansAccent(
+    const texte = sansAccents(
       colsRecherche
         .map((colonne) => ligneEtablissement[colonne])
         .filter((valeur) => valeur != null && typeof valeur !== "object")
@@ -99,7 +95,7 @@ function rechercheLocale(recherche) {
   });
   // le nom (ou le sigle, le libellé consolidé) d'abord ; les mots-clés de recherche (anciens noms, villes…) ensuite
   const titre = (ligneEtablissement) =>
-    sansAccent(
+    sansAccents(
       [ligneEtablissement[colonnesEtab.nom], ligneEtablissement.Sigle, ligneEtablissement.Libelle_consolide]
         .filter((valeur) => typeof valeur === "string")
         .join(" "),
@@ -174,7 +170,7 @@ async function rechercher(recherche) {
         ([k, colonnePerimetre]) =>
           !resultatAnnuaire[k] ||
           perimetreCourant[colonnePerimetre].some(
-            (valeurPerimetre) => sansAccent(valeurPerimetre) === sansAccent(resultatAnnuaire[k]),
+            (valeurPerimetre) => sansAccents(valeurPerimetre) === sansAccents(resultatAnnuaire[k]),
           ),
       ),
     );
@@ -208,19 +204,19 @@ function afficherResultats() {
     </li>`,
     )
     .join("");
-  ouvrir();
+  ouvrirSuggestions();
 }
 function etat(message) {
   liste.innerHTML = `<li class="etat" aria-disabled="true">${esc(message)}</li>`;
   etatSaisie.resultats = [];
   etatSaisie.index = -1;
-  ouvrir();
+  ouvrirSuggestions();
 }
-function ouvrir() {
+function ouvrirSuggestions() {
   liste.hidden = false;
   champNom.setAttribute("aria-expanded", "true");
 }
-function fermer() {
+function fermerSuggestions() {
   liste.hidden = true;
   champNom.setAttribute("aria-expanded", "false");
   etatSaisie.index = -1;
@@ -240,7 +236,7 @@ function choisir(i) {
     proposerRattachement(resultat);
     return;
   }
-  fermer();
+  fermerSuggestions();
   const existant = (resultat.ligne && etabDe(resultat.ligne.id)) || resultat.ligne || etabParUai(resultat.uai);
   etatSaisie.composanteChoisie = null;
   if (existant) {
@@ -265,7 +261,7 @@ champNom.addEventListener("input", () => {
   afficherEtablissement();
   const recherche = champNom.value.trim();
   if (recherche.length < MIN_CARACTERES) {
-    fermer();
+    fermerSuggestions();
     return;
   }
   etatSaisie.minuterie = setTimeout(() => rechercher(recherche), sourcesActives().length ? 300 : 150);
@@ -281,7 +277,7 @@ champNom.addEventListener("keydown", (evenement) => {
   } else if (evenement.key === "Enter" && etatSaisie.index >= 0) {
     evenement.preventDefault();
     choisir(etatSaisie.index);
-  } else if (evenement.key === "Escape") fermer();
+  } else if (evenement.key === "Escape") fermerSuggestions();
 });
 liste.addEventListener("mousedown", (evenement) => {
   const elementOption = evenement.target.closest("[role=option]");
@@ -290,7 +286,7 @@ liste.addEventListener("mousedown", (evenement) => {
     choisir(+elementOption.dataset.i);
   }
 });
-champNom.addEventListener("blur", () => setTimeout(fermer, 150));
+champNom.addEventListener("blur", () => setTimeout(fermerSuggestions, 150));
 CHAMPS_NOUVEL_ETAB.forEach((k) => $(k).addEventListener("input", () => $(k).classList.remove("auto")));
 $("uai").addEventListener("change", () => {
   const existant = etabParUai($("uai").value);

@@ -7,12 +7,12 @@
      avecRegles, defsDe, mesurerArriveeEnvoi, decisionLigneCliquee, afficherSaisieEnCours, afficherDossierOuvert,
      brancherGrist.
    Utilise :
-     03 variantes : refId, statut.
-     05 etat : colonneDe, etatSaisie.
+     03 variantes : statut.
+     05 etat : etatSaisie, idDossierDe.
      07 formulaires : chargerConfiguration, signalerErreurChargement.
      09 dossier : ouvrirDossier, rafraichir.
      10 champs : typeBase.
-     15 onglets : passerEnCreation.
+     15 onglets : preparerNouveauSignalement.
      34 parcours : cacherConfirmation, montrerVue.
    Modifie etatSaisie : curseurInitialVu, dernierCurseur, enregistrements, envoiEnAttente, file, idsNouveaux,
      idsPrecedents, mappings, metaCopie, promesseMeta, signatureMappings. */
@@ -419,7 +419,7 @@ function mesurerArriveeEnvoi(recs) {
 // Décide quoi faire de la ligne cliquée : dossier visé et action (ignorer, relire, saisie en cours, ouvrir)
 function decisionLigneCliquee(rec) {
   const ligneCourante = etatSaisie.enregistrements.find((ligne) => ligne.id === rec.id) || rec;
-  const idDossier = refId(colonneDe("Dossier") && ligneCourante[colonneDe("Dossier")]) || ligneCourante.id;
+  const idDossier = idDossierDe(ligneCourante);
   const renvoi = rec.id === etatSaisie.dernierCurseur;
   // même signalement : un simple renvoi (après une modification de la table) est déjà traité par onRecords,
   // qui rafraîchit le dossier ouvert ; seul un clic sur une autre ligne du même dossier le relit
@@ -509,7 +509,7 @@ function brancherGrist() {
       etatSaisie.dernierCurseur = "new";
       if (!etatSaisie.dossierId) return; // déjà sur un nouveau signalement : rien à réinitialiser
       if (renvoi || etatSaisie.modifie) return; // simple renvoi, ou saisie en cours à préserver
-      await passerEnCreation();
+      await preparerNouveauSignalement();
     }),
   );
 }

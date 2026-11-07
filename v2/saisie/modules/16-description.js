@@ -13,14 +13,14 @@
      majEtatDescription, majDescriptionAuto, evaluerDescriptionManuelle, majApercuAuto.
    Utilise :
      01 configuration : ETAB.
-     03 variantes : appliquerModele, refId, reglagesSaisie, statut, valeursEtab.
+     03 variantes : appliquerModele, refId, statut, valeursEtab, varianteSaisie.
      04 date-faits : formateur, lireDateFaits, secondes.
-     05 etat : colonneDe, etatSaisie, valeurLigne.
+     05 etat : colonneDe, etatSaisie, idDossierDe, valeurLigne.
      06 grist : enFile, metaColonnes.
      07 formulaires : lireTableReference.
      09 dossier : comparerVersions, lireQualificationInitiale, listeQualif, ouvrirDossier.
-     10 champs : egal, estVide, lireChamps, norm, typeBase.
-     12 conditions-formules : formuleConnue, majFormulesEnDirect, normaliser, questionVisible,
+     10 champs : egal, estVide, lireChamps, typeBase, valeurOuNull.
+     12 conditions-formules : formuleConnue, majFormulesEnDirect, questionVisible, texteComparable,
        valeurFormuleEnDirect.
      13 coherence : appliquerConditions, formatValeur.
      19 tableaux : estQualifSous, lignesPrecedentes, lireTableauJson, texteTableauDescription, versionDuJour.
@@ -64,7 +64,7 @@ etatSaisie.optionsAuto = { ...OPTIONS_DEFAUT };
 function memeReponse(question, reponseA, reponseB) {
   const typeColonne = typeBase(question.type);
   const normaliserReponse = (valeur) => {
-    valeur = norm(question, valeur);
+    valeur = valeurOuNull(question, valeur);
     if (valeur == null) return typeColonne === "Bool" ? false : null;
     if (Array.isArray(valeur) && valeur[0] === "L") return ["L", ...valeur.slice(1).map(String).sort()];
     if (typeColonne === "DateTime") {
@@ -427,7 +427,7 @@ function jourDeLaVersion(ligne) {
 }
 // Site comparé sans accents, majuscules, ponctuation ni mots « bâtiment / bât. / site / campus »
 const cleSite = (texteSite) =>
-  normaliser(texteSite)
+  texteComparable(texteSite)
     .replace(/[^a-z0-9 ]+/g, " ")
     .replace(/\b(batiment|bat|site|campus|le|la|les|de|du|des)\b/g, " ")
     .replace(/\s+/g, " ")
@@ -444,11 +444,10 @@ function memeSite(siteA, siteB) {
 }
 // Calcule les dossiers du même établissement, du même jour et du même site que celui du formulaire
 function calculerDoublonsDuJour(etabId, jour, siteSaisi) {
-  const colonneDossier = colonneDe("Dossier"),
-    parDossier = new Map();
+  const parDossier = new Map();
   for (const ligne of etatSaisie.enregistrements) {
     if (refId(valeurLigne(ligne, "Etablissement")) !== etabId) continue;
-    const idDossierLigne = refId(colonneDossier && ligne[colonneDossier]) || ligne.id;
+    const idDossierLigne = idDossierDe(ligne);
     if (!parDossier.has(idDossierLigne)) parDossier.set(idDossierLigne, []);
     parDossier.get(idDossierLigne).push(ligne);
   }
@@ -630,7 +629,7 @@ function identiteDuFormulaire() {
 }
 // En-tête : modèle du formulaire (« **{nom}**, **{commune}** », « **{nom}** ({site})»…), en gras au format Markdown
 function enTeteDescription(ident) {
-  return String(ident.nom || "").trim() ? appliquerModele(reglagesSaisie().entete, ident) : "";
+  return String(ident.nom || "").trim() ? appliquerModele(varianteSaisie().entete, ident) : "";
 }
 
 function elementsTableau(entree, fmt, options) {

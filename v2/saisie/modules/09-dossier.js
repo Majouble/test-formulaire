@@ -3,13 +3,13 @@
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
    Définit : jourDesFaits, comparerVersions, calculerVersions, rafraichir, ouvrirDossier, styleChoix, listeQualif,
-     estiloPastille, afficherChoix, lireChoix, lireChoixMulti, lireQualificationInitiale, cocherQualif.
+     stylePastille, afficherChoix, lireChoix, lireChoixMulti, lireQualificationInitiale, cocherQualif.
    Utilise :
      03 variantes : refId, statut.
      04 date-faits : secondes.
-     05 etat : colonneDe, etabDeLigne, etatSaisie, valeurLigne.
+     05 etat : colonneDe, etabDeLigne, etatSaisie, idDossierDe, valeurLigne.
      07 formulaires : rafraichirEtabs, verifierFormulairePublie.
-     15 onglets : afficherDossier, passerEnCreation.
+     15 onglets : afficherDossier, preparerNouveauSignalement.
      18 liste-dossiers : majListeDossiers.
      28 enregistrement : remplirFormulaire.
      30 visas : remplirVisas.
@@ -35,10 +35,7 @@ function comparerVersions(versionA, versionB) {
   return dateSaisieA - dateSaisieB || versionA.id - versionB.id;
 }
 function calculerVersions() {
-  const colonneDossier = colonneDe("Dossier");
-  const lignes = etatSaisie.enregistrements.filter(
-    (ligne) => (refId(colonneDossier && ligne[colonneDossier]) || ligne.id) === etatSaisie.dossierId,
-  );
+  const lignes = etatSaisie.enregistrements.filter((ligne) => idDossierDe(ligne) === etatSaisie.dossierId);
   lignes.sort(comparerVersions);
   etatSaisie.versions = lignes;
   etatSaisie.initiale = lignes.find((ligne) => ligne.id === etatSaisie.dossierId) || lignes[0] || null;
@@ -54,14 +51,14 @@ async function rafraichir() {
     const id = etatSaisie.selectionAttendue;
     etatSaisie.selectionAttendue = null;
     const ligneAttendue = etatSaisie.enregistrements.find((ligne) => ligne.id === id);
-    await ouvrirDossier(refId(colonneDe("Dossier") && ligneAttendue[colonneDe("Dossier")]) || id, true);
+    await ouvrirDossier(idDossierDe(ligneAttendue), true);
     return;
   }
   majListeDossiers();
   if (!etatSaisie.dossierId) return;
   calculerVersions();
   if (!etatSaisie.initiale) {
-    await passerEnCreation();
+    await preparerNouveauSignalement();
     return;
   }
   if (!etatSaisie.modifie) await remplirFormulaire();
@@ -133,7 +130,7 @@ function listeQualif(valeur) {
   if (Array.isArray(valeur)) return valeur[0] === "L" ? valeur.slice(1) : valeur;
   return valeur ? [valeur] : [];
 }
-function estiloPastille(choix) {
+function stylePastille(choix) {
   const couleurChoix = etatSaisie.couleurs[choix] || {};
   return `--c:${couleurChoix.fillColor ? couleurChoix.textColor || "#161616" : "var(--bleu)"};--c-bg:${couleurChoix.fillColor || "var(--bleu-clair)"}`;
 }

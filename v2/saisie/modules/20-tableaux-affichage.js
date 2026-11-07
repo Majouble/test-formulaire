@@ -7,7 +7,7 @@
      04 date-faits : secondes, valeurLocale.
      05 etat : etatSaisie.
      10 champs : typeBase.
-     12 conditions-formules : normaliser.
+     12 conditions-formules : texteComparable.
      13 coherence : appliquerConditions.
      14 etablissement : nomEtabId.
      16 description : etablissementDuFormulaire, majApercuAuto, majDescriptionAuto, sitesDeLEtablissement.
@@ -408,32 +408,32 @@ Object.assign(Tableau.prototype, {
   },
   // site désigné exactement par un texte : son nom, un de ses mots-clés, ou un libellé validé pour l'établissement
   siteExact(definitionChamp, texteSaisi) {
-    const texteNormalise = normaliser(texteSaisi);
+    const texteNormalise = texteComparable(texteSaisi);
     if (!texteNormalise) return 0;
     const sitesProposes = this.sitesProposables(definitionChamp),
       etablissement = etablissementDuFormulaire();
-    const parNom = sitesProposes.find((site) => normaliser(site.libelle) === texteNormalise);
+    const parNom = sitesProposes.find((site) => texteComparable(site.libelle) === texteNormalise);
     if (parNom) return parNom.id;
     const parMot = sitesProposes.find((site) =>
       String((definitionChamp._motsSite && definitionChamp._motsSite.get(site.id)) || "")
         .split(/\s*[|,;]\s*/)
-        .some((motCle) => normaliser(motCle) === texteNormalise),
+        .some((motCle) => texteComparable(motCle) === texteNormalise),
     );
     if (parMot) return parMot.id;
     const identifiantAlias = this.alias.get(`${etablissement || 0}|${texteNormalise}`);
     return identifiantAlias && sitesProposes.some((site) => site.id === identifiantAlias) ? identifiantAlias : 0;
   },
   suggestionsSite(definitionChamp, texteSaisi) {
-    const mots = normaliser(texteSaisi).split(" ").filter(Boolean),
+    const mots = texteComparable(texteSaisi).split(" ").filter(Boolean),
       resultats = [];
     for (const site of this.sitesProposables(definitionChamp)) {
-      const nomN = normaliser(site.libelle),
+      const nomN = texteComparable(site.libelle),
         cles = [
           ...String((definitionChamp._motsSite && definitionChamp._motsSite.get(site.id)) || "").split(/\s*[|,;]\s*/),
           ...(this.aliasParSite.get(site.id) || []),
         ].filter((cle) => cle && cle.trim());
       const commune = (definitionChamp._communeSite && definitionChamp._communeSite.get(site.id)) || "";
-      const tout = `${nomN} ${cles.map(normaliser).join(" ")} ${normaliser(commune)}`;
+      const tout = `${nomN} ${cles.map(texteComparable).join(" ")} ${texteComparable(commune)}`;
       if (!mots.every((mot) => tout.includes(mot))) continue;
       const parNom = mots.every((mot) => nomN.includes(mot));
       // mots-clés et autres appellations du site (sans doublon ni le nom lui-même), ceux qui répondent à la saisie d'abord
@@ -442,7 +442,7 @@ Object.assign(Tableau.prototype, {
       cles
         .map((cle) => cle.trim())
         .forEach((cle) => {
-          const cleNormalisee = normaliser(cle);
+          const cleNormalisee = texteComparable(cle);
           if (cleNormalisee && !vus.has(cleNormalisee)) {
             vus.add(cleNormalisee);
             autres.push({
@@ -475,7 +475,7 @@ Object.assign(Tableau.prototype, {
       libre =
         avecLibre &&
         texteSaisi &&
-        !resultats.some((resultat) => normaliser(resultat.o.libelle) === normaliser(texteSaisi)) &&
+        !resultats.some((resultat) => texteComparable(resultat.o.libelle) === texteComparable(texteSaisi)) &&
         !this.siteExact(definitionChamp, texteSaisi);
     // même présentation que la recherche d'établissement : nom, puis commune, composante, mot-clé retrouvé
     const MAX_AUTRES = 8;
@@ -565,8 +565,9 @@ Object.assign(Tableau.prototype, {
         : "");
     if (!libelleSaisi) return null;
     const identifiantAlias =
-      this.alias.get(`${etab || 0}|${normaliser(libelleSaisi)}`) || this.alias.get(`0|${normaliser(libelleSaisi)}`);
-    return identifiantAlias ? `s${identifiantAlias}` : `t${normaliser(libelleSaisi)}`;
+      this.alias.get(`${etab || 0}|${texteComparable(libelleSaisi)}`) ||
+      this.alias.get(`0|${texteComparable(libelleSaisi)}`);
+    return identifiantAlias ? `s${identifiantAlias}` : `t${texteComparable(libelleSaisi)}`;
   },
   ecouter() {
     const conteneur = this.el;

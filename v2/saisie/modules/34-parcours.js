@@ -8,14 +8,14 @@
      resumeEtabHtml, majResumeEtab, dossiersEnCours, propositionsDeReprise, majProposition, confirmer,
      cacherConfirmation.
    Utilise :
-     02 utilitaires : colonnesEtab.
-     03 variantes : CHAMPS_NOUVEL_ETAB, refId, reglagesSaisie, statut.
+     02 utilitaires : colonnesEtab, sansAccents.
+     03 variantes : CHAMPS_NOUVEL_ETAB, refId, statut, varianteSaisie.
      04 date-faits : dateFr, faitsAvecHeure, secondes.
-     05 etat : colonneDe, etatSaisie, texteEtabBrut, valeurLigne.
+     05 etat : colonneDe, etatSaisie, idDossierDe, texteEtabBrut, valeurLigne.
      06 grist : brancherGrist, enFile.
      09 dossier : comparerVersions, jourDesFaits, lireQualificationInitiale, listeQualif, ouvrirDossier.
      10 champs : lireUnChamp.
-     15 onglets : afficherDossier, afficherOnglet, focusPremiereQuestion, passerEnCreation.
+     15 onglets : afficherDossier, afficherOnglet, focusPremiereQuestion, preparerNouveauSignalement.
      16 description : MOTIF_MOBILISATION, cleDoublon, jourDeLaVersion, jourDuFormulaire, jourFaits, memeReponse,
        verifierDoublons.
      18 liste-dossiers : construireIndexRecherche, surligneMots.
@@ -25,7 +25,7 @@
      26 sites-esr : formulaireParSite, modeRepriseSites.
      27 reprise : reprendreReponses.
      30 visas : aViserParMoi, majBandeauCampagne, majBandeauVeille, majBandeauVisa, statutDe.
-     31 autocompletion : fermer, sansAccent.
+     31 autocompletion : fermerSuggestions.
    Modifie etatSaisie : creerEtabOuvert, doublonConfirme, ficheDepliee, ficheEtabId, indexRecherche,
      minuterieMarques, modifie, modifieVisa, nbCartes, propositionMasquee, vue. */
 /* =========================================================
@@ -59,7 +59,7 @@ function allerNouveau() {
     etatSaisie.creerEtabOuvert = false;
     etatSaisie.propositionMasquee = null;
     grist.setCursorPos({ rowId: "new" }).catch(() => {});
-    await passerEnCreation();
+    await preparerNouveauSignalement();
     montrerVue("saisie");
     window.scrollTo(0, 0);
     if (etatSaisie.modeEtab) focusPremiereQuestion();
@@ -98,7 +98,7 @@ $("btn-retour-liste").addEventListener("click", () => {
 // ---------- Liste des signalements de l'accueil (cartes)
 // Cartes à afficher : mots de la recherche, dossiers à viser ou tous (base0), après filtre, recherche et tri (plus récents d'abord)
 function cartesAffichees(index, recherche) {
-  const mots = sansAccent(recherche).split(/\s+/).filter(Boolean);
+  const mots = sansAccents(recherche).split(/\s+/).filter(Boolean);
   const base0 = etatSaisie.fileVisa ? index.filter((entree) => aViserParMoi(entree.l)) : index;
   const base = filtreActif() ? base0.filter((entree) => passeFiltre(entree.l)) : base0;
   const trouves = mots.length ? base.filter((entree) => mots.every((mot) => entree.cle.includes(mot))) : base;
@@ -108,10 +108,9 @@ function cartesAffichees(index, recherche) {
 }
 // Nombre de versions (lignes) de chaque dossier, par identifiant de dossier
 function compterVersionsParDossier() {
-  const colonneDossier = colonneDe("Dossier"),
-    nombreVersionsParDossier = new Map();
+  const nombreVersionsParDossier = new Map();
   for (const ligne of etatSaisie.enregistrements) {
-    const dossierId = refId(colonneDossier && ligne[colonneDossier]) || ligne.id;
+    const dossierId = idDossierDe(ligne);
     nombreVersionsParDossier.set(dossierId, (nombreVersionsParDossier.get(dossierId) || 0) + 1);
   }
   return nombreVersionsParDossier;
@@ -239,7 +238,7 @@ function majModeSaisie() {
   $("libelle-etape-etab").textContent =
     maj || etatSaisie.modeEtab ? "Établissement" : "Quel établissement est concerné ?";
   $("act-clore").hidden = !(maj && colonneDe("Clos"));
-  $("act-reporter").hidden = !(maj && colonneDe("Date_faits") && reglagesSaisie().plusieursJours && !faitsAvecHeure());
+  $("act-reporter").hidden = !(maj && colonneDe("Date_faits") && varianteSaisie().plusieursJours && !faitsAvecHeure());
   $("act-clore-titre").textContent = clos ? "Rouvrir le signalement" : "Clore le signalement";
   $("act-clore-texte").textContent = clos ? "La situation reprend" : "La situation est terminée";
   majMarquesModif();
@@ -437,7 +436,7 @@ $("btn-voir-fiche").addEventListener("click", () => {
 });
 $("btn-creer-etab").addEventListener("click", () => {
   etatSaisie.creerEtabOuvert = true;
-  fermer();
+  fermerSuggestions();
   majResumeEtab();
   if (!$("nom").value.trim()) $("nom").focus();
   else $("type").focus();
@@ -445,12 +444,11 @@ $("btn-creer-etab").addEventListener("click", () => {
 });
 function dossiersEnCours(etabId) {
   if (!etabId) return [];
-  const colonneDossier = colonneDe("Dossier"),
-    dern = new Map(),
+  const dern = new Map(),
     nombreVersionsParDossier = new Map();
   for (const ligne of etatSaisie.enregistrements) {
     if (refId(valeurLigne(ligne, "Etablissement")) !== etabId) continue;
-    const dossierId = refId(colonneDossier && ligne[colonneDossier]) || ligne.id;
+    const dossierId = idDossierDe(ligne);
     nombreVersionsParDossier.set(dossierId, (nombreVersionsParDossier.get(dossierId) || 0) + 1);
     const derniereConnue = dern.get(dossierId);
     if (!derniereConnue || comparerVersions(derniereConnue, ligne) < 0) dern.set(dossierId, ligne);

@@ -12,9 +12,9 @@
      placerCurseurGrist, enregistrerMiseAJour, champsCreation, ecrireCreation, afficherCreationEnregistree,
      enregistrerCreation, conseilEchecEnregistrement.
    Utilise :
-     01 configuration : ETAB, NATURE, afficherCommentaire.
+     01 configuration : ETAB, NATURE, commentaireActive.
      02 utilitaires : colonnesEtab.
-     03 variantes : etape, idDe, refId, reglagesSaisie, statut.
+     03 variantes : ecrireEtape, idDe, refId, statut, varianteSaisie.
      04 date-faits : dateFaitsFuture, initialiserDateFaits, lireDateFaits, secondes.
      05 etat : colonneDe, etatSaisie, valeurLigne.
      06 grist : enFile, idsCreesIci.
@@ -209,7 +209,7 @@ function manquantsDeBase(nom, description, dateFaits) {
 }
 // Message si la date des faits est postérieure à aujourd'hui (non admis) ou à plus d'un an (vide sinon)
 function erreurDateFaitsSaisie(dateFuture, dateFaits) {
-  if (colonneDe("Date_faits") && dateFuture && !reglagesSaisie().faitsFuturs)
+  if (colonneDe("Date_faits") && dateFuture && !varianteSaisie().faitsFuturs)
     return "La date des faits ne peut pas être postérieure à aujourd'hui.";
   if (colonneDe("Date_faits") && dateFaits != null && dateFaits > Date.now() / 1000 + LIMITE_FUTUR_JOURS * UN_JOUR)
     return "La date des faits est à plus d'un an : vérifiez-la.";
@@ -369,7 +369,7 @@ function champsACorriger(valeurs) {
 }
 // Écrit la correction sur la dernière version
 async function ecrireCorrection(table, ligneId, fields) {
-  await etape("Correction de la dernière version", etatSaisie.tableId || "réponses", () =>
+  await ecrireEtape("Correction de la dernière version", etatSaisie.tableId || "réponses", () =>
     table.update({ id: ligneId, fields }),
   );
 }
@@ -447,7 +447,9 @@ function champsNouvelleVersion(valeurs, com) {
 // Écrit la nouvelle version dans la table ; renvoie son identifiant
 async function ecrireNouvelleVersion(table, fields) {
   const id = idDe(
-    await etape("Création de la nouvelle version", etatSaisie.tableId || "réponses", () => table.create({ fields })),
+    await ecrireEtape("Création de la nouvelle version", etatSaisie.tableId || "réponses", () =>
+      table.create({ fields }),
+    ),
   );
   if (id) idsCreesIci.add(id);
   return id;
@@ -455,7 +457,7 @@ async function ecrireNouvelleVersion(table, fields) {
 // Affiche qu'il n'y a rien à enregistrer pour la mise à jour
 function afficherMiseAJourVide() {
   afficherErreurSaisie(
-    afficherCommentaire()
+    commentaireActive()
       ? "Modifiez au moins une réponse ou ajoutez un commentaire."
       : "Modifiez au moins une réponse avant de mettre à jour.",
   );
@@ -507,7 +509,7 @@ async function enregistrerMiseAJour(table, valeurs, jours) {
   const faitsNouveaux = colonneDe("Date_faits") ? lireDateFaits() : null,
     faitsDerniere = etatSaisie.derniere ? jourDesFaits(etatSaisie.derniere) : null;
   const devientDerniere = nouvelleVersionDevientDerniere(faitsNouveaux, faitsDerniere);
-  if (aucuneMiseAJour(change, jours, afficherCommentaire() && $("commentaire").value.trim())) {
+  if (aucuneMiseAJour(change, jours, commentaireActive() && $("commentaire").value.trim())) {
     afficherMiseAJourVide();
     return;
   }
@@ -538,11 +540,11 @@ function champsCreation(valeurs, etabId) {
 // Écrit le premier signalement dans la table, puis le rattache à son propre dossier ; renvoie son identifiant
 async function ecrireCreation(table, fields) {
   const id = idDe(
-    await etape("Création du signalement", etatSaisie.tableId || "réponses", () => table.create({ fields })),
+    await ecrireEtape("Création du signalement", etatSaisie.tableId || "réponses", () => table.create({ fields })),
   );
   if (id) idsCreesIci.add(id);
   if (id && colonneDe("Dossier"))
-    await etape("Rattachement du signalement à son propre dossier", etatSaisie.tableId || "réponses", () =>
+    await ecrireEtape("Rattachement du signalement à son propre dossier", etatSaisie.tableId || "réponses", () =>
       table.update({ id, fields: { [colonneDe("Dossier")]: id } }),
     );
   return id;
@@ -589,7 +591,7 @@ function conseilEchecEnregistrement(erreur, correction) {
   if (erreur.acl && erreur.table === ETAB.table)
     conseil =
       " Cet établissement n'est pas encore dans le référentiel et vos droits ne permettent pas de l'y ajouter : " +
-      (reglagesSaisie().annuaires.length
+      (varianteSaisie().annuaires.length
         ? "importez-le via la mise à jour de l'annuaire, ou autorisez la création dans la table des établissements."
         : "ajoutez-le au référentiel (table des établissements), ou autorisez la création dans cette table.");
   else if (erreur.acl && correction)

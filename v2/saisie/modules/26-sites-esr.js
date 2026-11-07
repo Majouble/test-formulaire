@@ -6,9 +6,9 @@
      dernierEtatSites, reprendreEtatSites, reprendreSitesAuto, placerQualification, qualifDesSites,
      ecartQualification, majQualifDeduite, messagesControleSites, confirmerControleSites, controleSites.
    Utilise :
-     03 variantes : refId, reglagesSaisie.
+     03 variantes : refId, varianteSaisie.
      04 date-faits : lireDateFaits, secondes.
-     05 etat : colonneDe, etatSaisie, valeurLigne.
+     05 etat : colonneDe, etatSaisie, idDossierDe, valeurLigne.
      09 dossier : cocherQualif, comparerVersions, lireQualificationInitiale, listeQualif.
      16 description : jourDeLaVersion, jourDuFormulaire.
      19 tableaux : lireTableauJson, nouvelIdLigne, videSous.
@@ -53,7 +53,6 @@ const texteQualifSite = (valeur) => listeQualif(valeur).join(", ");
    dossierChoisi : signalement précis choisi par l'agent (« Reprendre » dans la proposition). */
 function dernierEtatSites(controleur, etabId, avecRas, dossierChoisi = null) {
   const reglagesSites = controleur.sites,
-    colonneDossier = colonneDe("Dossier"),
     jour = jourDuFormulaire(),
     limite = colonneDe("Date_faits") && lireDateFaits() != null ? lireDateFaits() : Date.now() / 1000;
   const versions = etatSaisie.enregistrements.filter(
@@ -65,7 +64,7 @@ function dernierEtatSites(controleur, etabId, avecRas, dossierChoisi = null) {
   );
   const parDossier = new Map();
   versions.forEach((ligne) => {
-    const dossierId = refId(colonneDossier && ligne[colonneDossier]) || ligne.id;
+    const dossierId = idDossierDe(ligne);
     if (!parDossier.has(dossierId)) parDossier.set(dossierId, []);
     parDossier.get(dossierId).push(ligne);
   });
@@ -180,7 +179,7 @@ function reprendreSitesAuto() {
 // qualification en bas (après les sites), et mention de la qualification déduite des sites
 function placerQualification() {
   const fieldsetQualification = $("qualifs-initiales").closest("fieldset"),
-    enBas = formulaireParSite() && reglagesSaisie().qualificationEnBas !== false;
+    enBas = formulaireParSite() && varianteSaisie().qualificationEnBas !== false;
   if (enBas) $("questions").after(fieldsetQualification);
   else $("bloc-date-faits").after(fieldsetQualification);
   fieldsetQualification.classList.toggle("qualif-deduite", enBas);

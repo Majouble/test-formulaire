@@ -13,7 +13,7 @@
      06 grist : enFile, sansGuillemets.
      09 dossier : lireQualificationInitiale, listeQualif.
      10 champs : lireUnChamp, optionsReference, typeBase.
-     12 conditions-formules : normaliser.
+     12 conditions-formules : texteComparable.
      18 liste-dossiers : majListeDossiers.
      24 filtres-navigation : derniereDe.
    Modifie etatSaisie : reglesCouleur. */
@@ -57,7 +57,7 @@ function teinteClaire(codeHex, part) {
 }
 function couleurNommee(texte) {
   const texteCouleur = sansGuillemets(texte);
-  if (COULEURS_NOMMEES[normaliser(texteCouleur)]) return COULEURS_NOMMEES[normaliser(texteCouleur)];
+  if (COULEURS_NOMMEES[texteComparable(texteCouleur)]) return COULEURS_NOMMEES[texteComparable(texteCouleur)];
   const composantes = hexVersRvb(texteCouleur);
   return composantes ? versHex(composantes) : null;
 }
@@ -88,7 +88,7 @@ function lireRegleCouleur(description) {
     const couleur = couleurNommee(regleBrute.slice(k + 1));
     if (!couleur) continue;
     const brut = sansGuillemets(regleBrute.slice(0, k)),
-      cle = normaliser(brut);
+      cle = texteComparable(brut);
     let correspondanceComparaison;
     if (
       (correspondanceComparaison = brut.match(/^(>=|<=|!=|≠|≥|≤|>|<)\s*(.+)$/)) &&
@@ -220,7 +220,7 @@ function couleurDe(regleCouleur, textes) {
     for (const regle of regleCouleur.regles)
       for (const texte of tries) {
         let regleApplicable = false;
-        if (regle.type === "egal") regleApplicable = normaliser(texte) === regle.valeur;
+        if (regle.type === "egal") regleApplicable = texteComparable(texte) === regle.valeur;
         else if (regle.type === "rempli") regleApplicable = true;
         else if (regle.type === "cmp") {
           const nombre = parseFloat(String(texte).replace(",", "."));

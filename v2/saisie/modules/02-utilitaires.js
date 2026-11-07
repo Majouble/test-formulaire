@@ -2,8 +2,8 @@
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
-   Définit : colonnesEtab, COLONNES_ETAB_DEFAUT, RECONNAISSANCE_ETAB, normColonne, lireMetaColonnesEtab,
-     calculerColonnesEtabReconnues, reconnaitreColonnesEtab.
+   Définit : colonnesEtab, COLONNES_ETAB_DEFAUT, RECONNAISSANCE_ETAB, sansAccents, normColonne,
+     lireMetaColonnesEtab, calculerColonnesEtabReconnues, reconnaitreColonnesEtab.
    Utilise :
      01 configuration : ETAB.
      05 etat : etatSaisie.
@@ -48,11 +48,15 @@ const RECONNAISSANCE_ETAB = {
   departement: { motifs: [/^(nom_|libelle_)?(du_)?departement$/, /departement/], sauf: /code|^id|numero/ },
   mail: { motifs: [/^(mail|courriel|e_?mail)$/, /mail|courriel/], sauf: /annuaire|contact_2|secondaire/ },
 };
-const normColonne = (valeur) =>
-  String(valeur ?? "")
+// Texte en minuscules, sans accents : base des comparaisons de textes
+const sansAccents = (texte) =>
+  String(texte ?? "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
+    .toLowerCase();
+// Nom de colonne comparable : lettres et chiffres, séparés par « _ » (« Département (code) » → « departement_code »)
+const normColonne = (valeur) =>
+  sansAccents(valeur)
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_|_$/g, "");
 // Lit la structure de la table des établissements (null si illisible : lien d'établissement, règles d'accès)

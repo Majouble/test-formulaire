@@ -9,8 +9,8 @@
    Utilise :
      01 configuration : ETAB, MESSAGE, ORIGINE.
      02 utilitaires : colonnesEtab.
-     03 variantes : CHAMPS_NOUVEL_ETAB, etape, idDe, libelleChampFiche, lisible, refId, reglagesSaisie, statut,
-       valeurChampFiche.
+     03 variantes : CHAMPS_NOUVEL_ETAB, ecrireEtape, idDe, libelleChampFiche, lisible, refId, statut,
+       valeurChampFiche, varianteSaisie.
      05 etat : colonneDe, etabDe, etatSaisie.
      08 referentiel-local : chargerEtabs, completerLienEtab.
      16 description : majDescriptionAuto, verifierDoublons.
@@ -218,7 +218,7 @@ const extraireUrl = (texte) => {
 const nettoieMail = (valeur) => (typeof valeur === "string" ? valeur.trim() : "");
 
 function carteHtml(etablissement) {
-  return reglagesSaisie()
+  return varianteSaisie()
     .fiche.map((champFiche) => [
       champFiche.lib || libelleChampFiche(champFiche.col),
       valeurChampFiche(etablissement, champFiche.col),
@@ -342,7 +342,7 @@ async function creerEtablissement(candidats) {
   for (const [colonne, valeur] of Object.entries(candidats))
     if (etatSaisie.colsEtab.includes(colonne) && valeur !== null) fields[colonne] = valeur;
   const id = idDe(
-    await etape("Création de l'établissement dans le référentiel", ETAB.table, () =>
+    await ecrireEtape("Création de l'établissement dans le référentiel", ETAB.table, () =>
       grist.getTable(ETAB.table).create({ fields }),
     ),
   );

@@ -6,7 +6,7 @@
      texteErreursTableaux, confidentielsModifies, finConfidentiels.
    Utilise :
      03 variantes : refId, statut.
-     05 etat : colonneDe, etatSaisie, valeurLigne.
+     05 etat : etatSaisie, idDossierDe, valeurLigne.
      06 grist : enFile.
      19 tableaux : Tableau, lireTableauJson, nouvelIdLigne, tableaux, videSous.
      24 filtres-navigation : derniereDe. */
@@ -92,14 +92,10 @@ Object.assign(Tableau.prototype, {
           donneesTable[this.colDossier][ligneTable.i] === dossier,
       );
     // versions connues du dossier (ordre de création)
-    const colonneDossier = colonneDe("Dossier"),
-      versionsDossier = etatSaisie.enregistrements
-        .filter(
-          (enregistrement) =>
-            (refId(colonneDossier && enregistrement[colonneDossier]) || enregistrement.id) === dossier,
-        )
-        .map((enregistrement) => enregistrement.id)
-        .sort((a, b) => a - b);
+    const versionsDossier = etatSaisie.enregistrements
+      .filter((enregistrement) => idDossierDe(enregistrement) === dossier)
+      .map((enregistrement) => enregistrement.id)
+      .sort((a, b) => a - b);
     const plusRecente = Math.max(0, ...versionsDossier, ...lignesT.map((ligneTable) => ligneTable.v));
     let nombreEcrites = 0;
     // lignes d'avant l'historique (sans version) : rattachées à la version qui précède celle écrite (ou à la plus récente)
@@ -285,11 +281,9 @@ async function purgerSitesSupprimes(dossier) {
       cles = new Set(sup.map((siteSupprime) => siteSupprime.cle).filter((k) => k && !gardees.has(k)));
     const vise = (ligneJson, valeursVue) =>
       (ligneJson._id && ids.has(ligneJson._id)) || cles.has(controleur.cleSite(etab, valeursVue || ligneJson));
-    const colonneDossier = colonneDe("Dossier"),
-      maj = [];
+    const maj = [];
     for (const enregistrement of etatSaisie.enregistrements.filter(
-      (enregistrementBrut) =>
-        (refId(colonneDossier && enregistrementBrut[colonneDossier]) || enregistrementBrut.id) === dossier,
+      (enregistrementBrut) => idDossierDe(enregistrementBrut) === dossier,
     )) {
       const champsModifies = {},
         filtrer = (colonne, vue) => {
@@ -349,13 +343,9 @@ async function reconstruireTableaux() {
     for (const controleur of ctrl) {
       const donneesTable = await Donnees.lire(controleur.table);
       if (controleur.colVersion && donneesTable[controleur.colVersion]) {
-        const colonneDossier = colonneDe("Dossier");
         for (const dossier of etatSaisie.dossiersInit) {
           const versionsDossier = etatSaisie.enregistrements
-            .filter(
-              (enregistrement) =>
-                (refId(colonneDossier && enregistrement[colonneDossier]) || enregistrement.id) === dossier.id,
-            )
+            .filter((enregistrement) => idDossierDe(enregistrement) === dossier.id)
             .sort((a, b) => a.id - b.id);
           for (const version of versionsDossier)
             nombreLignesEcrites += await controleur.synchroniser(

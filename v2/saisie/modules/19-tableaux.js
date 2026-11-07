@@ -8,12 +8,12 @@
      versionDuJour, lignesPrecedentes, lignesExemple, Tableau.
    Utilise :
      02 utilitaires : normColonne.
-     03 variantes : refId, reglagesSaisie.
+     03 variantes : refId, varianteSaisie.
      04 date-faits : dateFr, secondes.
      05 etat : etatSaisie, valeurLigne.
      06 grist : avecRegles, lireMeta, metaColonnes.
      10 champs : horsBornes, lireUnChamp, optionsReference, typeBase.
-     12 conditions-formules : evaluerCondition, normaliser, resoudreColonne.
+     12 conditions-formules : evaluerCondition, resoudreColonne, texteComparable.
      16 description : famille, preparerRefSite.
      26 sites-esr : reprendreSitesAuto. */
 /* =========================================================
@@ -76,13 +76,13 @@ async function colonnesDeTable(tid) {
   return colonnes.sort((a, b) => a.pos - b.pos);
 }
 function evaluerConditionLigne(cond, sousDefs, valeurs) {
-  const referenceNormalisee = normaliser(cond.ref);
+  const referenceNormalisee = texteComparable(cond.ref);
   const colonneCondition =
     sousDefs.find((sousDefinition) => sousDefinition.colId === cond.ref) ||
     sousDefs.find(
       (sousDefinition) =>
-        normaliser(sousDefinition.colId) === referenceNormalisee ||
-        normaliser(sousDefinition.libelle) === referenceNormalisee,
+        texteComparable(sousDefinition.colId) === referenceNormalisee ||
+        texteComparable(sousDefinition.libelle) === referenceNormalisee,
     );
   if (!colonneCondition) return true; // colonne inconnue : le champ reste affiché
   const valeur = valeurs[colonneCondition.colId];
@@ -109,7 +109,7 @@ const pastillesPossibles = (sousDefinition) => {
   const choix = (sousDefinition.opts && sousDefinition.opts.choices) || [];
   if (sousDefinition.forcer === "liste") return false;
   if (sousDefinition.forcer === "boutons") return true;
-  if (reglagesSaisie().pastilles === "toujours") return true; // toujours des pastilles, quel que soit le nombre de choix ([liste] pour un menu déroulant)
+  if (varianteSaisie().pastilles === "toujours") return true; // toujours des pastilles, quel que soit le nombre de choix ([liste] pour un menu déroulant)
   return choix.length <= 8 && choix.join("").length <= 70; // au-delà : menu déroulant
 };
 function texteSousValeur(sousDefinition, valeur) {
@@ -325,7 +325,7 @@ function texteTableauDescription(questionTableau, lignesBrutes, options = etatSa
   if (!det.length && !autos.length) return tete;
   // qualification précédente d'une ligne, quand elle a changé
   const dNom = sous.find((sousDefinition) => typeBase(sousDefinition.type) === "Text" && !sousDefinition.auto);
-  const nomDe = (ligne) => (dNom ? normaliser(ligne[dNom.colId]) : "");
+  const nomDe = (ligne) => (dNom ? texteComparable(ligne[dNom.colId]) : "");
   const passage = (ligne) => {
     if (!avant || !sousDefinitionQualification) return null;
     const ligneAvant =
@@ -553,7 +553,7 @@ class Tableau {
             const idSite = refId(tableAlias.Site[i]);
             if (!idSite) return;
             this.alias.set(
-              `${refId((tableAlias.Etablissement || [])[i]) || 0}|${normaliser(tableAlias.Libelle[i])}`,
+              `${refId((tableAlias.Etablissement || [])[i]) || 0}|${texteComparable(tableAlias.Libelle[i])}`,
               idSite,
             );
             if (!this.aliasParSite.has(idSite)) this.aliasParSite.set(idSite, []);

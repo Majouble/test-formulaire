@@ -9,9 +9,9 @@
      joursReportSansDossier, erreurReportJours, erreurReport, majAideReport, ouvrirReport.
    Utilise :
      01 configuration : NATURE.
-     03 variantes : etape, refId, reglagesSaisie, statut.
+     03 variantes : ecrireEtape, refId, statut, varianteSaisie.
      04 date-faits : faitsAvecHeure, lireDateFaits, valeurLocale.
-     05 etat : colonneDe, etatSaisie, valeurLigne.
+     05 etat : colonneDe, etatSaisie, idDossierDe, valeurLigne.
      06 grist : enFile, idsCreesIci.
      09 dossier : comparerVersions, jourDesFaits, lireQualificationInitiale.
      10 champs : lireChamps.
@@ -44,11 +44,11 @@ const jourCourt = (jourEnSecondes) =>
     timeZone: "UTC",
   });
 const aideFaitsDefaut = () =>
-  reglagesSaisie().faitsFuturs
+  varianteSaisie().faitsFuturs
     ? "Aujourd'hui par défaut. Modifiez-la si les faits sont antérieurs, ou à venir (fermeture annoncée…)."
     : "Aujourd'hui par défaut. Modifiez-la si les faits signalés sont antérieurs.";
 const plusieursJoursActif = () =>
-  !!colonneDe("Date_faits") && reglagesSaisie().plusieursJours && !faitsAvecHeure() && $("plusieurs-jours").checked;
+  !!colonneDe("Date_faits") && varianteSaisie().plusieursJours && !faitsAvecHeure() && $("plusieurs-jours").checked;
 const estWeekEnd = (jourEnSecondes) => [0, 6].includes(new Date(jourEnSecondes * 1000).getUTCDay());
 // Jours du « du » au « au » inclus (dates AAAA-MM-JJ), en secondes au format Grist
 function joursEntre(debut, fin, ouvres) {
@@ -74,7 +74,7 @@ function erreurJours(joursAVerifier, total, fin, debutCle) {
   if (fin <= debutCle) return "Le dernier jour doit suivre le premier.";
   if (total > MAX_JOURS) return `${total} jours : ${MAX_JOURS} au plus en une fois.`;
   if (!joursAVerifier.length) return "Aucun jour ouvré dans cette période.";
-  if (!reglagesSaisie().faitsFuturs && joursAVerifier.some((jour) => jourCle(jour) > valeurLocale(new Date(), false)))
+  if (!varianteSaisie().faitsFuturs && joursAVerifier.some((jour) => jourCle(jour) > valeurLocale(new Date(), false)))
     return "Les jours postérieurs à aujourd'hui ne sont pas admis pour ce formulaire.";
   return "";
 }
@@ -87,20 +87,16 @@ function erreurPlusieursJours() {
 }
 // Lignes d'un dossier ; signalement d'un établissement pour un jour donné (hors dossier ouvert)
 const versionsDe = (dossierId) => {
-  const colonneDossier = colonneDe("Dossier");
-  return etatSaisie.enregistrements.filter(
-    (ligne) => (refId(colonneDossier && ligne[colonneDossier]) || ligne.id) === dossierId,
-  );
+  return etatSaisie.enregistrements.filter((ligne) => idDossierDe(ligne) === dossierId);
 };
 // Dossier de l'établissement qui a un signalement ce jour-là (hors dossier ouvert, même site que celui saisi), ou null
 function dossierDuJourPourSite(etabId, jourEnSecondes, siteSaisi) {
   if (!etabId) return null;
   const k = jourFaits(jourEnSecondes),
-    colonneDossier = colonneDe("Dossier"),
     par = new Map();
   for (const ligne of etatSaisie.enregistrements) {
     if (refId(valeurLigne(ligne, "Etablissement")) !== etabId) continue;
-    const dossierId = refId(colonneDossier && ligne[colonneDossier]) || ligne.id;
+    const dossierId = idDossierDe(ligne);
     if (dossierId === etatSaisie.dossierId) continue;
     if (!par.has(dossierId)) par.set(dossierId, []);
     par.get(dossierId).push(ligne);
@@ -249,20 +245,22 @@ async function ecrireSerie(creer, completer) {
   let nouveaux = [];
   if (creer.length) {
     nouveaux = ids(
-      await etape("Création des signalements des jours suivants", etatSaisie.tableId || "réponses", () =>
+      await ecrireEtape("Création des signalements des jours suivants", etatSaisie.tableId || "réponses", () =>
         table.create(creer.map((jourACreer) => ({ fields: jourACreer.fields }))),
       ),
     );
     nouveaux.forEach((id) => idsCreesIci.add(id));
     if (cDos && nouveaux.length)
-      await etape("Rattachement de chaque signalement à son propre dossier", etatSaisie.tableId || "réponses", () =>
-        table.update(nouveaux.map((id) => ({ id, fields: { [cDos]: id } }))),
+      await ecrireEtape(
+        "Rattachement de chaque signalement à son propre dossier",
+        etatSaisie.tableId || "réponses",
+        () => table.update(nouveaux.map((id) => ({ id, fields: { [cDos]: id } }))),
       );
   }
   let idsCompletes = [];
   if (completer.length)
     (idsCompletes = ids(
-      await etape("Mise à jour des signalements des jours suivants", etatSaisie.tableId || "réponses", () =>
+      await ecrireEtape("Mise à jour des signalements des jours suivants", etatSaisie.tableId || "réponses", () =>
         table.create(completer.map((jourACompleter) => ({ fields: jourACompleter.fields }))),
       ),
     )).forEach((id) => idsCreesIci.add(id));
@@ -385,8 +383,7 @@ $("rep-ok").addEventListener("click", () =>
       statut("rep-statut", messageErreur, "err");
       return;
     }
-    const jourDossier = jourDesFaits(etatSaisie.derniere) != null ? jourCle(jourDesFaits(etatSaisie.derniere)) : null;
-    const jours = joursReport().filter((jour) => jourCle(jour) !== jourDossier);
+    const jours = joursReportSansDossier(joursReport(), jourDuDossierOuvert());
     $("rep-ok").disabled = true;
     try {
       const resultat = await reprendreSurJours(

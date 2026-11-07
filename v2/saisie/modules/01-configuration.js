@@ -2,11 +2,11 @@
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
-   Définit : ETAB, UTILISATEURS, MESSAGE, ORIGINE, NATURE, afficherCommentaire, CLE_TABLE_ETAB, TABLE_ETAB_DEFAUT,
+   Définit : ETAB, UTILISATEURS, MESSAGE, ORIGINE, NATURE, commentaireActive, CLE_TABLE_ETAB, TABLE_ETAB_DEFAUT,
      COLONNES_RECHERCHE_EN_PLUS, MIN_CARACTERES, NB_RESULTATS, NB_RESULTATS_ANNUAIRE, MIN_CARACTERES_ANNUAIRE,
      SOURCES.
    Utilise :
-     03 variantes : reglagesSaisie. */
+     03 variantes : varianteSaisie. */
 /* =========================================================
    CONFIGURATION
    ========================================================= */
@@ -69,7 +69,7 @@ const NATURE = { initial: "Nouveau signalement", suivi: "Mise à jour" };
 
 // La zone « Commentaire de mise à jour » n'est pas affichée dans le formulaire.
 // Le résumé automatique des modifications reste enregistré dans la colonne Commentaire (si elle est associée).
-const afficherCommentaire = () => !!reglagesSaisie().commentaire;
+const commentaireActive = () => !!varianteSaisie().commentaire;
 
 // Recherche : référentiel du document, complété si le formulaire le prévoit par les annuaires en ligne
 // (API OpenDataSoft v2.1). Clé du réglage ⚙ « Référentiel des établissements » dans la table Parametres :

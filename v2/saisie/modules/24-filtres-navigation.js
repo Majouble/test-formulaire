@@ -9,18 +9,16 @@
      allerA, afficherOptionsDossiers, menuOuvert, fermerMenuDossiers, optionsMenu, focusOption, ouvrirMenuDossiers,
      choisirOption.
    Utilise :
-     02 utilitaires : colonnesEtab.
-     03 variantes : refId.
+     02 utilitaires : colonnesEtab, sansAccents.
      04 date-faits : secondes, valeurLocale.
-     05 etat : colonneDe, etabDeLigne, etatSaisie.
+     05 etat : colonneDe, etabDeLigne, etatSaisie, idDossierDe.
      06 grist : enFile.
      09 dossier : comparerVersions, ouvrirDossier.
      10 champs : typeBase.
-     12 conditions-formules : normaliser.
-     15 onglets : passerEnCreation.
+     12 conditions-formules : texteComparable.
+     15 onglets : preparerNouveauSignalement.
      18 liste-dossiers : afficherResultatsRecherche, fermerRecherche, libelleDossier, majListeDossiers.
      23 couleurs : bandeCouleur, textesValeur.
-     31 autocompletion : sansAccent.
      34 parcours : cacherConfirmation.
    Modifie etatSaisie : cacheDernieres, filtreOuvert, filtres, listeChampsFiltre, minuterieContient, posNav. */
 /* ---------- Filtre des signalements et navigation d'une fiche à l'autre ----------
@@ -40,10 +38,9 @@ const CHAMPS_ETAB_FILTRE = [
 const MAX_VALEURS_FILTRE = 60;
 function derniereDe(dossier) {
   if (!etatSaisie.cacheDernieres) {
-    const colonneDossier = colonneDe("Dossier");
     etatSaisie.cacheDernieres = new Map();
     for (const enregistrement of etatSaisie.enregistrements) {
-      const identifiantDossier = refId(colonneDossier && enregistrement[colonneDossier]) || enregistrement.id,
+      const identifiantDossier = idDossierDe(enregistrement),
         derniereVersion = etatSaisie.cacheDernieres.get(identifiantDossier);
       if (!derniereVersion || comparerVersions(derniereVersion, enregistrement) < 0)
         etatSaisie.cacheDernieres.set(identifiantDossier, enregistrement);
@@ -104,7 +101,7 @@ function valeursDossier(dossier, champ) {
     const valeurEtablissement = (etabDeLigne(dossier) || {})[colonnesEtab[champ.cle.slice(2)]];
     return valeurEtablissement == null || valeurEtablissement === "" || typeof valeurEtablissement === "object"
       ? []
-      : [{ cle: normaliser(valeurEtablissement), libelle: String(valeurEtablissement) }];
+      : [{ cle: texteComparable(valeurEtablissement), libelle: String(valeurEtablissement) }];
   }
   const definitionColonne = champ.def,
     valeurBrute = derniereDe(dossier)[definitionColonne.colId],
@@ -126,7 +123,7 @@ function valeursDossier(dossier, champ) {
         .replace(/\s+/g, " ")
         .trim();
       return {
-        cle: normaliser(texte),
+        cle: texteComparable(texte),
         libelle: texteNettoye.length > 70 ? texteNettoye.slice(0, 68) + "…" : texteNettoye,
       };
     });
@@ -147,7 +144,7 @@ function passeUn(filtre, dossier) {
     )
   )
     return true;
-  const texteContient = normaliser(filtre.contient || "");
+  const texteContient = texteComparable(filtre.contient || "");
   return !!texteContient && valeursDuDossier.some((valeur) => valeur.cle.includes(texteContient));
 }
 const passeFiltre = (dossier, sauf) =>
@@ -208,7 +205,7 @@ function valeursDisponibles(filtre) {
       compte.set(k, { libelle: filtre.libelles[k] || k, n: 0 });
   });
   const typeDeBase = typeChamp(champ);
-  const ordre = ((champ.def && champ.def.opts && champ.def.opts.choices) || []).map(normaliser);
+  const ordre = ((champ.def && champ.def.opts && champ.def.opts.choices) || []).map(texteComparable);
   let entrees = [...compte.entries()];
   const trop = entrees.length > MAX_VALEURS_FILTRE;
   if (trop)
@@ -297,10 +294,10 @@ function remplirPanneauFiltre(reconstruire = true) {
   }
   $("pf-cherche").hidden = entrees.length <= 8;
   $("pf-bloc-contient").hidden = !texteLibre;
-  const texteRecherche = sansAccent($("pf-cherche").value.trim());
+  const texteRecherche = sansAccents($("pf-cherche").value.trim());
   const coche = (k) => (filtre.valeurs.includes(k) ? " checked" : "");
   const ligne = (k, libelle, nombre, cls = "") =>
-    `<label class="pf-valeur${cls}" data-cle-texte="${esc(sansAccent(libelle))}"><input type="checkbox" value="${esc(k)}" data-libelle="${esc(libelle)}"${coche(k)}>` +
+    `<label class="pf-valeur${cls}" data-cle-texte="${esc(sansAccents(libelle))}"><input type="checkbox" value="${esc(k)}" data-libelle="${esc(libelle)}"${coche(k)}>` +
     `<span>${esc(libelle)}</span><small>${nombre}</small></label>`;
   const special =
     ligne(RENSEIGNE_FILTRE, "(renseigné)", renseignes, " special") + ligne(VIDE_FILTRE, "(vide)", vides, " special");
@@ -517,11 +514,11 @@ document.addEventListener("keydown", (evenement) => {
 });
 
 function afficherOptionsDossiers() {
-  const texteRecherche = sansAccent($("recherche-dossiers").value.trim());
+  const texteRecherche = sansAccents($("recherche-dossiers").value.trim());
   const visibles = texteRecherche
     ? dossiersFiltres().filter((dossier) => {
         const intitule = libelleDossier(dossier);
-        return sansAccent(`${intitule.titre} ${intitule.detail}`).includes(texteRecherche);
+        return sansAccents(`${intitule.titre} ${intitule.detail}`).includes(texteRecherche);
       })
     : dossiersFiltres();
   const courant = etatSaisie.dossiersInit.find((dossier) => dossier.id === etatSaisie.dossierId);
@@ -570,7 +567,7 @@ function choisirOption(optionListe) {
   enFile(async () => {
     const id = optionListe.dataset.id ? +optionListe.dataset.id : null;
     if (!id) {
-      await passerEnCreation();
+      await preparerNouveauSignalement();
       return;
     }
     try {

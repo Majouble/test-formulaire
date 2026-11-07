@@ -5,15 +5,13 @@
    Définit : libelleDossier, calculerDossiersInit, majListeDossiers, construireIndexRecherche, surligneMots,
      afficherResultatsRecherche, fermerRecherche, ouvrirResultat.
    Utilise :
-     02 utilitaires : colonnesEtab.
-     03 variantes : refId.
+     02 utilitaires : colonnesEtab, sansAccents.
      04 date-faits : dateFr, secondes.
-     05 etat : afficherBandeauPerimetre, colonneDe, dansPerimetre, etabDeLigne, etatSaisie, nomEtabLigne,
-       perimetreActif, texteEtabBrut, valeurLigne.
+     05 etat : afficherBandeauPerimetre, colonneDe, dansPerimetre, etabDeLigne, etatSaisie, idDossierDe,
+       nomEtabLigne, perimetreActif, texteEtabBrut, valeurLigne.
      06 grist : enFile.
      09 dossier : comparerVersions, listeQualif, ouvrirDossier.
      24 filtres-navigation : afficherOptionsDossiers, dossiersFiltres, fermerPanneauFiltre, filtreActif, majFiltre.
-     31 autocompletion : sansAccent.
      34 parcours : afficherCartes, ouvrirDepuisListe.
    Modifie etatSaisie : cacheDernieres, dossiersInit, indexRecherche, nbCartes. */
 function libelleDossier(ligne) {
@@ -30,9 +28,8 @@ function libelleDossier(ligne) {
 }
 // Calcule les versions initiales des dossiers du périmètre, triées de la plus récente à la plus ancienne
 function calculerDossiersInit() {
-  const colonneDossier = colonneDe("Dossier");
   return etatSaisie.enregistrements
-    .filter((ligne) => (refId(colonneDossier && ligne[colonneDossier]) || ligne.id) === ligne.id)
+    .filter((ligne) => idDossierDe(ligne) === ligne.id)
     .filter((ligne) => !perimetreActif() || dansPerimetre(etabDeLigne(ligne)))
     .sort((a, b) => (secondes(valeurLigne(b, "Date")) ?? 0) - (secondes(valeurLigne(a, "Date")) ?? 0));
 }
@@ -57,10 +54,9 @@ function majListeDossiers() {
   afficherBandeauPerimetre();
 }
 function construireIndexRecherche() {
-  const colonneDossier = colonneDe("Dossier"),
-    dernieres = new Map();
+  const dernieres = new Map();
   for (const ligne of etatSaisie.enregistrements) {
-    const idDossier = refId(colonneDossier && ligne[colonneDossier]) || ligne.id,
+    const idDossier = idDossierDe(ligne),
       derniereVersion = dernieres.get(idDossier);
     if (!derniereVersion || comparerVersions(derniereVersion, ligne) < 0) dernieres.set(idDossier, ligne);
   }
@@ -83,13 +79,13 @@ function construireIndexRecherche() {
       .filter((valeur) => valeur != null && typeof valeur !== "object")
       .join(" ")
       .replace(/\*\*|==/g, "");
-    return { l: ligne, der, e: etablissement, cle: sansAccent(texte) };
+    return { l: ligne, der, e: etablissement, cle: sansAccents(texte) };
   });
 }
 function surligneMots(texte, mots) {
   // repérage sans accents, sur le texte d'origine (même longueur une fois normalisé), puis échappement morceau par morceau
   const brut = String(texte ?? "").normalize("NFC"),
-    norm = [...brut].map((caractere) => sansAccent(caractere) || caractere).join("");
+    norm = [...brut].map((caractere) => sansAccents(caractere) || caractere).join("");
   if (norm.length !== brut.length) return esc(brut);
   const marques = new Array(brut.length).fill(false);
   for (const mot of mots) {

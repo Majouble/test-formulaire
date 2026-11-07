@@ -11,7 +11,7 @@
      04 date-faits : dateFr.
      05 etat : colonneDe, etabDe, etatSaisie, valeurLigne.
      06 grist : enFile.
-     10 champs : egal, estVide, norm, typeBase.
+     10 champs : egal, estVide, typeBase, valeurOuNull.
      11 pieces-jointes : piecesJointes.
      12 conditions-formules : afficherDiagnostic, conditionRemplie.
      19 tableaux : lireTableauJson, syntheseTableau.
@@ -74,6 +74,8 @@ $("btn-reparer").addEventListener("click", () =>
   }),
 );
 
+// Affiche ou masque les questions conditionnelles. Plusieurs passes, pour qu'une question
+// conditionnée par une autre question elle-même conditionnelle suive correctement.
 function appliquerConditions(prefix, questions) {
   const aCondition = questions.filter((question) => question.condition);
   if (!aCondition.length) {
@@ -108,8 +110,8 @@ function fusionnerAvecVersionRecente(valeurs) {
       definitions.find((definition) => definition.colId === identifiantColonne) || { type: "Any" };
   const pareil = (identifiantColonne, ancienneValeur, nouvelleValeur) =>
     egal(
-      norm(definitionDe(identifiantColonne), ancienneValeur),
-      norm(definitionDe(identifiantColonne), nouvelleValeur),
+      valeurOuNull(definitionDe(identifiantColonne), ancienneValeur),
+      valeurOuNull(definitionDe(identifiantColonne), nouvelleValeur),
     );
   for (const [identifiantColonne, valeur] of Object.entries(valeurs)) {
     const avant = etatSaisie.versionAffichee[identifiantColonne],
@@ -134,7 +136,12 @@ function seulementModifies(definitions, valeurs, ligne) {
     const definitionColonne = definitions.find((definition) => definition.colId === identifiantColonne) || {
       type: "Any",
     };
-    if (!egal(norm(definitionColonne, valeur), norm(definitionColonne, ligne ? ligne[identifiantColonne] : null)))
+    if (
+      !egal(
+        valeurOuNull(definitionColonne, valeur),
+        valeurOuNull(definitionColonne, ligne ? ligne[identifiantColonne] : null),
+      )
+    )
       resultat[identifiantColonne] = valeur;
   }
   return resultat;

@@ -7,8 +7,8 @@
      03 variantes : lisible.
      04 date-faits : dateFr, secondes.
      05 etat : colonneDe, etatSaisie, valeurLigne.
-     09 dossier : estiloPastille, listeQualif, styleChoix.
-     10 champs : cheminsRef, egal, norm.
+     09 dossier : listeQualif, styleChoix, stylePastille.
+     10 champs : cheminsRef, egal, valeurOuNull.
      13 coherence : formatValeur.
    Modifie etatSaisie : modifie. */
 /* =========================================================
@@ -19,13 +19,13 @@
 function entreesHistorique(versions, champsVersion) {
   const etat = {};
   champsVersion.forEach(
-    (champVersion) => (etat[champVersion.colId] = norm(champVersion, etatSaisie.initiale[champVersion.colId])),
+    (champVersion) => (etat[champVersion.colId] = valeurOuNull(champVersion, etatSaisie.initiale[champVersion.colId])),
   );
   return versions.map((version) => {
     const changements = [];
     if (version !== etatSaisie.initiale)
       for (const champVersion of champsVersion) {
-        const valeur = norm(champVersion, version[champVersion.colId]);
+        const valeur = valeurOuNull(champVersion, version[champVersion.colId]);
         if (egal(valeur, etat[champVersion.colId])) continue;
         changements.push({
           libelle: champVersion.libelle,
@@ -55,7 +55,7 @@ function creerElementHistorique(entree) {
     entree.qualification
       .map(
         (qualification) =>
-          `<span class="pastille" style="${estiloPastille(qualification)}">${esc(qualification)}</span>`,
+          `<span class="pastille" style="${stylePastille(qualification)}">${esc(qualification)}</span>`,
       )
       .join(" ") + (entree.qualification.length ? " " : "");
   const qui = entree.auteur ? `, ${esc(entree.auteur)}` : "";

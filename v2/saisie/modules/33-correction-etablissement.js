@@ -6,7 +6,7 @@
    Utilise :
      01 configuration : ETAB, ORIGINE.
      02 utilitaires : colonnesEtab.
-     03 variantes : colonneChampFiche, idDe, libelleChampFiche, reglagesSaisie, statut.
+     03 variantes : colonneChampFiche, idDe, libelleChampFiche, statut, varianteSaisie.
      05 etat : colonneDe, etabDe, etatSaisie.
      06 grist : enFile, metaColonnes.
      08 referentiel-local : chargerEtabs.
@@ -14,7 +14,7 @@
      14 etablissement : afficherEtablissement, etabParUai.
      15 onglets : afficherDossier.
      16 description : majDescriptionAuto.
-     31 autocompletion : fermer.
+     31 autocompletion : fermerSuggestions.
      34 parcours : majResumeEtab.
    Modifie etatSaisie : champsFiche, dossierCorrection, etabCourant, etabPropose, reaffectation. */
 /* =========================================================
@@ -53,7 +53,7 @@ function quitterReaffectation() {
   etatSaisie.reaffectation = false;
   etatSaisie.etabPropose = null;
   $("nom").value = "";
-  fermer();
+  fermerSuggestions();
   $("bloc-rattacher").hidden = true;
   statut("statut-rattacher", "");
   afficherEtablissement();
@@ -72,7 +72,7 @@ $("btn-reaffectation-annuler").addEventListener("click", () => {
 });
 // Choix dans la liste en mode rattachement : demande de confirmation
 function proposerRattachement(resultat) {
-  fermer();
+  fermerSuggestions();
   const existant = (resultat.ligne && etabDe(resultat.ligne.id)) || resultat.ligne || etabParUai(resultat.uai);
   if (existant && etatSaisie.etabCourant && existant.id === etatSaisie.etabCourant.id) {
     statut("statut-rattacher", "C'est déjà l'établissement de ce signalement.", "err");
@@ -170,7 +170,7 @@ $("btn-corriger-fiche").addEventListener("click", async () => {
   const vus = new Set();
   etatSaisie.champsFiche = [
     ["@nom", "Nom"],
-    ...reglagesSaisie().fiche.map((champFiche) => [
+    ...varianteSaisie().fiche.map((champFiche) => [
       champFiche.col,
       champFiche.lib || libelleChampFiche(champFiche.col),
     ]),

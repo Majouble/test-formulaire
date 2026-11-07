@@ -2,11 +2,12 @@
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
-   Définit : normaliser, resoudreColonne, FORMULE_SIMPLE, formuleCalculable, formuleEtab, valeurFormuleEnDirect,
-     formuleConnue, majFormulesEnDirect, questionVisible, nombreDe, calculerFormule, valeurColonneEnDirect,
-     valeurPourCondition, conditionRemplie, evaluerCondition, afficherDiagnostic.
+   Définit : texteComparable, resoudreColonne, FORMULE_SIMPLE, formuleCalculable, formuleEtab,
+     valeurFormuleEnDirect, formuleConnue, majFormulesEnDirect, questionVisible, nombreDe, calculerFormule,
+     valeurColonneEnDirect, valeurPourCondition, conditionRemplie, evaluerCondition, afficherDiagnostic.
    Utilise :
      01 configuration : ETAB.
+     02 utilitaires : sansAccents.
      05 etat : colonneDe, etabDe, etatSaisie.
      09 dossier : lireQualificationInitiale.
      10 champs : lireUnChamp, typeBase.
@@ -16,24 +17,19 @@
 /* ---------- Questions conditionnelles ---------- */
 // Valeur courante d'une colonne dont dépend une condition (questions, mais aussi description
 // et qualification du formulaire principal).
-const normaliser = (texte) =>
-  String(texte ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[’']/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+// Texte comparable : sans accents ni majuscules, apostrophes et espaces multiples ramenés à une espace
+const texteComparable = (texte) => sansAccents(texte).replace(/[’']/g, " ").replace(/\s+/g, " ").trim();
 
 // Retrouve la colonne visée par une condition : d'abord parmi les questions du formulaire, puis la
 // qualification et la description, puis n'importe quelle colonne de la table (valeur de la dernière version).
 function resoudreColonne(referenceColonne, questions) {
-  const referenceNormalisee = normaliser(referenceColonne);
+  const referenceNormalisee = texteComparable(referenceColonne);
   const trouve = (liste) =>
     liste.find((definition) => definition.colId === referenceColonne) ||
     liste.find(
       (definition) =>
-        normaliser(definition.colId) === referenceNormalisee || normaliser(definition.libelle) === referenceNormalisee,
+        texteComparable(definition.colId) === referenceNormalisee ||
+        texteComparable(definition.libelle) === referenceNormalisee,
     );
   const questionTrouvee = trouve(questions);
   if (questionTrouvee) return { genre: "question", def: questionTrouvee };
@@ -221,7 +217,7 @@ function conditionRemplie(prefix, questions, cond) {
 function evaluerCondition(valeur, cond) {
   // Nombre comparé à Oui / Non : « Oui » = supérieur à 0 (ex. [si Nb de blessés = Oui])
   if ((cond.op === "=" || cond.op === "!=") && typeof valeur === "number") {
-    const valeursCondition = (cond.valeurs || []).map(normaliser),
+    const valeursCondition = (cond.valeurs || []).map(texteComparable),
       oui = ["oui", "vrai", "true"],
       non = ["non", "faux", "false"];
     if (
@@ -261,14 +257,13 @@ function evaluerCondition(valeur, cond) {
   if (cond.op === "vide") return !renseignee;
   if (cond.op === "rempli") return !!renseignee;
   // Égalité : sans tenir compte des majuscules, des accents ni des espaces superflus
-  const valeurs = liste.map(normaliser);
+  const valeurs = liste.map(texteComparable);
   const candidates = [...(cond.valeurs || []), ...(cond.brut ? [cond.brut] : [])];
-  const trouve = candidates.some((candidate) => valeurs.includes(normaliser(candidate)));
+  const trouve = candidates.some((candidate) => valeurs.includes(texteComparable(candidate)));
   return cond.op === "!=" ? !trouve : trouve;
 }
 
-// Affiche ou masque les questions conditionnelles. Plusieurs passes, pour qu'une question
-// conditionnée par une autre question elle-même conditionnelle suive correctement.
+// Panneau ⚙ « Diagnostic des conditions » : pour chaque question conditionnelle, sa condition et son état
 function afficherDiagnostic() {
   if (!$("diagnostic-conditions").open) return;
   const questions = etatSaisie.defsQuestions;

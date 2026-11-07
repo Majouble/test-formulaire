@@ -2,10 +2,10 @@
    Chargé par saisie/index.html dans l'ordre des numéros ; les modules partagent leurs variables et fonctions
    (script classique, sans import) : un module n'appelle au chargement que ce que les modules précédents définissent. */
 /* Définit, Utilise : calculés d'après le code (outils de relecture), à refaire après une modification.
-   Définit : FICHE_DEFAUT, PRESETS, confSaisie, versionSaisie, reglagesSaisie, appliquerVersion,
+   Définit : FICHE_DEFAUT, PRESETS, confSaisie, versionSaisie, varianteSaisie, appliquerVersion,
      appliquerColonnesForcees, ROLES_FICHE, colonneChampFiche, valeurChampFiche, libelleChampFiche, valeursEtab,
      appliquerModele, identiteExemple, remplirVersionConfig, REGIONS_ACADEMIQUES, cleAcademie, REGION_PAR_ACADEMIE,
-     colonneRegion, regionAcademique, CHAMPS_NOUVEL_ETAB, statut, lisible, refId, idDe, etape.
+     colonneRegion, regionAcademique, CHAMPS_NOUVEL_ETAB, statut, lisible, refId, idDe, ecrireEtape.
    Utilise :
      01 configuration : ETAB, SOURCES, TABLE_ETAB_DEFAUT.
      02 utilitaires : colonnesEtab.
@@ -89,7 +89,7 @@ function versionSaisie() {
   }
   return colonneDe("Site") || (ETAB.table && ETAB.table !== TABLE_ETAB_DEFAUT) ? "esr" : "en";
 }
-function reglagesSaisie() {
+function varianteSaisie() {
   const versionActive = versionSaisie(),
     configurationFormulaire = confSaisie(),
     reglages = { ...PRESETS[versionActive], version: versionActive };
@@ -121,13 +121,13 @@ function reglagesSaisie() {
 }
 // Bandeau, liseré de la version, colonnes du référentiel imposées par le formulaire
 function appliquerVersion() {
-  const reglages = reglagesSaisie();
+  const reglages = varianteSaisie();
   $("marque-app").textContent = reglages.marque;
   document.body.classList.toggle("version-esr", reglages.version === "esr");
   appliquerColonnesForcees();
 }
 function appliquerColonnesForcees() {
-  const colonnesForcees = reglagesSaisie().colonnes || {};
+  const colonnesForcees = varianteSaisie().colonnes || {};
   for (const k of ["nom", "uai", "commune", "type", "academie", "departement", "mail"]) {
     if (
       colonnesForcees[k] &&
@@ -201,7 +201,7 @@ function appliquerModele(modele, valeurs) {
     .trim();
 }
 const identiteExemple = () =>
-  reglagesSaisie().version === "esr"
+  varianteSaisie().version === "esr"
     ? {
         nom: "Université de Rennes",
         commune: "Rennes",
@@ -228,9 +228,9 @@ function remplirVersionConfig() {
   selecteurVersion.disabled = !!PRESETS[configurationFormulaire.version];
   $("cfg-version-info").textContent = PRESETS[configurationFormulaire.version]
     ? `Fixée par le formulaire « ${etatSaisie.formulaireActif.nom} » dans l'administration des formulaires : ${PRESETS[configurationFormulaire.version].libelle}.`
-    : `Version appliquée : ${PRESETS[reglagesSaisie().version].libelle}. « Automatique » la déduit de la table (colonne Site, ou référentiel autre que « Etablissements » : enseignement supérieur). Enregistré avec la page.`;
+    : `Version appliquée : ${PRESETS[varianteSaisie().version].libelle}. « Automatique » la déduit de la table (colonne Site, ou référentiel autre que « Etablissements » : enseignement supérieur). Enregistré avec la page.`;
   $("cfg-entete-texte").textContent =
-    `Commencer par l'établissement, par exemple « ${appliquerModele(reglagesSaisie().entete, identiteExemple())} : »`;
+    `Commencer par l'établissement, par exemple « ${appliquerModele(varianteSaisie().entete, identiteExemple())} : »`;
 }
 $("cfg-version").addEventListener("change", async () => {
   try {
@@ -313,7 +313,7 @@ const refId = (valeur) =>
   Array.isArray(valeur) && valeur[0] === "R" ? valeur[2] : typeof valeur === "number" ? valeur : null;
 const idDe = (resultat) => resultat && (resultat.id ?? (Array.isArray(resultat) ? resultat[0]?.id : null));
 // Exécute une écriture en précisant, en cas de refus, quelle étape et quelle table sont en cause
-async function etape(libelle, table, action) {
+async function ecrireEtape(libelle, table, action) {
   try {
     return await action();
   } catch (erreur) {
