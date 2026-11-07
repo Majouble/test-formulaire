@@ -16,37 +16,10 @@
      domaines/formulaire/affichage : lireQualificationInitiale.
      domaines/etablissement/regles : etabDe, etablissementDuFormulaire.
      domaines/enregistrement/regles : formatValeur. */
-function lireCondition(texte) {
-  const correspondanceSi = texte.match(/\[\s*si\s+([^\]]+)\]/i);
-  if (!correspondanceSi) return null;
-  const corps = correspondanceSi[1].trim();
-  let correspondance;
-  // « : » est accepté à la place de « = » quand aucun autre opérateur n'est présent
-  if (
-    (correspondance = corps.match(/^(.+?)\s*(!=|≠|>=|<=|=|>|<)\s*(.+)$/)) ||
-    (correspondance = corps.match(/^([^:]+?)\s*(:)\s*(.+)$/))
-  )
-    return {
-      ref: sansGuillemets(correspondance[1]),
-      op: correspondance[2] === "≠" ? "!=" : correspondance[2] === ":" ? "=" : correspondance[2],
-      brut: sansGuillemets(correspondance[3]), // valeur entière, pour un choix qui contient lui-même une virgule
-      valeurs: correspondance[3]
-        .split(/\s*,\s*/)
-        .map(sansGuillemets)
-        .filter(Boolean),
-      texte: corps,
-    };
-  // « n'est pas vide », « non vide », « renseigné(e) » : la colonne doit être remplie
-  if (
-    (correspondance = corps.match(
-      /^(.+?)\s+(?:n['’]est\s+pas\s+vide|non\s+vide|est\s+renseign[ée]e?|renseign[ée]e?)$/i,
-    ))
-  )
-    return { ref: sansGuillemets(correspondance[1]), op: "rempli", texte: corps };
-  if ((correspondance = corps.match(/^(.+?)\s+(?:est\s+)?vide$/i)))
-    return { ref: sansGuillemets(correspondance[1]), op: "vide", texte: corps };
-  return { ref: sansGuillemets(corps), op: "rempli", texte: corps };
-}
+// Lecture et évaluation d'une condition « [si … ] » : règles communes au widget de saisie et à l'administration
+// (commun/metier/formulaire.js)
+const lireCondition = (texte) => Socle.lireConditionRepere(texte);
+const evaluerCondition = (valeur, condition) => Socle.evaluerCondition(valeur, condition);
 // Retrouve la colonne visée par une condition : d'abord parmi les questions du formulaire, puis la
 // qualification et la description, puis n'importe quelle colonne de la table (valeur de la dernière version).
 function resoudreColonne(referenceColonne, questions) {
@@ -237,54 +210,6 @@ function valeurPourCondition(prefix, questions, cond) {
 function conditionRemplie(prefix, questions, cond) {
   if (!cond) return true;
   return evaluerCondition(valeurPourCondition(prefix, questions, cond), cond);
-}
-function evaluerCondition(valeur, cond) {
-  // Nombre comparé à Oui / Non : « Oui » = supérieur à 0 (ex. [si Nb de blessés = Oui])
-  if ((cond.op === "=" || cond.op === "!=") && typeof valeur === "number") {
-    const valeursCondition = (cond.valeurs || []).map(texteComparable),
-      oui = ["oui", "vrai", "true"],
-      non = ["non", "faux", "false"];
-    if (
-      valeursCondition.length &&
-      valeursCondition.every((valeurNormalisee) => oui.includes(valeurNormalisee) || non.includes(valeurNormalisee))
-    ) {
-      const correspond =
-        (valeursCondition.some((valeurNormalisee) => oui.includes(valeurNormalisee)) && valeur > 0) ||
-        (valeursCondition.some((valeurNormalisee) => non.includes(valeurNormalisee)) && valeur <= 0);
-      return cond.op === "!=" ? !correspond : correspond;
-    }
-  }
-  // Comparaisons numériques
-  if ([">", ">=", "<", "<="].includes(cond.op)) {
-    const nombreSaisi = typeof valeur === "number" ? valeur : parseFloat(String(valeur ?? "").replace(",", "."));
-    const nombreCondition = parseFloat(String((cond.valeurs || [])[0] ?? "").replace(",", "."));
-    if (isNaN(nombreSaisi) || isNaN(nombreCondition)) return false;
-    return cond.op === ">"
-      ? nombreSaisi > nombreCondition
-      : cond.op === ">="
-        ? nombreSaisi >= nombreCondition
-        : cond.op === "<"
-          ? nombreSaisi < nombreCondition
-          : nombreSaisi <= nombreCondition;
-  }
-  let liste, renseignee;
-  if (typeof valeur === "boolean") {
-    liste = valeur ? ["oui", "vrai", "true", "1"] : ["non", "faux", "false", "0"];
-    renseignee = valeur;
-  } else if (Array.isArray(valeur)) {
-    liste = valeur[0] === "L" ? valeur.slice(1) : valeur;
-    renseignee = liste.length > 0;
-  } else {
-    liste = valeur == null || valeur === "" ? [] : [String(valeur)];
-    renseignee = liste.length > 0;
-  }
-  if (cond.op === "vide") return !renseignee;
-  if (cond.op === "rempli") return !!renseignee;
-  // Égalité : sans tenir compte des majuscules, des accents ni des espaces superflus
-  const valeurs = liste.map(texteComparable);
-  const candidates = [...(cond.valeurs || []), ...(cond.brut ? [cond.brut] : [])];
-  const trouve = candidates.some((candidate) => valeurs.includes(texteComparable(candidate)));
-  return cond.op === "!=" ? !trouve : trouve;
 }
 // Panneau ⚙ « Diagnostic des conditions » : pour chaque question conditionnelle, sa condition et son état
 function afficherDiagnostic() {
