@@ -50,6 +50,7 @@ Un fichier `nom.spec.js` par scénario, nommé d'après ce qu'il vérifie ; son 
 | `a-verifier-anomalies` | Onglet « À vérifier » : sections (SEGPA), doublons, établissements, qualifications, saisies d'essai |
 | `saisie-segpa` | Saisie : SEGPA choisie à la création → alerte et bascule sur le collège |
 | `saisie-diagnostic` | Saisie : bouton ⚙ Diagnostic (activité, colonnes et référentiel utilisés, questions conditionnelles), sans réglage modifiable |
+| `saisie-previsionnel` | Saisie : bandeau vert « Prévisionnel » (dossier saisi avant le jour de ses faits, avec ou sans mise à jour depuis ; date des faits à venir pendant la saisie) |
 | `question-tableau-historisee` | Question tableau historisée : une copie des lignes par version, mouvements Ajout / Modification / Inchangée / Retrait |
 | `installation-historiser-sous-table` | Installation : étape « Historiser la sous-table » puis colonnes créées |
 | `sites-esr-reprise-dernier-etat` | Formulaire par site (ESR) : reprise du dernier état connu de chaque site, qualification déduite en bas, contrôle de cohérence |

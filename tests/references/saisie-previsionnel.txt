@@ -1,0 +1,7 @@
+DOSSIER 1 : Prévisionnel : dossier créé le <JOUR> <JJ/MM> pour des faits prévus le <JOUR> <JJ/MM>, sans mise à jour depuis : ces informations n'ont pas été confirmées le jour des faits.
+DOSSIER 2 : Prévisionnel : dossier créé le <JOUR> <JJ/MM> pour des faits prévus le <JOUR> <JJ/MM>, mis à jour le <JOUR> <JJ/MM>.
+COULEUR : rgb(24, 117, 60)
+NOUVEAU, aujourd'hui : (pas de bandeau)
+NOUVEAU, faits à venir : Prévisionnel : faits prévus le <JOUR>. Le dossier restera marqué comme créé en prévisionnel.
+ENREGISTRÉ :  |  Signalement enregistréDossier n° N créé pour Collège Jean Moulin. Vous pouvez transmettre le lien d'accès à l'établisse
+ROUVERT : Prévisionnel : dossier créé le <JOUR> pour des faits prévus le <JOUR>.

@@ -1801,6 +1801,16 @@ body.teinte main {
   border-radius: 12px;
   background: var(--teinte-moyenne, var(--x-eeeeee));
 }
+/* dossier prévisionnel : faits à venir au moment de la saisie (vert, distinct de la teinte selon une réponse) */
+.bandeau-previsionnel {
+  margin: 8px 0 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border-left: 4px solid var(--x-18753c);
+  background: var(--x-e8f5ec);
+  color: var(--x-18753c);
+  font-weight: 600;
+}
 .legende-teinte::before {
   content: "";
   width: 10px;

@@ -525,6 +525,51 @@ const texteSerie = (resultat) =>
         .join(" ; ") +
       "." +
       texteErreursTableaux(resultat.errT || []);
+/* ---------- Prévisionnel : version saisie avant le jour de ses faits ----------
+   Un dossier créé pour des faits à venir reste marqué « prévisionnel » une fois le jour venu : on voit ainsi que ses
+   informations datent d'avant les faits, et si une mise à jour a été saisie depuis. Déduit des colonnes Date (date de
+   saisie) et Date_faits, sans colonne supplémentaire. */
+const colonneAvecHeure = (metaColonne) => !!(metaColonne && String(metaColonne.type || "").startsWith("DateTime"));
+// Jour (AAAA-MM-JJ, heure de Paris) d'une valeur de colonne Date (minuit UTC) ou DateTime (instant), null si vide
+function jourDeValeur(valeur, metaColonne) {
+  const valeurEnSecondes = secondes(valeur);
+  if (valeurEnSecondes == null) return null;
+  return colonneAvecHeure(metaColonne) ? Outils.dates.jour(valeurEnSecondes * 1000) : jourCle(valeurEnSecondes);
+}
+const jourFaitsVersion = (ligne) =>
+  colonneDe("Date_faits") ? jourDeValeur(ligne[colonneDe("Date_faits")], etatSaisie.metaFaits) : null;
+const jourSaisieVersion = (ligne) =>
+  colonneDe("Date") ? jourDeValeur(ligne[colonneDe("Date")], etatSaisie.metaDate) : null;
+function versionPrevisionnelle(ligne) {
+  const jourFaits = jourFaitsVersion(ligne),
+    jourSaisie = jourSaisieVersion(ligne);
+  return !!(jourFaits && jourSaisie && jourSaisie < jourFaits);
+}
+// Dossier prévisionnel : { saisie, faits, miseAJour } (jours AAAA-MM-JJ), null si aucune version n'a été saisie à l'avance
+function etatPrevisionnelDossier(versions) {
+  const prevue = (versions || []).find(versionPrevisionnelle);
+  if (!prevue) return null;
+  const jourFaits = jourFaitsVersion(prevue);
+  const joursSaisieDepuis = versions
+    .map(jourSaisieVersion)
+    .filter((jourSaisie) => jourSaisie && jourSaisie >= jourFaits)
+    .sort();
+  return { saisie: jourSaisieVersion(prevue), faits: jourFaits, miseAJour: joursSaisieDepuis.pop() || null };
+}
+// Texte du bandeau « Prévisionnel » (vide : pas de bandeau). jourFaitsSaisi : date des faits du formulaire en cours
+function texteBandeauPrevisionnel(dossierPrevisionnel, jourFaitsSaisi, aujourdhui) {
+  const court = (cle) => jourCourt(Date.parse(`${cle}T00:00:00Z`) / 1000);
+  if (dossierPrevisionnel) {
+    const debut = `Prévisionnel : dossier créé le ${court(dossierPrevisionnel.saisie)} pour des faits prévus le ${court(dossierPrevisionnel.faits)}`;
+    if (dossierPrevisionnel.faits > aujourdhui) return `${debut}.`;
+    return dossierPrevisionnel.miseAJour
+      ? `${debut}, mis à jour le ${court(dossierPrevisionnel.miseAJour)}.`
+      : `${debut}, sans mise à jour depuis : ces informations n'ont pas été confirmées le jour des faits.`;
+  }
+  if (jourFaitsSaisi && jourFaitsSaisi > aujourdhui)
+    return `Prévisionnel : faits prévus le ${court(jourFaitsSaisi)}. Le dossier restera marqué comme créé en prévisionnel.`;
+  return "";
+}
 // Jour (clé AAAA-MM-JJ) des faits du dossier ouvert, ou null
 function jourDuDossierOuvert() {
   return etatSaisie.derniere && jourDesFaits(etatSaisie.derniere) != null

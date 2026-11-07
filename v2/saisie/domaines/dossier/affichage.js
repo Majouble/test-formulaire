@@ -162,6 +162,7 @@ async function preparerNouveauSignalement() {
   $("aide-date-faits").classList.remove("alerte-faits");
   $("aide-date-faits").textContent = aideFaitsDefaut();
   reinitialiserJours();
+  majBandeauPrevisionnel();
   await remplirChamps("q", etatSaisie.defsQuestions, () => null);
   appliquerConditions("q", etatSaisie.defsQuestions);
   etatSaisie.descriptionManuelle = false;
@@ -182,6 +183,15 @@ async function preparerNouveauSignalement() {
   afficherOnglet("signalement");
   afficherEtablissement();
   majCouleur();
+}
+// Bandeau « Prévisionnel » : dossier saisi avant le jour de ses faits, ou date des faits à venir dans la saisie en cours
+function majBandeauPrevisionnel() {
+  const bandeau = $("bandeau-previsionnel"),
+    dossierPrevisionnel = etatSaisie.dossierId ? etatPrevisionnelDossier(etatSaisie.versions) : null,
+    jourFaitsSaisi = colonneDe("Date_faits") && $("date-faits").value ? $("date-faits").value.slice(0, 10) : null;
+  const texte = texteBandeauPrevisionnel(dossierPrevisionnel, jourFaitsSaisi, Outils.dates.aujourdhui());
+  bandeau.textContent = texte;
+  bandeau.hidden = !texte;
 }
 function avertirFaitsAnterieurs() {
   const aide = $("aide-date-faits");
@@ -205,6 +215,7 @@ function avertirFaitsAnterieurs() {
         : aide.dataset.base;
   aide.classList.toggle("alerte-faits", !!anterieur || futur || !!autreJourDossier);
   majAideJours();
+  majBandeauPrevisionnel();
 }
 function majListeDossiers() {
   $("menu-dossiers").hidden = true; // remplacé par la liste de l'accueil
@@ -669,6 +680,7 @@ async function remplirFormulaire() {
       : aideFaitsDefaut();
   reinitialiserJours();
   majAideJours();
+  majBandeauPrevisionnel();
   await remplirChamps("q", etatSaisie.defsQuestions, (question) =>
     versionReference ? versionReference[question.colId] : null,
   );
