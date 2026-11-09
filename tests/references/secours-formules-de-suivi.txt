@@ -1,0 +1,6 @@
+TABLEAU DE BORD avant : 7 lignes
+NOUVEAU : {"id":<N13>,"dossier":<N13>,"etab":1,"q":"RAS","dv":true,"dvEsr":true,"grave":"Blocage total","jours":null,"desc":"Signalement hors ligne"}
+TABLEAU DE BORD après le nouveau : 8 lignes
+DOSSIER après la mise à jour : [{"desc":"Signalement hors ligne","dv":false,"dvEsr":false,"grave":"Blocage total","jours":null},{"desc":"Mise à jour hors ligne","dv":true,"dvEsr":true,"grave":"Blocage total","jours":null}]
+LIGNES EXISTANTES inchangées (dossiers sans ligne du mode secours) : true
+TABLEAU DE BORD après la mise à jour : 9 lignes

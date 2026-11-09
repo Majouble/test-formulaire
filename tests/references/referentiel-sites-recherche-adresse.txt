@@ -1,0 +1,4 @@
+"« 23 avenue Albert Einstein, La Rochelle »" → appels : q="23 avenue Albert Einstein, La Rochelle" → 23 Avenue Albert Einstein 17000 La Rochelle Adresse · adresse · score 97 % Voir Ajouter Géolocaliser l'établissement ici
+"- 23 av. Albert Einstein ;" → appels : q="23 av. Albert Einstein" → 23 Avenue Albert Einstein 17000 La Rochelle Adresse · adresse · score 97 % Voir Ajouter Géolocaliser l'établissement ici
+"12" → appels : (aucun) → Recherche impossible : tapez au moins 3 lettres ou chiffres (le service de géocodage refuse les recherches plus courtes).
+"#" → appels : (aucun) → Recherche impossible : tapez au moins 3 lettres ou chiffres (le service de géocodage refuse les recherches plus courtes).

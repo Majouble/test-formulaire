@@ -1,0 +1,8 @@
+À TRAITER : Collège Jean Moulin · Gymnase municipal × 221/10/2026 · Rassemblement — Mouvement1 autre signalement20/10/2026 · Blocage total — Mouvement | Lycée Romain Rolland · Maison des étudiants × 115/10/2026 · RAS — Calme à Ivry
+CHAMP NOM visible : Gymnase municipal
+STATUT : 1 correspondance(s) validée(s), 1 site(s) créé(s) dans le référentiel, 2 ligne(s) de saisie complétée(s).
+STATUT : 1 correspondance(s) validée(s), 1 site(s) créé(s) dans le référentiel, 1 ligne(s) de saisie complétée(s).
+RÉFÉRENTIEL : 6:SITE-M0001|Gymnase municipal Beaulieu|e1|∅|∅  7:SITE-M0002|Maison des étudiants|e2|∅|∅
+CORRESPONDANCES : 1|Campus Beaulieu bat 12→2(Validé)  1|Gymnase municipal→6(Validé)  2|Maison des étudiants→7(Validé)
+SAISIES : 1:6/Gymnase municipal  2:6/gymnase  municipal  3:1/  4:7/Maison des étudiants
+RESTE À TRAITER :

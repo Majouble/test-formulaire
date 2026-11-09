@@ -1,0 +1,3 @@
+LISTE :  SEGPA Collège Jean Moulinréférentiel 0781299S, Collège, Versailles, Versailles EN ESR
+ALERTE visible : true | ⚠ Vous avez choisi une SEGPA, section rattachée à un collège : le signalement doit porter sur l'établissement, sinon il est compté à part (et souvent deux fois). Choisir Collège Jean Moulin (Versailles) à la place Garder la SEGPA
+APRÈS : ÉtablissementCollège Jean MoulinUAI0781234ATypeCollègeCommuneVersaillesAcadémieVersaillesDépartementYvelines | alerte false

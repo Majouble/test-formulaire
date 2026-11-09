@@ -1,0 +1,4 @@
+TABLEAU DE BORD : [{"rempli":true,"mot":"PRISMEPlateforme de recueil d’informationet de suivi multi-échelle","x":14,"y":14,"h":24,"parent":"DIV.bar"}]
+SAISIE 1100 px : [{"rempli":true,"mot":"PRISMEPlateforme de recueil d’informationet de suivi multi-échelle","x":200,"y":22,"h":24,"parent":"DIV.barre-app-gauche"}] | marque : Enseignement supérieur et recherche
+SAISIE 390 px : [{"rempli":true,"mot":"PRISMEPlateforme de recueil d’informationet de suivi multi-échelle","x":20,"y":22,"h":22,"parent":"DIV.barre-app-gauche"}] | marque : Enseignement supérieur et recherche
+ADMINISTRATION (onglet Tableau de bord) : [{"rempli":true,"mot":"PRISMEPlateforme de recueil d’informationet de suivi multi-échelle","x":16,"y":13,"h":24,"parent":"H1"}]

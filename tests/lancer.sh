@@ -1,13 +1,13 @@
 #!/bin/sh
-# Lance la suite actuelle (ou les scénarios donnés : sh lancer.sh run74 run76) et résume les erreurs de page.
+# Lance la suite actuelle (ou les scénarios donnés : sh lancer.sh saisie-segpa pieces-jointes) et résume les erreurs de page.
 # Prérequis : Node 18+, « npm install » dans ce dossier, puis « npx playwright install chromium » (ou CHROMIUM=…).
 cd "$(dirname "$0")"
-SUITE="run63 run64 run65 run66 run67 run68 run69 run70 run71 run72 run73 run74 run75 run76 run77 run78 run79 run80 run81 run82 run83 run84 run85 run86 run87 run88 run89 run90 run91 run92 run93 run94 run95 run96 run97 run98 run99 run100 run101 run102 run103 run104 run105 run106 run107 run108 run109 run110 run111 run112 run113 run114 run115 run116 run117 run118 run119 run120"
+SUITE="atlas-export atlas-export-colonnes-renommees atlas-export-jours-mobilisation atlas-export-derniere-version atlas-profils planning-mobilisation-groupee atlas-profils-regroupement-par-jour installation-colonnes-de-suivi planning-vue-grille equipe-et-planning-fonctions atlas-etablissements-sous-table a-verifier-anomalies saisie-segpa question-tableau-historisee installation-historiser-sous-table sites-esr-reprise-dernier-etat admin-rapprochement-sites admin-changer-modele-formulaire referentiel-esr-import-classeur admin-relier-referentiel-sites referentiel-sites-widget sites-esr-cas-du-terrain referentiel-site-hors-referentiel referentiel-fiche-etablissement referentiel-esr-ecoles-ingenieurs referentiel-sites-a-verifier referentiel-sites-modification-par-lot referentiel-sites-corriger-saisies referentiel-sites-corriger-saisies-colonne-ref sites-esr-site-obligatoire sites-esr-reprise-reglable rapprochement-sites-anciens-noms sites-desactives referentiel-sites-recherche-adresse sites-esr-sites-mis-de-cote secours-kit-deux-postes secours-mode-veille admin-carte-mode-secours secours-formules-de-suivi atlas-superieur-tous-risques a-verifier-modifier-supprimer admin-renommer-table-question-tableau pieces-jointes pieces-jointes-liens-etablissement atlas-national-superieur validation-et-campagnes referentiel-effectifs veille-meteo tableau-de-bord-ordre-colonnes acces-referentiel-sites extractions-widget tableau-de-bord-barres-empilees logo-prisme tableau-de-bord-series-inversees a-verifier-rattacher-dossier sites-esr-suppression-site extractions-colonnes-numeriques extractions-filtres-multiples admin-reglages-saisie saisie-diagnostic saisie-previsionnel admin-formulaire-creer admin-formulaire-questions admin-formulaire-mode-test admin-formulaire-publier admin-formulaire-dupliquer"
 [ $# -gt 0 ] && SUITE="$*"
 mkdir -p sorties/journaux
 echec=0
 for t in $SUITE; do
-  if timeout 300 node "$t.js" > "sorties/journaux/$t.txt" 2>&1 && ! grep -q "PAGEERROR\|Error:" "sorties/journaux/$t.txt"; then
+  if timeout 300 node "$t.spec.js" > "sorties/journaux/$t.txt" 2>&1 && ! grep -q "PAGEERROR\|Error:" "sorties/journaux/$t.txt"; then
     echo "ok      $t"
   else
     echo "ÉCHEC   $t  (voir sorties/journaux/$t.txt)"; echec=1

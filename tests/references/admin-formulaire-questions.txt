@@ -1,0 +1,31 @@
+MENU D'AJOUT :
+AJOUTER | Aa | Texte court | ¶ | Texte long | 12 | Nombre | ◉ | Choix unique | ☑ | Choix multiple | ⇄ | Oui / Non | ▤ | Date | 📎 | Pièces jointes (photos, documents) | ▦ | Tableau (lignes) | É | Donnée de la fiche établissement | H | Titre de section | i | Texte d'information | ↳ Utiliser des colonnes existantes de la table…
+TEXTE COURT | PANNEAU : Nom du témoin | Texte court · 0 réponse enregistrée | Libellé | Aide affichée sous la question | colonne : Nom_du_temoin | Partie du formulaire | Signalement | Visa départemental (visa) | Visa académique (visa) | SAISIE | Réponse obligatoire | Zone de saisie | Une ligne | Plusieurs lignes | AFFICHAGE CONDITIONNEL | Afficher cette question si | — toujours affichée — | Date_faits | Cree_le | Nature | Qualification | Description | Etablissement | Dossier | Derniere_version | DONNÉES ET DIFFUSION | Confidentiel (exclu de la description automatique) | Dans la description automatique | Par défaut (réglages communs) | Libellé : valeur | Valeur seule | Ne pas inclure | Retirer du formulaire | Supprimer la colonne…
+LIBELLÉ + OBLIGATOIRE : aperçu = TEXTE COURT | ⋮⋮ | ↑ | ↓ | ⧉ | ✕ | Témoin principal * | panneau titre = Témoin principal
+CHOIX : Violence | Intrusion | Autre
+NOMBRE : min = 0 | max = 50 | type : Entier=true Décimal=false
+APERÇU : Ancien choix conservé dans les réponses déjà saisies (version de Grist sans renommage des choix). | Situation montrée : | Nouveau signalement | Mise à jour d'un dossier | ÉTABLISSEMENTS SCOLAIRES | Nouveau signalement | Trois étapes : l'établissement, les faits, puis la description. Un dossier sera créé à l'enregistrement. | SIGNALEMENT | formulaire | 1 | Quel établissement est concerné ? | Nom ou UAI * | Recherche par nom ou UAI dans la table Etablissements, puis complétion automatique (type, commune, académie, département) ; création dans le référentiel si besoin. | 2 | Les faits | Date_faits * | Aujourd'hui par défaut. Peut être à venir (fermeture annoncée…). | Les faits s'étendent sur plusieurs jours (un signalement par jour) | Qualification * | RAS | + Ajouter une question | Témoin principal * | + Ajouter une question | Nature des faits | Choisir… | Violence | Intrusion | Autre | + Ajouter une question | Nombre de blessés | + Ajouter une question | Police prévenue | Oui | Non | + Ajouter une question | Suites données | + Ajouter une question | Merci de joindre le rapport | au dossier. | + Ajouter une question | TEXTE LONG | ⋮⋮ | ↑ | ↓ | ⧉ | ✕ | Précisions | + Ajouter une question | 3 | Description et envoi | Description * | Rédigée automatiquement à partir des réponses ci-dessus ; l'agent peut la compléter ou la modifier. Réglages communs à tous les formulaires. | **Collège Jean Rostand**, **Draguignan** : Qualification : RAS | Témoin principal : texte saisi | Nature des faits : Violence | Nombre de blessés : 20 | Police prévenue : Oui | Précisions : texte saisi | Enregistrer le signalement | + Ajouter une partie au formulaire | VISA DÉPARTEMENTAL | onglet Visas, échelon départemental | Aucune question de visa. | + Ajouter une question | VISA ACADÉMIQUE | onglet Visas, échelon académique | Aucune question de visa. | + Ajouter une question
+ORDRE : Champ commun : Etablissement / Champ commun : Date_faits / Champ commun : Qualification / Texte court : Témoin principal / Choix unique : Nature des faits / Nombre entier : Nombre de blessés / Oui / Non : Police prévenue / Titre : Suites données / Information : Merci de joindre le rapport
+au dossier. / Texte long : Précisions / Champ commun : Description
+APRÈS MONTER Police prévenue : Champ commun : Etablissement / Champ commun : Date_faits / Champ commun : Qualification / Texte court : Témoin principal / Choix unique : Nature des faits / Oui / Non : Police prévenue / Nombre entier : Nombre de blessés / Titre : Suites données / Information : Merci de joindre le rapport
+au dossier. / Texte long : Précisions / Champ commun : Description
+APRÈS Alt+↓ Témoin principal : Champ commun : Etablissement / Champ commun : Date_faits / Champ commun : Qualification / Choix unique : Nature des faits / Texte court : Témoin principal / Oui / Non : Police prévenue / Nombre entier : Nombre de blessés / Titre : Suites données / Information : Merci de joindre le rapport
+au dossier. / Texte long : Précisions / Champ commun : Description
+CONDITION (opérateurs) : ==est l'un de | !==n'est pas | rempli=est renseigné | vide=est vide | valeurs : Violence | Intrusion | Autre
+APERÇU Précisions : TEXTE LONG | ⋮⋮ | ↑ | ↓ | ⧉ | ✕ | Précisionssi Nature des faits = Intrusion
+PANNEAU TITRE : ← Réglages du formulaire | Titre de section | Bloc d'affichage, sans colonne ni réponse. | Titre | Partie du formulaire | Signalement | Visa départemental (visa) | Visa académique (visa) | Retirer du formulaire
+BROUILLON :
+  {"genre":"question","colonne":"Nature_des_faits","section":"q","reglages":{"libelle":"Nature des faits","affichage":"liste"}}
+  {"genre":"question","colonne":"Nom_du_temoin","section":"q","reglages":{"libelle":"Témoin principal","court":true,"obligatoire":true}}
+  {"genre":"question","colonne":"Police_prevenue","section":"q","reglages":{"libelle":"Police prévenue"}}
+  {"genre":"question","colonne":"Nombre_de_blesses","section":"q","reglages":{"libelle":"Nombre de blessés","min":0,"max":50,"condition":{"ref":"Nature_des_faits","op":"!=","valeurs":["Violence"]}}}
+  {"genre":"titre","section":"q","texte":"Suites données"}
+  {"genre":"info","section":"q","texte":"Merci de joindre le rapport\nau dossier."}
+  {"genre":"question","colonne":"Precisions","section":"q","reglages":{"libelle":"Précisions","condition":{"ref":"Nature_des_faits","op":"=","valeurs":["Intrusion"]}}}
+PUBLIÉ INCHANGÉ : []
+COLONNES CRÉÉES :
+  {"colId":"Nom_du_temoin","type":"Text","opts":"","formule":""}
+  {"colId":"Nature_des_faits","type":"Choice","opts":"{\"choices\":[\"Violence\",\"Intrusion\",\"Autre\"],\"choiceOptions\":{}}","formule":""}
+  {"colId":"Nombre_de_blesses","type":"Int","opts":"","formule":""}
+  {"colId":"Police_prevenue","type":"Bool","opts":"","formule":""}
+  {"colId":"Precisions","type":"Text","opts":"","formule":""}

@@ -1,0 +1,47 @@
+Jean Moulin : Collège Jean Moulin 48.8 2.13 Versailles Versailles
+réponses : 21 | Jean Moulin : 1@<EPOCH> 2@<EPOCH> 3@<EPOCH>
+BADGE AVANT OUVERTURE : À vérifier 36
+ONGLET : À vérifier 36
+GROUPES : Section ou composante choisie au lieu de l'établissement 2 | Doublons probables 3 | Établissement absent 1 | Établissement sans coordonnées 1 | Établissement hors des académies couvertes 11 | Qualification manquante 1 | Saisie d'essai ou description vide 17
+ITEMS :
+ Haute SEGPA : SEGPA Collège Jean Moulin (0750001S) — Versailles — Établissement de rattachement probable : Collège Jean Moulin (0781234A) — Versailles (à 50 m). [Modifier / Supprimer / Supprimer le dossier n° 17 / Rattacher à Collège Jean Moulin / Vérifié, c'est correct]
+ Haute SEGPA : SEGPA Collège Perdu (0999999X) — Nulle-Part — Aucun établissement de rattachement trouvé à proximité : à corriger à la main. [Modifier / Supprimer / Supprimer le dossier n° 18 / Vérifié, c'est correct]
+ Haute 3 dossiers pour Collège Jean Moulin (0781234A) — Versailles le lun. 20 oct. — Dont une section de l'établissement : l'établissement est compté deux fois. [Modifier / Supprimer / Supprimer le dossier n° 1 / Modifier / Supprimer / Supprimer le dossier n° 3 / Modifier / Supprimer / Supprimer le dossier n° 17 / Rattacher / Faits distincts : vérifié]
+ Haute 2 dossiers pour Lycée Henri-IV (0751111A) — Versailles le mar. 21 oct. — Même établissement, même jour. [Modifier / Supprimer / Supprimer le dossier n° 12 / Modifier / Supprimer / Supprimer le dossier n° 14 / Rattacher / Faits distincts : vérifié]
+ Haute 2 dossiers pour Lycée Henri-IV (0751111A) — Versailles le lun. 20 oct. — Même établissement, même jour. [Modifier / Supprimer / Supprimer le dossier n° 13 / Modifier / Supprimer / Supprimer le dossier n° 15 / Rattacher / Faits distincts : vérifié]
+ Haute Signalement sans établissement —  [Modifier / Supprimer / Supprimer le dossier n° 20 / Vérifié, c'est correct]
+ Moyenne École sans GPS (0750002Z) — Versailles — Latitude ou longitude manquante dans le référentiel. [Modifier / Supprimer / Supprimer le dossier n° 19 / Vérifié, c'est correct]
+ Moyenne Lycée du Parc (0691111A) — Versailles — Académie : Lyon. [Modifier / Supprimer / Supprimer le dossier n° 5 / Vérifié, c'est correct]
+ Moyenne Lycée du Parc (0691111A) — Versailles — Académie : Lyon. [Modifier / Supprimer / Supprimer le dossier n° 6 / Vérifié, c'est correct]
+ Moyenne Lycée Thiers (0131111A) — Versailles — Académie : Aix-Marseille. [Modifier / Supprimer / Supprimer le dossier n° 7 / Vérifié, c'est correct]
+ Moyenne Lycée de l'Harteloire (0291111A) — Versailles — Académie : Rennes. [Modifier / Supprimer / Supprimer le dossier n° 8 / Vérifié, c'est correct]
+ Moyenne Lycée Leconte de Lisle (9741111A) — Versailles — Académie : La Réunion. [Modifier / Supprimer / Supprimer le dossier n° 9 / Vérifié, c'est correct]
+ Moyenne Lycée Fesch (6201111A) — Versailles — Académie : Corse. [Modifier / Supprimer / Supprimer le dossier n° 10 / Vérifié, c'est correct]
+ Moyenne Lycée Faidherbe (0591111A) — Versailles — Académie : Lille. [Modifier / Supprimer / Supprimer le dossier n° 11 / Vérifié, c'est correct]
+ Moyenne Lycée Henri-IV (0751111A) — Versailles — Académie : Paris. [Modifier / Supprimer / Supprimer le dossier n° 12 / Vérifié, c'est correct]
+ Moyenne Lycée Henri-IV (0751111A) — Versailles — Académie : Paris. [Modifier / Supprimer / Supprimer le dossier n° 13 / Vérifié, c'est correct]
+ Moyenne Lycée Henri-IV (0751111A) — Versailles — Académie : Paris. [Modifier / Supprimer / Supprimer le dossier n° 14 / Vérifié, c'est correct]
+ Moyenne Lycée Henri-IV (0751111A) — Versailles — Académie : Paris. [Modifier / Supprimer / Supprimer le dossier n° 15 / Vérifié, c'est correct]
+ Moyenne Lycée Romain Rolland (0941111B) — Versailles — Dernière version sans qualification. [Modifier / Supprimer / Supprimer le dossier n° 21 / Vérifié, c'est correct]
+ Basse Collège Jean Moulin (0781234A) — Versailles — Description : « d0 » [Modifier / Supprimer / Supprimer le dossier n° 1 / Vérifié, c'est correct]
+ Basse Collège Jean Moulin (0781234A) — Versailles — Description : « d1 » [Modifier / Supprimer / Supprimer le dossier n° 2 / Vérifié, c'est correct]
+ Basse Collège Jean Moulin (0781234A) — Versailles — Description : « d2 » [Modifier / Supprimer / Supprimer le dossier n° 3 / Vérifié, c'est correct]
+ Basse Lycée Romain Rolland (0941111B) — Versailles — Description : « d3 » [Modifier / Supprimer / Supprimer le dossier n° 4 / Vérifié, c'est correct]
+ Basse Lycée du Parc (0691111A) — Versailles — Description : « d4 » [Modifier / Supprimer / Supprimer le dossier n° 5 / Vérifié, c'est correct]
+ Basse Lycée du Parc (0691111A) — Versailles — Description : « d5 » [Modifier / Supprimer / Supprimer le dossier n° 6 / Vérifié, c'est correct]
+ Basse Lycée Thiers (0131111A) — Versailles — Description : « d6 » [Modifier / Supprimer / Supprimer le dossier n° 7 / Vérifié, c'est correct]
+ Basse Lycée de l'Harteloire (0291111A) — Versailles — Description : « d7 » [Modifier / Supprimer / Supprimer le dossier n° 8 / Vérifié, c'est correct]
+ Basse Lycée Leconte de Lisle (9741111A) — Versailles — Description : « d8 » [Modifier / Supprimer / Supprimer le dossier n° 9 / Vérifié, c'est correct]
+ Basse Lycée Fesch (6201111A) — Versailles — Description : « d9 » [Modifier / Supprimer / Supprimer le dossier n° 10 / Vérifié, c'est correct]
+ Basse Lycée Faidherbe (0591111A) — Versailles — Description : « d10 » [Modifier / Supprimer / Supprimer le dossier n° 11 / Vérifié, c'est correct]
+ Basse Lycée Henri-IV (0751111A) — Versailles — Description : « d11 » [Modifier / Supprimer / Supprimer le dossier n° 12 / Vérifié, c'est correct]
+ Basse Lycée Henri-IV (0751111A) — Versailles — Description : « d12 » [Modifier / Supprimer / Supprimer le dossier n° 13 / Vérifié, c'est correct]
+ Basse Lycée Henri-IV (0751111A) — Versailles — Description : « d13 » [Modifier / Supprimer / Supprimer le dossier n° 14 / Vérifié, c'est correct]
+ Basse Lycée Henri-IV (0751111A) — Versailles — Description : « d14 » [Modifier / Supprimer / Supprimer le dossier n° 15 / Vérifié, c'est correct]
+ Basse Ecole Jules Ferry (0942222C) — Versailles — Description : « d15 » [Modifier / Supprimer / Supprimer le dossier n° 16 / Vérifié, c'est correct]
+ Basse École sans GPS (0750002Z) — Versailles — Description : « test » [Modifier / Supprimer / Supprimer le dossier n° 19 / Vérifié, c'est correct]
+APRÈS CORRECTION : 1 signalement(s) rattaché(s) à leur établissement (1 ligne(s) modifiée(s)). | Reponses SEGPA → 0
+GROUPES : Section ou composante choisie au lieu de l'établissement 1 | Doublons probables 3 | Établissement absent 1 | Établissement sans coordonnées 1 | Établissement hors des académies couvertes 11 | Qualification manquante 1 | Saisie d'essai ou description vide 17
+APRÈS VÉRIFIÉ : 1 anomalie(s) marquée(s) vérifiée(s). | badge À vérifier 34
+CONFIG qualite : ["id","Cle","Valeur","Modifie_le"] {"id":5,"Cle":"qualite","Valeur":"{\n  \"statuts\": {\n    \"section|Reponses|17\": {\n      \"s\": \"corrige\",\n      \"le\": <EPOCH>,\n      \"note\": \"rattaché à l'établissement\"\n    },\n    \"doublon|Reponses|1,3,17\": {\n      \"s\": \"ok\",\n      \"le\": <EPOCH>\n    }\n  }\n}","Modifie_le":<EPOCH>}
+TRAITÉS : Haute 3 dossiers pour Collège Jean Moulin (0781234A) — Versailles le lun. 20 oct. vérifié le <DATE> Rouvrir

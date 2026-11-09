@@ -1,0 +1,6 @@
+MODÈLE (Signalements) : Standard ✓ | Enseignement supérieur par site
+→ STANDARD : Standard ✓ | Enseignement supérieur par site | {"sites":[]}
+→ PAR SITE (tableau existant) : {"saisie":{"version":"esr","qualificationEnBas":true},"sites":["Sites_concernes:{\"site\":\"Site\",\"libre\":\"Site_libre\",\"qualif\":\"Qualification\",\"historique\":[],\"alias\":\"Sites_correspondances\"}"]}
+VIERGE : Standard ✓ | Enseignement supérieur par site
+→ PAR SITE (création) : {"saisie":{"version":"esr","qualificationEnBas":true},"sites":["Detail_des_sites:{\"site\":\"Site\",\"libre\":\"Site_libre\",\"qualif\":\"Qualification\",\"reprise\":\"auto\",\"historique\":[{\"colonne\":\"Ancien_detail\",\"libre\":\"Nom_du_site\",\"qualif\":\"Qualification\"}]}"]}
+TABLES : Referentiel_sites, Sites_correspondances, Sites_signales, Sites_signales_2

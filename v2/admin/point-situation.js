@@ -1,3 +1,4 @@
+/* global creerSource, creerLecteur, analyserCondition, assemblerPoint, sectionsHTML -- commun/point-moteur.js */
 /* =====================================================================
    Administration v2 — onglet « Point de situation »
    Éditeur guidé (tableaux et conditions, colonnes et leurs lignes, tris) avec aperçu en direct, calculé par le
@@ -6,11 +7,14 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle;
-  const $ = id => document.getElementById(id);
-  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const copie = o => JSON.parse(JSON.stringify(o));
-  const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  const { esc, $ } = Outils;
+  const copie = (o) => JSON.parse(JSON.stringify(o));
+  const norm = (s) =>
+    String(s ?? "")
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .trim();
 
   const DEFAUT = {
     options: {},
@@ -19,11 +23,51 @@
       { Titre: "Etat des mobilisations", Condition: "", Actif: true },
     ],
     colonnes: [
-      { Titre: "Académie", Contenu: "**{Etablissement.Academie}**\n{Etablissement.Departement}", Largeur: 14, Couleur: "17877A", Fusionner: true, Tableaux: "", Actif: true },
-      { Titre: "Établissement", Contenu: "**{Etablissement.Nom}**\n{Etablissement.Commune}\n{nouveau}", Largeur: 30, Couleur: "17877A", Fusionner: false, Tableaux: "", Actif: true },
-      { Titre: "Actions", Contenu: "{Qualification}", Largeur: 14, Couleur: "B2C6BD", Fusionner: false, Tableaux: "", Actif: true },
-      { Titre: "Suites", Contenu: "{Suites}", Largeur: 10, Couleur: "B2C6BD", Fusionner: false, Tableaux: "", Actif: true },
-      { Titre: "Synthèse", Contenu: "{Description|sans_entete}", Largeur: 32, Couleur: "17877A", Fusionner: false, Tableaux: "", Actif: true },
+      {
+        Titre: "Académie",
+        Contenu: "**{Etablissement.Academie}**\n{Etablissement.Departement}",
+        Largeur: 14,
+        Couleur: "17877A",
+        Fusionner: true,
+        Tableaux: "",
+        Actif: true,
+      },
+      {
+        Titre: "Établissement",
+        Contenu: "**{Etablissement.Nom}**\n{Etablissement.Commune}\n{nouveau}",
+        Largeur: 30,
+        Couleur: "17877A",
+        Fusionner: false,
+        Tableaux: "",
+        Actif: true,
+      },
+      {
+        Titre: "Actions",
+        Contenu: "{Qualification}",
+        Largeur: 14,
+        Couleur: "B2C6BD",
+        Fusionner: false,
+        Tableaux: "",
+        Actif: true,
+      },
+      {
+        Titre: "Suites",
+        Contenu: "{Suites}",
+        Largeur: 10,
+        Couleur: "B2C6BD",
+        Fusionner: false,
+        Tableaux: "",
+        Actif: true,
+      },
+      {
+        Titre: "Synthèse",
+        Contenu: "{Description|sans_entete}",
+        Largeur: 32,
+        Couleur: "17877A",
+        Fusionner: false,
+        Tableaux: "",
+        Actif: true,
+      },
     ],
     tri: [
       { Champ: "Etablissement.Academie", Sens: "A→Z", Valeurs: "", Actif: true },
@@ -31,50 +75,105 @@
       { Champ: "Etablissement.Nom", Sens: "A→Z", Valeurs: "", Actif: true },
     ],
   };
-  const SENS = [["A→Z", "croissant (A → Z)"], ["Z→A", "décroissant (Z → A)"], ["Liste", "selon une liste de valeurs"], ["Ordre des choix", "ordre des choix de la colonne"]];
-  const OPERATEURS = [["=", "est"], ["!=", "n'est pas"], ["contient", "contient"], ["ne contient pas", "ne contient pas"], [">", "est supérieur à"], ["<", "est inférieur à"],
-    ["n'est pas vide", "est renseigné"], ["est vide", "est vide"]];
+  const SENS = [
+    ["A→Z", "croissant (A → Z)"],
+    ["Z→A", "décroissant (Z → A)"],
+    ["Liste", "selon une liste de valeurs"],
+    ["Ordre des choix", "ordre des choix de la colonne"],
+  ];
+  const OPERATEURS = [
+    ["=", "est"],
+    ["!=", "n'est pas"],
+    ["contient", "contient"],
+    ["ne contient pas", "ne contient pas"],
+    [">", "est supérieur à"],
+    ["<", "est inférieur à"],
+    ["n'est pas vide", "est renseigné"],
+    ["est vide", "est vide"],
+  ];
   const SANS_VALEUR = new Set(["n'est pas vide", "est vide"]);
-  const STYLES = [["", "normal"], ["**", "gras"], ["==", "surligné"]];
-  const FILTRES_LIB = [["", "tel quel"], ["sans_entete", "sans l'en-tête"], ["majuscules", "en majuscules"], ["date", "date seule"], ["heure", "heure seule"]];
-  const OPTIONS_EN_TETE = [["bandeau", "Bandeau", "Mouvements sociaux"], ["perimetre_court", "Périmètre (bandeau)", "EN"], ["perimetre_long", "Périmètre (titre)", "ENSEIGNEMENT SUPÉRIEUR"]];
-  const OPTIONS_AVANCEES = [["table", "Table des signalements"], ["dossier", "Colonne dossier (version initiale)"], ["date", "Date de saisie (dernière version, mention « nouveau »)"],
-    ["dateFaits", "Date des faits (période)"], ["nature", "Nature (nouveau signalement / mise à jour)"], ["champAcademie", "Champ de l'académie (filtre de l'aperçu et du widget)"],
-    ["modeleTable", "Table du modèle Word"], ["modeleColonne", "Colonne (pièce jointe) du modèle Word"]];
+  const STYLES = [
+    ["", "normal"],
+    ["**", "gras"],
+    ["==", "surligné"],
+  ];
+  const FILTRES_LIB = [
+    ["", "tel quel"],
+    ["sans_entete", "sans l'en-tête"],
+    ["majuscules", "en majuscules"],
+    ["date", "date seule"],
+    ["heure", "heure seule"],
+  ];
+  const OPTIONS_EN_TETE = [
+    ["bandeau", "Bandeau", "Mouvements sociaux"],
+    ["perimetre_court", "Périmètre (bandeau)", "EN"],
+    ["perimetre_long", "Périmètre (titre)", "ENSEIGNEMENT SUPÉRIEUR"],
+  ];
+  const OPTIONS_AVANCEES = [
+    ["table", "Table des signalements"],
+    ["dossier", "Colonne dossier (version initiale)"],
+    ["date", "Date de saisie (dernière version, mention « nouveau »)"],
+    ["dateFaits", "Date des faits (période)"],
+    ["nature", "Nature (nouveau signalement / mise à jour)"],
+    ["champAcademie", "Champ de l'académie (filtre de l'aperçu et du widget)"],
+    ["modeleTable", "Table du modèle Word"],
+    ["modeleColonne", "Colonne (pièce jointe) du modèle Word"],
+  ];
 
-  let config = null, ps = null, brouillon = null, defauts = {}, anciennes = [], demarre = false, minuterie = null, minuterieApercu = null;
-  let champs = [];            // [{ chemin, libelle, groupe, type }]
-  let donnees = null;         // { source, lecteur, lignes } : signalements du document, pour l'aperçu et les valeurs proposées
+  let config = null,
+    ps = null,
+    brouillon = null,
+    defauts = {},
+    anciennes = [],
+    demarre = false,
+    minuterie = null,
+    minuterieApercu = null;
+  let champs = []; // [{ chemin, libelle, groupe, type }]
+  let donnees = null; // { source, lecteur, lignes } : signalements du document, pour l'aperçu et les valeurs proposées
   const valeursCache = new Map();
-  let apercuReglages = { periode: "tout", academie: "" }, dernierPoint = null;
-  const modeLibre = new Set();   // « sections:2 », « colonnes:0 » : éléments affichés en saisie libre
+  let apercuReglages = { periode: "tout", academie: "" },
+    dernierPoint = null;
+  const modeLibre = new Set(); // « sections:2 », « colonnes:0 » : éléments affichés en saisie libre
 
-  const statut = (t, type) => { const e = $("ps-statut"); if (e) { e.textContent = t || ""; e.className = `statut ${type || ""}`; } };
+  const statut = (t, type) => {
+    const e = $("ps-statut");
+    if (e) {
+      e.textContent = t || "";
+      e.className = `statut ${type || ""}`;
+    }
+  };
 
   /* ======================= Chargement ======================= */
   async function charger() {
-    const meta = await S.lireMeta();
-    config = await S.lireConfig(meta);
-    if (!config) { $("ps-editeur").innerHTML = `<p class="statut err">La table Config n'existe pas : terminez d'abord l'installation.</p>`; return false; }
+    const meta = await Socle.lireMeta();
+    config = await Socle.lireConfig(meta);
+    if (!config) {
+      $("ps-editeur").innerHTML =
+        `<p class="statut err">La table Config n'existe pas : terminez d'abord l'installation.</p>`;
+      return false;
+    }
     await lirePagesPS();
-    defauts = await S.reglagesPointParDefaut(meta, config);
+    defauts = await Socle.reglagesPointParDefaut(meta, config);
     ps = config.valeurs.point_situation || {};
     brouillon = copie(ps.brouillon || ps.publie || DEFAUT);
     for (const k of ["options", "sections", "colonnes", "tri"]) if (!brouillon[k]) brouillon[k] = copie(DEFAUT[k]);
-    for (const c of brouillon.colonnes) c.Tableaux = listeTableaux(c).join(", ");   // séparateur lu par le moteur
-    anciennes = ["Colonnes_point", "Sections_point", "Tri_point"].filter(n => meta[n]);
+    for (const c of brouillon.colonnes) c.Tableaux = listeTableaux(c).join(", "); // séparateur lu par le moteur
+    anciennes = ["Colonnes_point", "Sections_point", "Tri_point"].filter((n) => meta[n]);
     // champs proposés : colonnes des signalements, et colonnes des tables visées par leurs références
-    const table = brouillon.options.table || defauts.table, t = meta[table];
+    const table = brouillon.options.table || defauts.table,
+      t = meta[table];
     champs = [];
     if (t) {
-      const lib = c => c.label && c.label !== c.colId ? c.label : c.colId.replace(/_/g, " ");
-      const technique = c => /^(manualSort|gristHelper)/.test(c.colId);
-      for (const c of Object.values(t.colonnes)) if (!technique(c)) champs.push({ chemin: c.colId, libelle: lib(c), groupe: "Signalement", type: c.type });
+      const lib = (c) => (c.label && c.label !== c.colId ? c.label : c.colId.replace(/_/g, " "));
+      const technique = (c) => /^(manualSort|gristHelper)/.test(c.colId);
+      for (const c of Object.values(t.colonnes))
+        if (!technique(c)) champs.push({ chemin: c.colId, libelle: lib(c), groupe: "Signalement", type: c.type });
       for (const c of Object.values(t.colonnes)) {
-        const cible = S.cibleRef(c.type);
+        const cible = Socle.cibleRef(c.type);
         if (!cible || !meta[cible] || cible === table) continue;
-        for (const c2 of Object.values(meta[cible].colonnes)) if (!technique(c2))
-          champs.push({ chemin: `${c.colId}.${c2.colId}`, libelle: lib(c2), groupe: lib(c), type: c2.type });
+        for (const c2 of Object.values(meta[cible].colonnes))
+          if (!technique(c2))
+            champs.push({ chemin: `${c.colId}.${c2.colId}`, libelle: lib(c2), groupe: lib(c), type: c2.type });
       }
     }
     await chargerDonnees();
@@ -84,24 +183,40 @@
     valeursCache.clear();
     const table = brouillon.options.table || defauts.table;
     try {
-      const source = creerSource(), base = await source.table(table), lecteur = await creerLecteur(source, table);
-      await lecteur.preparer(champs.map(c => c.chemin));
+      const source = creerSource(),
+        base = await source.table(table),
+        lecteur = await creerLecteur(source, table);
+      await lecteur.preparer(champs.map((c) => c.chemin));
       donnees = { source, lecteur, lignes: base.lignes };
-    } catch (e) { donnees = null; console.warn(e); }
+    } catch (e) {
+      donnees = null;
+      console.warn(e);
+    }
   }
   // valeurs présentes dans les signalements pour un champ (et choix de la colonne), pour les propositions
   function valeursDe(chemin) {
     if (!chemin || !donnees) return [];
     if (valeursCache.has(chemin)) return valeursCache.get(chemin);
-    const compte = new Map(), ajouter = v => { const s = String(v ?? "").trim(); if (s) compte.set(s, (compte.get(s) || 0) + 1); };
+    const compte = new Map(),
+      ajouter = (v) => {
+        const s = String(v ?? "").trim();
+        if (s) compte.set(s, (compte.get(s) || 0) + 1);
+      };
     for (const r of donnees.lignes) {
       const v = donnees.lecteur.lire(r, chemin);
-      if (Array.isArray(v)) v.forEach(ajouter); else if (v === true) ajouter("Oui"); else if (v === false) ajouter("Non");
+      if (Array.isArray(v)) v.forEach(ajouter);
+      else if (v === true) ajouter("Oui");
+      else if (v === false) ajouter("Non");
       else if (!(v instanceof Date) && typeof v !== "object") ajouter(v);
     }
-    let choix = []; try { choix = donnees.lecteur.choix(chemin) || []; } catch (_) {}
-    const liste = [...new Set([...choix.map(String), ...[...compte.keys()].sort((a, b) => compte.get(b) - compte.get(a))])].slice(0, 200);
-    const info = champs.find(c => c.chemin === chemin);
+    let choix = [];
+    try {
+      choix = donnees.lecteur.choix(chemin) || [];
+    } catch (_) {}
+    const liste = [
+      ...new Set([...choix.map(String), ...[...compte.keys()].sort((a, b) => compte.get(b) - compte.get(a))]),
+    ].slice(0, 200);
+    const info = champs.find((c) => c.chemin === chemin);
     if (info && info.type === "Bool" && !liste.length) liste.push("Oui", "Non");
     valeursCache.set(chemin, liste);
     return liste;
@@ -109,170 +224,353 @@
 
   /* ======================= Enregistrement ======================= */
   function modifie(structure) {
-    clearTimeout(minuterie); statut("Modifications non enregistrées…");
+    clearTimeout(minuterie);
+    statut("Modifications non enregistrées…");
     minuterie = setTimeout(sauverBrouillon, 700);
-    if (structure) dessinerEditeur(); else dessinerEtat();
+    if (structure) dessinerEditeur();
+    else dessinerEtat();
     planifierApercu();
   }
   async function sauverBrouillon() {
     clearTimeout(minuterie);
     try {
       ps = { ...ps, brouillon: copie(brouillon), modifie_le: Date.now() / 1000 };
-      await S.ecrireConfig("point_situation", ps);
-      statut("Brouillon enregistré.", "ok"); dessinerEtat();
-    } catch (e) { statut(`Brouillon non enregistré : ${e.message || e}`, "err"); }
+      await Socle.ecrireConfig("point_situation", ps);
+      statut("Brouillon enregistré.", "ok");
+      dessinerEtat();
+    } catch (e) {
+      statut(`Brouillon non enregistré : ${e.message || e}`, "err");
+    }
   }
   /* ---------- Page Grist du widget ---------- */
   const URL_PS = /\/point-situation\/?(index\.html)?(\?.*)?$/i;
   let pagesPS = [];
   async function lirePagesPS() {
     try {
-      const [sec, vues] = await Promise.all([grist.docApi.fetchTable("_grist_Views_section"), grist.docApi.fetchTable("_grist_Views")]);
-      pagesPS = sec.id.map((id, i) => {
-        if (sec.parentKey[i] !== "custom") return null;
-        let cv = {}; try { const o = JSON.parse(sec.options[i] || "{}") || {}; cv = typeof o.customView === "string" ? JSON.parse(o.customView || "{}") : (o.customView || {}); } catch (_) { cv = {}; }
-        if (!URL_PS.test(cv.url || "")) return null;
-        const v = vues.id.indexOf(sec.parentId[i]);
-        return { section: id, vue: sec.parentId[i], nom: v >= 0 ? String(vues.name[v] || "") : "" };
-      }).filter(Boolean);
-    } catch (_) { pagesPS = []; }
+      const [sec, vues] = await Promise.all([Donnees.lire("_grist_Views_section"), Donnees.lire("_grist_Views")]);
+      pagesPS = sec.id
+        .map((id, i) => {
+          if (sec.parentKey[i] !== "custom") return null;
+          let cv = {};
+          try {
+            const o = JSON.parse(sec.options[i] || "{}") || {};
+            cv = typeof o.customView === "string" ? JSON.parse(o.customView || "{}") : o.customView || {};
+          } catch (_) {
+            cv = {};
+          }
+          if (!URL_PS.test(cv.url || "")) return null;
+          const v = vues.id.indexOf(sec.parentId[i]);
+          return { section: id, vue: sec.parentId[i], nom: v >= 0 ? String(vues.name[v] || "") : "" };
+        })
+        .filter(Boolean);
+    } catch (_) {
+      pagesPS = [];
+    }
     return pagesPS;
   }
   // Page « Point de situation » : widget du point de situation (accès complet), liée à la table des signalements
   async function creerPagePS() {
-    const o = { ...defauts, ...Object.fromEntries(Object.entries((ps.publie || brouillon).options || {}).filter(([, v]) => v !== "" && v != null)) };
+    const o = {
+      ...defauts,
+      ...Object.fromEntries(
+        Object.entries((ps.publie || brouillon).options || {}).filter(([, v]) => v !== "" && v != null),
+      ),
+    };
     const table = o.table || "Reponses";
-    const T = await grist.docApi.fetchTable("_grist_Tables"), ref = T.id[T.tableId.indexOf(table)];
+    const T = await Donnees.lire("_grist_Tables"),
+      ref = T.id[T.tableId.indexOf(table)];
     if (ref == null) throw new Error(`table ${table} introuvable`);
-    const res = await grist.docApi.applyUserActions([["CreateViewSection", ref, 0, "custom", null, null]]);
+    const res = await Donnees.ecrire([["CreateViewSection", ref, 0, "custom", null, null]]);
     const rv = (res && res.retValues && res.retValues[0]) || {};
     if (!rv.sectionRef) throw new Error("Grist n'a pas indiqué la vue créée");
-    const sec = await grist.docApi.fetchTable("_grist_Views_section"), i = sec.id.indexOf(rv.sectionRef);
-    let op = {}; try { op = JSON.parse((i >= 0 && sec.options[i]) || "{}") || {}; } catch (_) { op = {}; }
-    let url; try { url = new URL("../point-situation/", location.href).href; } catch (_) { url = ""; }
+    const sec = await Donnees.lire("_grist_Views_section"),
+      i = sec.id.indexOf(rv.sectionRef);
+    let op = {};
+    try {
+      op = JSON.parse((i >= 0 && sec.options[i]) || "{}") || {};
+    } catch (_) {
+      op = {};
+    }
+    let url;
+    try {
+      url = new URL("../point-situation/", location.href).href;
+    } catch (_) {
+      url = "";
+    }
     if (!/^https?:/.test(url)) url = "https://majouble.github.io/test-formulaire/v2/point-situation/";
     op.customView = JSON.stringify({ mode: "url", url, access: "full", widgetOptions: {} });
     const nom = pagesPS.length ? `Point de situation (${pagesPS.length + 1})` : "Point de situation";
-    await grist.docApi.applyUserActions([["UpdateRecord", "_grist_Views_section", rv.sectionRef, { options: JSON.stringify(op), title: "" }],
-      ...(rv.viewRef ? [["UpdateRecord", "_grist_Views", rv.viewRef, { name: nom }]] : [])]);
+    await Donnees.ecrire([
+      ["UpdateRecord", "_grist_Views_section", rv.sectionRef, { options: JSON.stringify(op), title: "" }],
+      ...(rv.viewRef ? [["UpdateRecord", "_grist_Views", rv.viewRef, { name: nom }]] : []),
+    ]);
     await lirePagesPS();
     return nom;
   }
   function dessinerPagesPS() {
-    const z = $("ps-pages"); if (!z) return;
-    z.innerHTML = pagesPS.length ? `<span class="pastille ok" title="Page Grist qui affiche le widget du point de situation">Page : ${pagesPS.map(p => `« ${esc(p.nom)} »`).join(", ")}</span>`
+    const z = $("ps-pages");
+    if (!z) return;
+    z.innerHTML = pagesPS.length
+      ? `<span class="pastille ok" title="Page Grist qui affiche le widget du point de situation">Page : ${pagesPS.map((p) => `« ${esc(p.nom)} »`).join(", ")}</span>`
       : `<button class="secondaire" id="ps-creer-page" title="Page Grist avec le widget du point de situation">Créer la page</button>`;
-    if ($("ps-creer-page")) $("ps-creer-page").addEventListener("click", async () => {
-      try { const nom = await creerPagePS(); dessinerPagesPS(); statut(`Page « ${nom} » créée : elle apparaît dans la liste des pages de Grist, à gauche.`, "ok"); }
-      catch (e) { statut(`Création de la page refusée par Grist : ${e.message || e}`, "err"); }
-    });
+    if ($("ps-creer-page"))
+      $("ps-creer-page").addEventListener("click", async () => {
+        try {
+          const nom = await creerPagePS();
+          dessinerPagesPS();
+          statut(`Page « ${nom} » créée : elle apparaît dans la liste des pages de Grist, à gauche.`, "ok");
+        } catch (e) {
+          statut(`Création de la page refusée par Grist : ${e.message || e}`, "err");
+        }
+      });
   }
 
   async function publier() {
     clearTimeout(minuterie);
-    if (!brouillon.sections.some(x => x.Actif !== false)) { statut("Ajoutez au moins un tableau actif avant de publier.", "err"); return; }
-    if (dernierPoint && dernierPoint.horsSection && !confirm(`${dernierPoint.horsSection} signalement(s) n'entrent dans aucun tableau et n'apparaîtront pas. Publier quand même ?`)) return;
+    if (!brouillon.sections.some((x) => x.Actif !== false)) {
+      statut("Ajoutez au moins un tableau actif avant de publier.", "err");
+      return;
+    }
+    if (
+      dernierPoint &&
+      dernierPoint.horsSection &&
+      !confirm(
+        `${dernierPoint.horsSection} signalement(s) n'entrent dans aucun tableau et n'apparaîtront pas. Publier quand même ?`,
+      )
+    )
+      return;
     try {
-      ps = { ...ps, brouillon: copie(brouillon), publie: copie(brouillon), publie_le: Date.now() / 1000, modifie_le: Date.now() / 1000 };
-      await S.ecrireConfig("point_situation", ps);
+      ps = {
+        ...ps,
+        brouillon: copie(brouillon),
+        publie: copie(brouillon),
+        publie_le: Date.now() / 1000,
+        modifie_le: Date.now() / 1000,
+      };
+      await Socle.ecrireConfig("point_situation", ps);
       // première publication sans page : la page du widget est créée d'office, comme pour un formulaire
       let page = "";
       if (!(await lirePagesPS()).length) {
-        try { page = ` Page « ${await creerPagePS()} » créée : elle apparaît dans la liste des pages de Grist, à gauche.`; }
-        catch (e) { page = ` La page n'a pas pu être créée (${e.message || e}) : bouton « Créer la page ».`; }
+        try {
+          page = ` Page « ${await creerPagePS()} » créée : elle apparaît dans la liste des pages de Grist, à gauche.`;
+        } catch (e) {
+          page = ` La page n'a pas pu être créée (${e.message || e}) : bouton « Créer la page ».`;
+        }
       }
       dessinerEditeur();
-      statut(page ? `Configuration publiée.${page}` : "Configuration publiée : actualisez le widget du point de situation (bouton « Actualiser ») pour l'appliquer.", "ok");
-    } catch (e) { statut(`Publication impossible : ${e.message || e}`, "err"); }
+      statut(
+        page
+          ? `Configuration publiée.${page}`
+          : "Configuration publiée : actualisez le widget du point de situation (bouton « Actualiser ») pour l'appliquer.",
+        "ok",
+      );
+    } catch (e) {
+      statut(`Publication impossible : ${e.message || e}`, "err");
+    }
   }
   const egalPublie = () => !!ps.publie && JSON.stringify(ps.publie) === JSON.stringify(brouillon);
 
   async function importer() {
-    if (!confirm("Remplacer le brouillon par la configuration des tables Colonnes_point, Sections_point et Tri_point (et des réglages de la table Parametres) ?")) return;
-    const lire = async n => { try { const t = await grist.docApi.fetchTable(n); return t.id.map((id, i) => Object.fromEntries(Object.keys(t).filter(k => k !== "id" && k !== "manualSort").map(k => [k, t[k][i]]))); } catch (_) { return null; } };
-    const ordre = a => (a || []).slice().sort((x, y) => (x.Ordre ?? 1e9) - (y.Ordre ?? 1e9));
-    const garder = (l, cles) => l.map(r => Object.fromEntries(cles.map(k => [k, r[k] ?? (k === "Actif" ? true : "")])));
+    if (
+      !confirm(
+        "Remplacer le brouillon par la configuration des tables Colonnes_point, Sections_point et Tri_point (et des réglages de la table Parametres) ?",
+      )
+    )
+      return;
+    const lire = async (n) => {
+      try {
+        const t = await Donnees.lire(n);
+        return t.id.map((id, i) =>
+          Object.fromEntries(
+            Object.keys(t)
+              .filter((k) => k !== "id" && k !== "manualSort")
+              .map((k) => [k, t[k][i]]),
+          ),
+        );
+      } catch (_) {
+        return null;
+      }
+    };
+    const ordre = (a) => (a || []).slice().sort((x, y) => (x.Ordre ?? 1e9) - (y.Ordre ?? 1e9));
+    const garder = (l, cles) =>
+      l.map((r) => Object.fromEntries(cles.map((k) => [k, r[k] ?? (k === "Actif" ? true : "")])));
     const [c, s, t] = await Promise.all(["Colonnes_point", "Sections_point", "Tri_point"].map(lire));
-    if (c) brouillon.colonnes = garder(ordre(c), ["Titre", "Contenu", "Largeur", "Couleur", "Fusionner", "Tableaux", "Actif"]);
+    if (c)
+      brouillon.colonnes = garder(ordre(c), [
+        "Titre",
+        "Contenu",
+        "Largeur",
+        "Couleur",
+        "Fusionner",
+        "Tableaux",
+        "Actif",
+      ]);
     if (s) brouillon.sections = garder(ordre(s), ["Titre", "Condition", "Actif"]);
     if (t) brouillon.tri = garder(ordre(t), ["Champ", "Sens", "Valeurs", "Actif"]);
     try {
-      const p = await grist.docApi.fetchTable("Parametres"), v = (p.Reglages_point_situation || []).find(x => x && String(x).trim());
+      const p = await Donnees.lire("Parametres"),
+        v = (p.Reglages_point_situation || []).find((x) => x && String(x).trim());
       if (v) brouillon.options = Object.fromEntries(Object.entries(JSON.parse(v)).filter(([k]) => k !== "tri"));
-    } catch (_) { /* pas de réglages */ }
-    modifie(true); await sauverBrouillon();
+    } catch (_) {
+      /* pas de réglages */
+    }
+    modifie(true);
+    await sauverBrouillon();
     statut("Configuration importée dans le brouillon : vérifiez-la avec l'aperçu, puis publiez.", "ok");
   }
   async function preparerModele() {
     try {
-      const meta = await S.lireMeta(), acts = [];
-      if (!meta[S.TABLE_CONFIG].colonnes.Fichier) acts.push(["AddColumn", S.TABLE_CONFIG, "Fichier", { type: "Attachments", isFormula: false }]);
-      const cfg = await S.lireConfig(meta);
-      if (!cfg.ids.modele_point_situation) acts.push(["AddRecord", S.TABLE_CONFIG, null, { Cle: "modele_point_situation", Valeur: JSON.stringify({ role: "Modèle Word du point de situation (pièce jointe dans la colonne Fichier)" }) }]);
-      if (acts.length) await grist.docApi.applyUserActions(acts);
-      statut("Emplacement prêt : dans Grist, « Données brutes › Config », ligne « modele_point_situation », déposez le modèle .docx dans la cellule Fichier.", "ok");
-    } catch (e) { statut(`Préparation impossible : ${e.message || e}`, "err"); }
+      const meta = await Socle.lireMeta(),
+        acts = [];
+      if (!meta[Socle.TABLE_CONFIG].colonnes.Fichier)
+        acts.push(["AddColumn", Socle.TABLE_CONFIG, "Fichier", { type: "Attachments", isFormula: false }]);
+      const cfg = await Socle.lireConfig(meta);
+      if (!cfg.ids.modele_point_situation)
+        acts.push([
+          "AddRecord",
+          Socle.TABLE_CONFIG,
+          null,
+          {
+            Cle: "modele_point_situation",
+            Valeur: JSON.stringify({
+              role: "Modèle Word du point de situation (pièce jointe dans la colonne Fichier)",
+            }),
+          },
+        ]);
+      if (acts.length) await Donnees.ecrire(acts);
+      statut(
+        "Emplacement prêt : dans Grist, « Données brutes › Config », ligne « modele_point_situation », déposez le modèle .docx dans la cellule Fichier.",
+        "ok",
+      );
+    } catch (e) {
+      statut(`Préparation impossible : ${e.message || e}`, "err");
+    }
   }
 
   /* ======================= Conditions : texte ⇄ clauses ======================= */
   function versClauses(texte) {
     const t = String(texte || "").trim();
     if (!t) return [];
-    const morceaux = t.split(/\s+(et|ou)\s+/i), res = [];
+    const morceaux = t.split(/\s+(et|ou)\s+/i),
+      res = [];
     for (let i = 0; i < morceaux.length; i += 2) {
       const a = analyserCondition(morceaux[i]);
       if (!a) return null;
-      const connu = champs.find(c => c.chemin === a.chemin) || champs.find(c => norm(c.chemin) === norm(a.chemin) || norm(c.libelle) === norm(a.chemin));
-      res.push({ lien: i ? morceaux[i - 1].toLowerCase() : "et", chemin: connu ? connu.chemin : a.chemin, op: a.op, val: a.brut });
+      const connu =
+        champs.find((c) => c.chemin === a.chemin) ||
+        champs.find((c) => norm(c.chemin) === norm(a.chemin) || norm(c.libelle) === norm(a.chemin));
+      res.push({
+        lien: i ? morceaux[i - 1].toLowerCase() : "et",
+        chemin: connu ? connu.chemin : a.chemin,
+        op: a.op,
+        val: a.brut,
+      });
     }
     return res;
   }
-  const versTexte = clauses => clauses.filter(c => c.chemin).map((c, i) => `${i ? ` ${c.lien} ` : ""}${`${c.chemin} ${c.op}${SANS_VALEUR.has(c.op) ? "" : ` ${c.val || ""}`}`.trimEnd()}`).join("");
+  const versTexte = (clauses) =>
+    clauses
+      .filter((c) => c.chemin)
+      .map(
+        (c, i) =>
+          `${i ? ` ${c.lien} ` : ""}${`${c.chemin} ${c.op}${SANS_VALEUR.has(c.op) ? "" : ` ${c.val || ""}`}`.trimEnd()}`,
+      )
+      .join("");
 
   /* ======================= Contenu d'une colonne : texte ⇄ lignes ======================= */
   function versLignes(contenu) {
     if (!String(contenu || "")) return [];
-    return String(contenu).split(/\n|\\n/).map(l => {
-      const m = l.match(/^(\*\*|==)?\{([^{}|]+?)(?:\|([^{}]+))?\}(\*\*|==)?$/);
-      if (m && (m[1] || "") === (m[4] || "")) {
-        if (m[2].trim() === "nouveau") return { type: "nouveau" };
-        return { type: "champ", chemin: m[2].trim(), style: m[1] || "", filtre: (m[3] || "").trim() };
-      }
-      return { type: "texte", texte: l };
-    });
+    return String(contenu)
+      .split(/\n|\\n/)
+      .map((l) => {
+        const m = l.match(/^(\*\*|==)?\{([^{}|]+?)(?:\|([^{}]+))?\}(\*\*|==)?$/);
+        if (m && (m[1] || "") === (m[4] || "")) {
+          if (m[2].trim() === "nouveau") return { type: "nouveau" };
+          return { type: "champ", chemin: m[2].trim(), style: m[1] || "", filtre: (m[3] || "").trim() };
+        }
+        return { type: "texte", texte: l };
+      });
   }
-  const versContenu = lignes => lignes.map(l => l.type === "nouveau" ? "{nouveau}" : l.type === "texte" ? l.texte
-    : `${l.style || ""}{${l.chemin}${l.filtre ? `|${l.filtre}` : ""}}${l.style || ""}`).join("\n");
-  const listeTableaux = c => String(c.Tableaux || "").split(/,|\n|;/).map(x => x.trim()).filter(Boolean);
+  const versContenu = (lignes) =>
+    lignes
+      .map((l) =>
+        l.type === "nouveau"
+          ? "{nouveau}"
+          : l.type === "texte"
+            ? l.texte
+            : `${l.style || ""}{${l.chemin}${l.filtre ? `|${l.filtre}` : ""}}${l.style || ""}`,
+      )
+      .join("\n");
+  const listeTableaux = (c) =>
+    String(c.Tableaux || "")
+      .split(/,|\n|;/)
+      .map((x) => x.trim())
+      .filter(Boolean);
 
   /* ======================= Rendu de l'éditeur ======================= */
   function optionsChamps(choisi, avecVide = true) {
-    const groupes = [...new Set(champs.map(c => c.groupe))];
-    const inconnu = choisi && !champs.some(c => c.chemin === choisi) ? `<option value="${esc(choisi)}" selected>${esc(choisi)} (introuvable)</option>` : "";
-    return (avecVide ? `<option value="">— choisir un champ —</option>` : "") + inconnu + groupes.map(g => `<optgroup label="${esc(g)}">${champs.filter(c => c.groupe === g)
-      .map(c => `<option value="${esc(c.chemin)}" ${c.chemin === choisi ? "selected" : ""}>${esc(c.groupe === "Signalement" ? c.libelle : `${c.groupe} › ${c.libelle}`)}</option>`).join("")}</optgroup>`).join("");
+    const groupes = [...new Set(champs.map((c) => c.groupe))];
+    const inconnu =
+      choisi && !champs.some((c) => c.chemin === choisi)
+        ? `<option value="${esc(choisi)}" selected>${esc(choisi)} (introuvable)</option>`
+        : "";
+    return (
+      (avecVide ? `<option value="">— choisir un champ —</option>` : "") +
+      inconnu +
+      groupes
+        .map(
+          (g) =>
+            `<optgroup label="${esc(g)}">${champs
+              .filter((c) => c.groupe === g)
+              .map(
+                (c) =>
+                  `<option value="${esc(c.chemin)}" ${c.chemin === choisi ? "selected" : ""}>${esc(c.groupe === "Signalement" ? c.libelle : `${c.groupe} › ${c.libelle}`)}</option>`,
+              )
+              .join("")}</optgroup>`,
+        )
+        .join("")
+    );
   }
-  const libelleChamp = ch => { const c = champs.find(x => x.chemin === ch); return c ? (c.groupe === "Signalement" ? c.libelle : `${c.groupe} › ${c.libelle}`) : ch; };
   const outils = (liste, i, n) => `<span class="ps-outils">
       <button type="button" class="ps-mini" data-act="haut" data-liste="${liste}" data-i="${i}" title="Monter" ${i === 0 ? "disabled" : ""}>↑</button>
       <button type="button" class="ps-mini" data-act="bas" data-liste="${liste}" data-i="${i}" title="Descendre" ${i === n - 1 ? "disabled" : ""}>↓</button>
       <button type="button" class="ps-mini danger" data-act="retirer" data-liste="${liste}" data-i="${i}" title="Retirer">×</button></span>`;
-  const interrupteur = (liste, i, actif) => `<label class="ps-actif" title="Inclure dans le point"><input type="checkbox" data-liste="${liste}" data-i="${i}" data-cle="Actif" ${actif !== false ? "checked" : ""}> actif</label>`;
-  const compte = i => { if (!dernierPoint) return ""; const s = dernierPoint.parSection[i]; return s == null ? "" : `<span class="pastille ${s ? "ok" : ""}">${s} signalement${s > 1 ? "s" : ""}</span>`; };
+  const interrupteur = (liste, i, actif) =>
+    `<label class="ps-actif" title="Inclure dans le point"><input type="checkbox" data-liste="${liste}" data-i="${i}" data-cle="Actif" ${actif !== false ? "checked" : ""}> actif</label>`;
+  const compte = (i) => {
+    if (!dernierPoint) return "";
+    const s = dernierPoint.parSection[i];
+    return s == null ? "" : `<span class="pastille ${s ? "ok" : ""}">${s} signalement${s > 1 ? "s" : ""}</span>`;
+  };
 
   function htmlSection(r, i) {
-    const cle = `sections:${i}`, clauses = versClauses(r.Condition), libre = modeLibre.has(cle) || clauses === null;
+    const cle = `sections:${i}`,
+      clauses = versClauses(r.Condition),
+      libre = modeLibre.has(cle) || clauses === null;
     const corps = libre
       ? `<input type="text" data-liste="sections" data-i="${i}" data-cle="Condition" value="${esc(r.Condition || "")}" placeholder="vide = tous les autres signalements">
          ${clauses === null ? `<small class="ps-note err">Condition non reconnue par l'assistant : modifiez-la ici.</small>` : ""}`
-      : `${clauses.length ? clauses.map((c, k) => `<div class="ps-clause">
+      : `${
+          clauses.length
+            ? clauses
+                .map(
+                  (c, k) => `<div class="ps-clause">
             ${k ? `<select class="ps-lien" data-clause="${k}" data-i="${i}" data-cc="lien"><option value="et" ${c.lien === "et" ? "selected" : ""}>et</option><option value="ou" ${c.lien === "ou" ? "selected" : ""}>ou</option></select>` : `<span class="ps-lien-1">si</span>`}
             <select data-clause="${k}" data-i="${i}" data-cc="chemin">${optionsChamps(c.chemin)}</select>
             <select data-clause="${k}" data-i="${i}" data-cc="op">${OPERATEURS.map(([v, l]) => `<option value="${esc(v)}" ${v === c.op ? "selected" : ""}>${l}</option>`).join("")}</select>
-            ${SANS_VALEUR.has(c.op) ? "" : `<input type="text" data-clause="${k}" data-i="${i}" data-cc="val" value="${esc(c.val)}" list="ps-v-${i}-${k}" placeholder="valeur">
-              <datalist id="ps-v-${i}-${k}">${valeursDe(c.chemin).map(v => `<option value="${esc(v)}">`).join("")}</datalist>`}
-            <button type="button" class="ps-mini danger" data-act="clause-retirer" data-i="${i}" data-k="${k}" title="Retirer la condition">×</button></div>`).join("")
-          : `<p class="ps-note">${i === brouillon.sections.length - 1 ? "Sans condition : reçoit tous les signalements qui ne sont pas déjà dans un tableau." : "Sans condition : ce tableau prend tous les signalements restants ; les tableaux suivants resteront vides."}</p>`}
+            ${
+              SANS_VALEUR.has(c.op)
+                ? ""
+                : `<input type="text" data-clause="${k}" data-i="${i}" data-cc="val" value="${esc(c.val)}" list="ps-v-${i}-${k}" placeholder="valeur">
+              <datalist id="ps-v-${i}-${k}">${valeursDe(c.chemin)
+                .map((v) => `<option value="${esc(v)}">`)
+                .join("")}</datalist>`
+            }
+            <button type="button" class="ps-mini danger" data-act="clause-retirer" data-i="${i}" data-k="${k}" title="Retirer la condition">×</button></div>`,
+                )
+                .join("")
+            : `<p class="ps-note">${i === brouillon.sections.length - 1 ? "Sans condition : reçoit tous les signalements qui ne sont pas déjà dans un tableau." : "Sans condition : ce tableau prend tous les signalements restants ; les tableaux suivants resteront vides."}</p>`
+        }
          <button type="button" class="ps-lienbtn" data-act="clause-ajouter" data-i="${i}">+ condition</button>`;
     return `<div class="ps-bloc${r.Actif === false ? " inactif" : ""}">
       <div class="ps-bloc-tete"><span class="ps-num">${i + 1}</span>
@@ -283,21 +581,32 @@
   }
 
   function htmlColonne(r, i) {
-    const cle = `colonnes:${i}`, libre = modeLibre.has(cle), lignes = versLignes(r.Contenu), tabs = listeTableaux(r);
-    const titres = brouillon.sections.map(s => s.Titre).filter(Boolean);
+    const cle = `colonnes:${i}`,
+      libre = modeLibre.has(cle),
+      lignes = versLignes(r.Contenu),
+      tabs = listeTableaux(r);
+    const titres = brouillon.sections.map((s) => s.Titre).filter(Boolean);
     const corps = libre
       ? `<textarea rows="3" data-liste="colonnes" data-i="${i}" data-cle="Contenu">${esc(r.Contenu || "")}</textarea>
          <small class="ps-note">Champs entre accolades, <code>{nouveau}</code>, filtres <code>|sans_entete</code> <code>|majuscules</code> <code>|date</code> <code>|heure</code>, <code>**gras**</code>, <code>==surligné==</code>.</small>`
-      : `${lignes.map((l, k) => `<div class="ps-clause">
+      : `${lignes
+          .map(
+            (l, k) => `<div class="ps-clause">
             <span class="ps-ligne-n">${k + 1}</span>
-            ${l.type === "champ" ? `<select data-ligne="${k}" data-i="${i}" data-lc="chemin">${optionsChamps(l.chemin, false)}</select>
+            ${
+              l.type === "champ"
+                ? `<select data-ligne="${k}" data-i="${i}" data-lc="chemin">${optionsChamps(l.chemin, false)}</select>
               <select data-ligne="${k}" data-i="${i}" data-lc="style">${STYLES.map(([v, t]) => `<option value="${v}" ${v === (l.style || "") ? "selected" : ""}>${t}</option>`).join("")}</select>
               <select data-ligne="${k}" data-i="${i}" data-lc="filtre">${FILTRES_LIB.map(([v, t]) => `<option value="${v}" ${v === (l.filtre || "") ? "selected" : ""}>${t}</option>`).join("")}</select>`
-            : l.type === "nouveau" ? `<span class="ps-badge">Mention « Nouveau signalement » (si nouveau depuis le dernier point)</span>`
-            : `<input type="text" data-ligne="${k}" data-i="${i}" data-lc="texte" value="${esc(l.texte)}" placeholder="texte libre (peut contenir des {champs})">`}
+                : l.type === "nouveau"
+                  ? `<span class="ps-badge">Mention « Nouveau signalement » (si nouveau depuis le dernier point)</span>`
+                  : `<input type="text" data-ligne="${k}" data-i="${i}" data-lc="texte" value="${esc(l.texte)}" placeholder="texte libre (peut contenir des {champs})">`
+            }
             <span class="ps-outils"><button type="button" class="ps-mini" data-act="ligne-haut" data-i="${i}" data-k="${k}" ${k === 0 ? "disabled" : ""}>↑</button>
             <button type="button" class="ps-mini" data-act="ligne-bas" data-i="${i}" data-k="${k}" ${k === lignes.length - 1 ? "disabled" : ""}>↓</button>
-            <button type="button" class="ps-mini danger" data-act="ligne-retirer" data-i="${i}" data-k="${k}">×</button></span></div>`).join("")}
+            <button type="button" class="ps-mini danger" data-act="ligne-retirer" data-i="${i}" data-k="${k}">×</button></span></div>`,
+          )
+          .join("")}
          <div class="ps-ajouts"><span>Ajouter une ligne :</span>
            <select data-act-select="ligne-ajouter" data-i="${i}">${optionsChamps("", true).replace("— choisir un champ —", "un champ…")}</select>
            <button type="button" class="ps-lienbtn" data-act="ligne-nouveau" data-i="${i}">mention « Nouveau »</button>
@@ -311,36 +620,64 @@
       <div class="ps-bloc-corps">${corps}
         <div class="ps-options-col">
           <label class="ps-petit"><input type="checkbox" data-liste="colonnes" data-i="${i}" data-cle="Fusionner" ${r.Fusionner ? "checked" : ""}> fusionner les cellules identiques qui se suivent</label>
-          ${titres.length > 1 ? `<span class="ps-petit">Tableaux :</span>${titres.map(t => `<button type="button" class="puce-ps${tabs.includes(t) ? " on" : ""}" data-act="tableau" data-i="${i}" data-titre="${esc(t)}">${esc(t)}</button>`).join("")}<span class="ps-petit">${tabs.length ? "" : "(tous)"}</span>` : ""}
+          ${titres.length > 1 ? `<span class="ps-petit">Tableaux :</span>${titres.map((t) => `<button type="button" class="puce-ps${tabs.includes(t) ? " on" : ""}" data-act="tableau" data-i="${i}" data-titre="${esc(t)}">${esc(t)}</button>`).join("")}<span class="ps-petit">${tabs.length ? "" : "(tous)"}</span>` : ""}
         </div>
         <button type="button" class="ps-lienbtn discret" data-act="libre" data-cle-libre="${cle}">${libre ? "Assistant" : "Saisie libre"}</button></div></div>`;
   }
 
   function htmlTri(r, i) {
-    const vals = String(r.Valeurs || "").split(/\n|;/).map(x => x.trim()).filter(Boolean);
-    const dispo = r.Sens === "Liste" ? valeursDe(r.Champ).filter(v => !vals.some(x => norm(x) === norm(v))) : [];
+    const vals = String(r.Valeurs || "")
+      .split(/\n|;/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+    const dispo = r.Sens === "Liste" ? valeursDe(r.Champ).filter((v) => !vals.some((x) => norm(x) === norm(v))) : [];
     return `<div class="ps-bloc${r.Actif === false ? " inactif" : ""}">
       <div class="ps-bloc-tete"><span class="ps-num">${i + 1}</span>
         <select data-liste="tri" data-i="${i}" data-cle="Champ">${optionsChamps(r.Champ)}</select>
         <select data-liste="tri" data-i="${i}" data-cle="Sens">${SENS.map(([v, l]) => `<option value="${v}" ${v === (r.Sens || "A→Z") ? "selected" : ""}>${l}</option>`).join("")}</select>
         ${interrupteur("tri", i, r.Actif)}${outils("tri", i, brouillon.tri.length)}</div>
-      ${r.Sens === "Liste" ? `<div class="ps-bloc-corps"><span class="ps-petit">Ordre imposé (les autres valeurs suivent par ordre alphabétique) :</span>
-        <div class="puces-ps">${vals.map((v, k) => `<span class="puce-ps on">${k + 1}. ${esc(v)}
-          <button type="button" data-act="val-haut" data-i="${i}" data-k="${k}" title="Avancer" ${k === 0 ? "disabled" : ""}>‹</button><button type="button" data-act="val-retirer" data-i="${i}" data-k="${k}" title="Retirer">×</button></span>`).join("")}</div>
-        ${dispo.length ? `<div class="puces-ps"><span class="ps-petit">Ajouter :</span>${dispo.slice(0, 40).map(v => `<button type="button" class="puce-ps" data-act="val-ajouter" data-i="${i}" data-val="${esc(v)}">+ ${esc(v)}</button>`).join("")}</div>` : ""}</div>` : ""}
+      ${
+        r.Sens === "Liste"
+          ? `<div class="ps-bloc-corps"><span class="ps-petit">Ordre imposé (les autres valeurs suivent par ordre alphabétique) :</span>
+        <div class="puces-ps">${vals
+          .map(
+            (v, k) => `<span class="puce-ps on">${k + 1}. ${esc(v)}
+          <button type="button" data-act="val-haut" data-i="${i}" data-k="${k}" title="Avancer" ${k === 0 ? "disabled" : ""}>‹</button><button type="button" data-act="val-retirer" data-i="${i}" data-k="${k}" title="Retirer">×</button></span>`,
+          )
+          .join("")}</div>
+        ${
+          dispo.length
+            ? `<div class="puces-ps"><span class="ps-petit">Ajouter :</span>${dispo
+                .slice(0, 40)
+                .map(
+                  (v) =>
+                    `<button type="button" class="puce-ps" data-act="val-ajouter" data-i="${i}" data-val="${esc(v)}">+ ${esc(v)}</button>`,
+                )
+                .join("")}</div>`
+            : ""
+        }</div>`
+          : ""
+      }
     </div>`;
   }
 
   function dessinerEtat() {
-    const e = $("ps-etat"); if (!e) return;
-    const pub = ps.publie_le ? new Date(ps.publie_le * 1000).toLocaleString("fr-FR") : null;
+    const e = $("ps-etat");
+    if (!e) return;
+    const pub = ps.publie_le ? Outils.dates.dateHeure(ps.publie_le) : null;
     e.className = `pastille ${!ps.publie ? "manque" : egalPublie() ? "ok" : "reco"}`;
-    e.textContent = !ps.publie ? "Jamais publié" : egalPublie() ? `Publié le ${pub}` : `Brouillon modifié (publié le ${pub})`;
-    const a = $("ps-annuler"); if (a) a.hidden = !(ps.publie && !egalPublie());
+    e.textContent = !ps.publie
+      ? "Jamais publié"
+      : egalPublie()
+        ? `Publié le ${pub}`
+        : `Brouillon modifié (publié le ${pub})`;
+    const a = $("ps-annuler");
+    if (a) a.hidden = !(ps.publie && !egalPublie());
   }
   function dessinerEditeur() {
-    const y = window.scrollY, o = brouillon.options;
-    const larg = brouillon.colonnes.filter(c => c.Actif !== false).reduce((s, c) => s + (Number(c.Largeur) || 0), 0);
+    const y = window.scrollY,
+      o = brouillon.options;
+    const larg = brouillon.colonnes.filter((c) => c.Actif !== false).reduce((s, c) => s + (Number(c.Largeur) || 0), 0);
     $("ps-editeur").innerHTML = `
     <section class="carte ps-entete-carte">
       <div class="ps-tete"><h2>Point de situation</h2><span id="ps-etat"></span><span style="flex:1"></span>
@@ -380,131 +717,283 @@
       <div class="grille">${OPTIONS_AVANCEES.map(([k, l]) => `<label class="champ"><span>${l}</span><input type="text" data-opt="${k}" value="${esc(o[k] || "")}" placeholder="${esc(defauts[k] || "")}"></label>`).join("")}</div>
       <div class="boutons"><button class="secondaire" id="ps-modele">Préparer l'emplacement du modèle Word</button></div>
     </details></section>`;
-    dessinerEtat(); dessinerPagesPS();
+    dessinerEtat();
+    dessinerPagesPS();
     $("ps-publier").addEventListener("click", publier);
     if ($("ps-importer")) $("ps-importer").addEventListener("click", importer);
-    $("ps-annuler").addEventListener("click", () => { brouillon = copie(ps.publie); modifie(true); });
+    $("ps-annuler").addEventListener("click", () => {
+      brouillon = copie(ps.publie);
+      modifie(true);
+    });
     $("ps-modele").addEventListener("click", preparerModele);
     window.scrollTo(0, y);
   }
 
   /* ======================= Aperçu en direct ======================= */
-  function planifierApercu() { clearTimeout(minuterieApercu); minuterieApercu = setTimeout(calculerApercu, 350); }
+  function planifierApercu() {
+    clearTimeout(minuterieApercu);
+    minuterieApercu = setTimeout(calculerApercu, 350);
+  }
   async function calculerApercu() {
-    const zone = $("ps-apercu-page"), info = $("ps-apercu-info");
+    const zone = $("ps-apercu-page"),
+      info = $("ps-apercu-info");
     if (!zone) return;
-    if (!donnees) { zone.innerHTML = `<p class="vide">Signalements illisibles : vérifiez la table des signalements (réglages avancés).</p>`; return; }
-    const o = { ...defauts, ...Object.fromEntries(Object.entries(brouillon.options).filter(([, v]) => v !== "" && v != null)) };
-    const jour = new Date(); jour.setHours(0, 0, 0, 0);
-    const depuis = apercuReglages.periode === "jour" ? jour : apercuReglages.periode === "7j" ? new Date(jour.getTime() - 6 * 864e5) : null;
-    const cfg = { reglages: { ...o, depuis, dernierPoint: jour, academie: apercuReglages.academie },
-      colonnes: brouillon.colonnes.map((c, i) => ({ ...c, Ordre: i + 1 })), sections: brouillon.sections.map((s, i) => ({ ...s, Ordre: i + 1 })),
-      tri: brouillon.tri.map((t, i) => ({ ...t, Ordre: i + 1 })) };
+    if (!donnees) {
+      zone.innerHTML = `<p class="vide">Signalements illisibles : vérifiez la table des signalements (réglages avancés).</p>`;
+      return;
+    }
+    const o = {
+      ...defauts,
+      ...Object.fromEntries(Object.entries(brouillon.options).filter(([, v]) => v !== "" && v != null)),
+    };
+    const jour = new Date(Outils.dates.instant(Outils.dates.aujourdhui())); // minuit à Paris
+    const depuis =
+      apercuReglages.periode === "jour"
+        ? jour
+        : apercuReglages.periode === "7j"
+          ? new Date(jour.getTime() - 6 * 864e5)
+          : null;
+    const cfg = {
+      reglages: { ...o, depuis, dernierPoint: jour, academie: apercuReglages.academie },
+      colonnes: brouillon.colonnes.map((c, i) => ({ ...c, Ordre: i + 1 })),
+      sections: brouillon.sections.map((s, i) => ({ ...s, Ordre: i + 1 })),
+      tri: brouillon.tri.map((t, i) => ({ ...t, Ordre: i + 1 })),
+    };
     try {
       const point = await assemblerPoint(donnees.source, cfg);
       // nombre de signalements par tableau, dans l'ordre de l'éditeur (tableaux inactifs : pas de nombre)
-      const parTitre = new Map(point.sections.map(s => [s, s.rows.length]));
-      const actives = brouillon.sections.map((s, i) => ({ s, i })).filter(x => x.s.Actif !== false);
+      const parTitre = new Map(point.sections.map((s) => [s, s.rows.length]));
+      const actives = brouillon.sections.map((s, i) => ({ s, i })).filter((x) => x.s.Actif !== false);
       dernierPoint = { horsSection: point.horsSection, parSection: {} };
-      actives.forEach((x, k) => { const sec = point.sections[k]; dernierPoint.parSection[x.i] = sec ? parTitre.get(sec) : 0; });
-      document.querySelectorAll("#ps-editeur .ps-bloc-tete .pastille").forEach(e => e.remove());
+      actives.forEach((x, k) => {
+        const sec = point.sections[k];
+        dernierPoint.parSection[x.i] = sec ? parTitre.get(sec) : 0;
+      });
+      document.querySelectorAll("#ps-editeur .ps-bloc-tete .pastille").forEach((e) => e.remove());
       brouillon.sections.forEach((s, i) => {
         const tete = document.querySelector(`#ps-editeur input.ps-titre[data-liste="sections"][data-i="${i}"]`);
         if (tete && dernierPoint.parSection[i] != null) tete.insertAdjacentHTML("afterend", compte(i));
       });
-      const n = new Date(), aca = apercuReglages.academie;
+      const n = new Date(),
+        aca = apercuReglages.academie;
       zone.innerHTML = `<article class="page"><div class="entete"><div class="logo">MINISTÈRE<br>DE L'ÉDUCATION<br>NATIONALE</div>
         <div class="bandeau">${esc(o.bandeau || "Mouvements sociaux")}<br>${esc(o.perimetre_court || "EN")}</div>
-        <div>Point de situation n°…<br>${esc(n.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }))}</div></div>
+        <div>Point de situation n°…<br>${esc(Outils.dates.date(n, { day: "numeric", month: "long", year: "numeric" }))}</div></div>
         <h1>ESSENTIEL ${esc((o.perimetre_long || "ENSEIGNEMENT SUPÉRIEUR") + (aca ? " – ACADÉMIE DE " + aca.toUpperCase() : ""))}</h1>${sectionsHTML(point)}</article>`;
       const msgs = [`${point.nb} signalement(s) dans l'aperçu.`];
       if (point.horsSection) msgs.push(`⚠ ${point.horsSection} n'entrent dans aucun tableau.`);
       if (point.manquants.length) msgs.push(`⚠ Champs introuvables : ${point.manquants.join(", ")}.`);
-      info.textContent = msgs.join(" "); info.className = `ps-note ${point.horsSection || point.manquants.length ? "err" : ""}`;
+      info.textContent = msgs.join(" ");
+      info.className = `ps-note ${point.horsSection || point.manquants.length ? "err" : ""}`;
       // académies proposées au filtre de l'aperçu
       const sel = $("ps-ap-academie");
       if (sel && sel.options.length <= 1) {
         const acas = valeursDe(o.champAcademie).sort((a, b) => a.localeCompare(b, "fr"));
-        sel.innerHTML = `<option value="">Toutes les académies</option>` + acas.map(a => `<option>${esc(a)}</option>`).join("");
+        sel.innerHTML =
+          `<option value="">Toutes les académies</option>` + acas.map((a) => `<option>${esc(a)}</option>`).join("");
       }
-    } catch (e) { zone.innerHTML = `<p class="statut err">Aperçu impossible : ${esc(e.message || e)}</p>`; }
+    } catch (e) {
+      zone.innerHTML = `<p class="statut err">Aperçu impossible : ${esc(e.message || e)}</p>`;
+    }
   }
 
   /* ======================= Événements ======================= */
   function liaison() {
     const ed = $("ps-editeur");
-    ed.addEventListener("input", ev => {
-      const t = ev.target, i = +t.dataset.i;
-      if (t.dataset.opt) { const v = t.value.trim(); if (v) brouillon.options[t.dataset.opt] = v; else delete brouillon.options[t.dataset.opt]; modifie(false); return; }
-      if (t.dataset.cc) {   // clause de condition
-        if (t.tagName === "SELECT") return;
-        const cl = versClauses(brouillon.sections[i].Condition) || []; cl[+t.dataset.clause][t.dataset.cc] = t.value;
-        brouillon.sections[i].Condition = versTexte(cl); modifie(false); return;
+    ed.addEventListener("input", (ev) => {
+      const t = ev.target,
+        i = +t.dataset.i;
+      if (t.dataset.opt) {
+        const v = t.value.trim();
+        if (v) brouillon.options[t.dataset.opt] = v;
+        else delete brouillon.options[t.dataset.opt];
+        modifie(false);
+        return;
       }
-      if (t.dataset.lc) {   // ligne de contenu
+      if (t.dataset.cc) {
+        // clause de condition
         if (t.tagName === "SELECT") return;
-        const l = versLignes(brouillon.colonnes[i].Contenu); l[+t.dataset.ligne][t.dataset.lc] = t.value;
-        brouillon.colonnes[i].Contenu = versContenu(l); modifie(false); return;
+        const cl = versClauses(brouillon.sections[i].Condition) || [];
+        cl[+t.dataset.clause][t.dataset.cc] = t.value;
+        brouillon.sections[i].Condition = versTexte(cl);
+        modifie(false);
+        return;
+      }
+      if (t.dataset.lc) {
+        // ligne de contenu
+        if (t.tagName === "SELECT") return;
+        const l = versLignes(brouillon.colonnes[i].Contenu);
+        l[+t.dataset.ligne][t.dataset.lc] = t.value;
+        brouillon.colonnes[i].Contenu = versContenu(l);
+        modifie(false);
+        return;
       }
       if (!t.dataset.liste || !t.dataset.cle || t.tagName === "SELECT" || t.type === "checkbox") return;
-      const r = brouillon[t.dataset.liste][i], k = t.dataset.cle;
-      r[k] = t.type === "number" ? (t.value === "" ? null : Number(t.value)) : t.type === "color" ? t.value.replace("#", "").toUpperCase() : t.value;
+      const r = brouillon[t.dataset.liste][i],
+        k = t.dataset.cle;
+      r[k] =
+        t.type === "number"
+          ? t.value === ""
+            ? null
+            : Number(t.value)
+          : t.type === "color"
+            ? t.value.replace("#", "").toUpperCase()
+            : t.value;
       modifie(false);
     });
-    ed.addEventListener("change", ev => {
-      const t = ev.target, i = +t.dataset.i;
+    ed.addEventListener("change", (ev) => {
+      const t = ev.target,
+        i = +t.dataset.i;
       if (t.dataset.cc && t.tagName === "SELECT") {
-        const cl = versClauses(brouillon.sections[i].Condition) || [], c = cl[+t.dataset.clause];
+        const cl = versClauses(brouillon.sections[i].Condition) || [],
+          c = cl[+t.dataset.clause];
         c[t.dataset.cc] = t.value;
-        if (t.dataset.cc === "chemin") { c.val = ""; if (!SANS_VALEUR.has(c.op) && !c.op) c.op = "="; }
-        brouillon.sections[i].Condition = versTexte(cl); modifie(true); return;
+        if (t.dataset.cc === "chemin") {
+          c.val = "";
+          if (!SANS_VALEUR.has(c.op) && !c.op) c.op = "=";
+        }
+        brouillon.sections[i].Condition = versTexte(cl);
+        modifie(true);
+        return;
       }
       if (t.dataset.lc && t.tagName === "SELECT") {
-        const l = versLignes(brouillon.colonnes[i].Contenu); l[+t.dataset.ligne][t.dataset.lc] = t.value;
-        brouillon.colonnes[i].Contenu = versContenu(l); modifie(true); return;
+        const l = versLignes(brouillon.colonnes[i].Contenu);
+        l[+t.dataset.ligne][t.dataset.lc] = t.value;
+        brouillon.colonnes[i].Contenu = versContenu(l);
+        modifie(true);
+        return;
       }
       if (t.dataset.actSelect === "ligne-ajouter" && t.value) {
-        const l = versLignes(brouillon.colonnes[i].Contenu).filter(x => !(x.type === "texte" && !x.texte));
+        const l = versLignes(brouillon.colonnes[i].Contenu).filter((x) => !(x.type === "texte" && !x.texte));
         l.push({ type: "champ", chemin: t.value, style: "", filtre: "" });
-        brouillon.colonnes[i].Contenu = versContenu(l); modifie(true); return;
+        brouillon.colonnes[i].Contenu = versContenu(l);
+        modifie(true);
+        return;
       }
       if (t.dataset.liste && t.dataset.cle && (t.tagName === "SELECT" || t.type === "checkbox")) {
-        const r = brouillon[t.dataset.liste][i]; r[t.dataset.cle] = t.type === "checkbox" ? t.checked : t.value;
-        modifie(true); return;
+        const r = brouillon[t.dataset.liste][i];
+        r[t.dataset.cle] = t.type === "checkbox" ? t.checked : t.value;
+        modifie(true);
+        return;
       }
-      if (t.dataset.liste === "sections" && t.dataset.cle === "Titre") {   // un titre de tableau renommé : suivi dans les colonnes
+      if (t.dataset.liste === "sections" && t.dataset.cle === "Titre") {
+        // un titre de tableau renommé : suivi dans les colonnes
         modifie(true);
       }
     });
-    ed.addEventListener("click", ev => {
+    ed.addEventListener("click", (ev) => {
       const b = ev.target.closest("[data-act]");
       if (!b || b.tagName === "SELECT") return;
-      const act = b.dataset.act, liste = b.dataset.liste, i = +b.dataset.i, k = +b.dataset.k;
-      const lignes = () => versLignes(brouillon.colonnes[i].Contenu), poser = l => { brouillon.colonnes[i].Contenu = versContenu(l); };
+      const act = b.dataset.act,
+        liste = b.dataset.liste,
+        i = +b.dataset.i,
+        k = +b.dataset.k;
+      const lignes = () => versLignes(brouillon.colonnes[i].Contenu),
+        poser = (l) => {
+          brouillon.colonnes[i].Contenu = versContenu(l);
+        };
       const clauses = () => versClauses(brouillon.sections[i].Condition) || [];
       switch (act) {
-        case "ajouter": brouillon[liste].push(liste === "sections" ? { Titre: "Nouveau tableau", Condition: "", Actif: true }
-          : liste === "colonnes" ? { Titre: "Nouvelle colonne", Contenu: "", Largeur: 10, Couleur: "B2C6BD", Fusionner: false, Tableaux: "", Actif: true }
-          : { Champ: "", Sens: "A→Z", Valeurs: "", Actif: true }); break;
-        case "retirer": if (!confirm("Retirer cet élément ?")) return; brouillon[liste].splice(i, 1); modeLibre.clear(); break;
-        case "haut": case "bas": { const j = act === "haut" ? i - 1 : i + 1, l = brouillon[liste]; [l[i], l[j]] = [l[j], l[i]]; modeLibre.clear(); break; }
-        case "libre": { const c = b.dataset.cleLibre; modeLibre.has(c) ? modeLibre.delete(c) : modeLibre.add(c); dessinerEditeur(); return; }
-        case "clause-ajouter": {   // nouvelle condition, sur la qualification par défaut : il reste à choisir la valeur
-          const cl = clauses(), q = champs.find(c => /qualif/i.test(c.chemin)) || champs[0];
+        case "ajouter":
+          brouillon[liste].push(
+            liste === "sections"
+              ? { Titre: "Nouveau tableau", Condition: "", Actif: true }
+              : liste === "colonnes"
+                ? {
+                    Titre: "Nouvelle colonne",
+                    Contenu: "",
+                    Largeur: 10,
+                    Couleur: "B2C6BD",
+                    Fusionner: false,
+                    Tableaux: "",
+                    Actif: true,
+                  }
+                : { Champ: "", Sens: "A→Z", Valeurs: "", Actif: true },
+          );
+          break;
+        case "retirer":
+          if (!confirm("Retirer cet élément ?")) return;
+          brouillon[liste].splice(i, 1);
+          modeLibre.clear();
+          break;
+        case "haut":
+        case "bas": {
+          const j = act === "haut" ? i - 1 : i + 1,
+            l = brouillon[liste];
+          [l[i], l[j]] = [l[j], l[i]];
+          modeLibre.clear();
+          break;
+        }
+        case "libre": {
+          const c = b.dataset.cleLibre;
+          modeLibre.has(c) ? modeLibre.delete(c) : modeLibre.add(c);
+          dessinerEditeur();
+          return;
+        }
+        case "clause-ajouter": {
+          // nouvelle condition, sur la qualification par défaut : il reste à choisir la valeur
+          const cl = clauses(),
+            q = champs.find((c) => /qualif/i.test(c.chemin)) || champs[0];
           if (!q) return;
-          cl.push({ lien: "et", chemin: q.chemin, op: "=", val: "" }); brouillon.sections[i].Condition = versTexte(cl); break; }
-        case "clause-retirer": { const cl = clauses(); cl.splice(k, 1); brouillon.sections[i].Condition = versTexte(cl); break; }
-        case "ligne-haut": case "ligne-bas": { const l = lignes(), j = act === "ligne-haut" ? k - 1 : k + 1; [l[k], l[j]] = [l[j], l[k]]; poser(l); break; }
-        case "ligne-retirer": { const l = lignes(); l.splice(k, 1); poser(l); break; }
-        case "ligne-nouveau": { const l = lignes().filter(x => !(x.type === "texte" && !x.texte)); l.push({ type: "nouveau" }); poser(l); break; }
-        case "ligne-texte": { const l = lignes(); l.push({ type: "texte", texte: "" }); poser(l); break; }
-        case "tableau": { const r = brouillon.colonnes[i], t = b.dataset.titre, tabs = listeTableaux(r);
-          r.Tableaux = (tabs.includes(t) ? tabs.filter(x => x !== t) : [...tabs, t]).join(", "); break; }
-        case "val-ajouter": case "val-retirer": case "val-haut": {
-          const r = brouillon.tri[i], v = String(r.Valeurs || "").split(/\n|;/).map(x => x.trim()).filter(Boolean);
-          if (act === "val-ajouter") v.push(b.dataset.val); else if (act === "val-retirer") v.splice(k, 1); else [v[k - 1], v[k]] = [v[k], v[k - 1]];
-          r.Valeurs = v.join("\n"); break; }
-        default: return;
+          cl.push({ lien: "et", chemin: q.chemin, op: "=", val: "" });
+          brouillon.sections[i].Condition = versTexte(cl);
+          break;
+        }
+        case "clause-retirer": {
+          const cl = clauses();
+          cl.splice(k, 1);
+          brouillon.sections[i].Condition = versTexte(cl);
+          break;
+        }
+        case "ligne-haut":
+        case "ligne-bas": {
+          const l = lignes(),
+            j = act === "ligne-haut" ? k - 1 : k + 1;
+          [l[k], l[j]] = [l[j], l[k]];
+          poser(l);
+          break;
+        }
+        case "ligne-retirer": {
+          const l = lignes();
+          l.splice(k, 1);
+          poser(l);
+          break;
+        }
+        case "ligne-nouveau": {
+          const l = lignes().filter((x) => !(x.type === "texte" && !x.texte));
+          l.push({ type: "nouveau" });
+          poser(l);
+          break;
+        }
+        case "ligne-texte": {
+          const l = lignes();
+          l.push({ type: "texte", texte: "" });
+          poser(l);
+          break;
+        }
+        case "tableau": {
+          const r = brouillon.colonnes[i],
+            t = b.dataset.titre,
+            tabs = listeTableaux(r);
+          r.Tableaux = (tabs.includes(t) ? tabs.filter((x) => x !== t) : [...tabs, t]).join(", ");
+          break;
+        }
+        case "val-ajouter":
+        case "val-retirer":
+        case "val-haut": {
+          const r = brouillon.tri[i],
+            v = String(r.Valeurs || "")
+              .split(/\n|;/)
+              .map((x) => x.trim())
+              .filter(Boolean);
+          if (act === "val-ajouter") v.push(b.dataset.val);
+          else if (act === "val-retirer") v.splice(k, 1);
+          else [v[k - 1], v[k]] = [v[k], v[k - 1]];
+          r.Valeurs = v.join("\n");
+          break;
+        }
+        default:
+          return;
       }
       modifie(true);
     });
@@ -525,12 +1014,29 @@
         </aside></div>
         <p class="statut" id="ps-statut" role="status"></p>`;
       liaison();
-      $("ps-ap-periode").addEventListener("change", e => { apercuReglages.periode = e.target.value; calculerApercu(); });
-      $("ps-ap-academie").addEventListener("change", e => { apercuReglages.academie = e.target.value; calculerApercu(); });
-      $("ps-ap-actualiser").addEventListener("click", async () => { window.Socle.viderCacheLecture(); await chargerDonnees(); dessinerEditeur(); calculerApercu(); });
+      $("ps-ap-periode").addEventListener("change", (e) => {
+        apercuReglages.periode = e.target.value;
+        calculerApercu();
+      });
+      $("ps-ap-academie").addEventListener("change", (e) => {
+        apercuReglages.academie = e.target.value;
+        calculerApercu();
+      });
+      $("ps-ap-actualiser").addEventListener("click", async () => {
+        Donnees.viderCache();
+        await chargerDonnees();
+        dessinerEditeur();
+        calculerApercu();
+      });
     }
-    try { if (await charger()) { dessinerEditeur(); calculerApercu(); } }
-    catch (e) { $("ps-editeur").innerHTML = `<p class="statut err">Lecture impossible : ${esc(e.message || e)}</p>`; }
+    try {
+      if (await charger()) {
+        dessinerEditeur();
+        calculerApercu();
+      }
+    } catch (e) {
+      $("ps-editeur").innerHTML = `<p class="statut err">Lecture impossible : ${esc(e.message || e)}</p>`;
+    }
   }
   window.OngletPointSituation = { afficher };
 })();

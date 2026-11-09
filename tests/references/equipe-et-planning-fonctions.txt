@@ -1,0 +1,19 @@
+colonnes Agents : id,Nom,Email,Acces,Fonction,Telephone,Perimetre,Actif,Modifie_le,Role
+BANDEAU La table Agents date d'une version antérieure : il lui manque Equipe, Cle_acces, Page_saisie, Lien_expire_le, Echelon_visa, Visa_departements, Visa_academies, L
+APRÈS COMPLÉTER plus de bandeau
+COLONNES Agent ▲ | Équipe | Fonction habituelle | Adresse | Téléphone | Page de saisie | Agents a Equipe/Fonction false,true
+STATUT Anne Robert 45 : fonction habituelle « Rédacteur PS ». | fiche ouverte ? false
+DOC Alice=Équipe A/Coordinateur ; Bob=Nuit/Opérateur ; Chloé Durand=undefined/Coordinateur ; David=undefined/Rédacteur PS
+FILTRE Nuit 4 | 51 agents actifs · 4 affichés sur 51. Cliquez sur une ligne pour ouvrir la fiche.
+TRI équipe groupes Équipe A (4) | Équipe B (4) | Nuit (4) | Sans équipe (39)
+RECHERCHE « nuit dur » 2 | focus eq-cherche
+FICHE équipe/fonction Équipe A / Coordinateur
+IMPORT bilan  1 agent(s) à ajouter : Zoé Neuve 1 agent(s) déjà présent(s), mis à jour : Alice ligne 3 : fonction « Pilote » inconnue (fonctions : Coordinateur, Rédacteur PS, Opérateur, Chef de salle)
+IMPORT 1 agent(s) ajouté(s), 1 mis à jour. Affectez-les maintenant dans Équipe › Planning. | Zoé Neuve=Équipe C/Opérateur ; Alice=Équipe A/Coordinateur
+GRILLE groupes Équipe A (4) | Équipe B (4) | Équipe C (1) | Nuit (4) | Sans équipe (39)
+SOUS-TITRES Coordinateur | Coordinateur | Coordinateur
+FILTRE Équipe A 4
+ESPACE C C C | AliceCoordinateur / Anne Durand 20Coordinateur / Anne RobertCoordinateur |
+ESPACE sans fonction
+VUE fonction Coordinateur@,Coordinateur@,Coordinateur@auj,Coordinateur@,Coordinateur@,Coordinateur@
+PAR FONCTION groupes Récemment opérateur | Fonction habituelle : opérateur | Autres agents | Alice · Équipe A ; Bob · Nuit ; Zoé Neuve · Équipe C ; Anne Durand 10 · Nuit

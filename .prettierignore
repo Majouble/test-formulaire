@@ -1,0 +1,8 @@
+# fichiers produits ou repris tels quels
+v2/secours/kit-secours.html
+v2/secours/demo.json
+v2/vendor/
+v2/cartographie/atlas/
+*.json
+*.geojson
+*.qgs

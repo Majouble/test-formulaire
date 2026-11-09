@@ -1,0 +1,3 @@
+DISTINCTS : 4 morceaux sur 2 rangée(s) | empilées | note : Barres empilées : une même valeur de « Etablissement » présente dans plusieurs colonnes compte dans chacune ; le bout d'une barre peut alors dépasser le nombre de valeurs distinctes de sa ligne (colonne Total du tableau)
+MOYENNE : | note : Séries affichées côte à côte : une moyenne, un minimum ou un maximum ne s'additionnent pas.
+DISTINCTS, UNE VALEUR PAR LIGNE (aucun double compte) : | note : (aucune)

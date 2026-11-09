@@ -1,0 +1,10 @@
+TABLEAU chargé : Version/Mouvement lignes=ancien
+V2 : Mise à jour enregistrée : une nouvelle étape a été ajoutée.
+   1:d1/v1/ancien/Ajout/Légère/Ancien  2:d1/v3/ancien/Modification/Grave/Ancien  3:d1/v3/n1/Ajout/Légère/Nouveau 1
+RELU : ancien={"Gravite":"Grave","Nom":"Ancien"} | n1={"Gravite":"Légère","Nom":"Nouveau 1"}
+V3 : Mise à jour enregistrée : une nouvelle étape a été ajoutée.
+   1:d1/v1/ancien/Ajout/Légère/Ancien  2:d1/v3/ancien/Modification/Grave/Ancien  3:d1/v3/n1/Ajout/Légère/Nouveau 1  4:d1/v4/n1/Inchangée/Légère/Nouveau 1  5:d1/v4/n2/Ajout/Grave/Nouveau 2  6:d1/v4/ancien/Retrait/Grave/Ancien
+CRÉATION :
+   1:d1/v1/ancien/Ajout/Légère/Ancien  2:d1/v3/ancien/Modification/Grave/Ancien  3:d1/v3/n1/Ajout/Légère/Nouveau 1  4:d1/v4/n1/Inchangée/Légère/Nouveau 1  5:d1/v4/n2/Ajout/Grave/Nouveau 2  6:d1/v4/ancien/Retrait/Grave/Ancien  7:d5/v5/c1/Ajout/Grave/Créé 1
+RECONSTRUIT : Tables reconstruites (6 ligne(s) ajoutée(s), mise(s) à jour ou supprimée(s)). Les données confidentielles déjà saisies sont conservées.
+  identique ? true

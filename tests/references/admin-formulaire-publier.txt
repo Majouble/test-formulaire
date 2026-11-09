@@ -1,0 +1,18 @@
+FORMULAIRE EXISTANT
+Signalements | ÉTAT : Publié, à jour | classe : etat-publi a-jour | Publier désactivé : true
+AVANT PUBLICATION | ÉTAT : Jamais publié | classe : etat-publi brouillon | Publier désactivé : false
+AVANT : Publie = null | Publie_le = null | blocs du brouillon = 1
+PANNEAU AVANT (pages de saisie) : Publiez le formulaire : chaque agent pourra alors avoir sa page de saisie (Équipe › Pages de saisie). | Gérer les pages des agents →
+APRÈS PUBLICATION | ÉTAT : Publié, à jour | classe : etat-publi a-jour | Publier désactivé : true
+MESSAGE : Formulaire publié. Aucune page de Grist ne l'affiche encore : créez les pages des agents dans Équipe › Pages de saisie.
+PUBLIE : parties = q:q,vd:vd,va:va | roles = {"Etablissement":"Etablissement","Site":"","Date_faits":"Date_faits","Qualification":"Qualification","Description":"Description","Dossier":"Dossier","Nature":"Nature","Date":"Date","Commentaire":"Commentaire","Auteur":"Auteur","Clos":"Clos"}
+PUBLIE : blocs = [{"genre":"question","colonne":"Observations","section":"q","reglages":{"libelle":"Remarques du directeur","court":true}}]
+PUBLIE = BROUILLON : true | Publie_le renseigné : true
+EN-TÊTE DE COLONNE (libellé publié) : Observations@46 Remarques_du_directeur@-1 label=Remarques du directeur
+PANNEAU APRÈS (pages de saisie) : 0 page à jour. Une page par agent ; elle applique le périmètre de son créneau en cours. | Gérer les pages des agents →
+APRÈS AJOUT D'UNE QUESTION | ÉTAT : Brouillon · 2 modifications non publiées | classe : etat-publi brouillon | Publier désactivé : false
+BROUILLON blocs = 2 | PUBLIE blocs = 1
+APRÈS CHANGEMENT DE LIBELLÉ | ÉTAT : Brouillon · 2 modifications non publiées | classe : etat-publi brouillon | Publier désactivé : false
+REPUBLIÉ | ÉTAT : Publié, à jour | classe : etat-publi a-jour | Publier désactivé : true
+PUBLIE blocs = Remarques du directeur / Police alertée
+RETOUR SUR Signalements | ÉTAT : Publié, à jour | classe : etat-publi a-jour | Publier désactivé : true

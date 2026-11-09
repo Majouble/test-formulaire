@@ -1,0 +1,2 @@
+TABLES DES RÈGLES : Reponses — signalements ESR (Signalements) || Sites_signales — lignes des tableaux ESR (Signalements) || Etablissements — référentiel || Referentiel_sites — référentiel || Sites_correspondances — référentiel
+RÉFÉRENTIEL DES SITES : Referentiel_sites — référentiel Agents mobilisés au planning (EN ou ESR) : lecture, ajout et modification (établissement absent de l'annuaire…). Autres agents actifs : lecture seule. Autres personnes : aucun accès. Formules Grist

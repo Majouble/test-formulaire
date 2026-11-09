@@ -1,0 +1,15 @@
+SOURCES : Sites_signales › Site (référence aux sites) | Sites › Nom du site (référence aux sites) | Sites_signales › Site_libre
+AIDE : Colonne lue : Sites.Nom_du_site (Ref:Referentiel_sites). Colonne référence aux sites : les anciens noms (références non résolues) sont listés ci-dessous ; un rattachement les remplace par le site du référentiel, dans la même colonne. 1 ligne(s) déjà rattachée(s).
+LIBELLÉS :
+   Annexe Rue Dupont 2 lignes Variantes : Annexe Rue Dupont ; Annexe rue Dupont <DATE> · RAS · Mise à jour — Mouvement 1 autre signalement Aucun site proposé
+   campus beaulieu, bât. 12 1 ligne <DATE> · Blocage total — Mouvement Proposé : « Campus Beaulieu »
+   Villejean 1 ligne <DATE> · Rassemblement — Mouvement Proposé : « Site Villejean »
+SITE PROPOSÉ : Campus Beaulieu | Rattacher les 1 ligne au site
+STATUT : 1 ligne(s) rattachée(s) à « Campus Beaulieu » ; correspondance(s) validée(s) pour les prochaines saisies.
+STATUT : 2 ligne(s) rattachée(s) à « Annexe Dupont » ; correspondance(s) validée(s) pour les prochaines saisies.
+LIBELLÉS :
+   Villejean 1 ligne <DATE> · Rassemblement — Mouvement Proposé : « Site Villejean »
+TABLE Sites : 1:2→∅  2:6→∅  3:2→∅  4:Villejean→∅  5:Bâtiment Ivry→∅  6:6→∅
+COLONNES Sites : Dossier:Ref:Reponses, Nom_du_site:Ref:Referentiel_sites, Qualification:Choice
+RÉFÉRENTIEL : 6:Annexe Dupont|e1
+CORRESPONDANCES : 1|Campus Beaulieu bat 12→2(Validé)  1|campus beaulieu, bât. 12→2(Validé)  1|Annexe Rue Dupont→6(Validé)

@@ -7,10 +7,15 @@
    ===================================================================== */
 (function () {
   "use strict";
-  const S = window.Socle;
-  const $ = id => document.getElementById(id);
-  const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  let td = {}, module = null, table = null, recharger = null, minuterie = null, pages = [], pagesCarte = [], pagesExtr = [];
+  const { esc, $ } = Outils;
+  let td = {},
+    module = null,
+    table = null,
+    recharger = null,
+    minuterie = null,
+    pages = [],
+    pagesCarte = [],
+    pagesExtr = [];
   const URL_TDB = /\/tableau-de-bord\/?(index\.html)?(\?.*)?$/i;
   const URL_CARTE = /\/cartographie\/?(index\.html)?(\?.*)?$/i;
   const URL_EXTR = /\/extractions\/?(index\.html)?(\?.*)?$/i;
@@ -21,123 +26,237 @@
   };
 
   /* ---------- Page dédiée : vue Grist affichant le widget du tableau de bord ---------- */
-  const optionsVue = brut => { let o = {}, cv = {}; try { o = JSON.parse(brut || "{}") || {}; } catch (_) {} try { cv = typeof o.customView === "string" ? JSON.parse(o.customView || "{}") || {} : (o.customView || {}); } catch (_) {} return { o, cv }; };
+  const optionsVue = (brut) => {
+    let o = {},
+      cv = {};
+    try {
+      o = JSON.parse(brut || "{}") || {};
+    } catch (_) {}
+    try {
+      cv = typeof o.customView === "string" ? JSON.parse(o.customView || "{}") || {} : o.customView || {};
+    } catch (_) {}
+    return { o, cv };
+  };
   async function lirePages() {
-    const [sec, vues] = await Promise.all([grist.docApi.fetchTable("_grist_Views_section"), grist.docApi.fetchTable("_grist_Views")]);
-    const lire = re => sec.id.map((id, i) => {
-      if (sec.parentKey[i] !== "custom") return null;
-      const { cv } = optionsVue(sec.options[i]);
-      if (!re.test(cv.url || "")) return null;
-      const v = vues.id.indexOf(sec.parentId[i]);
-      return { section: id, vue: sec.parentId[i], nom: v >= 0 ? vues.name[v] : "", tableau: (cv.widgetOptions || {}).tableau || null };
-    }).filter(Boolean);
-    pages = lire(URL_TDB); pagesCarte = lire(URL_CARTE); pagesExtr = lire(URL_EXTR);
+    const [sec, vues] = await Promise.all([Donnees.lire("_grist_Views_section"), Donnees.lire("_grist_Views")]);
+    const lire = (re) =>
+      sec.id
+        .map((id, i) => {
+          if (sec.parentKey[i] !== "custom") return null;
+          const { cv } = optionsVue(sec.options[i]);
+          if (!re.test(cv.url || "")) return null;
+          const v = vues.id.indexOf(sec.parentId[i]);
+          return {
+            section: id,
+            vue: sec.parentId[i],
+            nom: v >= 0 ? vues.name[v] : "",
+            tableau: (cv.widgetOptions || {}).tableau || null,
+          };
+        })
+        .filter(Boolean);
+    pages = lire(URL_TDB);
+    pagesCarte = lire(URL_CARTE);
+    pagesExtr = lire(URL_EXTR);
   }
   function dessinerPages() {
-    const z = $("tdb-pages"), mes = pagesDe(pages, td);
-    z.innerHTML = (mes.length
-      ? `<div class="tdb-menu-info">Page${mes.length > 1 ? "s" : ""} de ce tableau : ${mes.map(p => `« ${esc(p.nom)} »`).join(", ")}</div>
+    const z = $("tdb-pages"),
+      mes = pagesDe(pages, td);
+    z.innerHTML =
+      (mes.length
+        ? `<div class="tdb-menu-info">Page${mes.length > 1 ? "s" : ""} de ce tableau : ${mes.map((p) => `« ${esc(p.nom)} »`).join(", ")}</div>
          <button role="menuitem" id="tdb-page-autre">Créer une autre page pour ce tableau</button>`
-      : `<div class="tdb-menu-info">Aucune page n'affiche encore ce tableau.</div><button role="menuitem" id="tdb-page-creer">Créer la page dédiée</button>`)
-      + (pagesCarte.length ? `<div class="tdb-menu-info">Cartographie : ${pagesCarte.map(p => `« ${esc(p.nom)} »`).join(", ")}</div><button role="menuitem" id="carte-page-autre">Créer une autre page Cartographie</button>`
-        : `<button role="menuitem" id="carte-page-creer" title="Page Grist avec le widget de cartographie (carte et export GeoJSON, KML, GPX, CSV, Shapefile)">Créer la page Cartographie</button>`)
-      + (pagesExtr.length ? `<div class="tdb-menu-info">Extractions : ${pagesExtr.map(p => `« ${esc(p.nom)} »`).join(", ")}</div><button role="menuitem" id="extr-page-autre">Créer une autre page Extractions</button>`
+        : `<div class="tdb-menu-info">Aucune page n'affiche encore ce tableau.</div><button role="menuitem" id="tdb-page-creer">Créer la page dédiée</button>`) +
+      (pagesCarte.length
+        ? `<div class="tdb-menu-info">Cartographie : ${pagesCarte.map((p) => `« ${esc(p.nom)} »`).join(", ")}</div><button role="menuitem" id="carte-page-autre">Créer une autre page Cartographie</button>`
+        : `<button role="menuitem" id="carte-page-creer" title="Page Grist avec le widget de cartographie (carte et export GeoJSON, KML, GPX, CSV, Shapefile)">Créer la page Cartographie</button>`) +
+      (pagesExtr.length
+        ? `<div class="tdb-menu-info">Extractions : ${pagesExtr.map((p) => `« ${esc(p.nom)} »`).join(", ")}</div><button role="menuitem" id="extr-page-autre">Créer une autre page Extractions</button>`
         : `<button role="menuitem" id="extr-page-creer" title="Page Grist avec le widget d'extraction : une ligne par établissement, filtres (jours de mobilisation, qualification, valeur d'une colonne), export Excel">Créer la page Extractions</button>`);
-    const go = () => { fermerMenu(); creerPage("tdb"); }, goC = () => { fermerMenu(); creerPage("carte"); };
+    const go = () => {
+        fermerMenu();
+        creerPage("tdb");
+      },
+      goC = () => {
+        fermerMenu();
+        creerPage("carte");
+      };
     if ($("tdb-page-creer")) $("tdb-page-creer").addEventListener("click", go);
     if ($("tdb-page-autre")) $("tdb-page-autre").addEventListener("click", go);
     if ($("carte-page-creer")) $("carte-page-creer").addEventListener("click", goC);
     if ($("carte-page-autre")) $("carte-page-autre").addEventListener("click", goC);
-    const goE = () => { fermerMenu(); creerPage("extr"); };
+    const goE = () => {
+      fermerMenu();
+      creerPage("extr");
+    };
     if ($("extr-page-creer")) $("extr-page-creer").addEventListener("click", goE);
     if ($("extr-page-autre")) $("extr-page-autre").addEventListener("click", goE);
   }
   // Nom libre : « Tableau de bord », puis « Tableau de bord (2) »… (renommable ensuite dans Grist)
   async function creerPage(type = "tdb") {
-    const m = MODULES[type], existantes = type === "tdb" ? pagesDe(pages, td) : type === "extr" ? pagesExtr : pagesCarte;
+    const m = MODULES[type],
+      existantes = type === "tdb" ? pagesDe(pages, td) : type === "extr" ? pagesExtr : pagesCarte;
     const base = type === "tdb" ? td.nom || m.nom : m.nom;
     const nom = existantes.length ? `${base} (${existantes.length + 1})` : base;
     try {
-      const T = await grist.docApi.fetchTable("_grist_Tables"), ref = T.id[T.tableId.indexOf(table)];
+      const T = await Donnees.lire("_grist_Tables"),
+        ref = T.id[T.tableId.indexOf(table)];
       if (ref == null) throw new Error(`table ${table} introuvable`);
-      const res = await grist.docApi.applyUserActions([["CreateViewSection", ref, 0, "custom", null, null]]);
+      const res = await Donnees.ecrire([["CreateViewSection", ref, 0, "custom", null, null]]);
       const rv = (res && res.retValues && res.retValues[0]) || {};
       if (!rv.sectionRef) throw new Error("Grist n'a pas indiqué la vue créée");
-      const sec = await grist.docApi.fetchTable("_grist_Views_section"), i = sec.id.indexOf(rv.sectionRef);
+      const sec = await Donnees.lire("_grist_Views_section"),
+        i = sec.id.indexOf(rv.sectionRef);
       const { o, cv } = optionsVue(i >= 0 ? sec.options[i] : "");
-      let url; try { url = new URL(`../${m.dossier}/`, location.href).href; } catch (_) { url = `https://majouble.github.io/test-formulaire/v2/${m.dossier}/`; }
+      let url;
+      try {
+        url = new URL(`../${m.dossier}/`, location.href).href;
+      } catch (_) {
+        url = `https://majouble.github.io/test-formulaire/v2/${m.dossier}/`;
+      }
       if (!/^https?:/.test(url)) url = `https://majouble.github.io/test-formulaire/v2/${m.dossier}/`;
-      o.customView = JSON.stringify({ ...cv, mode: "url", url, access: "full", widgetOptions: type === "tdb" ? { tableau: td.id } : {} });
+      o.customView = JSON.stringify({
+        ...cv,
+        mode: "url",
+        url,
+        access: "full",
+        widgetOptions: type === "tdb" ? { tableau: td.id } : {},
+      });
       const acts = [["UpdateRecord", "_grist_Views_section", rv.sectionRef, { options: JSON.stringify(o), title: "" }]];
       if (rv.viewRef) acts.push(["UpdateRecord", "_grist_Views", rv.viewRef, { name: nom }]);
-      await grist.docApi.applyUserActions(acts);
-      await lirePages(); dessinerPages();
-      statut(`Page « ${nom} » créée : elle apparaît dans la liste des pages de Grist, à gauche (renommable dans Grist).${type === "tdb" && !td.publie ? " Publiez le tableau de bord pour qu'elle l'affiche." : ""}`, "ok");
-    } catch (e) { statut(`Création de la page refusée par Grist : ${e.message || e}`, "err"); }
+      await Donnees.ecrire(acts);
+      await lirePages();
+      dessinerPages();
+      statut(
+        `Page « ${nom} » créée : elle apparaît dans la liste des pages de Grist, à gauche (renommable dans Grist).${type === "tdb" && !td.publie ? " Publiez le tableau de bord pour qu'elle l'affiche." : ""}`,
+        "ok",
+      );
+    } catch (e) {
+      statut(`Création de la page refusée par Grist : ${e.message || e}`, "err");
+    }
   }
 
-  const statut = (t, type) => { const e = $("tdb-statut"); if (!e) return; e.textContent = t || ""; e.className = `statut ${type || ""}`; };
+  const statut = (t, type) => {
+    const e = $("tdb-statut");
+    if (!e) return;
+    e.textContent = t || "";
+    e.className = `statut ${type || ""}`;
+  };
   const egalPublie = () => !!td.publie && !!td.brouillon && JSON.stringify(td.publie) === JSON.stringify(td.brouillon);
   function dessinerEtat() {
-    const e = $("tdb-etat"), pub = td.publie_le ? new Date(td.publie_le * 1000).toLocaleString("fr-FR") : null;
+    const e = $("tdb-etat"),
+      pub = td.publie_le ? Outils.dates.dateHeure(td.publie_le) : null;
     e.className = `pastille ${!td.publie ? "manque" : egalPublie() || !td.brouillon ? "ok" : "reco"}`;
-    e.textContent = !td.publie ? "Jamais publié" : egalPublie() || !td.brouillon ? `Publié le ${pub}` : `Brouillon modifié (publié le ${pub})`;
+    e.textContent = !td.publie
+      ? "Jamais publié"
+      : egalPublie() || !td.brouillon
+        ? `Publié le ${pub}`
+        : `Brouillon modifié (publié le ${pub})`;
     $("tdb-annuler").hidden = !(td.publie && td.brouillon && !egalPublie());
   }
   // Plusieurs tableaux de bord : liste dans la clé « tableau_de_bord » de Config ; td = tableau affiché
-  let tableaux = [], general = null;
+  let tableaux = [],
+    general = null;
   async function ecrire() {
-    const i = tableaux.findIndex(t => t.id === td.id);
-    if (i >= 0) tableaux[i] = td; else tableaux.push(td);
-    await S.ecrireConfig("tableau_de_bord", S.valeurTableauxDeBord(tableaux));
+    const i = tableaux.findIndex((t) => t.id === td.id);
+    if (i >= 0) tableaux[i] = td;
+    else tableaux.push(td);
+    await Socle.ecrireConfig("tableau_de_bord", Socle.valeurTableauxDeBord(tableaux));
   }
   // enregistrement du brouillon, propre au tableau monté (un tableau démonté n'écrit plus rien dans un autre)
   function enregistreurPour(id) {
     return function enregistrer(config) {
       if (td.id !== id) return Promise.resolve();
       td = { ...td, brouillon: JSON.parse(JSON.stringify(config)), modifie_le: Date.now() / 1000 };
-      dessinerEtat(); statut("Modifications non enregistrées…");
+      dessinerEtat();
+      statut("Modifications non enregistrées…");
       clearTimeout(minuterie);
-      return new Promise(res => { minuterie = setTimeout(async () => {
-        if (td.id !== id) return res();
-        try { await ecrire(); statut("Brouillon enregistré.", "ok"); } catch (e) { statut(`Brouillon non enregistré : ${e.message || e}`, "err"); }
-        res();
-      }, 500); });
+      return new Promise((res) => {
+        minuterie = setTimeout(async () => {
+          if (td.id !== id) return res();
+          try {
+            await ecrire();
+            statut("Brouillon enregistré.", "ok");
+          } catch (e) {
+            statut(`Brouillon non enregistré : ${e.message || e}`, "err");
+          }
+          res();
+        }, 500);
+      });
     };
   }
-  const pagesDe = (liste, t) => liste.filter(p => p.tableau === t.id || (!p.tableau && tableaux[0] && tableaux[0].id === t.id));
+  const pagesDe = (liste, t) =>
+    liste.filter((p) => p.tableau === t.id || (!p.tableau && tableaux[0] && tableaux[0].id === t.id));
   async function publier() {
     clearTimeout(minuterie);
     const c = module ? module.configuration() : td.brouillon;
-    if (!c || !c.blocks || !c.blocks.length) { statut("Le tableau de bord est vide : ajoutez au moins un bloc.", "err"); return; }
-    td = { ...td, brouillon: JSON.parse(JSON.stringify(c)), publie: JSON.parse(JSON.stringify(c)), publie_le: Date.now() / 1000 };
-    try {
-      await ecrire(); dessinerEtat();
-      statut(pagesDe(pages, td).length ? "Tableau de bord publié : ses pages l'affichent dans la minute." : "Tableau de bord publié. Créez maintenant sa page dédiée (bouton « Créer la page dédiée »).", "ok");
+    if (!c || !c.blocks || !c.blocks.length) {
+      statut("Le tableau de bord est vide : ajoutez au moins un bloc.", "err");
+      return;
     }
-    catch (e) { statut(`Publication impossible : ${e.message || e}`, "err"); }
+    td = {
+      ...td,
+      brouillon: JSON.parse(JSON.stringify(c)),
+      publie: JSON.parse(JSON.stringify(c)),
+      publie_le: Date.now() / 1000,
+    };
+    try {
+      await ecrire();
+      dessinerEtat();
+      statut(
+        pagesDe(pages, td).length
+          ? "Tableau de bord publié : ses pages l'affichent dans la minute."
+          : "Tableau de bord publié. Créez maintenant sa page dédiée (bouton « Créer la page dédiée »).",
+        "ok",
+      );
+    } catch (e) {
+      statut(`Publication impossible : ${e.message || e}`, "err");
+    }
   }
   // lignes de la table du tableau de bord, au format attendu par le module (une ligne = un objet)
   async function lignes() {
-    const t = await grist.docApi.fetchTable(table), cols = Object.keys(t).filter(k => k !== "id");
-    return t.id.map((id, i) => { const r = { id }; cols.forEach(c => { r[c] = t[c][i]; }); return r; });
+    const t = await Donnees.lire(table),
+      cols = Object.keys(t).filter((k) => k !== "id");
+    return t.id.map((id, i) => {
+      const r = { id };
+      cols.forEach((c) => {
+        r[c] = t[c][i];
+      });
+      return r;
+    });
   }
   // tables proposées : réponses du socle et tables des formulaires publiés
   async function tablesPossibles() {
-    const meta = await S.lireMeta(), out = new Set(S.espaces(general).map(e => e.reponses));
-    try { const t = await grist.docApi.fetchTable(general.formulaires); (t.Table || []).forEach(x => { if (x && meta[x]) out.add(x); }); } catch (_) { /* pas de formulaires */ }
-    return [...out].filter(x => meta[x]);
+    const meta = await Socle.lireMeta(),
+      out = new Set(Socle.espaces(general).map((e) => e.reponses));
+    try {
+      const t = await Donnees.lire(general.formulaires);
+      (t.Table || []).forEach((x) => {
+        if (x && meta[x]) out.add(x);
+      });
+    } catch (_) {
+      /* pas de formulaires */
+    }
+    return [...out].filter((x) => meta[x]);
   }
   const nouvelId = () => `t${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
 
   async function afficher() {
     const zone = $("onglet-tdb");
-    if (module) { try { if (recharger) await recharger(); } catch (_) {} return; }
-    const config = await S.lireConfig();
-    if (!config) { zone.innerHTML = `<p class="statut err" style="margin:16px">La table Config n'existe pas : terminez d'abord l'installation.</p>`; return; }
-    general = S.general(config);
-    tableaux = S.tableauxDeBord(config.valeurs.tableau_de_bord, general);
-    if (!tableaux.length) tableaux = [{ id: "principal", nom: "Tableau de bord", table: general.reponses, brouillon: null, publie: null }];
+    if (module) {
+      try {
+        if (recharger) await recharger();
+      } catch (_) {}
+      return;
+    }
+    const config = await Socle.lireConfig();
+    if (!config) {
+      zone.innerHTML = `<p class="statut err" style="margin:16px">La table Config n'existe pas : terminez d'abord l'installation.</p>`;
+      return;
+    }
+    general = Socle.general(config);
+    tableaux = Socle.tableauxDeBord(config.valeurs.tableau_de_bord, general);
+    if (!tableaux.length)
+      tableaux = [{ id: "principal", nom: "Tableau de bord", table: general.reponses, brouillon: null, publie: null }];
     zone.innerHTML = `<div class="tdb-barre-admin">
         <select id="tdb-choix" title="Tableau de bord à modifier"></select>
         <button class="primaire" id="tdb-ajouter">+ Ajouter un bloc</button>
@@ -166,48 +285,94 @@
       <p class="tdb-aide" id="tdb-etab" hidden></p>
       <div id="tdb-zone"></div>`;
     proposerColonnesEtab(config);
-    try { await lirePages(); } catch (_) { pages = []; }
+    try {
+      await lirePages();
+    } catch (_) {
+      pages = [];
+    }
     $("tdb-publier").addEventListener("click", publier);
     $("tdb-annuler").addEventListener("click", async () => {
       fermerMenu();
       if (!confirm("Abandonner les modifications non publiées ?")) return;
-      td = { ...td, brouillon: JSON.parse(JSON.stringify(td.publie)) }; await ecrire(); module.remplacer(td.publie); dessinerEtat();
+      td = { ...td, brouillon: JSON.parse(JSON.stringify(td.publie)) };
+      await ecrire();
+      module.remplacer(td.publie);
+      dessinerEtat();
     });
-    $("tdb-recharger").addEventListener("click", () => { fermerMenu(); window.Socle.viderCacheLecture(); if (recharger) recharger(); });
-    $("tdb-choix").addEventListener("change", e => monterTableau(e.target.value));
+    $("tdb-recharger").addEventListener("click", () => {
+      fermerMenu();
+      Donnees.viderCache();
+      if (recharger) recharger();
+    });
+    $("tdb-choix").addEventListener("change", (e) => monterTableau(e.target.value));
     $("tdb-ajouter").addEventListener("click", () => module && module.action && module.action("ajouter"));
     $("tdb-reglages").addEventListener("click", () => module && module.action && module.action("reglages"));
-    $("tdb-menu-btn").addEventListener("click", e => { e.stopPropagation(); const m = $("tdb-menu"); m.hidden = !m.hidden; $("tdb-menu-btn").setAttribute("aria-expanded", String(!m.hidden)); });
-    $("tdb-menu").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.module && module) module.action(b.dataset.module); if (b.dataset.module || b.id === "tdb-nouveau" || b.id === "tdb-gerer") fermerMenu(); });
-    document.addEventListener("click", e => { if (!e.target.closest(".tdb-menu-ancre")) fermerMenu(); });
+    $("tdb-menu-btn").addEventListener("click", (e) => {
+      e.stopPropagation();
+      const m = $("tdb-menu");
+      m.hidden = !m.hidden;
+      $("tdb-menu-btn").setAttribute("aria-expanded", String(!m.hidden));
+    });
+    $("tdb-menu").addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      if (b.dataset.module && module) module.action(b.dataset.module);
+      if (b.dataset.module || b.id === "tdb-nouveau" || b.id === "tdb-gerer") fermerMenu();
+    });
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest(".tdb-menu-ancre")) fermerMenu();
+    });
     $("tdb-nouveau").addEventListener("click", () => panneau("nouveau"));
     $("tdb-gerer").addEventListener("click", () => panneau("gerer"));
     monterTableau(tableaux[0].id);
   }
-  function fermerMenu() { const m = $("tdb-menu"); if (m && !m.hidden) { m.hidden = true; $("tdb-menu-btn").setAttribute("aria-expanded", "false"); } }
+  function fermerMenu() {
+    const m = $("tdb-menu");
+    if (m && !m.hidden) {
+      m.hidden = true;
+      $("tdb-menu-btn").setAttribute("aria-expanded", "false");
+    }
+  }
   function dessinerChoix() {
-    $("tdb-choix").innerHTML = tableaux.map(t => `<option value="${esc(t.id)}"${t.id === td.id ? " selected" : ""}>${esc(t.nom)}${tableaux.length > 1 ? ` — ${esc(t.table)}` : ""}</option>`).join("");
+    $("tdb-choix").innerHTML = tableaux
+      .map(
+        (t) =>
+          `<option value="${esc(t.id)}"${t.id === td.id ? " selected" : ""}>${esc(t.nom)}${tableaux.length > 1 ? ` — ${esc(t.table)}` : ""}</option>`,
+      )
+      .join("");
   }
   // (re)monte le module sur le tableau choisi, dans un conteneur neuf (les écouteurs de l'ancien partent avec lui)
   function monterTableau(id) {
     clearTimeout(minuterie);
-    td = tableaux.find(t => t.id === id) || tableaux[0];
+    td = tableaux.find((t) => t.id === id) || tableaux[0];
     table = td.table || general.reponses;
-    dessinerChoix(); dessinerEtat(); dessinerPages(); statut("");
-    $("tdb-aide").innerHTML = `Cliquez sur un bloc pour le régler dans le panneau de droite. Signalements de la table <b>${esc(table)}</b> ; le brouillon s'enregistre au fil de l'eau, les pages n'affichent que la version publiée.`;
-    const zone = $("tdb-zone"); zone.innerHTML = `<div id="tableau-de-bord"></div>`;
+    dessinerChoix();
+    dessinerEtat();
+    dessinerPages();
+    statut("");
+    $("tdb-aide").innerHTML =
+      `Cliquez sur un bloc pour le régler dans le panneau de droite. Signalements de la table <b>${esc(table)}</b> ; le brouillon s'enregistre au fil de l'eau, les pages n'affichent que la version publiée.`;
+    const zone = $("tdb-zone");
+    zone.innerHTML = `<div id="tableau-de-bord"></div>`;
     recharger = null;
     module = window.TableauDeBord.monter($("tableau-de-bord"), {
-      mode: "edition", table, atelier: true,
-      abonner: async cb => { recharger = async () => cb(await lignes()); await recharger(); },
+      mode: "edition",
+      table,
+      atelier: true,
+      abonner: async (cb) => {
+        recharger = async () => cb(await lignes());
+        await recharger();
+      },
       configuration: () => td.brouillon || td.publie || null,
       enregistrer: enregistreurPour(td.id),
     });
   }
   // Panneau : nouveau tableau de bord, ou renommer / changer de table / supprimer
   async function panneau(mode) {
-    const z = $("tdb-panneau"), tables = await tablesPossibles();
-    const optTables = cur => tables.map(t => `<option value="${esc(t)}"${t === cur ? " selected" : ""}>${esc(t)}</option>`).join("");
+    const z = $("tdb-panneau"),
+      tables = await tablesPossibles();
+    const optTables = (cur) =>
+      tables.map((t) => `<option value="${esc(t)}"${t === cur ? " selected" : ""}>${esc(t)}</option>`).join("");
     z.hidden = false;
     if (mode === "nouveau") {
       z.innerHTML = `<strong>Nouveau tableau de bord</strong>
@@ -219,14 +384,36 @@
       $("tdb-p-nom").focus();
       $("tdb-p-ok").addEventListener("click", async () => {
         const nom = $("tdb-p-nom").value.trim();
-        if (!nom) { $("tdb-p-statut").textContent = "Donnez un nom."; return; }
-        if (tableaux.some(t => S.norm(t.nom) === S.norm(nom))) { $("tdb-p-statut").textContent = "Ce nom est déjà pris."; return; }
+        if (!nom) {
+          $("tdb-p-statut").textContent = "Donnez un nom.";
+          return;
+        }
+        if (tableaux.some((t) => Socle.normaliser(t.nom) === Socle.normaliser(nom))) {
+          $("tdb-p-statut").textContent = "Ce nom est déjà pris.";
+          return;
+        }
         const copie = $("tdb-p-copie").checked && module ? JSON.parse(JSON.stringify(module.configuration())) : null;
         if (copie) copie.name = nom;
-        const t = { id: nouvelId(), nom, table: $("tdb-p-table").value, brouillon: copie, publie: null, publie_le: null, modifie_le: Date.now() / 1000 };
-        tableaux.push(t); td = t;
-        try { await ecrire(); } catch (e) { $("tdb-p-statut").textContent = `Enregistrement refusé : ${e.message || e}`; tableaux.pop(); return; }
-        z.hidden = true; monterTableau(t.id);
+        const t = {
+          id: nouvelId(),
+          nom,
+          table: $("tdb-p-table").value,
+          brouillon: copie,
+          publie: null,
+          publie_le: null,
+          modifie_le: Date.now() / 1000,
+        };
+        tableaux.push(t);
+        td = t;
+        try {
+          await ecrire();
+        } catch (e) {
+          $("tdb-p-statut").textContent = `Enregistrement refusé : ${e.message || e}`;
+          tableaux.pop();
+          return;
+        }
+        z.hidden = true;
+        monterTableau(t.id);
         statut(`Tableau de bord « ${nom} » créé : composez-le, publiez-le, puis créez sa page dédiée.`, "ok");
       });
     } else {
@@ -237,47 +424,85 @@
         <button class="primaire" id="tdb-p-ok">Enregistrer</button><button class="secondaire" id="tdb-p-annuler">Fermer</button>
         ${tableaux.length > 1 ? `<button class="secondaire danger" id="tdb-p-suppr">Supprimer ce tableau de bord…</button>` : ""}
         <span class="statut" id="tdb-p-statut"></span>
-        ${pg.length ? `<p class="aide">Pages qui l'affichent : ${pg.map(p => `« ${esc(p.nom)} »`).join(", ")}${tableaux[0].id === td.id ? " (et les pages sans réglage)" : ""}. Un changement de table s'applique aussi à ces pages : reliez-les à la nouvelle table dans Grist (panneau de droite, « Données source »).</p>` : ""}`;
+        ${pg.length ? `<p class="aide">Pages qui l'affichent : ${pg.map((p) => `« ${esc(p.nom)} »`).join(", ")}${tableaux[0].id === td.id ? " (et les pages sans réglage)" : ""}. Un changement de table s'applique aussi à ces pages : reliez-les à la nouvelle table dans Grist (panneau de droite, « Données source »).</p>` : ""}`;
       $("tdb-p-ok").addEventListener("click", async () => {
-        const nom = $("tdb-p-nom").value.trim(), tbl = $("tdb-p-table").value;
-        if (!nom) { $("tdb-p-statut").textContent = "Donnez un nom."; return; }
-        if (tableaux.some(t => t.id !== td.id && S.norm(t.nom) === S.norm(nom))) { $("tdb-p-statut").textContent = "Ce nom est déjà pris."; return; }
+        const nom = $("tdb-p-nom").value.trim(),
+          tbl = $("tdb-p-table").value;
+        if (!nom) {
+          $("tdb-p-statut").textContent = "Donnez un nom.";
+          return;
+        }
+        if (tableaux.some((t) => t.id !== td.id && Socle.normaliser(t.nom) === Socle.normaliser(nom))) {
+          $("tdb-p-statut").textContent = "Ce nom est déjà pris.";
+          return;
+        }
         const autreTable = tbl !== td.table;
         td = { ...td, nom, table: tbl };
-        try { await ecrire(); } catch (e) { $("tdb-p-statut").textContent = `Enregistrement refusé : ${e.message || e}`; return; }
+        try {
+          await ecrire();
+        } catch (e) {
+          $("tdb-p-statut").textContent = `Enregistrement refusé : ${e.message || e}`;
+          return;
+        }
         z.hidden = true;
-        if (autreTable) monterTableau(td.id); else { dessinerChoix(); dessinerPages(); }
+        if (autreTable) monterTableau(td.id);
+        else {
+          dessinerChoix();
+          dessinerPages();
+        }
         statut("Réglages enregistrés.", "ok");
       });
-      if ($("tdb-p-suppr")) $("tdb-p-suppr").addEventListener("click", () => {
-        $("tdb-p-statut").innerHTML = `Supprimer « ${esc(td.nom)} » ? Ses pages dans Grist resteront (à supprimer dans Grist). <button class="secondaire danger" id="tdb-p-oui">Oui, supprimer</button>`;
-        $("tdb-p-oui").addEventListener("click", async () => {
-          const reste = tableaux.filter(t => t.id !== td.id);
-          try { await S.ecrireConfig("tableau_de_bord", S.valeurTableauxDeBord(reste)); } catch (e) { $("tdb-p-statut").textContent = `Suppression refusée : ${e.message || e}`; return; }
-          const nom = td.nom; tableaux = reste; z.hidden = true; monterTableau(tableaux[0].id);
-          statut(`« ${nom} » supprimé.`, "ok");
+      if ($("tdb-p-suppr"))
+        $("tdb-p-suppr").addEventListener("click", () => {
+          $("tdb-p-statut").innerHTML =
+            `Supprimer « ${esc(td.nom)} » ? Ses pages dans Grist resteront (à supprimer dans Grist). <button class="secondaire danger" id="tdb-p-oui">Oui, supprimer</button>`;
+          $("tdb-p-oui").addEventListener("click", async () => {
+            const reste = tableaux.filter((t) => t.id !== td.id);
+            try {
+              await Socle.ecrireConfig("tableau_de_bord", Socle.valeurTableauxDeBord(reste));
+            } catch (e) {
+              $("tdb-p-statut").textContent = `Suppression refusée : ${e.message || e}`;
+              return;
+            }
+            const nom = td.nom;
+            tableaux = reste;
+            z.hidden = true;
+            monterTableau(tableaux[0].id);
+            statut(`« ${nom} » supprimé.`, "ok");
+          });
         });
-      });
     }
-    $("tdb-p-annuler").addEventListener("click", () => { z.hidden = true; });
+    $("tdb-p-annuler").addEventListener("click", () => {
+      z.hidden = true;
+    });
   }
   // Colonnes de l'établissement (UAI, nom, département, académie, coordonnées) absentes de la table des réponses : ajout en un clic
   async function proposerColonnesEtab(config) {
     const p = $("tdb-etab");
     try {
-      const etape = S.planInstallation(await S.lireMeta(), config).etapes.find(e => e.id === "rep-etablissement");
-      if (!etape) { p.hidden = true; return; }
-      const cols = etape.actions.map(a => a[2]);
+      const etape = Socle.planInstallation(await Socle.lireMeta(), config).etapes.find(
+        (e) => e.id === "rep-etablissement",
+      );
+      if (!etape) {
+        p.hidden = true;
+        return;
+      }
+      const cols = etape.actions.map((a) => a[2]);
       p.innerHTML = `Pour des lignes par UAI, des cartes par département, académie ou établissement et des exports lisibles, la table <b>${esc(table)}</b> peut recopier les informations de l'établissement : ${cols.map(esc).join(", ")}.
         <button class="secondaire" id="tdb-etab-ajouter">Ajouter ces colonnes</button> <span class="statut" id="tdb-etab-statut"></span>`;
       p.hidden = false;
       $("tdb-etab-ajouter").addEventListener("click", async () => {
-        const [r] = await S.appliquer([etape]);
-        if (!r.ok) { $("tdb-etab-statut").textContent = `Ajout refusé par Grist (${r.erreur}).`; return; }
+        const [r] = await Socle.appliquer([etape]);
+        if (!r.ok) {
+          $("tdb-etab-statut").textContent = `Ajout refusé par Grist (${r.erreur}).`;
+          return;
+        }
         p.hidden = true;
         if (recharger) await recharger();
       });
-    } catch (_) { p.hidden = true; }
+    } catch (_) {
+      p.hidden = true;
+    }
   }
   window.OngletTableauDeBord = { afficher };
 })();

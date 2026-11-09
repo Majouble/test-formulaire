@@ -1,0 +1,3 @@
+NORMAL | abscisse : Nouveau signalementNouveau signalement, Mise à jourMise à jour | séries : RAS, Blocage partiel, Blocage total, Rassemblement | tracés : ML / ML / ML / ML
+INVERSÉ | abscisse : RASRAS, Blocage partielBlocage partiel, Blocage totalBlocage total, RassemblementRassemblement | séries : Nouveau signalement, Mise à jour | tracés : MLLL / MLLL
+DÉTAIL : Détail · inverse Nouveau signalement · RAS · 2 lignes ✕ Filtrer le tableau de bord sur cette sélection Télécharger en CSV Nature Qualification Etablissement Dat

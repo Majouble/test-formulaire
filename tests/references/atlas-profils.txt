@@ -1,0 +1,19 @@
+Config présente ? true
+PROFILS : [ 'Par défaut' ] | titre
+COLONNES : DSDEN=DSDEN | Commune=Commune | UAI=UAI | Type_libelle=Type | Etablissement=Établissement | Qualification_principale=Qualification | Nb_jours=Jours de mobilisation
+OPTIONS table : col:Etablissement,col:Dossier,col:Qualification,col:Derniere_version,col:Description,col:Date_faits,col:Gravite
+JOURS : auto,calcul
+AJOUT : Gravite liste
+COMPTE : — 18 établissements sur 18, 9 académies
+FILTRE PROFIL Collège : — 18 établissements sur 18, 9 académies | qualifs proposées RAS,Blocage,Intrusion
+SOUS-TABLES : aucune | Blesses (4 lignes)
+MODIFIÉ visible ? true
+STATUT : Profil « Mouvements » enregistré dans le document. | profils [ 'Par défaut', 'Mouvements' ]
+CONFIG atlas : Mouvements [ 'Par défaut', 'Mouvements' ] [{"champ":"DSDEN","titre":"DSDEN"},{"champ":"Commune","titre":"Commune"},{"champ":"Type_libelle","titre":"Type"},{"champ":"Etablissement","titre":"Établissement"},{"champ":"Qualification_principale","titre":"Qualification"},{"champ":"col:Gravite","titre":"Gravite","agregat":"liste"},{"champ":"Nb_jours","titre":"Jours de mobilisation"}]
+MODÈLE : Modèle « retouche.qgs » enregistré pour le profil « Mouvements ».  | Modèle QGIS propre au profil, enregistré dans le document (retouche.qgs).
+CONFIG modèle : ["L",99]
+Par défaut → Modèle intégré au widget. | colonnes 7
+Mouvements → Modèle QGIS propre au profil, enregistré dans le document (retouche.qgs). | tri rang
+
+CONSOLE Failed to load resource: net::ERR_FAILED
+CONSOLE Failed to load resource: net::ERR_FAILED

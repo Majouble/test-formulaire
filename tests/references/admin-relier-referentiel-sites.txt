@@ -1,0 +1,5 @@
+PANNEAU : Ce tableau n'a pas de colonne qui renvoie vers le référentiel des sites : les sites ne sont reconnus que par leur nom saisi. Relier au référentiel des sites
+COLONNE SITE : Site_libre (Text, « Site_libre »), Site (Ref:Referentiel_sites, « Site »)
+RÉGLAGE : {"site":"Site","libre":"Site_libre","qualif":"Qualification","reprise":"auto","historique":[{"colonne":"Ancien_detail","libre":"Nom_du_site","qualif":"Qualification"}]}
+SÉLECTEUR : Site
+HORS RÉFÉRENTIEL : Site_libre_2 | colonnes : Site_libre « Site_libre », Site « Site », Site_libre_2 « Site_libre_2 »
