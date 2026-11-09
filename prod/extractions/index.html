@@ -128,7 +128,7 @@
       <div>
         <label class="titre">Colonnes fusionnées</label>
         <div class="cases" id="fusCols"></div>
-        <div class="aide">Valeurs de toutes les versions, dans l'ordre chronologique, sans doublons. Choix multiples : liste des éléments distincts.</div>
+        <div class="aide">Valeurs de toutes les versions, dans l'ordre chronologique, sans doublons (une valeur répétée garde sa première date). Choix multiples sans date : liste des éléments distincts.</div>
         <label><input type="checkbox" id="prefixeDate"> Préfixer chaque valeur par sa date</label>
       </div>
       <div>
@@ -582,21 +582,25 @@ function calculer() {
       o.qualHist = qs.filter((q, i) => i === 0 || q !== qs[i - 1]).join(" → ");
     }
     o.nbVersions = rs.length;
+    /* Colonnes fusionnées : une entrée par valeur distincte, dans l'ordre chronologique. Avec « préfixer par la date »
+       (2.53), chaque entrée porte sa date, y compris pour les choix multiples (valeur de la ligne : « a, b ») et les
+       lignes sans date (« sans date ») ; une valeur sur plusieurs lignes garde ses retours à la ligne et les entrées
+       sont alors séparées par une ligne vide, pour que chaque date ouvre bien son entrée. */
     config.fusCols.forEach(c => {
       const vus = new Set(), morceaux = [];
       const estListe = avecJour.some(({ r }) => Array.isArray(r[c]) && r[c][0] === "L");
-      if (estListe) {   // choix multiples : liste des éléments distincts, sans date
+      if (estListe && !config.prefixeDate) {   // choix multiples sans date : liste des éléments distincts
         avecJour.forEach(({ r }) => elementsListe(T, c, r[c]).forEach(t => { if (!vus.has(t)) { vus.add(t); morceaux.push(t); } }));
         o["fus_" + c] = morceaux.join(", ");
         return;
       }
       avecJour.forEach(({ r, j }) => {
-        const t = texteCellule(T, c, r[c]).trim();
+        const t = (estListe ? elementsListe(T, c, r[c]).join(", ") : texteCellule(T, c, r[c])).trim();
         if (!t || vus.has(t)) return;
         vus.add(t);
-        morceaux.push(config.prefixeDate && j ? `${jourCourt(j)} : ${t}` : t);
+        morceaux.push(config.prefixeDate && config.dateCol ? `${j ? jourCourt(j) : "sans date"} : ${t}` : t);
       });
-      o["fus_" + c] = morceaux.join("\n");
+      o["fus_" + c] = morceaux.join(config.prefixeDate && morceaux.some(m => m.includes("\n")) ? "\n\n" : "\n");
     });
 
     // 4. Filtres sur les établissements regroupés
