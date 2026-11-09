@@ -13,7 +13,7 @@
 // Pièces jointes, la colonne y figure encore comme simple colonne alors qu'elle est devenue une formule. Les colonnes
 // réelles de la table disent si sa colonne d'envoi existe : le formulaire écrit alors dans celle-ci.
 function idColonne(libelle) {
-  // identifiant donné par l'administration à une colonne créée (voir admin/formulaires.js)
+  // identifiant donné par l'administration à une colonne créée (voir admin/formulaires/fondations.js, identifiant)
   let identifiant = String(libelle || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")

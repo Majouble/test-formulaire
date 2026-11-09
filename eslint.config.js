@@ -58,6 +58,10 @@ const NOMS_SAISIE = ["fondations", "composants", "domaines", "demarrage.js"]
   .flatMap((d) => (d.endsWith(".js") ? (fs.existsSync(d) ? [d] : []) : fichiersSaisie(d)))
   .flatMap(nomsDePremierNiveau);
 
+// Onglet Formulaires de l'administration (v2/admin/formulaires/) : même principe que la saisie.
+const FICHIERS_FORMULAIRES = ["v2/admin/formulaires/*.js"];
+const NOMS_FORMULAIRES = fichiersSaisie(path.join(__dirname, "v2/admin/formulaires")).flatMap(nomsDePremierNiveau);
+
 const PARTAGES = [
   // API Grist (grist-plugin-api.js) et bibliothèques tierces
   "grist",
@@ -125,6 +129,14 @@ module.exports = [
     languageOptions: { globals: Object.fromEntries(NOMS_SAISIE.map((n) => [n, "writable"])) },
     rules: {
       // chaque fichier déclare ce que les autres utilisent : ni « redéclaration », ni « inutilisé » au premier niveau
+      "no-redeclare": ["error", { builtinGlobals: false }],
+      "no-unused-vars": ["warn", { vars: "local", args: "none", caughtErrors: "none", ignoreRestSiblings: true }],
+    },
+  },
+  {
+    files: FICHIERS_FORMULAIRES,
+    languageOptions: { globals: Object.fromEntries(NOMS_FORMULAIRES.map((n) => [n, "writable"])) },
+    rules: {
       "no-redeclare": ["error", { builtinGlobals: false }],
       "no-unused-vars": ["warn", { vars: "local", args: "none", caughtErrors: "none", ignoreRestSiblings: true }],
     },
