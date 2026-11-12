@@ -1223,7 +1223,7 @@ function dessinerPanneauBase() {
 }
 /* ---------- Tableau des sites (formulaire par site, enseignement supérieur) ----------
    reglages.tableau.sites = { site, libre, qualif, historique: [{ colonne, libre, site, qualif }], alias, avecRas, reprise } :
-   une ligne par site ; reprise du dernier état connu de chaque site (reprise : "non" par défaut, "bouton" ou "auto") ; qualification de l'établissement déduite du
+   une ligne par site ; reprise des sites du dernier dossier de l'établissement (2.50 ; reprise : "non" par défaut, "bouton" ou "auto") ; qualification de l'établissement déduite du
    site le plus grave (conf.saisie.qualificationEnBas). Voir le widget de saisie. */
 // reprise du dernier état des sites : "auto" (ancien réglage true), "bouton" (à la demande), "non" (par défaut)
 const modeReprise = st => st && (st.reprise === true || st.reprise === "auto") ? "auto" : st && st.reprise === "bouton" ? "bouton" : "non";
@@ -1245,14 +1245,14 @@ function groupeSitesHtml(b) {
       <label class="l" for="pa-site-hist">Reprendre aussi l'historique de la question</label><select id="pa-site-hist"><option value="">— (aucune)</option>${autres.map(c => `<option value="${esc(c.colId)}"${h.colonne === c.colId ? " selected" : ""}>${esc(libelleQuestion(c.colId))}</option>`).join("")}</select>
       ${h.colonne ? `<div class="ligne-sc"><input type="text" id="pa-site-hist-libre" value="${esc(h.libre || "")}" placeholder="champ du nom (ex. Nom_du_site)" style="flex:1"><input type="text" id="pa-site-hist-qualif" value="${esc(h.qualif || "")}" placeholder="champ de qualification" style="flex:1"></div>` : ""}
       <label class="l" for="pa-site-alias">Table des correspondances (libellé saisi → site)</label><input type="text" id="pa-site-alias" value="${esc(st.alias || "Sites_correspondances")}">
-      <label class="l" for="pa-site-reprise">Nouveau dossier : reprise du dernier état des sites déjà signalés pour l'établissement</label>
-      <select id="pa-site-reprise">${[["non", "désactivée : le tableau part vide"], ["bouton", "à la demande : bouton « Reprendre leur dernier état »"], ["auto", "automatique : une ligne par site connu dès l'établissement choisi"]].map(([v, l]) => `<option value="${v}"${modeReprise(st) === v ? " selected" : ""}>${l}</option>`).join("")}</select>
-      ${modeReprise(st) !== "non" ? `<label class="interrupteur">Reprise : une ligne par site connu, y compris ceux revenus à la normale <input type="checkbox" id="pa-site-ras"${st.avecRas !== false ? " checked" : ""}></label>` : ""}
+      <label class="l" for="pa-site-reprise">Nouveau dossier : reprise des sites du dernier dossier de l'établissement</label>
+      <select id="pa-site-reprise">${[["non", "désactivée : le tableau part vide"], ["bouton", "à la demande : bouton « Reprendre leur dernier état »"], ["auto", "automatique : une ligne par site du dernier dossier dès l'établissement choisi"]].map(([v, l]) => `<option value="${v}"${modeReprise(st) === v ? " selected" : ""}>${l}</option>`).join("")}</select>
+      ${modeReprise(st) !== "non" ? `<label class="interrupteur">Reprise : y compris les sites revenus à la normale (repris pour mémoire) <input type="checkbox" id="pa-site-ras"${st.avecRas !== false ? " checked" : ""}></label>` : ""}
       <label class="interrupteur">Qualification de l'établissement en bas, déduite du site le plus grave <input type="checkbox" id="pa-qualif-bas"${confSaisie().qualificationEnBas !== false ? " checked" : ""}></label>
       ${controleSitesHtml(b)}
       <p class="note" style="margin:6px 0 0">${modeReprise(st) === "non" ? "Nouveau dossier : le tableau des sites part vide, l'agent saisit les sites concernés ce jour-là (la reprise d'un signalement précédent ne reprend pas les sites)."
-        : modeReprise(st) === "auto" ? "Nouveau dossier : dès l'établissement choisi, le tableau se remplit d'une ligne par site déjà signalé, à son dernier état (toutes les versions précédentes de l'établissement et la question d'historique choisie) ; l'agent confirme ou modifie chaque site encore perturbé et ajoute les nouveaux."
-        : "Nouveau dossier : le tableau des sites part vide ; si l'établissement a déjà des sites signalés, un bouton « Reprendre leur dernier état » le remplit à la demande (toutes les versions précédentes de l'établissement et la question d'historique choisie)."} La qualification de l'établissement suit le site le plus grave (ordre des choix de Qualification, du plus grave au moins grave) ; une incohérence est signalée avant l'enregistrement.</p>` : ""}
+        : modeReprise(st) === "auto" ? "Nouveau dossier : dès l'établissement choisi, le tableau se remplit des sites du dernier dossier de l'établissement (celui mis à jour le plus récemment), dans l'état de sa dernière version ; les sites signalés seulement dans des dossiers plus anciens ne sont pas repris ; l'agent confirme ou modifie chaque site encore perturbé et ajoute les nouveaux."
+        : "Nouveau dossier : le tableau des sites part vide ; si l'établissement a déjà des sites signalés, un bouton « Reprendre leur dernier état » le remplit à la demande avec les sites du dernier dossier de l'établissement, dans l'état de sa dernière version."} La qualification de l'établissement suit le site le plus grave (ordre des choix de Qualification, du plus grave au moins grave) ; une incohérence est signalée avant l'enregistrement.</p>` : ""}
   </div>`;
 }
 /* Contrôle du paramétrage du tableau des sites : chaque point attendu, vérifié sur la structure du document.
