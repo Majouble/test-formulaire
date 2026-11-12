@@ -10,6 +10,7 @@
 <script src="../commun/marque.js"></script>
 <script src="../commun/menu-deroulant.js"></script>
 <script src="../commun/socle.js"></script>
+<script src="filtres-colonnes.js"></script>
 <style>
   :root {
     --bleu: #000091; --bleu-clair: #e3e3fd; --gris: #666; --bord: #ddd;
@@ -65,7 +66,13 @@
   td.num { text-align: right; white-space: nowrap; }
   .qual { border-radius: 3px; padding: 0 5px; display: inline-block; }
   .filtres-col { display: flex; flex-direction: column; gap: 4px; }
-  .filtres-col .ligne select.col { width: 180px; } .filtres-col .ligne select.op { width: 130px; } .filtres-col .ligne input { width: 200px; }
+  .filtres-col .ligne select.col { width: 180px; } .filtres-col .ligne select.op { width: 150px; } .filtres-col .ligne input[data-champ=val] { width: 200px; }
+  .filtres-col .filtre { display: flex; flex-direction: column; gap: 3px; padding: 4px 0; border-bottom: 1px dashed var(--bord); }
+  .filtres-col .filtre:last-of-type { border-bottom: none; }
+  .filtres-col .portee { margin-left: 26px; font-size: 12px; flex-wrap: wrap; }
+  .filtres-col .portee select { width: auto; } .filtres-col .portee input[type=number] { width: 70px; }
+  .filtres-col .resume { margin-left: 26px; font-size: 11px; color: var(--gris); }
+  #formule { width: 200px; }
   .filtres-col .num-f { font-size: 11px; font-weight: 600; color: var(--bleu); min-width: 20px; }
   button.icone { padding: 2px 7px; border-color: #bbb; color: var(--gris); }
   button.lien { border: none; padding: 2px 0; text-decoration: underline; background: none; align-self: flex-start; }
@@ -160,10 +167,8 @@
     </div>
     <div class="bloc filtres-col">
       <span class="titre"><b>Valeurs dans les colonnes</b>
-        <select id="combinaison" style="width:auto" title="Comment se combinent les filtres de colonnes">
-          <option value="cascade">en cascade : tous les filtres</option>
-          <option value="autonome">autonomes : au moins un filtre</option>
-        </select>
+        <select id="combinaison" style="width:auto" title="Comment se combinent les filtres de colonnes"></select>
+        <input type="text" id="formule" placeholder="ex. 1 ET (2 OU 3)" aria-label="Formule de combinaison des filtres" hidden>
       </span>
       <div id="filtresCol"></div>
       <button type="button" class="lien" id="ajoutFiltreCol">+ Ajouter un filtre de colonne</button>
@@ -222,43 +227,51 @@ function configParDefaut() {
            calc: Object.fromEntries(CALCULEES.map(c => [c.key, c.defaut])) };
 }
 function filtresVides() {
-  return { du: "", au: "", joursMin: "", joursMax: "", qualMode: "une", qualValeurs: [], colonnes: [], combinaison: "cascade" };
+  return { du: "", au: "", joursMin: "", joursMax: "", qualMode: "une", qualValeurs: [], colonnes: [], combinaison: "cascade", formule: "" };
 }
-/* Filtres de colonnes (2.52) : plusieurs colonnes, chacune avec un opérateur ; « en cascade » = un établissement doit
-   satisfaire tous les filtres, « autonomes » = au moins un (union sans doublon : une ligne par établissement, la colonne
-   « Filtres vérifiés » dit lesquels). Reprise de l'ancien filtre unique (chercheCol, chercheTexte). */
-const OPERATEURS = [
-  { id: "contient", label: "contient" }, { id: "egal", label: "est égal à" }, { id: "exclut", label: "ne contient pas" },
-  { id: "rempli", label: "est renseigné" }, { id: "vide", label: "n'est jamais renseigné" },
-];
-const sansTexte = op => op === "rempli" || op === "vide";
+/* Filtres de colonnes : moteur dans filtres-colonnes.js (FiltresColonnes) — condition sur la ligne, portée ou
+   comptage avec seuil, versions prises en compte, combinaison ET / OU / formule. Ici : reprise des réglages
+   enregistrés, contexte de lecture des lignes, affichage. */
+const FC = window.FiltresColonnes;
 function normaliserFiltres(f) {
   const o = Object.assign(filtresVides(), f || {});
   if (!Array.isArray(o.colonnes)) o.colonnes = [];
   if (o.chercheCol && !o.colonnes.length) o.colonnes = [{ col: o.chercheCol, op: "contient", texte: o.chercheTexte || "" }];
   delete o.chercheCol; delete o.chercheTexte;
-  if (!["cascade", "autonome"].includes(o.combinaison)) o.combinaison = "cascade";
+  o.colonnes = o.colonnes.map(FC.reprendre);
+  if (!FC.COMBINAISONS.some(x => x[0] === o.combinaison)) o.combinaison = "cascade";
+  o.formule = o.formule || "";
   return o;
 }
-// filtres de colonnes complets (colonne choisie, texte saisi sauf pour « renseigné » / « jamais renseigné »), numérotés
-function filtresColActifs() {
-  return filtres.colonnes.map((f, i) => ({ ...f, n: i + 1 })).filter(f => f.col && (sansTexte(f.op) || String(f.texte || "").trim()));
+// filtres de colonnes pris en compte, avec leur numéro (F1 = premier de la liste, même incomplet)
+function filtresColActifs() { return filtres.colonnes.map((f, i) => ({ ...f, n: i + 1 })).filter(FC.actif); }
+function libelleFiltre(f) { return `F${f.n} : ${FC.libelle(f, libelle)}`; }
+// colonne « Filtres vérifiés » : utile quand un établissement peut être retenu sans vérifier tous les filtres
+const avecFiltresVerifies = () => filtres.combinaison !== "cascade" && filtresColActifs().length > 1;
+// lignes « dernière version de leur dossier » : colonne Derniere_version si la table en a une, sinon dernière ligne
+// (jour des faits, puis numéro) de chaque dossier (colonne Dossier) ; sans l'une ni l'autre, chaque ligne est un dossier
+function dernieresVersions(T) {
+  const m = meta[T] || {}, ids = new Set();
+  if (m.Derniere_version) { lignes.forEach(r => { if (r.Derniere_version === true || r.Derniere_version === 1) ids.add(r.id); }); return ids; }
+  if (!m.Dossier) { lignes.forEach(r => ids.add(r.id)); return ids; }
+  const der = new Map(), typeDate = config.dateCol ? (m[config.dateCol] || {}).type : "";
+  lignes.forEach(r => {
+    const d = typeof r.Dossier === "number" && r.Dossier ? r.Dossier : r.id, j = config.dateCol ? jourISO(r[config.dateCol], typeDate) : "";
+    const x = der.get(d); if (!x || (j || "") > x.j || ((j || "") === x.j && r.id > x.r.id)) der.set(d, { r, j: j || "" });
+  });
+  der.forEach(x => ids.add(x.r.id));
+  return ids;
 }
-function libelleFiltre(f) {
-  const op = (OPERATEURS.find(o => o.id === f.op) || OPERATEURS[0]).label;
-  return `F${f.n} : « ${libelle(f.col)} » ${op}${sansTexte(f.op) ? "" : ` « ${String(f.texte).trim()} »`}`;
-}
-// un groupe (les lignes d'un établissement sur la période) vérifie-t-il le filtre ? (sur l'ensemble de ses lignes)
-function verifieFiltre(T, f, rs) {
-  const valeurs = rs.map(({ r }) => normaliser(texteCellule(T, f.col, r[f.col]).trim()));
-  const alt = String(f.texte || "").split(";").map(x => normaliser(x.trim())).filter(Boolean);
-  switch (f.op) {
-    case "egal": return valeurs.some(v => alt.includes(v));
-    case "exclut": return !valeurs.some(v => alt.some(a => v.includes(a)));
-    case "rempli": return valeurs.some(Boolean);
-    case "vide": return !valeurs.some(Boolean);
-    default: return valeurs.some(v => alt.some(a => v.includes(a)));
-  }
+function contexteFiltres(T) {
+  const derniere = dernieresVersions(T), typeDe = c => ((meta[T] || {})[c] || {}).type || "";
+  return {
+    texte: (c, r) => texteCellule(T, c, r[c]),
+    elements: (c, r) => elementsListe(T, c, r[c]),
+    nombre: (c, r) => { const v = r[c]; if (typeof v === "number") return v; if (typeof v === "boolean") return v ? 1 : 0; const n = enNombre(texteCellule(T, c, v)); return n === null ? NaN : n; },
+    jour: (r, c) => c ? jourISO(r[c], typeDe(c)) : (config.dateCol ? jourISO(r[config.dateCol], typeDe(config.dateCol)) : ""),
+    estDate: c => /^Date/.test(typeDe(c)),
+    estDerniere: r => derniere.has(r.id),
+  };
 }
 
 // ---------- Utilitaires ----------
@@ -458,27 +471,49 @@ function valeursProposees(col) {
   for (const r of lignes) for (const v of elementsListe(T, col, r[col])) n.set(v, (n.get(v) || 0) + 1);
   return [...n].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "fr")).slice(0, 500).map(([valeur, k]) => ({ valeur, n: k }));
 }
+const options = (liste, v) => liste.map(([id, lib]) => `<option value="${id}"${id === v ? " selected" : ""}>${echapper(lib)}</option>`).join("");
 function afficherFiltresCol() {
   const cols = colonnesTable(), div = $("filtresCol");
-  if (!filtres.colonnes.length) filtres.colonnes = [{ col: "", op: "contient", texte: "" }];
-  div.innerHTML = filtres.colonnes.map((f, i) => `<div class="ligne" data-i="${i}">
-    <span class="num-f">F${i + 1}</span>
-    <select class="col" data-champ="col" aria-label="Colonne du filtre ${i + 1}"><option value="">— colonne —</option>${cols.map(c => `<option value="${echapper(c.id)}"${c.id === f.col ? " selected" : ""}>${echapper(c.label)}</option>`).join("")}</select>
-    <select class="op" data-champ="op" aria-label="Opérateur du filtre ${i + 1}">${OPERATEURS.map(o => `<option value="${o.id}"${o.id === f.op ? " selected" : ""}>${o.label}</option>`).join("")}</select>
-    <input type="text" data-champ="texte" value="${echapper(f.texte || "")}" placeholder="valeur (a ; b = l'un ou l'autre)" aria-label="Valeur du filtre ${i + 1}"${sansTexte(f.op) ? " hidden" : ""} list="fc-valeurs-${i}" data-separateur=";">
-    <datalist id="fc-valeurs-${i}">${valeursProposees(f.col).map(v => `<option value="${echapper(v.valeur)}" label="${v.n} ligne${v.n > 1 ? "s" : ""}"></option>`).join("")}</datalist>
-    <button type="button" class="icone" data-retirer="${i}" title="Retirer ce filtre" aria-label="Retirer le filtre ${i + 1}">✕</button>
-  </div>`).join("");
+  const optCols = (v, vide) => `<option value="">${vide}</option>` + cols.map(c => `<option value="${echapper(c.id)}"${c.id === v ? " selected" : ""}>${echapper(c.label)}</option>`).join("");
+  const nombres = cols.filter(c => ["Int", "Numeric", "Any"].includes(c.type));
+  if (!filtres.colonnes.length) filtres.colonnes = [FC.nouveau()];
+  div.innerHTML = filtres.colonnes.map((f, i) => {
+    const compter = f.portee === "compter", n = i + 1;
+    const colsMesure = f.mesure === "distinct" ? cols : nombres.length ? nombres : cols;
+    return `<div class="filtre" data-i="${i}">
+    <div class="ligne">
+      <span class="num-f">F${n}</span>
+      <select class="col" data-champ="col" aria-label="Colonne du filtre ${n}">${optCols(f.col, compter ? "— toutes les lignes —" : "— colonne —")}</select>
+      <select class="op" data-champ="op" aria-label="Opérateur du filtre ${n}"${f.col ? "" : " hidden"}>${options(FC.OPERATEURS, f.op)}</select>
+      <input type="text" data-champ="val" value="${echapper(f.val ?? "")}" placeholder="${["gt", "ge", "lt", "le"].includes(f.op) ? "valeur" : "valeur (a ; b = l'un ou l'autre)"}" aria-label="Valeur du filtre ${n}"${!f.col || FC.sansValeur(f.op) ? " hidden" : ""} list="fc-valeurs-${i}"${["gt", "ge", "lt", "le"].includes(f.op) ? "" : ' data-separateur=";"'}>
+      <datalist id="fc-valeurs-${i}">${valeursProposees(f.col).map(v => `<option value="${echapper(v.valeur)}" label="${v.n} ligne${v.n > 1 ? "s" : ""}"></option>`).join("")}</datalist>
+      <button type="button" class="icone" data-retirer="${i}" title="Retirer ce filtre" aria-label="Retirer le filtre ${n}">✕</button>
+    </div>
+    <div class="ligne portee">
+      <select data-champ="portee" aria-label="Portée du filtre ${n}" title="Combien de fois la condition doit être vraie sur la période">${options(FC.PORTEES, f.portee)}</select>
+      ${compter ? `<select data-champ="mesure" aria-label="Mesure du filtre ${n}">${options(FC.MESURES, f.mesure)}</select>
+      ${FC.avecColonneMesure(f.mesure) ? `<select data-champ="colMesure" aria-label="Colonne mesurée par le filtre ${n}">${optCols(f.colMesure, "— colonne —")}</select>` : ""}
+      <select data-champ="cmp" aria-label="Comparaison du filtre ${n}">${options(FC.COMPARAISONS, f.cmp)}</select>
+      <input type="number" step="any" data-champ="seuil" value="${echapper(f.seuil ?? "")}" placeholder="seuil" aria-label="Seuil du filtre ${n}">` : ""}
+      <span>sur</span>
+      <select data-champ="versions" aria-label="Versions prises en compte par le filtre ${n}" title="Toutes les lignes de chaque dossier, ou seulement son dernier état">${options(FC.VERSIONS, f.versions)}</select>
+    </div>
+  </div>`; }).join("");
   majCombinaison();
 }
-// choix cascade / autonomes : utile à partir de deux filtres complets (sans redessiner les lignes : la saisie garde le focus)
+// combinaison : utile à partir de deux filtres complets (sans redessiner les lignes : la saisie garde le focus)
 function majCombinaison() {
-  $("combinaison").value = filtres.combinaison;
-  const n = filtresColActifs().length;
-  $("combinaison").disabled = n < 2;
-  $("aideCombinaison").textContent = n < 2 ? "Ajoutez un deuxième filtre pour choisir cascade ou autonomes."
-    : filtres.combinaison === "cascade" ? "Établissements qui vérifient tous les filtres (sur l'ensemble de leurs lignes de la période)."
-    : "Établissements qui vérifient au moins un filtre, sans doublon : la colonne « Filtres vérifiés » dit lesquels.";
+  const sel = $("combinaison"), n = filtresColActifs().length;
+  if (!sel.options.length) sel.innerHTML = options(FC.COMBINAISONS, filtres.combinaison);
+  sel.value = filtres.combinaison; sel.disabled = n < 2;
+  const formule = $("formule"); formule.hidden = filtres.combinaison !== "formule" || n < 2;
+  if (document.activeElement !== formule) formule.value = filtres.formule || "";
+  const err = filtres.combinaison === "formule" && n > 1 ? FC.erreurFormule(filtres.formule, filtres.colonnes.length) : "";
+  formule.style.borderColor = err ? "var(--rouge)" : "";
+  $("aideCombinaison").textContent = n < 2 ? "Ajoutez un deuxième filtre pour choisir comment ils se combinent."
+    : filtres.combinaison === "cascade" ? "Établissements qui vérifient tous les filtres."
+    : filtres.combinaison === "autonome" ? "Établissements qui vérifient au moins un filtre, sans doublon : la colonne « Filtres vérifiés » dit lesquels."
+    : err ? `Formule à corriger : ${err}. En attendant, tous les filtres s'appliquent.` : "Numéros des filtres, ET, OU, NON et parenthèses ; la colonne « Filtres vérifiés » dit lesquels sont vrais.";
 }
 function afficherFiltres() {
   $("du").value = filtres.du; $("au").value = filtres.au;
@@ -539,7 +574,9 @@ function calculer() {
     colonnes.push({ key: c.key, label: c.key === "nbJours" && config.exclure && config.qualCol ? `Nb jours de mobilisation (hors jours ${config.exclure})` : c.label, type: c.type });
   });
   config.fusCols.forEach(c => colonnes.push({ key: "fus_" + c, label: libelle(c), type: "text" }));
-  if (filtres.combinaison === "autonome" && filtresColActifs().length > 1) colonnes.push({ key: "filtresOk", label: "Filtres vérifiés", type: "text" });
+  // filtres de colonnes : valeur comptée de chaque filtre à seuil, puis filtres vérifiés (combinaisons OU et formule)
+  filtresColActifs().filter(f => f.portee === "compter").forEach(f => colonnes.push({ key: "fc_" + f.n, label: `F${f.n} : ${(FC.MESURES.find(x => x[0] === f.mesure) || FC.MESURES[0])[1]}${FC.avecColonneMesure(f.mesure) ? " " + libelle(f.colMesure) : ""}`, type: "num" }));
+  if (avecFiltresVerifies()) colonnes.push({ key: "filtresOk", label: "Filtres vérifiés", type: "text" });
   if (!T || !cle) return { colonnes, lignes: [], total: 0, sources: 0 };
 
   // 1. Filtre de période sur les lignes sources
@@ -560,7 +597,7 @@ function calculer() {
   });
 
   // 3. Agrégation
-  const fcol = filtresColActifs(), autonome = filtres.combinaison === "autonome" && fcol.length > 1;
+  const fcol = filtresColActifs(), ctxFiltres = fcol.length ? contexteFiltres(T) : null, plusieursPossibles = avecFiltresVerifies();
   const sortie = [];
   for (const [k, rs] of groupes) {
     const avecJour = rs.map(r => ({ r, j: config.dateCol ? jourISO(r[config.dateCol], typeDate) : "" }))
@@ -623,8 +660,15 @@ function calculer() {
       if (!ok) continue;
     }
     if (fcol.length) {
-      const ok = fcol.filter(f => verifieFiltre(T, f, avecJour));
-      if (autonome ? !ok.length : ok.length < fcol.length) continue;
+      const rsGroupe = avecJour.map(x => x.r), parNumero = [];
+      for (const f of fcol) {
+        const res = FC.evaluer(f, rsGroupe, ctxFiltres);
+        parNumero[f.n - 1] = res.ok;
+        if (f.portee === "compter") o["fc_" + f.n] = isNaN(res.valeur) ? null : Math.round(res.valeur * 100) / 100;
+      }
+      for (let i = 0; i < filtres.colonnes.length; i++) if (!(i in parNumero)) parNumero[i] = undefined;
+      if (!FC.combiner(filtres.combinaison, filtres.formule, parNumero)) continue;
+      const ok = fcol.filter(f => parNumero[f.n - 1]);
       o.filtresOk = ok.map(f => "F" + f.n).join(", ");
       o._nbFiltres = ok.length;
     }
@@ -638,7 +682,7 @@ function calculer() {
   } else {
     sortie.sort((a, b) => (rang(b.qualMax) - rang(a.qualMax)) || ((b.nbJours || 0) - (a.nbJours || 0)) || a.cle.localeCompare(b.cle, "fr"));
   }
-  return { colonnes, lignes: sortie, total: groupes.size, sources: sources.length, plusieurs: autonome ? sortie.filter(o => o._nbFiltres > 1).length : 0 };
+  return { colonnes, lignes: sortie, total: groupes.size, sources: sources.length, plusieurs: plusieursPossibles ? sortie.filter(o => o._nbFiltres > 1).length : 0 };
 
   function comparer(x, y, type) {
     if (type === "int") return (x || 0) - (y || 0);
@@ -763,7 +807,7 @@ function resumeParametres() {
   if (config.exclure && config.qualCol) p.push(["Jours non comptés", `jours entièrement en « ${config.exclure} »`]);
   if (filtres.qualValeurs.length) p.push([`Qualification (${$("qualMode").selectedOptions[0].text})`, filtres.qualValeurs.join(", ")]);
   const fcol = filtresColActifs();
-  if (fcol.length > 1) p.push(["Filtres de colonnes", filtres.combinaison === "autonome" ? "autonomes : au moins un filtre (sans doublon)" : "en cascade : tous les filtres"]);
+  if (fcol.length > 1) p.push(["Filtres de colonnes", filtres.combinaison === "formule" ? `combinaison : ${filtres.formule}` : (FC.COMBINAISONS.find(x => x[0] === filtres.combinaison) || [])[1]]);
   fcol.forEach(f => p.push([`Filtre F${f.n}`, libelleFiltre(f).replace(/^F\d+ : /, "")]));
   p.push(["Établissements retenus", `${resultat.lignes.length} sur ${resultat.total}`]);
   return p;
@@ -844,7 +888,9 @@ $("qualPuces").addEventListener("click", sauvegarder);
 // filtres de colonnes : saisie, ajout, retrait, combinaison
 $("filtresCol").addEventListener("input", e => {
   const el = e.target.closest("[data-champ]"); if (!el) return;
-  const i = +el.closest("[data-i]").dataset.i; filtres.colonnes[i][el.dataset.champ] = el.value;
+  const i = +el.closest("[data-i]").dataset.i, f = filtres.colonnes[i];
+  f[el.dataset.champ] = el.value;
+  if (el.dataset.champ === "mesure" && FC.avecColonneMesure(f.mesure) && !f.colMesure && f.col) f.colMesure = f.col;
   if (el.tagName === "SELECT") afficherFiltresCol(); else majCombinaison();
   majResultat(); sauvegarder();
 });
@@ -853,10 +899,11 @@ $("filtresCol").addEventListener("click", e => {
   filtres.colonnes.splice(+b.dataset.retirer, 1); afficherFiltresCol(); majResultat(); sauvegarder();
 });
 $("ajoutFiltreCol").addEventListener("click", () => {
-  filtres.colonnes.push({ col: "", op: "contient", texte: "" }); afficherFiltresCol();
+  filtres.colonnes.push(FC.nouveau()); afficherFiltresCol();
   const sel = $("filtresCol").querySelectorAll("select.col"); sel[sel.length - 1].focus();
 });
-$("combinaison").addEventListener("change", e => { filtres.combinaison = e.target.value; afficherFiltresCol(); majResultat(); sauvegarder(); });
+$("combinaison").addEventListener("change", e => { filtres.combinaison = e.target.value; afficherFiltresCol(); majResultat(); sauvegarder(); if (e.target.value === "formule") $("formule").focus(); });
+$("formule").addEventListener("input", e => { filtres.formule = e.target.value; majCombinaison(); majResultat(); sauvegarder(); });
 $("btnReinit").addEventListener("click", () => { filtres = filtresVides(); afficherFiltres(); majResultat(); sauvegarder(); });
 $("btnRafraichir").addEventListener("click", async () => { refCache = {}; await chargerMeta(); await chargerEtAfficher(); message("Données rafraîchies.", "info"); });
 $("btnExcel").addEventListener("click", exporterExcel);

@@ -8,7 +8,7 @@ Scénarios Playwright qui ouvrent les widgets (`v2/…`) dans Chromium avec un *
 cd tests
 npm install
 npx playwright install chromium     # ou : CHROMIUM=/chemin/vers/chromium
-sh lancer.sh                        # suite actuelle (run63 à run122)
+sh lancer.sh                        # suite actuelle (run63 à run123)
 sh lancer.sh run74 run76            # quelques scénarios
 ```
 
@@ -97,6 +97,7 @@ Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pou
 | `run120` | 2.52 : Extractions — filtres sur plusieurs colonnes (opérateurs), combinaison en cascade ou autonomes (sans doublon, colonne « Filtres vérifiés »), focus gardé à la saisie, reprise de l'ancien filtre unique, paramètres de l'Excel |
 | `run121` | 2.53 : Extractions — colonnes fusionnées préfixées : date sur chaque entrée (choix multiples, texte sur plusieurs lignes, ligne sans date) |
 | `run122` | 2.54 : menu déroulant des champs à valeurs proposées — filtre de colonne des Extractions (plusieurs valeurs), filtre commun du tableau de bord (« est l'une des valeurs »), liste complète des sites du formulaire par la flèche |
+| `run123` | 2.55 : Extractions — filtres à comptage et seuil (nombre de jours, somme, maximum), versions par filtre (toutes / dernière de chaque dossier), portées jamais et à chaque fois, opérateur ≥, combinaison par formule, colonnes des valeurs comptées, Excel |
 | `run12` | — |
 | `run13` | — |
 | `run14` | — |

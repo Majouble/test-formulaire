@@ -21,7 +21,7 @@ const fleche = async (page, sel) => { const b = await page.$eval(sel, e => { con
       + `;window.__OPTS={};grist.ready=()=>{};grist.onOptions=cb=>setTimeout(()=>cb(null),50);grist.setOptions=o=>{window.__OPTS=JSON.parse(JSON.stringify(o));};grist.docApi.listTables=async()=>window.__DOC__._grist_Tables.tableId.slice();` }));
     await page.goto('file://' + __C.racine + '/v2/extractions/index.html'); await page.waitForTimeout(1500);
     await page.selectOption('#filtresCol [data-i="0"] select.col', 'Qualification'); await page.waitForTimeout(150);
-    const champ = '#filtresCol [data-i="0"] input[data-champ=texte]';
+    const champ = '#filtresCol [data-i="0"] input[data-champ=val]';
     console.log('EXTRACTIONS, champ amélioré :', await page.$eval(champ, e => `${e.className} · role=${e.getAttribute('role')} · list natif=${e.hasAttribute('list')}`));
     await page.click(champ); await page.waitForTimeout(150);
     console.log('CLIC → LISTE :', await liste(page));
