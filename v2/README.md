@@ -35,6 +35,7 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 ├── commun/socle.js      code partagé : lecture de Config, rôles, plan d'installation
 ├── commun/theme.js      thème clair ou sombre de tous les widgets (data-theme sur <html>)
 ├── commun/marque.js     logo PRISME en haut à gauche de tous les widgets (variantes bloc, compact, spectre, centre)
+├── commun/menu-deroulant.js  menu déroulant des champs à valeurs proposées (<input list> + <datalist>), dans tous les widgets
 ├── commun/geo.js        fond de carte commun : départements et académies (Lambert-93, encarts), placement d'un point latitude / longitude
 ├── saisie/              formulaire de saisie
 ├── admin/               administration : installation.js, configuration.js, referentiel.js, equipe.js, planning.js, pages-agents.js (onglet Équipe, Pages de saisie), actions.js, acces.js, liens.js, campagnes.js (onglet Établissements, carte Campagnes), effectifs.js (onglet Référentiel, carte Effectifs), veille.js (onglet Veille), validation.js (onglet Validation), repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css), secours.js (carte « Mode secours » : kit, relais, page de réintégration)

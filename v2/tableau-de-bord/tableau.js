@@ -699,7 +699,7 @@ function condEditor(scope, conds) {
         : prec === "datetime"
         ? `<input type="datetime-local" data-scope="${scope}" data-ci="${i}" data-f="val" value="${esc(String(c.val || "").slice(0, 16))}">`
         : `<input type="date" data-scope="${scope}" data-ci="${i}" data-f="val" value="${esc(String(c.val || "").slice(0, 10))}">`)
-      : `<input type="text" list="${dl}" data-scope="${scope}" data-ci="${i}" data-f="val" value="${esc(c.val ?? "")}" placeholder="${c.op === "in" ? "valeur 1 ; valeur 2" : "valeur"}">
+      : `<input type="text" list="${dl}"${c.op === "in" ? ' data-separateur=";"' : ""} data-scope="${scope}" data-ci="${i}" data-f="val" value="${esc(c.val ?? "")}" placeholder="${c.op === "in" ? "valeur 1 ; valeur 2" : "valeur"}">
          <datalist id="${dl}">${valueSuggestions(c.col).map(v => `<option value="${esc(v)}">`).join("")}</datalist>`;
     const link = n < 2 || i === 0 ? "" : mode === "or" ? "OU" : mode === "and" ? "ET" : "";
     return `<div class="cond">${n > 1 ? `<span class="num" title="Condition n° ${i + 1}">${link ? `<small>${link}</small> ` : ""}${i + 1}</span>` : ""}

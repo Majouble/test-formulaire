@@ -8,6 +8,7 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="../commun/theme.js"></script>
 <script src="../commun/marque.js"></script>
+<script src="../commun/menu-deroulant.js"></script>
 <script src="../commun/socle.js"></script>
 <style>
   :root {
@@ -449,6 +450,14 @@ function afficherReglages() {
   $("prefixeDate").checked = !!config.prefixeDate;
 }
 
+// valeurs proposées dans le menu déroulant d'un filtre de colonne (commun/menu-deroulant.js) : valeurs distinctes de
+// la colonne dans la table, les plus fréquentes d'abord (éléments un à un pour les choix multiples), 500 au plus
+function valeursProposees(col) {
+  if (!col) return [];
+  const T = config.tableId, n = new Map();
+  for (const r of lignes) for (const v of elementsListe(T, col, r[col])) n.set(v, (n.get(v) || 0) + 1);
+  return [...n].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "fr")).slice(0, 500).map(([valeur, k]) => ({ valeur, n: k }));
+}
 function afficherFiltresCol() {
   const cols = colonnesTable(), div = $("filtresCol");
   if (!filtres.colonnes.length) filtres.colonnes = [{ col: "", op: "contient", texte: "" }];
@@ -456,7 +465,8 @@ function afficherFiltresCol() {
     <span class="num-f">F${i + 1}</span>
     <select class="col" data-champ="col" aria-label="Colonne du filtre ${i + 1}"><option value="">— colonne —</option>${cols.map(c => `<option value="${echapper(c.id)}"${c.id === f.col ? " selected" : ""}>${echapper(c.label)}</option>`).join("")}</select>
     <select class="op" data-champ="op" aria-label="Opérateur du filtre ${i + 1}">${OPERATEURS.map(o => `<option value="${o.id}"${o.id === f.op ? " selected" : ""}>${o.label}</option>`).join("")}</select>
-    <input type="text" data-champ="texte" value="${echapper(f.texte || "")}" placeholder="valeur (a ; b = l'un ou l'autre)" aria-label="Valeur du filtre ${i + 1}"${sansTexte(f.op) ? " hidden" : ""}>
+    <input type="text" data-champ="texte" value="${echapper(f.texte || "")}" placeholder="valeur (a ; b = l'un ou l'autre)" aria-label="Valeur du filtre ${i + 1}"${sansTexte(f.op) ? " hidden" : ""} list="fc-valeurs-${i}" data-separateur=";">
+    <datalist id="fc-valeurs-${i}">${valeursProposees(f.col).map(v => `<option value="${echapper(v.valeur)}" label="${v.n} ligne${v.n > 1 ? "s" : ""}"></option>`).join("")}</datalist>
     <button type="button" class="icone" data-retirer="${i}" title="Retirer ce filtre" aria-label="Retirer le filtre ${i + 1}">✕</button>
   </div>`).join("");
   majCombinaison();

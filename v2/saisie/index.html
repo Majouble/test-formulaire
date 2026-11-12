@@ -7,6 +7,7 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="../commun/theme.js"></script>
 <script src="../commun/marque.js"></script>
+<script src="../commun/menu-deroulant.js"></script>
 <script src="../commun/socle.js"></script>
 <style>
   :root {
@@ -4840,7 +4841,7 @@ class Tableau {
       const lib = id ? this.libelleSite(d, id) : ancien || String((libre && l.valeurs[libre]) ?? "");
       // site du dossier relié au référentiel : il ne se remplace pas (sauf « Corriger le site ») ; un nom libre ou ancien se corrige
       const fige = l._fixe && id && !l._deverrouille ? ` disabled title="Site du dossier : il ne se remplace pas ; passez-le en RAS s'il est revenu à la normale, ou « Corriger le site » en cas d'erreur"` : "";
-      ctl = `<div class="site-combo"><input type="text" class="site-txt" value="${esc(lib)}"${id ? ` data-id="${id}"` : ""} autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-labelledby="${nom}-etiq" placeholder="${libre ? "Nom du site ou mot-clé (un nom absent de la liste est accepté)" : "Nom du site, mot-clé ou commune"}"${fige}>
+      ctl = `<div class="site-combo"><input type="text" class="site-txt${fige ? "" : " md-chevron"}" title="${fige ? "" : "Choisir dans la liste des sites (flèche) ou saisir un nom"}" value="${esc(lib)}"${id ? ` data-id="${id}"` : ""} autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-labelledby="${nom}-etiq" placeholder="${libre ? "Nom du site ou mot-clé (un nom absent de la liste est accepté)" : "Nom du site, mot-clé ou commune"}"${fige}>
         <span class="site-etat">${!id && lib ? (ancien ? "ancien nom, absent du référentiel : choisissez le site dans la liste" : "hors référentiel") : ""}</span><ul class="suggestions site-sugg" role="listbox" hidden></ul></div>`;
     } else if (t === "Ref") {
       let opts = d._options || [];
@@ -5019,7 +5020,7 @@ class Tableau {
     const parMot = opts.find(o => String((d._motsSite && d._motsSite.get(o.id)) || "").split(/\s*[|,;]\s*/).some(x => normaliser(x) === n)); if (parMot) return parMot.id;
     const a = this.alias.get(`${e || 0}|${n}`); return a && opts.some(o => o.id === a) ? a : 0;
   }
-  suggestionsSite(d, q) {
+  suggestionsSite(d, q, max = 30) {
     const mots = normaliser(q).split(" ").filter(Boolean), res = [];
     for (const o of this.sitesProposables(d)) {
       const nomN = normaliser(o.libelle), cles = [...String((d._motsSite && d._motsSite.get(o.id)) || "").split(/\s*[|,;]\s*/), ...(this.aliasParSite.get(o.id) || [])].filter(x => x && x.trim());
@@ -5033,11 +5034,12 @@ class Tableau {
       autres.sort((a, b) => b.trouve - a.trouve);
       res.push({ o, parNom, commune, comp: d._siteComp && d._siteComp.get(o.id) ? nomEtabId(d._siteComp.get(o.id)) : "", autres });
     }
-    return res.sort((a, b) => (b.parNom - a.parNom)).slice(0, 30);
+    return res.sort((a, b) => (b.parNom - a.parNom) || a.o.libelle.localeCompare(b.o.libelle, "fr")).slice(0, max);
   }
-  montrerSites(inp) {
+  // tout : liste complète des sites de l'établissement, dans l'ordre alphabétique (flèche du menu déroulant, 2.54)
+  montrerSites(inp, tout = false) {
     const sc = inp.closest(".sous-champ"), d = this.sousDefs.find(x => x.colId === sc.dataset.sous), ul = sc.querySelector(".site-sugg");
-    const q = inp.value.trim(), res = this.suggestionsSite(d, q);
+    const q = tout ? "" : inp.value.trim(), res = this.suggestionsSite(d, q, q ? 30 : 500);
     const avecLibre = !!this.colLibre(d), libre = avecLibre && q && !res.some(r => normaliser(r.o.libelle) === normaliser(q)) && !this.siteExact(d, q);
     // même présentation que la recherche d'établissement : nom, puis commune, composante, mot-clé retrouvé
     const MAX_AUTRES = 8;
@@ -5046,6 +5048,7 @@ class Tableau {
       + (libre ? `<li role="option" data-libre="1"><div class="nom">« ${esc(q)} »</div><div class="meta">site hors référentiel</div></li>` : "")
       + (!res.length && !libre ? `<li class="etat" aria-disabled="true">${!etablissementDuFormulaire() ? "Choisissez d'abord l'établissement." : q ? "Aucun site de cet établissement ne correspond." : "Aucun site de cet établissement au référentiel."}${avecLibre ? "" : " Complétez le référentiel des sites."}</li>` : "");
     ul.hidden = !ul.children.length; inp.setAttribute("aria-expanded", String(!ul.hidden));
+    if (tout) ul.dataset.tout = "1"; else delete ul.dataset.tout;
   }
   choisirSite(li) {
     const sc = li.closest(".sous-champ"), inp = sc.querySelector(".site-txt"), d = this.sousDefs.find(x => x.colId === sc.dataset.sous);
@@ -5158,7 +5161,17 @@ class Tableau {
     // champ du site : suggestions au fil de la frappe, choix à la souris ou au clavier
     el.addEventListener("focusin", ev => { if (ev.target.classList && ev.target.classList.contains("site-txt")) this.montrerSites(ev.target); });
     el.addEventListener("focusout", ev => { if (ev.target.classList && ev.target.classList.contains("site-txt")) setTimeout(() => { const ul = ev.target.closest(".site-combo") && ev.target.closest(".site-combo").querySelector(".site-sugg"); if (ul) ul.hidden = true; ev.target.setAttribute("aria-expanded", "false"); }, 150); });
-    el.addEventListener("mousedown", ev => { const li = ev.target.closest(".site-sugg li[role=option]"); if (li) { ev.preventDefault(); this.choisirSite(li); } });
+    el.addEventListener("mousedown", ev => {
+      const li = ev.target.closest(".site-sugg li[role=option]"); if (li) { ev.preventDefault(); this.choisirSite(li); return; }
+      // flèche du menu déroulant (à droite du champ) : liste complète des sites, ou fermeture si elle est ouverte
+      const inp = ev.target.closest(".site-txt.md-chevron");
+      if (inp && ev.clientX >= inp.getBoundingClientRect().right - 24) {
+        ev.preventDefault(); inp.focus();
+        const ul = inp.closest(".site-combo").querySelector(".site-sugg");
+        if (!ul.hidden && ul.dataset.tout) { ul.hidden = true; delete ul.dataset.tout; inp.setAttribute("aria-expanded", "false"); }
+        else this.montrerSites(inp, true);
+      }
+    });
     el.addEventListener("keydown", ev => {
       if (!ev.target.classList || !ev.target.classList.contains("site-txt")) return;
       const ul = ev.target.closest(".site-combo").querySelector(".site-sugg"), lis = [...ul.querySelectorAll("li[role=option]")];
