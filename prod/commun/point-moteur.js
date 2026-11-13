@@ -291,7 +291,7 @@ async function assemblerPoint(sources, cfg) {
   // plusieurs sources possibles (point national : un document par région académique)
   const depuis = R.depuis ? new Date(R.depuis) : null, marque = R.dernierPoint ? new Date(R.dernierPoint) : null;
   // surlignage : « point » = ce qui a changé depuis le dernier point (défaut) ; « version » = marques des colonnes (dernière mise à jour)
-  const depuisPoint = R.surlignage !== "version" && marque instanceof Date && !isNaN(marque);
+  const marqueValide = marque instanceof Date && !isNaN(marque), depuisPoint = R.surlignage !== "version" && marqueValide;
   const manquants = new Set();
   let lignes = [];
   for (const source of (Array.isArray(sources) ? sources : [sources])) {
@@ -329,7 +329,7 @@ async function assemblerPoint(sources, cfg) {
       const quand = r[colFaits] instanceof Date ? r[colFaits] : r[colDate];   // versions sans date des faits : date de saisie
       if (depuis && quand instanceof Date && quand < depuis) continue;
       if (R.academie && texteValeur(lec.lire(r, R.champAcademie || "Etablissement.Academie")) !== R.academie) continue;
-      lignes.push({ r, lec, ref: depuisPoint ? auDernierPoint(d) : undefined });
+      lignes.push({ r, lec, ref: marqueValide ? auDernierPoint(d) : undefined });
     }
   }
   // listes de valeurs « ordre des choix » : prises dans la configuration de la colonne Grist
@@ -358,7 +358,9 @@ async function assemblerPoint(sources, cfg) {
     lignesSec.forEach(x => restantes.delete(x));
     const MENTION = "\u0001nouveau\u0001";
     const rows = lignesSec.map(({ r, lec, ref }) => {
-      const nouveau = marque && r[colDate] instanceof Date && r[colDate] > marque && r[colNature] === "Nouveau signalement";
+      // nouveau = dossier absent du dernier point (aucune version saisie avant lui), même s'il a été mis à jour depuis ;
+      // sans dernier point valide : la dernière version est elle-même un nouveau signalement saisi après la marque
+      const nouveau = marqueValide ? !ref : marque && r[colDate] instanceof Date && r[colDate] > marque && r[colNature] === "Nouveau signalement";
       const extra = { nouveau: nouveau ? MENTION : "" };
       let vals = cols.map(c => remplir(c.Contenu, r, lec, extra));
       if (depuisPoint) {
