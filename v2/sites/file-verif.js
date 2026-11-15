@@ -339,16 +339,25 @@
   async function preparer() {
     if (fv.pret) return;
     for (const k of ["decision", "valeur", "commentaire"]) if (!fv.cols[k]) await colonneTexte(k);
-    const t = fv.table, tm = fv.meta[t], dep = ["L", tm.colonnes[fv.cols.decision].ref], acts = [];
-    const declencheur = (k, id, label, type, formule) => {
-      const c = fv.cols[k] && tm.colonnes[fv.cols[k]];
-      if (!c) acts.push(["AddColumn", t, id, { type, isFormula: false, label, formula: formule, recalcWhen: 0, recalcDeps: dep, untieColIdFromLabel: true }]);
-      else if (!c.isFormula && !c.formula && (k === "par" ? /^(Text|Any)/.test(c.type) : /^Date/.test(c.type))) acts.push(["ModifyColumn", t, c.colId, { formula: formule, recalcWhen: 0, recalcDeps: dep }]);
-    };
-    declencheur("par", "Verifie_par", "Vérifié par", "Text", "user.Name");
-    const cd = fv.cols.date && tm.colonnes[fv.cols.date];
-    declencheur("date", "Date", "Date", "Date", cd && /^DateTime/.test(cd.type) ? "NOW()" : "TODAY()");
-    if (acts.length) await grist.docApi.applyUserActions(acts);
+    // Grist refuse recalcDeps dans AddColumn / ModifyColumn (« AssertionError ») : colonnes créées d'abord, puis formule de
+    // déclenchement posée sur la métadonnée de la colonne (_grist_Tables_column), comme le fait Grist lui-même
+    const t = fv.table;
+    try {
+      let tm = fv.meta[t]; const cd = fv.cols.date && tm.colonnes[fv.cols.date];
+      const defs = [["par", "Verifie_par", "Vérifié par", "Text", "user.Name", c => /^(Text|Any)/.test(c.type)],
+        ["date", "Date", "Date", "Date", cd && /^DateTime/.test(cd.type) ? "NOW()" : "TODAY()", c => /^Date/.test(c.type)]];
+      const ajouts = defs.filter(([k]) => !fv.cols[k]).map(([, id, label, type]) => ["AddColumn", t, id, { type, isFormula: false, label, untieColIdFromLabel: true }]);
+      if (ajouts.length) { await grist.docApi.applyUserActions(ajouts); fv.meta = await H.S.lireMeta(); fv.cols = colsDe(fv.meta[t]); tm = fv.meta[t]; }
+      const dep = ["L", tm.colonnes[fv.cols.decision].ref], maj = [];
+      for (const [k, , , , formule, typeOk] of defs) {
+        const c = fv.cols[k] && tm.colonnes[fv.cols[k]];
+        if (c && !c.isFormula && !c.formula && typeOk(c)) maj.push(["UpdateRecord", "_grist_Tables_column", c.ref, { formula: formule, recalcWhen: 0, recalcDeps: dep }]);
+      }
+      if (maj.length) await grist.docApi.applyUserActions(maj);
+    } catch (err) {
+      // sans formules de déclenchement, les décisions s'enregistrent quand même (date écrite par le widget si possible)
+      dire(`« Vérifié par » et « Date » non automatisés (${err.message || err}) : les décisions sont enregistrées sans eux.`, "err");
+    }
     if (fv.cols.decision) await etendreChoix(t, fv.cols.decision, ["Accepter", "Refuser", "Modifier", "Reporter"]);
     if (fv.statutEcrit) await etendreChoix(t, fv.cols.statut, ["À traiter", "Traité"]);
     fv.meta = await H.S.lireMeta(); fv.cols = colsDe(fv.meta[t]);
