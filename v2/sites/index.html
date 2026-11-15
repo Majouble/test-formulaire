@@ -14,6 +14,8 @@
 <script src="../commun/qualite-moteur.js"></script>
 <script src="../commun/qualite-edition.js"></script>
 <script src="../admin/sites.js"></script>
+<script src="../commun/references.js"></script>
+<script src="file-verif.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
@@ -134,6 +136,12 @@
   .fe-champ input:not([type=checkbox]), .fe-champ select, .fe-champ textarea { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; }
   .fe-autres { margin: 6px 0; } .fe-autres summary { cursor: pointer; color: var(--accent); font-size: 12px; }
   .fe-ajout-ligne { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-end; } .fe-ajout-ligne label { display: grid; gap: 2px; font-size: 11.5px; color: var(--muted); }
+  /* file de vérification (file-verif.js) */
+  .fv-tete { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+  .fv-actions input[type=text] { flex: 1; min-width: 130px; } .fv-actions select { max-width: 240px; }
+  .sites-outils.fv-filtres { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px 8px; }
+  .sites-outils.fv-filtres label { display: grid; gap: 1px; font-size: 11.5px; color: var(--muted); }
+  .fv-filtres select, .fv-filtres input { width: 100%; max-width: none; }
   @media (max-width: 760px) { .page { grid-template-columns: 1fr; height: auto; } .droite { grid-template-rows: 60vh auto; } }
 </style>
 </head>
@@ -145,6 +153,7 @@
       <button type="button" role="tab" data-vue="etab" aria-selected="true">Établissements et sites</button>
       <button type="button" role="tab" data-vue="saisies" aria-selected="false">Corriger les saisies</button>
       <button type="button" role="tab" data-vue="qa" aria-selected="false">À vérifier <span class="badge-qa" id="badge-qa"></span></button>
+      <button type="button" role="tab" data-vue="fv" aria-selected="false">File de vérification <span class="badge-qa" id="badge-fv"></span></button>
     </div>
     <div id="vue-etab">
     <div id="qa-retour"></div>
@@ -161,6 +170,7 @@
     </div>
     <div id="vue-saisies" hidden></div>
     <div id="vue-qa" hidden></div>
+    <div id="vue-fv" hidden></div>
   </section>
   <section class="droite">
     <div id="carte" aria-label="Carte des sites"></div>
@@ -290,6 +300,7 @@ async function contexte() {
   const r = k => roles[k] && roles[k].col;
   const ce = { nom: r("Nom"), commune: r("Commune"), lat: r("Latitude"), lon: r("Longitude"), academie: r("Academie"), type: r("Type"),
     sigle: tm.colonnes.Sigle ? "Sigle" : null, lib: tm.colonnes.Libelle_consolide ? "Libelle_consolide" : null, mots: tm.colonnes.Mots_cles ? "Mots_cles" : null,
+    autres: tm.colonnes.Autres_noms ? "Autres_noms" : null,
     niveau: tm.colonnes.Niveau ? "Niveau" : null, etat: tm.colonnes.Etat ? "Etat" : null,
     ratt: (Object.values(tm.colonnes).find(c => c.type === `Ref:${tEtab}` && /rattach|parent/i.test(c.colId)) || {}).colId || null };
   return { meta, config, tEtab, tSites, ce };
@@ -313,11 +324,11 @@ async function lireDonnees() {
   const v = (c, i) => c && te[c] ? te[c][i] : null;
   etabs = te.id.map((id, i) => {
     const e = { id, nom: String(v(ce.nom, i) ?? ""), sigle: String(v(ce.sigle, i) ?? ""), lib: String(v(ce.lib, i) ?? ""), commune: String(v(ce.commune, i) ?? ""),
-      lat: latN(v(ce.lat, i)) != null && lonN(v(ce.lon, i)) != null ? latN(v(ce.lat, i)) : null, lon: latN(v(ce.lat, i)) != null && lonN(v(ce.lon, i)) != null ? lonN(v(ce.lon, i)) : null, ratt: refId(v(ce.ratt, i)), niveau: String(v(ce.niveau, i) ?? ""), mots: String(v(ce.mots, i) ?? ""),
+      lat: latN(v(ce.lat, i)) != null && lonN(v(ce.lon, i)) != null ? latN(v(ce.lat, i)) : null, lon: latN(v(ce.lat, i)) != null && lonN(v(ce.lon, i)) != null ? lonN(v(ce.lon, i)) : null, ratt: refId(v(ce.ratt, i)), niveau: String(v(ce.niveau, i) ?? ""), mots: [v(ce.mots, i), v(ce.autres, i)].filter(x => x != null && String(x).trim()).join(" | "),
       etat: String(v(ce.etat, i) ?? ""), type: String(v(ce.type, i) ?? "") };
     e.texte = norm([e.nom, e.sigle, e.lib, e.commune, e.mots].join(" "));
     return e;
-  }).filter(e => !/^fusionn/i.test(e.etat));
+  }).filter(e => !/^(fusionn|retir)/i.test(e.etat));   // lignes fusionnées ou retirées (référentiel v7) : plus proposées
   ctx.cols = colonnesSites();
   sites = [];
   if (ctx.tSites) {
@@ -784,7 +795,8 @@ const qaToutes = () => qa && qa.espaces ? qa.espaces.flatMap(x => x.anomalies) :
 function changerVue(v) {
   vue = v;
   document.querySelectorAll(".vues [data-vue]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.vue === v)));
-  $("vue-etab").hidden = v !== "etab"; $("vue-qa").hidden = v !== "qa"; $("vue-saisies").hidden = v !== "saisies";
+  $("vue-etab").hidden = v !== "etab"; $("vue-qa").hidden = v !== "qa"; $("vue-saisies").hidden = v !== "saisies"; $("vue-fv").hidden = v !== "fv";
+  if (v === "fv" && window.FileVerif) window.FileVerif.afficher();
   // analyse refaite si une correction a été écrite depuis (ici ou ailleurs : au plus tard après une minute)
   if (v === "qa") { if (!qa || qaPerime || Date.now() - qaLe > 60000) analyserQa(!!qa); else dessinerQa(); }
   if (v === "saisies") afficherSaisies();
@@ -1142,6 +1154,19 @@ function suivreEcritures() {
     }
   };
 }
+// file de vérification : ouvrir un établissement ou un site dans la vue « Établissements et sites », relire après écriture
+function hoteFileVerif() {
+  return { zone: $("vue-fv"), badge: $("badge-fv"), S, ctx: () => ctx, sites: () => sites,
+    relire: async () => { await lireDonnees(); if (choisi) { choisi = etabDe(choisi.id); if (choisi) { const f = document.querySelector(".fiche"); if (f) { f.innerHTML = enteteEtab(choisi); lierEntete(f); } ficheEtab = null; dessinerSites(false); } else { $("fiche").innerHTML = ""; dessinerSites(false); } } },
+    ouvrirEtab: id => { if (!etabDe(id)) return false; changerVue("etab"); choisirEtab(id); return true; },
+    ouvrirSite: id => {
+      const s = sites.find(x => x.id === id), e = s && (etabDe(s.comp) || etabDe(s.etab)); if (!e) return false;
+      changerVue("etab"); choisirEtab(e.id); siteChoisi = s.id; dessinerSites(false);
+      if (s.lat != null) carte.setView([s.lat, s.lon], Math.max(carte.getZoom(), 16));
+      return true;
+    },
+    bandeau: () => $("qa-retour"), placer: rappel => attendrePlacement(rappel), versFile: () => changerVue("fv"), dire: (t, c) => statut(t, c) };
+}
 (async function demarrer() {
   initCarte();
   if (!window.grist) return;
@@ -1153,6 +1178,7 @@ function suivreEcritures() {
     if (dernier && etabDe(dernier)) choisirEtab(dernier);
     else $("etab-q").focus();
     if (Q) setTimeout(() => analyserQa(), 1500);   // nombre d'anomalies sur l'onglet « À vérifier », en arrière-plan
+    if (window.FileVerif) setTimeout(() => window.FileVerif.monter(hoteFileVerif()), 1800);   // file de vérification du référentiel (v2/sites/file-verif.js)
   } catch (err) { $("contexte").textContent = err.message || String(err); $("contexte").className = "statut err"; }
 })();
 </script>
