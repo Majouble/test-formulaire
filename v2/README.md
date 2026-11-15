@@ -94,7 +94,7 @@ Les widgets sont des pages statiques (HTML et JavaScript, sans serveur propre) a
 | `general` | Installation | Situation, préréglage, académies, tables, qualifications de retour à la normale, second champ |
 | `roles` | Installation | Associations colonne → rôle choisies à la main |
 | `schema` | Socle | Copie des colonnes lue par les liens d'établissement |
-| `annuaire_en`, `referentiel_esr`, `regles_esr`, `effectifs` | Référentiel | Réglages des imports (dont le traitement des écoles d'ingénieurs du classeur ESR) |
+| `annuaire_en`, `referentiel_esr`, `effectifs` | Référentiel | Réglages et trace des imports (`regles_esr`, règle des écoles d'ingénieurs, abandonnée en 2.56 : n'est plus lue) |
 | `planning`, `repartition` | Équipe | Fonctions, modèles de journée ; critères de périmètre |
 | `liens`, `campagnes`, `acces_invites` | Établissements, Équipe | Mise en place des liens, publipostage, campagnes ; durée des liens invités |
 | `validation` | Validation | Circuits de visas |

@@ -66,7 +66,7 @@ Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pou
 | `run90` | Widget « Référentiel des sites » : « Corriger les saisies » (sites tapés dans une sous-table, rattachés par lot, nouveau site, correspondances) |
 | `run89` | Widget « Référentiel des sites » : modification par lot (homonymes, mots-clés, statut, renommage, désactivation) et fusion de doublons |
 | `run88` | Widget « Référentiel des sites » : vue « À vérifier » (établissement placé, dossier corrigé, dossier rattaché) |
-| `run87` | Référentiel ESR : une école d'ingénieurs compte pour un établissement (import du classeur, puis référentiel en place) |
+| `run87` | Référentiel ESR v7 (règle des 3 questions) : ancien classeur puis classeur v7 ; composantes, Membre de, Siège, lignes retirées et références reportées |
 | `run86` | Référentiel : fiche de l'établissement (effectif, tutelle, rattachement), ajout d'une information |
 | `run85` | Référentiel : un site saisi hors référentiel devient un site du référentiel (nouveau site, correspondance, saisies complétées) |
 | `run84` | Formulaire par site, cas du terrain : colonne du site en double, sans colonne hors référentiel, champ de recherche des sites ; contrôle du paramétrage dans l'administration |

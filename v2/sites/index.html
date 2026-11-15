@@ -290,6 +290,7 @@ async function contexte() {
   const r = k => roles[k] && roles[k].col;
   const ce = { nom: r("Nom"), commune: r("Commune"), lat: r("Latitude"), lon: r("Longitude"), academie: r("Academie"), type: r("Type"),
     sigle: tm.colonnes.Sigle ? "Sigle" : null, lib: tm.colonnes.Libelle_consolide ? "Libelle_consolide" : null, mots: tm.colonnes.Mots_cles ? "Mots_cles" : null,
+    autres: tm.colonnes.Autres_noms ? "Autres_noms" : null,
     niveau: tm.colonnes.Niveau ? "Niveau" : null, etat: tm.colonnes.Etat ? "Etat" : null,
     ratt: (Object.values(tm.colonnes).find(c => c.type === `Ref:${tEtab}` && /rattach|parent/i.test(c.colId)) || {}).colId || null };
   return { meta, config, tEtab, tSites, ce };
@@ -313,11 +314,11 @@ async function lireDonnees() {
   const v = (c, i) => c && te[c] ? te[c][i] : null;
   etabs = te.id.map((id, i) => {
     const e = { id, nom: String(v(ce.nom, i) ?? ""), sigle: String(v(ce.sigle, i) ?? ""), lib: String(v(ce.lib, i) ?? ""), commune: String(v(ce.commune, i) ?? ""),
-      lat: latN(v(ce.lat, i)) != null && lonN(v(ce.lon, i)) != null ? latN(v(ce.lat, i)) : null, lon: latN(v(ce.lat, i)) != null && lonN(v(ce.lon, i)) != null ? lonN(v(ce.lon, i)) : null, ratt: refId(v(ce.ratt, i)), niveau: String(v(ce.niveau, i) ?? ""), mots: String(v(ce.mots, i) ?? ""),
+      lat: latN(v(ce.lat, i)) != null && lonN(v(ce.lon, i)) != null ? latN(v(ce.lat, i)) : null, lon: latN(v(ce.lat, i)) != null && lonN(v(ce.lon, i)) != null ? lonN(v(ce.lon, i)) : null, ratt: refId(v(ce.ratt, i)), niveau: String(v(ce.niveau, i) ?? ""), mots: [v(ce.mots, i), v(ce.autres, i)].filter(x => x != null && String(x).trim()).join(" | "),
       etat: String(v(ce.etat, i) ?? ""), type: String(v(ce.type, i) ?? "") };
     e.texte = norm([e.nom, e.sigle, e.lib, e.commune, e.mots].join(" "));
     return e;
-  }).filter(e => !/^fusionn/i.test(e.etat));
+  }).filter(e => !/^(fusionn|retir)/i.test(e.etat));   // lignes fusionnées ou retirées (référentiel v7) : plus proposées
   ctx.cols = colonnesSites();
   sites = [];
   if (ctx.tSites) {

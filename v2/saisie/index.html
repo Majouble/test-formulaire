@@ -6946,16 +6946,16 @@ function rechercheLocale(q) {
   const colsRecherche = colsEtab.includes(E.nom)
     ? [...new Set([E.nom, E.commune, E.uai, ...COLONNES_RECHERCHE_EN_PLUS, ...S().recherche])]
     : colsEtab.filter(c => c !== "id" && c !== "manualSort" && !c.startsWith("gristHelper") && c !== E.cle && c !== E.lien);
-  // lignes fusionnées dans un autre établissement (référentiel ESR, colonne Etat) : plus proposées
+  // lignes fusionnées dans un autre établissement ou retirées (référentiel ESR, colonne Etat) : plus proposées
   const trouves = etabs.filter(e => {
-    if (typeof e.Etat === "string" && /^fusionn/i.test(e.Etat.trim())) return false;
+    if (typeof e.Etat === "string" && /^(fusionn|retir)/i.test(e.Etat.trim())) return false;
     const texte = sansAccent(colsRecherche.map(c => e[c]).filter(v => v != null && typeof v !== "object").join(" "));
     return mots.every(m => texte.includes(m));
   });
   // le nom (ou le sigle, le libellé consolidé) d'abord ; les mots-clés de recherche (anciens noms, villes…) ensuite
   const titre = e => sansAccent([e[E.nom], e.Sigle, e.Libelle_consolide].filter(v => typeof v === "string").join(" "));
   const note = e => { const t = titre(e); return mots.filter(m => t.includes(m)).length * 2 + (t.startsWith(mots[0]) ? 1 : 0); };
-  if (colsRecherche.includes("Mots_cles") || colsRecherche.includes("Libelle_consolide")) trouves.sort((a, b) => note(b) - note(a));
+  if (colsRecherche.includes("Mots_cles") || colsRecherche.includes("Autres_noms") || colsRecherche.includes("Libelle_consolide")) trouves.sort((a, b) => note(b) - note(a));
   const dedans = perimetreActif() ? trouves.filter(dansPerimetre) : trouves;
   const retenus = dedans.length ? dedans : trouves;
   return retenus.slice(0, NB_RESULTATS).map(e => ({ source: "local", ligne: e, nom: e[E.nom] ?? libelleEtabDeRepli(e), uai: e[E.uai], type: e[E.type],
