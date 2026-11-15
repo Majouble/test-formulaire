@@ -18,7 +18,13 @@
      domaines/etablissement/affichage : afficherEtablissement, proposerRattachement.
    Modifie etatSaisie : composanteChoisie, etabCourant, index, ligneAnnuaire, minuterie, modifie, requete,
      resultats. */
-const COLONNES_RECHERCHE_EN_PLUS = ["Sigle", "Noms_rencontres_dans_les_sources", "Libelle_consolide", "Mots_cles"];
+const COLONNES_RECHERCHE_EN_PLUS = [
+  "Sigle",
+  "Noms_rencontres_dans_les_sources",
+  "Libelle_consolide",
+  "Mots_cles",
+  "Autres_noms",
+];
 // ignorées si absentes
 const MIN_CARACTERES = 2;
 const NB_RESULTATS = 15;

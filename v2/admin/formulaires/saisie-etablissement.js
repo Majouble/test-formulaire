@@ -566,7 +566,7 @@ function groupesEtablissementHtml() {
     <button type="button" class="ajout-lien" id="pe-ajout">+ Ajouter une information</button>
     ${Array.isArray(reglagesFormulaire.fiche) ? ` · <button type="button" class="ajout-lien" id="pe-defaut">Revenir à la fiche de la version</button>` : ""}</div>
   <div class="groupe"><div class="t">Recherche aussi dans</div>
-    <p class="note" style="margin:0 0 6px">Le nom, la commune et l'UAI sont toujours consultés${versionFormulaire() === "esr" ? ", ainsi que Sigle et Noms_rencontres_dans_les_sources s'ils existent" : ""}.</p>
+    <p class="note" style="margin:0 0 6px">Le nom, la commune et l'UAI sont toujours consultés${versionFormulaire() === "esr" ? ", ainsi que Sigle, Noms_rencontres_dans_les_sources, Libelle_consolide, Mots_cles et Autres_noms s'ils existent" : ""}.</p>
     <div class="liste-choix-cols">${texte.map((colonne) => `<label class="interrupteur">${esc(colonne.libelle)} <input type="checkbox" data-recherche="${esc(colonne.colId)}"${reglagesEffectifs.recherche.includes(colonne.colId) ? " checked" : ""}></label>`).join("") || `<p class="note">Aucune colonne texte.</p>`}</div></div>`;
 }
 function lierEtablissement(panneau) {
