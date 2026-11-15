@@ -15,7 +15,8 @@
        composante    { id, parent }            Niveau = Composante interne, Établissement de rattachement = parent
        rattachement  { id, parent }            Établissement de rattachement
        retirer       { id, par, resultat }     État « Retiré : …, remplacé par … », Remplacé par, références reportées
-                                               (signalements, sites, Membre de, composantes…) sur la ligne qui la remplace
+                                               (signalements, sites, Membre de, composantes…) sur la ligne qui la remplace ;
+                                               ligne absente du référentiel (jamais importée) : rien à écrire
        siege         { id, site?, suggestion } Siège (site choisi dans le bandeau si l'action n'en désigne pas)
        position      { objet, id, lat?, lon? } Latitude / Longitude (clic sur la carte si l'action n'en donne pas)
        maj           { objet, id, champ, valeur } un champ ; la valeur retenue, si elle est saisie, l'emporte
@@ -468,6 +469,7 @@
     const rE = code => { const r = I.etab.get(code); if (r == null) throw new Error(`${code} absent du référentiel des établissements`); return r; };
     const rS = code => { const r = I.site.get(code); if (r == null) throw new Error(`${code} absent du référentiel des sites`); return r; };
     const champsE = new Map(), champsS = new Map(), vers = new Map(), choix = [], ok = [], erreurs = [];
+    let absents = 0;
     const maj = (m, rid, f) => m.set(rid, Object.assign(m.get(rid) || {}, f));
     const cRemp = colRe(tE, /^remplace_?par$/i, `Ref:${tE}`), cSiege = tS ? colRe(tE, /^siege$/i, `Ref:${tS}`) : null;
     const campus = await preparerCampus(lignes, rS, erreurs), cCampus = tS ? fv.meta[tS] && Object.values(fv.meta[tS].colonnes).find(c => !c.isFormula && /^campus$/i.test(c.colId)) : null;
@@ -479,6 +481,10 @@
           const r = rE(a.id), p = rE(a.parent); if (r === p) throw new Error("rattachement à soi-même");
           const f = { [ce.ratt]: p }; if (a.op === "composante" && ce.niveau) { f[ce.niveau] = "Composante interne"; choix.push([tE, ce.niveau, "Composante interne"]); }
           maj(champsE, r, f);
+        } else if (a.op === "retirer" && !I.etab.has(a.id)) {
+          // ligne jamais importée dans ce référentiel (ajouts Atlas, Annuaire…) : rien à retirer ni à reporter,
+          // pourvu que la ligne qui la remplace y soit
+          rE(a.par); absents++;
         } else if (a.op === "retirer") {
           const r = rE(a.id), p = rE(a.par); if (r === p) throw new Error("remplacée par elle-même");
           const nom = I.nomE.get(p) || "", f = { [ce.etat]: `Retiré : ${a.resultat ? a.resultat + ", " : ""}remplacé par ${a.par}${nom ? ` (${nom})` : ""}` };
@@ -525,7 +531,7 @@
       }
       acts.push(...ra);
     }
-    return { acts, ok, erreurs, nRefs };
+    return { acts, ok, erreurs, nRefs, absents };
   }
   async function appliquer(lignes, surcharge, dansBandeau) {
     if (enCours) return; enCours = true;
@@ -556,7 +562,7 @@
       }
       ok.forEach(l => coches.delete(l.rid));
       await H.relire();
-      await apresEcriture(`${nf(ok.length)} point(s) accepté(s) et appliqué(s)${nRefs ? `, ${nf(nRefs)} référence(s) reportée(s)` : ""}.`
+      await apresEcriture(`${nf(ok.length)} point(s) accepté(s) et appliqué(s)${nRefs ? `, ${nf(nRefs)} référence(s) reportée(s)` : ""}${p.absents ? ` (dont ${nf(p.absents)} ligne(s) à retirer absente(s) du référentiel : rien à écrire)` : ""}.`
         + (p.erreurs.length ? ` Non appliqués : ${p.erreurs.map(e => `${e.l.vid} – ${e.l.type} (${e.msg})`).join(" ; ")}.` : ""), dansBandeau && ok.length > 0, p.erreurs.length ? "err" : "ok");
     } catch (err) { dire(`Non appliqué (${etape}) : ${err.message || err}`, "err"); }
     enCours = false;
