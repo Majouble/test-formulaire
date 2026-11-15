@@ -2611,7 +2611,7 @@ function groupesEtabHtml() {
       <button type="button" class="ajout-lien" id="pe-ajout">+ Ajouter une information</button>
       ${Array.isArray(c.fiche) ? ` · <button type="button" class="ajout-lien" id="pe-defaut">Revenir à la fiche de la version</button>` : ""}</div>
     <div class="groupe"><div class="t">Recherche aussi dans</div>
-      <p class="note" style="margin:0 0 6px">Le nom, la commune et l'UAI sont toujours consultés${versionForm() === "esr" ? ", ainsi que Sigle et Noms_rencontres_dans_les_sources s'ils existent" : ""}.</p>
+      <p class="note" style="margin:0 0 6px">Le nom, la commune et l'UAI sont toujours consultés${versionForm() === "esr" ? ", ainsi que Sigle, Noms_rencontres_dans_les_sources, Libelle_consolide, Mots_cles et Autres_noms s'ils existent" : ""}.</p>
       <div class="liste-choix-cols">${texte.map(x => `<label class="interrupteur">${esc(x.libelle)} <input type="checkbox" data-recherche="${esc(x.colId)}"${o.recherche.includes(x.colId) ? " checked" : ""}></label>`).join("") || `<p class="note">Aucune colonne texte.</p>`}</div></div>`;
 }
 function lierEtab(p) {
