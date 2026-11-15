@@ -29,11 +29,12 @@ function docFv() {
     ['VERIF-7', '4 – Faible impact', 'Site', "Vérifier l'existence du site", 'Site', 'SITE-0004', 'Site Lorient', '', '', 'Désactiver le site si non confirmé', 'Actif = FALSE si refus', '', 'Académie / établissement (campagne)', 'À traiter', { op: 'maj', objet: 'site', id: 'SITE-0004', champ: 'Actif', valeur: false }],
     ['VERIF-8', '4 – Faible impact', 'Site', 'Valider un site proposé', 'Site', 'SITE-0005', 'Campus Ivry', '', '', 'Passer en Validé', 'Statut = Validé', '', 'Académie / établissement (campagne)', 'À traiter', { op: 'maj', objet: 'site', id: 'SITE-0005', champ: 'Statut', valeur: 'Validé' }],
     ['VERIF-10', '3 – Impact moyen', 'Campus', 'Valider un campus', 'Campus', 'CAMP-0001', 'Campus de Rennes', '', 'Rennes', 'Créer « Campus de Rennes » (2 sites, 12.5 ha) – nom à préciser', 'Création du campus + rattachement des sites', 'Zone IGN', 'National', 'À traiter', { op: 'campus', id: 'CAMP-0001', nom: 'Campus de Rennes', nomAPreciser: true, type: 'Grand campus', commune: 'Rennes', lat: 48.11, lon: -1.64, surface: 12.5, sites: ['SITE-0001', 'SITE-0002'] }],
+    ['VERIF-11', '2 – Fort impact', 'Établissement', 'Retirer la ligne (devient un site)', 'Établissement', 'ETAB-A0025', 'Antenne jamais importée', '', '', 'Remplacé par ETAB-0002 – Lycée Romain Rolland', 'État = Retiré ; Remplacé par ; sites transférés', 'même SIREN', 'National', 'À traiter', { op: 'retirer', id: 'ETAB-A0025', par: 'ETAB-0002', resultat: 'devient un site' }],
     ['VERIF-9', '5 – Correction automatique', 'Nommage', 'Nom de site', 'Site', 'SITE-0001', 'Campus centre', '', '', 'Campus Centre', 'Nom du site', '', 'Acceptation en lot', 'Traité', null],
   ];
   const cols = ['Verif_ID', 'Priorite', 'Famille', 'Type', 'Objet', 'Objet_ID', 'Libelle', 'Etablissement', 'Commune', 'Proposition', 'Effet_si_accepte', 'Preuve', 'Traitement_suggere', 'Statut', 'Action'];
   const data = { id: V.map((_, i) => i + 1) }; cols.forEach((c, k) => { data[c] = V.map(v => k === 14 ? (v[k] ? JSON.stringify(v[k]) : '') : v[k]); });
-  Object.assign(data, { Decision: V.map((_, i) => i === 9 ? 'Accepter' : ''), Valeur_retenue: V.map(() => ''), Commentaire: V.map(() => ''), Verifie_par: V.map((_, i) => i === 9 ? 'Validation en lot' : ''), Date: V.map(() => null), Sensible: V.map(() => null) });
+  Object.assign(data, { Decision: V.map((_, i) => i === 10 ? 'Accepter' : ''), Valeur_retenue: V.map(() => ''), Commentaire: V.map(() => ''), Verifie_par: V.map((_, i) => i === 10 ? 'Validation en lot' : ''), Date: V.map(() => null), Sensible: V.map(() => null) });
   table('Verifications', [...cols.map(c => [c, c === 'Statut' ? 'Choice' : 'Text', c === 'Statut' ? JSON.stringify({ choices: ['À traiter', 'En cours', 'Traité'] }) : '']),
     ['Decision', 'Choice', JSON.stringify({ choices: ['Accepter', 'Refuser', 'Modifier', 'Reporter'] })], ['Valeur_retenue', 'Text'], ['Commentaire', 'Text'], ['Verifie_par', 'Text'], ['Date', 'Date'], ['Sensible', 'Bool']], data);
   return doc;
@@ -58,7 +59,7 @@ function docFv() {
   await p.selectOption('#vue-fv [data-fvf=mode]', 'auto'); await p.waitForTimeout(300);
   console.log('FILTRE « applicable » :', (await p.$$eval('#vue-fv .fv-item', l => l.length)), 'point(s)');
   // 1. lot : composante, ligne retirée, position
-  for (const v of ['VERIF-1', 'VERIF-2', 'VERIF-4']) await p.check(`#vue-fv .fv-item:has-text("${v}") .fv-coche`);
+  for (const v of ['VERIF-1', 'VERIF-2', 'VERIF-4', 'VERIF-11']) await p.check(`#vue-fv .fv-item:has-text("${v}") .fv-coche`);
   await p.waitForTimeout(200);
   await p.click('#vue-fv [data-fv-global=lot]'); await p.waitForTimeout(2500);
   console.log('APRÈS LOT :', await p.textContent('#fv-msg'));
