@@ -21,6 +21,10 @@
        maj           { objet, id, champ, valeur } un champ ; la valeur retenue, si elle est saisie, l'emporte
        uai           { id, uai }               UAI ajouté à la liste de l'établissement
        confirmer     { id }                    rien à écrire (le référentiel porte déjà la proposition)
+       campus        { id, nom, nomAPreciser, type, commune, lat, lon, surface, sites }
+                                               ligne de la table des campus (créée si besoin : Campus_ID, Nom, Type, Commune,
+                                               Latitude, Longitude, Surface_ha) et colonne Campus des sites ; la valeur retenue
+                                               est le nom du campus (obligatoire si le nom est « à préciser »)
      Sans action (création de composante, campus, nommage…) : « Fait à la main » enregistre seulement la décision.
    - « Accepter la sélection » : points applicables sans saisie, cochés sur la page, avec un aperçu avant écriture.
    API : FileVerif.monter(hote) ; FileVerif.recharger() ; hote = { zone, badge, S, ctx(), sites(), relire(), ouvrirEtab(id),
@@ -38,7 +42,7 @@
     source: /^source$/, traitement: /^traitement/, sensible: /^sensible$/, statut: /^statut$/, decision: /^decision$/,
     valeur: /^valeur_?retenue$/, commentaire: /^commentaire$/, par: /^verifie_?par$/, date: /^date$/, action: /^action$/ };
   const OPS = { composante: "composante interne", rattachement: "rattachement", retirer: "ligne retirée", siege: "siège", position: "position",
-    maj: "champ mis à jour", uai: "UAI ajouté", confirmer: "confirmation" };
+    maj: "champ mis à jour", uai: "UAI ajouté", confirmer: "confirmation", campus: "campus" };
   const PAGE = 40, CLE_FILTRES = "socle-v2-sites-fv";
   const FILTRES0 = { priorite: "", famille: "", type: "", traitement: "", acad: "", etat: "a_traiter", mode: "", q: "" };
 
@@ -112,6 +116,7 @@
     if (a.op === "siege" && !a.site) return "saisie";
     if (a.op === "position" && (a.lat == null || a.lon == null)) return "saisie";
     if (a.op === "maj" && a.valeur == null && !l.valeur) return "saisie";
+    if (a.op === "campus" && a.nomAPreciser && !l.valeur) return "saisie";
     return "auto";
   }
   const aTraiter = () => fv && fv.lignes ? fv.lignes.filter(l => etatDe(l) === "a_traiter").length : 0;
@@ -137,6 +142,7 @@
   }
   function champValeur(l) {
     const a = l.action;
+    if (a && a.op === "campus") return `<input type="text" data-fvl="valeur" value="${esc(l.valeur)}" placeholder="Nom du campus : ${esc(a.nom || "")}${a.nomAPreciser ? " (à préciser)" : " (proposé)"}" aria-label="Nom du campus retenu">`;
     if (a && a.op !== "maj") return "";   // l'action dit tout : pas de valeur à saisir
     if (!a) return `<input type="text" data-fvl="valeur" value="${esc(l.valeur)}" placeholder="Valeur retenue (si Modifier)" aria-label="Valeur retenue ${esc(l.vid)}">`;
     const c = colChamp(a.objet === "site" ? H.ctx().tSites : H.ctx().tEtab, a.champ), ch = c && /^Choice/.test(c.type) ? choixDe(c) : null;
@@ -145,10 +151,10 @@
     return `<input type="text" data-fvl="valeur" value="${esc(val)}" placeholder="${esc(a.champ)}${prop ? ` : ${esc(prop)} (proposé)` : " : à saisir"}" aria-label="${esc(a.champ)} retenu">`;
   }
   function boutons(l, dansBandeau) {
-    const m = modeDe(l), a = l.action, ouvrable = /^(ETAB|SITE)-/.test(l.objetId) || /ETAB-[A-Z]{0,2}\d+/.test(l.proposition);
+    const m = modeDe(l), a = l.action, ouvrable = /^(ETAB|SITE)-/.test(l.objetId) || /ETAB-[A-Z]{0,2}\d+/.test(l.proposition) || !!(a && a.op === "campus" && (a.sites || []).length);
     const b = [];
     if (!dansBandeau && ouvrable) b.push(`<button type="button" class="lien" data-fv="ouvrir">Ouvrir</button>`);
-    if (m === "auto" || (m === "saisie" && a.op === "maj")) b.push(`<button type="button" data-fv="accepter" title="Écrit dans le référentiel : ${esc(l.effet || OPS[a.op])}">Accepter et appliquer</button>`);
+    if (m === "auto" || (m === "saisie" && (a.op === "maj" || a.op === "campus"))) b.push(`<button type="button" data-fv="accepter" title="Écrit dans le référentiel : ${esc(l.effet || OPS[a.op])}">Accepter et appliquer</button>`);
     else if (m === "saisie" && !dansBandeau) b.push(`<button type="button" data-fv="ouvrir" title="Choisir sur la carte ou dans la liste des sites">Ouvrir pour appliquer</button>`);
     else if (m === "main") b.push(`<button type="button" data-fv="fait" title="Enregistre seulement la décision : la modification se fait à la main">Fait à la main</button>`);
     b.push(`<button type="button" data-fv="refuser">Refuser</button>`, `<button type="button" data-fv="reporter">Reporter</button>`);
@@ -313,12 +319,51 @@
     if ((ops.has("composante") || ops.has("rattachement")) && !ctx.ce.ratt) aj(tE, "Rattachement", "Établissement de rattachement", `Ref:${tE}`);
     if (ops.has("composante") && !ctx.ce.niveau) aj(tE, "Niveau", "Niveau", "Choice");
     if (ops.has("siege") && ctx.tSites && !colRe(tE, /^siege$/i, `Ref:${ctx.tSites}`)) aj(tE, "Siege", "Siège", `Ref:${ctx.tSites}`);
+    if (ops.has("campus")) {
+      if (!ctx.tSites) throw new Error("référentiel des sites absent : un campus regroupe des sites");
+      let tC = tableCampus();
+      if (!tC) {
+        tC = fv.meta.Campus ? "Campus_ESR" : "Campus";
+        await grist.docApi.applyUserActions([["AddTable", tC, [["Campus_ID", "Text"], ["Nom", "Text"], ["Type", "Text"], ["Commune", "Text"], ["Latitude", "Numeric"], ["Longitude", "Numeric"], ["Surface_ha", "Numeric"]]
+          .map(([id, type]) => ({ id, type, isFormula: false }))]]);
+        fv.meta = await H.S.lireMeta();
+      }
+      if (!colRe(ctx.tSites, /^campus$/i)) aj(ctx.tSites, "Campus", "Campus", `Ref:${tC}`);
+    }
     for (const l of lignes) {
       const a = l.action; if (a.op !== "maj") continue;
       const t = a.objet === "site" ? ctx.tSites : tE;
       if (t && !colChamp(t, a.champ) && !acts.some(x => x[1] === t && cle(x[3].label) === cle(a.champ))) aj(t, cle(a.champ).replace(/^./, x => x.toUpperCase()), a.champ, typeof a.valeur === "boolean" ? "Bool" : "Text");
     }
     if (acts.length) { await grist.docApi.applyUserActions(acts); await H.relire(); fv.meta = await H.S.lireMeta(); }
+  }
+  // table des campus : une colonne Campus_ID (ou « Campus ID »)
+  const tableCampus = () => Object.keys(fv.meta).find(t => !t.startsWith("_grist") && Object.values(fv.meta[t].colonnes).some(c => /^campus_?id$/i.test(cle(c.colId)))) || null;
+  // campus : lignes créées avant les autres écritures (leur identifiant de ligne sert aux références des sites)
+  async function preparerCampus(lignes, rS, erreurs) {
+    const lc = lignes.filter(l => l.action.op === "campus"), out = new Map(); if (!lc.length) return out;
+    const tC = tableCampus(), tm = fv.meta[tC], col = re => (Object.values(tm.colonnes).find(c => !c.isFormula && re.test(cle(c.colId))) || {}).colId || null;
+    const cc = { id: col(/^campus_?id$/), nom: col(/^nom/), type: col(/^type$/), commune: col(/^commune$/), lat: col(/^lat/), lon: col(/^lon/), surface: col(/^surface/) };
+    const d = await grist.docApi.fetchTable(tC), parCode = new Map((d[cc.id] || []).map((k, i) => [String(k ?? "").trim(), d.id[i]]));
+    const nouveaux = [], maj = [];
+    for (const l of lc) {
+      const a = l.action;
+      try {
+        const nom = l.valeur || (a.nomAPreciser ? "" : a.nom); if (!nom) throw new Error("saisissez le nom du campus (valeur retenue)");
+        const sitesL = (a.sites || []).map(rS);
+        const f = { [cc.id]: a.id };
+        if (cc.nom) f[cc.nom] = nom; if (cc.type && a.type) f[cc.type] = a.type; if (cc.commune && a.commune) f[cc.commune] = a.commune;
+        if (cc.lat && a.lat != null) f[cc.lat] = a.lat; if (cc.lon && a.lon != null) f[cc.lon] = a.lon; if (cc.surface && a.surface != null) f[cc.surface] = a.surface;
+        const r = parCode.get(a.id); if (r != null) maj.push(["UpdateRecord", tC, r, f]); else nouveaux.push({ l, f });
+        out.set(l.rid, { code: a.id, ligne: r, sites: sitesL });
+      } catch (err) { erreurs.push({ l, msg: err.message || String(err) }); l._erreur = true; }
+    }
+    if (nouveaux.length) {
+      const rv = await grist.docApi.applyUserActions(nouveaux.map(x => ["AddRecord", tC, null, x.f]));
+      nouveaux.forEach((x, k) => { out.get(x.l.rid).ligne = rv && rv.retValues ? rv.retValues[k] : null; });
+    }
+    if (maj.length) await grist.docApi.applyUserActions(maj);
+    return out;
   }
   const convertir = (c, v) => {
     if (!c) return v;
@@ -334,8 +379,10 @@
     const champsE = new Map(), champsS = new Map(), vers = new Map(), choix = [], ok = [], erreurs = [];
     const maj = (m, rid, f) => m.set(rid, Object.assign(m.get(rid) || {}, f));
     const cRemp = colRe(tE, /^remplace_?par$/i, `Ref:${tE}`), cSiege = tS ? colRe(tE, /^siege$/i, `Ref:${tS}`) : null;
+    const campus = await preparerCampus(lignes, rS, erreurs), cCampus = tS ? fv.meta[tS] && Object.values(fv.meta[tS].colonnes).find(c => !c.isFormula && /^campus$/i.test(c.colId)) : null;
     for (const l of lignes) {
       const a = { ...l.action, ...surcharge };
+      if (l._erreur) { delete l._erreur; continue; }
       try {
         if (a.op === "composante" || a.op === "rattachement") {
           const r = rE(a.id), p = rE(a.parent); if (r === p) throw new Error("rattachement à soi-même");
@@ -364,6 +411,11 @@
           const r = rE(a.id), d = await grist.docApi.fetchTable(tE), act = String((d[c.colId] || [])[d.id.indexOf(r)] ?? "").trim();
           const l2 = act.split(/\s*[,;|]\s*/).filter(Boolean); if (!l2.includes(a.uai)) maj(champsE, r, { [c.colId]: [...l2, a.uai].join(act.includes(";") ? "; " : ", ") });
         } else if (a.op === "confirmer") { rE(a.id); }
+        else if (a.op === "campus") {
+          const c = campus.get(l.rid); if (!c || c.ligne == null) throw new Error("campus non créé");
+          const v = /^Ref:/.test(cCampus.type) ? c.ligne : c.code;
+          c.sites.forEach(r => maj(champsS, r, { [cCampus.colId]: v }));
+        }
         ok.push(l);
       } catch (err) { erreurs.push({ l, msg: err.message || String(err) }); }
     }
@@ -393,7 +445,7 @@
       const dec = p.ok.map(l => {
         if (surcharge.site != null && fv.cols.valeur) l.valeur = fv.idx.codeSite.get(surcharge.site) || String(surcharge.site);
         if (surcharge.lat != null && fv.cols.valeur) l.valeur = `${(+surcharge.lat).toFixed(6)}, ${(+surcharge.lon).toFixed(6)}`;
-        const modif = l.action.op === "maj" && l.valeur && String(l.valeur) !== String(l.action.valeur);
+        const modif = (l.action.op === "maj" && l.valeur && String(l.valeur) !== String(l.action.valeur)) || (l.action.op === "campus" && l.valeur && l.valeur !== l.action.nom);
         return ["UpdateRecord", fv.table, l.rid, champsDecision(l, modif ? "Modifier" : "Accepter")];
       });
       await ecrire([...p.acts, ...dec]);
@@ -415,7 +467,8 @@
   /* ---------- ouvrir un point dans la vue « Établissements et sites » ---------- */
   function ouvrir(l) {
     const I = fv.idx, a = l.action || {};
-    let ok = /^SITE-/.test(l.objetId) && I.site.has(l.objetId) && H.ouvrirSite(I.site.get(l.objetId));
+    const site = /^SITE-/.test(l.objetId) ? l.objetId : a.op === "campus" ? (a.sites || []).find(x => I.site.has(x)) : null;   // campus : son premier site
+    let ok = !!site && I.site.has(site) && H.ouvrirSite(I.site.get(site));
     // établissement du point ; ligne retirée (plus proposée) : celle qui la remplace, ou celle qu'indique la proposition
     if (!ok) for (const code of [l.objetId, a.par, a.parent, (/ETAB-[A-Z]{0,2}\d+/.exec(l.proposition) || [])[0]]) {
       if (code && I.etab.has(code) && H.ouvrirEtab(I.etab.get(code))) { ok = true; break; }

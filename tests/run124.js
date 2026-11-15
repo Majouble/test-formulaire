@@ -28,11 +28,12 @@ function docFv() {
     ['VERIF-6', '4 – Faible impact', 'Composante', 'Créer une composante', 'UAI', '0312837R', '', '', '', 'Créer la composante', 'Création + liaison', 'Sites : SITE-0001', 'National', 'À traiter', null],
     ['VERIF-7', '4 – Faible impact', 'Site', "Vérifier l'existence du site", 'Site', 'SITE-0004', 'Site Lorient', '', '', 'Désactiver le site si non confirmé', 'Actif = FALSE si refus', '', 'Académie / établissement (campagne)', 'À traiter', { op: 'maj', objet: 'site', id: 'SITE-0004', champ: 'Actif', valeur: false }],
     ['VERIF-8', '4 – Faible impact', 'Site', 'Valider un site proposé', 'Site', 'SITE-0005', 'Campus Ivry', '', '', 'Passer en Validé', 'Statut = Validé', '', 'Académie / établissement (campagne)', 'À traiter', { op: 'maj', objet: 'site', id: 'SITE-0005', champ: 'Statut', valeur: 'Validé' }],
+    ['VERIF-10', '3 – Impact moyen', 'Campus', 'Valider un campus', 'Campus', 'CAMP-0001', 'Campus de Rennes', '', 'Rennes', 'Créer « Campus de Rennes » (2 sites, 12.5 ha) – nom à préciser', 'Création du campus + rattachement des sites', 'Zone IGN', 'National', 'À traiter', { op: 'campus', id: 'CAMP-0001', nom: 'Campus de Rennes', nomAPreciser: true, type: 'Grand campus', commune: 'Rennes', lat: 48.11, lon: -1.64, surface: 12.5, sites: ['SITE-0001', 'SITE-0002'] }],
     ['VERIF-9', '5 – Correction automatique', 'Nommage', 'Nom de site', 'Site', 'SITE-0001', 'Campus centre', '', '', 'Campus Centre', 'Nom du site', '', 'Acceptation en lot', 'Traité', null],
   ];
   const cols = ['Verif_ID', 'Priorite', 'Famille', 'Type', 'Objet', 'Objet_ID', 'Libelle', 'Etablissement', 'Commune', 'Proposition', 'Effet_si_accepte', 'Preuve', 'Traitement_suggere', 'Statut', 'Action'];
   const data = { id: V.map((_, i) => i + 1) }; cols.forEach((c, k) => { data[c] = V.map(v => k === 14 ? (v[k] ? JSON.stringify(v[k]) : '') : v[k]); });
-  Object.assign(data, { Decision: V.map((_, i) => i === 8 ? 'Accepter' : ''), Valeur_retenue: V.map(() => ''), Commentaire: V.map(() => ''), Verifie_par: V.map((_, i) => i === 8 ? 'Validation en lot' : ''), Date: V.map(() => null), Sensible: V.map(() => null) });
+  Object.assign(data, { Decision: V.map((_, i) => i === 9 ? 'Accepter' : ''), Valeur_retenue: V.map(() => ''), Commentaire: V.map(() => ''), Verifie_par: V.map((_, i) => i === 9 ? 'Validation en lot' : ''), Date: V.map(() => null), Sensible: V.map(() => null) });
   table('Verifications', [...cols.map(c => [c, c === 'Statut' ? 'Choice' : 'Text', c === 'Statut' ? JSON.stringify({ choices: ['À traiter', 'En cours', 'Traité'] }) : '']),
     ['Decision', 'Choice', JSON.stringify({ choices: ['Accepter', 'Refuser', 'Modifier', 'Reporter'] })], ['Valeur_retenue', 'Text'], ['Commentaire', 'Text'], ['Verifie_par', 'Text'], ['Date', 'Date'], ['Sensible', 'Bool']], data);
   return doc;
@@ -72,6 +73,15 @@ function docFv() {
   await p.selectOption(`${it('VERIF-5')} [data-fvl=valeur]`, "Privé reconnu par l'État"); await p.waitForTimeout(300);
   await p.click(`${it('VERIF-5')} [data-fv=accepter]`); await p.waitForTimeout(1500);
   console.log('PÉRIMÈTRE :', await p.textContent('#fv-msg'));
+  // 2 bis. campus au nom à préciser : nom saisi, table des campus et colonne Campus des sites créées
+  console.log('CAMPUS, BOUTONS :', await p.$$eval(`${it('VERIF-10')} button`, l => l.map(b => b.textContent.trim()).join('/')));
+  await p.click(`${it('VERIF-10')} [data-fv=accepter]`); await p.waitForTimeout(1200);
+  console.log('CAMPUS SANS NOM :', await p.textContent('#fv-msg'));
+  await p.fill(`${it('VERIF-10')} [data-fvl=valeur]`, 'Campus Beaulieu'); await p.press(`${it('VERIF-10')} [data-fvl=valeur]`, 'Tab'); await p.waitForTimeout(300);
+  await p.click(`${it('VERIF-10')} [data-fv=accepter]`); await p.waitForTimeout(1500);
+  console.log('CAMPUS :', await p.textContent('#fv-msg'), '|', await p.evaluate(() => { const D = window.__DOC__.__data, Cp = D.Campus, S = D.Referentiel_sites, C = window.__DOC__._grist_Tables_column;
+    const ty = C.type[C.colId.findIndex((c, i) => c === 'Campus' && C.type[i].startsWith('Ref'))];
+    return `table Campus : ${Cp.id.map((id, i) => `${id}:${Cp.Campus_ID[i]}/${Cp.Nom[i]}/${Cp.Type[i]}/${Cp.Surface_ha[i]}`).join(' ')} ; sites.Campus (${ty}) : ${S.id.map((id, i) => `${id}→${S.Campus[i] || 0}`).join(' ')}`; }));
   // 3. siège : ouvrir, choisir le site dans le bandeau
   await p.click(`${it('VERIF-3')} [data-fv=ouvrir] >> nth=0`); await p.waitForTimeout(1000);
   console.log('VUE OUVERTE :', await p.evaluate(() => ['etab', 'fv'].filter(v => !document.getElementById('vue-' + v).hidden).join(',')), '|', (await p.textContent('#qa-retour')).replace(/\s+/g, ' ').slice(0, 160));
