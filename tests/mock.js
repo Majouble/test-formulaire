@@ -15,9 +15,10 @@ const actions = {
   RenameTable:(ancien,nouveau)=>{ if(!T.tableId.includes(ancien)) throw new Error('no table '+ancien); if(T.tableId.includes(nouveau)) throw new Error('table exists '+nouveau);
     T.tableId[T.tableId.indexOf(ancien)]=nouveau; data[nouveau]=data[ancien]; delete data[ancien];
     C.type.forEach((ty,k)=>{ if(ty==='Ref:'+ancien) C.type[k]='Ref:'+nouveau; else if(ty==='RefList:'+ancien) C.type[k]='RefList:'+nouveau; }); },
-  AddColumn:(tid,colId,info)=>{ if(!T.tableId.includes(tid)) throw new Error('no table '+tid); addCol(tid,colId,info); },
+  // comme Grist : recalcDeps (liste) dans AddColumn / ModifyColumn → AssertionError du bac à sable
+  AddColumn:(tid,colId,info)=>{ if(!T.tableId.includes(tid)) throw new Error('no table '+tid); if(info&&Array.isArray(info.recalcDeps)) throw new Error('[Sandbox] AssertionError '); addCol(tid,colId,info); },
   RemoveColumn:(tid,colId)=>{ const r=tref(tid); const i=C.id.findIndex((_,k)=>C.parentId[k]===r&&C.colId[k]===colId); if(i<0) throw new Error('no col'); for(const k of Object.keys(C)) C[k].splice(i,1); },
-  ModifyColumn:(tid,colId,info)=>{ const r=tref(tid); const i=C.id.findIndex((_,k)=>C.parentId[k]===r&&C.colId[k]===colId); if(i<0) throw new Error('no col '+colId); for(const [k,v] of Object.entries(info)) { if (k==='untieColIdFromLabel') continue; if(!C[k]) C[k]=C.id.map(()=>''); C[k][i]=v; } },
+  ModifyColumn:(tid,colId,info)=>{ if(info&&Array.isArray(info.recalcDeps)) throw new Error('[Sandbox] AssertionError '); const r=tref(tid); const i=C.id.findIndex((_,k)=>C.parentId[k]===r&&C.colId[k]===colId); if(i<0) throw new Error('no col '+colId); for(const [k,v] of Object.entries(info)) { if (k==='untieColIdFromLabel') continue; if(!C[k]) C[k]=C.id.map(()=>''); C[k][i]=v; } },
   // comme Grist : pas de valeur écrite dans une colonne formule (variable FORMULES_STRICTES pour les essais qui le vérifient)
   _verifFormules:(tid,f)=>{ if(!window.__FORMULES_STRICTES__) return; const r=tref(tid); for(const k of Object.keys(f)){ const i=C.id.findIndex((_,j)=>C.parentId[j]===r&&C.colId[j]===k); if(i>=0&&C.isFormula[i]&&C.formula[i]) throw new Error(`[Sandbox] ValueError Can't save value to formula column ${k}`); } },
   AddRecord:(tid,_,f)=>{ actions._verifFormules(tid,f); const t=data[tid]; if(!t) throw new Error('no table '+tid); const id=(t.id.length?Math.max(...t.id):0)+1; t.id.push(id); for(const [k,v] of Object.entries(f)){ (t[k]=t[k]||[])[t.id.length-1]=v; } return id; },
@@ -35,7 +36,8 @@ D._grist_Pages = D._grist_Pages || {id:[],viewRef:[]};
 const META_EXTRA = ['_grist_Views','_grist_Views_section','_grist_Pages'];
 actions.CreateViewSection = (tableRef, viewRef, kind)=>{ const V=D._grist_Views, Sx=D._grist_Views_section; const vid=(V.id.length?Math.max(...V.id):0)+1; V.id.push(vid); V.name.push('Nouvelle'); const sid=(Sx.id.length?Math.max(...Sx.id):0)+1; Sx.id.push(sid); Sx.parentId.push(vid); Sx.parentKey.push(kind); Sx.tableRef.push(tableRef); Sx.options.push('{}'); Sx.title.push(''); const P=D._grist_Pages; if(!viewRef){ const pid=(P.id.length?Math.max(...P.id):0)+1; P.id.push(pid); P.viewRef.push(vid); if(P.pagePos) P.pagePos.push(P.id.length); if(P.indentation) P.indentation.push(0);} return {sectionRef:sid, viewRef:vid}; };
 const _upd = actions.UpdateRecord;
-actions.UpdateRecord = (tid,id,f)=>{ if (META_EXTRA.includes(tid)) { const t=D[tid]; const i=t.id.indexOf(id); for (const [k,v] of Object.entries(f)) t[k][i]=v; return; } return _upd(tid,id,f); };
+actions.UpdateRecord = (tid,id,f)=>{ if (tid==='_grist_Tables_column') { const i=C.id.indexOf(id); if(i<0) throw new Error('no col ref '+id); for (const [k,v] of Object.entries(f)) { if(!C[k]) C[k]=C.id.map(()=>''); C[k][i]=v; } return; }
+  if (META_EXTRA.includes(tid)) { const t=D[tid]; const i=t.id.indexOf(id); for (const [k,v] of Object.entries(f)) t[k][i]=v; return; } return _upd(tid,id,f); };
 window.grist = { ready(){}, docApi: {
   async fetchTable(n){ if (n==='_grist_Tables'||n==='_grist_Tables_column'||(n.startsWith('_grist_')&&D[n])) return JSON.parse(JSON.stringify(D[n])); if(!data[n]) throw new Error('KeyError '+n); return JSON.parse(JSON.stringify(data[n])); },
   async applyUserActions(acts){ window.__LOG__.push(acts); const rv=[]; for(const [a,...args] of acts){ if(!actions[a]) throw new Error('action inconnue '+a); rv.push(actions[a](...args));} return {retValues:rv}; } } };
