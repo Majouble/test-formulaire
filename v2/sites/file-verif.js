@@ -30,7 +30,10 @@
    - regroupement par établissement (par défaut) : les points d'une même personne morale (ses composantes, ses sites,
      ses lignes retirées, ses campus) sont présentés ensemble ; « Ouvrir » affiche l'établissement et, dans le bandeau,
      ses points à traiter un par un (Précédent / Suivant, sommaire), la carte cadrée sur les objets du point (sites cités,
-     position de l'établissement, coordonnées proposées en pointillé) ; après une décision, le point suivant s'affiche.
+     position de l'établissement, coordonnées proposées en pointillé) ; après une décision, le point suivant s'affiche ;
+     raccourcis : A accepter, R refuser, P reporter, ← → point précédent / suivant, C recentrer la carte.
+   - refus de Grist sur une acceptation : reprise point par point (puis action par action), le message nomme le point et
+     l'action refusée ; les autres points sont écrits.
    API : FileVerif.monter(hote) ; FileVerif.recharger() ; hote = { zone, badge, S, ctx(), sites(), relire(), ouvrirEtab(id),
          ouvrirSite(id), bandeau() → élément, placer(rappel), versFile(), dire(texte, classe), focaliser({ sites, etabs, points }) → [sans coordonnées] }.
    ===================================================================== */
@@ -309,6 +312,15 @@
 
   /* ---------- écritures dans la table des vérifications ---------- */
   const ecrire = async acts => { for (let k = 0; k < acts.length; k += 400) await grist.docApi.applyUserActions(acts.slice(k, k + 400)); };
+  const decrire = a => `${a[0]} ${a[1]}${typeof a[2] === "number" ? ` ligne ${a[2]}` : ""}${a[3] && typeof a[3] === "object" && !Array.isArray(a[3]) ? ` (${Object.keys(a[3]).join(", ")})` : ""}`;
+  // écriture d'un point : d'un bloc, sinon action par action (mises à jour idempotentes) ; l'erreur nomme l'action refusée
+  async function ecrireDetaille(acts) {
+    try { await ecrire(acts); }
+    catch (err) {
+      if (acts.length < 2) throw new Error(`${err.message || err}${acts.length ? ` — action refusée : ${decrire(acts[0])}` : ""}`);
+      for (const a of acts) { try { await grist.docApi.applyUserActions([a]); } catch (e) { throw new Error(`${e.message || e} — action refusée : ${decrire(a)}`); } }
+    }
+  }
   const choixDe = c => { try { return (JSON.parse(c.widgetOptions || "{}").choices || []).map(String); } catch (_) { return []; } };
   async function etendreChoix(table, colId, valeurs) {
     const c = (await H.S.lireMeta())[table].colonnes[colId]; if (!c || !/^Choice/.test(c.type)) return;
@@ -508,22 +520,36 @@
   }
   async function appliquer(lignes, surcharge, dansBandeau) {
     if (enCours) return; enCours = true;
+    let etape = "préparation de la table des vérifications";
     try {
-      await preparer(); await assurerColonnes(lignes);
-      const p = await preparerActions(lignes, surcharge);
+      await preparer(); etape = "colonnes du référentiel"; await assurerColonnes(lignes);
+      etape = "préparation des modifications"; const p = await preparerActions(lignes, surcharge); etape = "écriture";
       if (!p.ok.length) { dire(p.erreurs.map(e => `${e.l.vid} : ${e.msg}`).join(" ; "), "err"); enCours = false; return; }
-      const dec = p.ok.map(l => {
+      const decision = l => {
         if (surcharge.site != null && fv.cols.valeur) l.valeur = fv.idx.codeSite.get(surcharge.site) || String(surcharge.site);
         if (surcharge.lat != null && fv.cols.valeur) l.valeur = `${(+surcharge.lat).toFixed(6)}, ${(+surcharge.lon).toFixed(6)}`;
         const modif = (l.action.op === "maj" && l.valeur && String(l.valeur) !== String(l.action.valeur)) || (l.action.op === "campus" && l.valeur && l.valeur !== l.action.nom);
         return ["UpdateRecord", fv.table, l.rid, champsDecision(l, modif ? "Modifier" : "Accepter")];
-      });
-      await ecrire([...p.acts, ...dec]);
-      p.ok.forEach(l => coches.delete(l.rid));
+      };
+      let ok = p.ok, nRefs = p.nRefs;
+      try { await ecrire([...p.acts, ...p.ok.map(decision)]); }
+      catch (err) {
+        // refus de Grist (rien n'a été écrit) : point par point, référentiel puis décision ; une action à la fois si besoin,
+        // pour écrire ce qui passe et dire quel point et quelle action bloquent
+        ok = []; nRefs = 0;
+        for (const l of p.ok) {
+          try {
+            const q = await preparerActions([l], surcharge);
+            if (!q.ok.length) { p.erreurs.push(...q.erreurs); continue; }
+            await ecrireDetaille(q.acts); await ecrire([decision(l)]); ok.push(l); nRefs += q.nRefs;
+          } catch (e) { p.erreurs.push({ l, msg: e.message || String(e) }); }
+        }
+      }
+      ok.forEach(l => coches.delete(l.rid));
       await H.relire();
-      await apresEcriture(`${nf(p.ok.length)} point(s) accepté(s) et appliqué(s)${p.nRefs ? `, ${nf(p.nRefs)} référence(s) reportée(s)` : ""}.`
-        + (p.erreurs.length ? ` Non appliqués : ${p.erreurs.map(e => `${e.l.vid} (${e.msg})`).join(" ; ")}.` : ""), dansBandeau, p.erreurs.length ? "err" : "ok");
-    } catch (err) { dire(`Non appliqué : ${err.message || err}`, "err"); }
+      await apresEcriture(`${nf(ok.length)} point(s) accepté(s) et appliqué(s)${nRefs ? `, ${nf(nRefs)} référence(s) reportée(s)` : ""}.`
+        + (p.erreurs.length ? ` Non appliqués : ${p.erreurs.map(e => `${e.l.vid} – ${e.l.type} (${e.msg})`).join(" ; ")}.` : ""), dansBandeau && ok.length > 0, p.erreurs.length ? "err" : "ok");
+    } catch (err) { dire(`Non appliqué (${etape}) : ${err.message || err}`, "err"); }
     enCours = false;
   }
   async function accepterLot() {
@@ -580,6 +606,7 @@
       <div class="outils fv-nav"><button type="button" data-fvn="prec"${i ? "" : " disabled"}>◀ Précédent</button><span>point ${i + 1} / ${points.length}</span>
         <button type="button" data-fvn="suiv"${i < points.length - 1 ? "" : " disabled"}>Suivant ▶</button><button type="button" class="lien" data-fvn="carte">Recentrer la carte</button></div>
       <p class="aide" id="fv-carte-msg"></p>
+      <p class="aide fv-clavier">Clavier : <kbd>A</kbd> accepter · <kbd>R</kbd> refuser · <kbd>P</kbd> reporter · <kbd>←</kbd> <kbd>→</kbd> point précédent / suivant · <kbd>C</kbd> recentrer la carte</p>
       <ul class="qa-liste">${itemHtml(cur, true)}</ul>
       <details class="fv-sommaire"${sommaire ? " open" : ""}><summary>Tous les points de l'établissement (${points.length})</summary><ol>${points.map(x => `<li${x === cur ? ` class="courant"` : ""}><button type="button" class="lien" data-fv-aller="${x.rid}">${esc(x.priorite.split(/\s/)[0] || "?")} · ${esc(x.type)} – ${esc(x.objetId)}${x.libelle ? ` ${esc(x.libelle)}` : ""}</button></li>`).join("")}</ol></details>
       <div class="outils">${k > 1 ? `<button type="button" data-fvb="lot">Accepter les ${k} applicables d'un clic</button>` : ""}<button type="button" class="lien" data-fvb="retour">← Retour à la file de vérification</button></div></div>`;
@@ -605,6 +632,18 @@
     });
     montrer(cur);
   }
+  // raccourcis clavier du bandeau (hors champ de saisie) : A accepter (ou action principale), R refuser, P reporter,
+  // ← → point précédent / suivant, C recentrer la carte
+  function clavier(ev) {
+    if (!bandeauG || !H || !H.zone.hidden || ev.ctrlKey || ev.metaKey || ev.altKey || enCours) return;
+    const t = ev.target; if (t && (/^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName) || t.isContentEditable)) return;
+    const z = H.bandeau(), li = z && z.querySelector(".fv-bandeau > .qa-liste > .fv-item"); if (!li) return;
+    const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
+    const cible = { a: "[data-fvb=siege], [data-fv=accepter], [data-fv=fait], [data-fvb=placer]", r: "[data-fv=refuser]", p: "[data-fv=reporter]" }[k];
+    const nav = { ArrowRight: "[data-fvn=suiv]", ArrowLeft: "[data-fvn=prec]", c: "[data-fvn=carte]" }[k];
+    const b = cible ? li.querySelector(cible) : nav ? z.querySelector(nav) : null;
+    if (b && !b.disabled) { ev.preventDefault(); b.click(); }
+  }
   function fermerBandeau() { const z = H.bandeau(); if (z) z.innerHTML = ""; bandeauG = null; if (H.focaliser) H.focaliser({}); H.versFile(); }
 
   /* ---------- montage ---------- */
@@ -617,7 +656,7 @@
     return chargement;
   }
   window.FileVerif = {
-    monter(hote) { H = hote; return recharger(); },
+    monter(hote) { H = hote; document.addEventListener("keydown", clavier); return recharger(); },
     recharger,
     afficher() { if (!fv) recharger(); else dessiner(); },
     nombre: aTraiter,
