@@ -362,17 +362,8 @@
     const nomEx = rid => { const i = pos.get(rid); return colNoms.map(c => existant[c][i]).find(v => !vide(v)) || `ligne ${rid}`; };
 
     // références vers les lignes absorbées (signalements, sites, correspondances…)
-    const aRef = new Set(absorbees.map(a => a.ex)), references = [];
-    if (absorbees.length) for (const [t, m] of Object.entries(ctx.meta)) {
-      if (t.startsWith("_grist")) continue;
-      const cols = Object.values(m.colonnes).filter(c => !c.isFormula && (c.type === `Ref:${table}` || c.type === `RefList:${table}`) && !(t === table && lRatt && c.colId === lRatt.col));
-      if (!cols.length) continue;
-      const d = await grist.docApi.fetchTable(t);
-      for (const c of cols) (d[c.colId] || []).forEach((v, i) => {
-        const ids = c.type.startsWith("RefList") ? (Array.isArray(v) ? v.slice(v[0] === "L" ? 1 : 0) : []) : [refId(v)];
-        if (ids.some(x => aRef.has(x))) references.push({ table: t, col: c.colId, id: d.id[i], liste: c.type.startsWith("RefList"), valeur: v });
-      });
-    }
+    const references = absorbees.length ? await window.References.chercher(ctx.meta, table, new Set(absorbees.map(a => a.ex)),
+      { exclure: (t, c) => t === table && !!lRatt && c === lRatt.col }) : [];
 
     // référentiel des sites
     let sites = null;
@@ -595,10 +586,7 @@
       let reportees = 0;
       if (reporter && a.references.length) {
         const vers = new Map(a.absorbees.map(x => [x.ex, rowDe.get(x.vers)]).filter(([, r]) => r != null));
-        const acts = a.references.map(r => {
-          const v = r.liste ? ["L", ...[...new Set((Array.isArray(r.valeur) ? r.valeur.slice(r.valeur[0] === "L" ? 1 : 0) : []).map(x => vers.get(x) || x))]] : (vers.get(refId(r.valeur)) || refId(r.valeur));
-          return ["UpdateRecord", r.table, r.id, { [r.col]: v }];
-        });
+        const acts = window.References.actions(a.references, vers);
         await parLots(acts, "Références reportées"); reportees = acts.length;
       }
       // 5. sites

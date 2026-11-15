@@ -80,6 +80,7 @@ Les widgets sont des pages statiques (HTML et JavaScript, sans serveur propre) a
 | `Reponses` | Une ligne par version de signalement ; `Dossier` renvoie à la première saisie | Installation (nom réglable) |
 | `Etablissements` | Référentiel ; clé `UUID` et `Lien` des établissements | Installation, onglet Référentiel |
 | `Referentiel_sites`, `Sites_correspondances` | Sites du supérieur ; libellés saisis rapprochés d'un site | Import du classeur ESR, widget Référentiel des sites |
+| `Verifications` | File de vérification du référentiel (un point par regard humain ; colonne `Action` en JSON : ce qui est écrit quand on accepte) | Import de l'onglet « Import – vérifications » du classeur `File_de_verification.xlsx` ; traitée dans le widget Référentiel des sites, onglet « File de vérification » |
 | `Formulaires` | Brouillon et version publiée de chaque formulaire (JSON) | Installation |
 | Tables des questions tableau | Lignes d'un tableau (sites…), historisées par version (`Dossier`, `Version`, `Ligne_id`, `Mouvement`) | Onglet Formulaires |
 | `Agents`, `Creneaux`, `Affectations`, `Emargements` | Équipe, planning, émargement | Onglet Équipe |
