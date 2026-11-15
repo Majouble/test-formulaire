@@ -39,7 +39,8 @@ function docFv() {
     ['Decision', 'Choice', JSON.stringify({ choices: ['Accepter', 'Refuser', 'Modifier', 'Reporter'] })], ['Valeur_retenue', 'Text'], ['Commentaire', 'Text'], ['Verifie_par', 'Text'], ['Date', 'Date'], ['Sensible', 'Bool']], data);
   return doc;
 }
-(async () => {
+module.exports = { docFv };
+if (require.main === module) (async () => {
   const doc = docFv();
   const browser = await chromium.launch({ executablePath: __C.chromium });
   const p = await browser.newPage({ viewport: { width: 1300, height: 1300 } });
