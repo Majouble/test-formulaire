@@ -29,9 +29,13 @@
    - « Accepter la sélection » : points applicables sans saisie, cochés sur la page, avec un aperçu avant écriture.
    - regroupement par établissement (par défaut) : les points d'une même personne morale (ses composantes, ses sites,
      ses lignes retirées, ses campus) sont présentés ensemble ; « Ouvrir » affiche l'établissement et, dans le bandeau,
-     tous ses points à traiter, pour valider établissement par établissement.
+     ses points à traiter un par un (Précédent / Suivant, sommaire), la carte cadrée sur les objets du point (sites cités,
+     position de l'établissement, coordonnées proposées en pointillé) ; après une décision, le point suivant s'affiche ;
+     raccourcis : A accepter, R refuser, P reporter, ← → point précédent / suivant, C recentrer la carte.
+   - refus de Grist sur une acceptation : reprise point par point (puis action par action), le message nomme le point et
+     l'action refusée ; les autres points sont écrits.
    API : FileVerif.monter(hote) ; FileVerif.recharger() ; hote = { zone, badge, S, ctx(), sites(), relire(), ouvrirEtab(id),
-         ouvrirSite(id), bandeau() → élément, placer(rappel), versFile(), dire(texte, classe) }.
+         ouvrirSite(id), bandeau() → élément, placer(rappel), versFile(), dire(texte, classe), focaliser({ sites, etabs, points }) → [sans coordonnées] }.
    ===================================================================== */
 (function () {
   "use strict";
@@ -308,6 +312,15 @@
 
   /* ---------- écritures dans la table des vérifications ---------- */
   const ecrire = async acts => { for (let k = 0; k < acts.length; k += 400) await grist.docApi.applyUserActions(acts.slice(k, k + 400)); };
+  const decrire = a => `${a[0]} ${a[1]}${typeof a[2] === "number" ? ` ligne ${a[2]}` : ""}${a[3] && typeof a[3] === "object" && !Array.isArray(a[3]) ? ` (${Object.keys(a[3]).join(", ")})` : ""}`;
+  // écriture d'un point : d'un bloc, sinon action par action (mises à jour idempotentes) ; l'erreur nomme l'action refusée
+  async function ecrireDetaille(acts) {
+    try { await ecrire(acts); }
+    catch (err) {
+      if (acts.length < 2) throw new Error(`${err.message || err}${acts.length ? ` — action refusée : ${decrire(acts[0])}` : ""}`);
+      for (const a of acts) { try { await grist.docApi.applyUserActions([a]); } catch (e) { throw new Error(`${e.message || e} — action refusée : ${decrire(a)}`); } }
+    }
+  }
   const choixDe = c => { try { return (JSON.parse(c.widgetOptions || "{}").choices || []).map(String); } catch (_) { return []; } };
   async function etendreChoix(table, colId, valeurs) {
     const c = (await H.S.lireMeta())[table].colonnes[colId]; if (!c || !/^Choice/.test(c.type)) return;
@@ -364,10 +377,12 @@
   async function apresEcriture(msg, dansBandeau, cl) {
     await charger();
     if (dansBandeau) {
-      // bandeau d'un établissement : on y reste tant qu'il lui reste des points à traiter
-      const g = bandeauG ? bandeauG.groupe : undefined, reste = g !== undefined && g !== null && fv.lignes.some(x => x.groupe === g && etatDe(x) === "a_traiter");
-      if (reste) bandeauGroupe(g, null);
-      else { const b = H.bandeau(); if (b) b.innerHTML = ""; bandeauG = null; H.versFile(); }
+      // bandeau d'un établissement : point suivant (dans l'ordre affiché) tant qu'il lui reste des points à traiter
+      const g = bandeauG ? bandeauG.groupe : null, ordre = bandeauG ? bandeauG.ordre : [], i = bandeauG ? ordre.indexOf(bandeauG.courant) : -1;
+      const reste = r => { const x = fv.lignes.find(y => y.rid === r); return !!x && x.groupe === g && etatDe(x) === "a_traiter"; };
+      const suivant = [...ordre.slice(i + 1), ...ordre.slice(0, Math.max(i, 0))].find(reste);
+      if (g != null && (suivant != null || fv.lignes.some(x => x.groupe === g && etatDe(x) === "a_traiter"))) bandeauGroupe(g, suivant ?? null);
+      else fermerBandeau();
     }
     dessiner(); dire(msg, cl);
   }
@@ -505,22 +520,36 @@
   }
   async function appliquer(lignes, surcharge, dansBandeau) {
     if (enCours) return; enCours = true;
+    let etape = "préparation de la table des vérifications";
     try {
-      await preparer(); await assurerColonnes(lignes);
-      const p = await preparerActions(lignes, surcharge);
+      await preparer(); etape = "colonnes du référentiel"; await assurerColonnes(lignes);
+      etape = "préparation des modifications"; const p = await preparerActions(lignes, surcharge); etape = "écriture";
       if (!p.ok.length) { dire(p.erreurs.map(e => `${e.l.vid} : ${e.msg}`).join(" ; "), "err"); enCours = false; return; }
-      const dec = p.ok.map(l => {
+      const decision = l => {
         if (surcharge.site != null && fv.cols.valeur) l.valeur = fv.idx.codeSite.get(surcharge.site) || String(surcharge.site);
         if (surcharge.lat != null && fv.cols.valeur) l.valeur = `${(+surcharge.lat).toFixed(6)}, ${(+surcharge.lon).toFixed(6)}`;
         const modif = (l.action.op === "maj" && l.valeur && String(l.valeur) !== String(l.action.valeur)) || (l.action.op === "campus" && l.valeur && l.valeur !== l.action.nom);
         return ["UpdateRecord", fv.table, l.rid, champsDecision(l, modif ? "Modifier" : "Accepter")];
-      });
-      await ecrire([...p.acts, ...dec]);
-      p.ok.forEach(l => coches.delete(l.rid));
+      };
+      let ok = p.ok, nRefs = p.nRefs;
+      try { await ecrire([...p.acts, ...p.ok.map(decision)]); }
+      catch (err) {
+        // refus de Grist (rien n'a été écrit) : point par point, référentiel puis décision ; une action à la fois si besoin,
+        // pour écrire ce qui passe et dire quel point et quelle action bloquent
+        ok = []; nRefs = 0;
+        for (const l of p.ok) {
+          try {
+            const q = await preparerActions([l], surcharge);
+            if (!q.ok.length) { p.erreurs.push(...q.erreurs); continue; }
+            await ecrireDetaille(q.acts); await ecrire([decision(l)]); ok.push(l); nRefs += q.nRefs;
+          } catch (e) { p.erreurs.push({ l, msg: e.message || String(e) }); }
+        }
+      }
+      ok.forEach(l => coches.delete(l.rid));
       await H.relire();
-      await apresEcriture(`${nf(p.ok.length)} point(s) accepté(s) et appliqué(s)${p.nRefs ? `, ${nf(p.nRefs)} référence(s) reportée(s)` : ""}.`
-        + (p.erreurs.length ? ` Non appliqués : ${p.erreurs.map(e => `${e.l.vid} (${e.msg})`).join(" ; ")}.` : ""), dansBandeau, p.erreurs.length ? "err" : "ok");
-    } catch (err) { dire(`Non appliqué : ${err.message || err}`, "err"); }
+      await apresEcriture(`${nf(ok.length)} point(s) accepté(s) et appliqué(s)${nRefs ? `, ${nf(nRefs)} référence(s) reportée(s)` : ""}.`
+        + (p.erreurs.length ? ` Non appliqués : ${p.erreurs.map(e => `${e.l.vid} – ${e.l.type} (${e.msg})`).join(" ; ")}.` : ""), dansBandeau && ok.length > 0, p.erreurs.length ? "err" : "ok");
+    } catch (err) { dire(`Non appliqué (${etape}) : ${err.message || err}`, "err"); }
     enCours = false;
   }
   async function accepterLot() {
@@ -534,39 +563,88 @@
   /* ---------- ouvrir un point dans la vue « Établissements et sites » ---------- */
   function ouvrir(l) {
     const I = fv.idx, a = l.action || {};
+    // l'établissement du point (tous ses sites sur la carte), puis la carte cadrée sur les objets du point
+    let ok = l.groupe != null && H.ouvrirEtab(l.groupe);
     const site = /^SITE-/.test(l.objetId) ? l.objetId : a.op === "campus" ? (a.sites || []).find(x => I.site.has(x)) : null;   // campus : son premier site
-    let ok = !!site && I.site.has(site) && H.ouvrirSite(I.site.get(site));
+    if (!ok) ok = !!site && I.site.has(site) && H.ouvrirSite(I.site.get(site));
     // établissement du point ; ligne retirée (plus proposée) : celle qui la remplace, ou celle qu'indique la proposition
     if (!ok) for (const code of [l.objetId, a.par, a.parent, (/ETAB-[A-Z]{0,2}\d+/.exec(l.proposition) || [])[0]]) {
       if (code && I.etab.has(code) && H.ouvrirEtab(I.etab.get(code))) { ok = true; break; }
     }
-    if (!ok && l.groupe != null) ok = H.ouvrirEtab(l.groupe);
     if (!ok) { dire(`${l.objetId} : introuvable dans le référentiel (autre référentiel, ou ligne pas encore importée).`, "err"); return; }
     bandeauGroupe(l.groupe, l.rid);
   }
-  // bandeau de la vue « Établissements et sites » : le point ouvert, puis les autres points à traiter du même établissement
+  // objets d'un point à montrer sur la carte : sites cités (objet, proposition, preuve, action), position de l'établissement,
+  // coordonnées proposées
+  function cibles(l) {
+    const I = fv.idx, a = l.action || {}, txt = `${l.objetId} ${l.proposition} ${l.preuve}`;
+    const codes = new Set([...(txt.match(/SITE-[A-Z]{0,2}\d+/g) || []), ...(a.sites || []), ...(a.suggestion ? [a.suggestion] : []), ...(typeof a.site === "string" ? [a.site] : [])]);
+    const sitesR = [...codes].map(c => I.site.get(c)).filter(x => x != null), etabs = new Set();
+    const ids = [...new Set([...(txt.match(/ETAB-[A-Z]{0,2}\d+/g) || []), a.id, a.parent, a.par].filter(x => x && /^ETAB-/.test(x)))];
+    if (a.op === "siege" || (a.op === "position" && a.objet !== "site") || !sitesR.length) ids.forEach(c => { const r = I.etab.get(c); if (r != null) etabs.add(r); });
+    const points = a.op === "position" && a.lat != null && a.lon != null ? [{ lat: a.lat, lon: a.lon, libelle: "position proposée" }] : [];
+    return { sites: sitesR, etabs: [...etabs], points, codes: [...codes].filter(c => !I.site.has(c)) };
+  }
+  function montrer(l) {
+    const c = cibles(l), sansCoord = H.focaliser ? H.focaliser(c) : [], m = document.getElementById("fv-carte-msg"); if (!m) return;
+    const n = c.sites.length + c.etabs.length + c.points.length;
+    m.textContent = !n ? "Rien à situer sur la carte pour ce point." : `Sur la carte, entouré en orange : ${n} objet(s)${c.points.length ? " (pointillé : position proposée)" : ""}.`
+      + (sansCoord.length ? ` Sans coordonnées : ${sansCoord.join(", ")}.` : "") + (c.codes.length ? ` Absents du référentiel des sites : ${c.codes.join(", ")}.` : "");
+  }
+  // bandeau de la vue « Établissements et sites » : un point à la fois (carte cadrée dessus), navigation dans les points
+  // à traiter du même établissement, sommaire repliable
+  const triPoints = (a, b) => a.priorite.localeCompare(b.priorite, "fr") || a.famille.localeCompare(b.famille, "fr") || a.type.localeCompare(b.type, "fr") || a.rid - b.rid;
   function bandeauGroupe(g, rid) {
     const z = H.bandeau(); if (!z) return;
+    let points = g == null ? [] : fv.lignes.filter(x => x.groupe === g && etatDe(x) === "a_traiter").sort(triPoints);
     const ouvert = rid != null ? fv.lignes.find(x => x.rid === rid) : null;
-    const autres = g == null ? [] : fv.lignes.filter(x => x.groupe === g && etatDe(x) === "a_traiter" && x.rid !== rid)
-      .sort((a, b) => a.priorite.localeCompare(b.priorite, "fr") || a.famille.localeCompare(b.famille, "fr") || a.type.localeCompare(b.type, "fr") || a.rid - b.rid);
-    const points = [...(ouvert ? [ouvert] : []), ...autres], k = applicables(points).length;
-    bandeauG = { groupe: g };
-    z.innerHTML = `<div class="qa-bandeau fv-bandeau"><strong>${esc(g == null ? (ouvert ? ouvert.objetId : "") : nomGroupe(g))}</strong> — ${nf(points.filter(x => etatDe(x) === "a_traiter").length)} point(s) à traiter dans la file de vérification
-      <div class="outils">${k > 1 ? `<button type="button" data-fvb="lot">Accepter les ${k} applicables d'un clic</button>` : ""}<button type="button" class="lien" data-fvb="retour">← Retour à la file de vérification</button></div>
-      <ul class="qa-liste">${points.map(x => itemHtml(x, true)).join("")}</ul></div>`;
-    z.querySelector("[data-fvb=retour]").addEventListener("click", () => { z.innerHTML = ""; bandeauG = null; H.versFile(); });
+    if (ouvert && !points.includes(ouvert)) points = [ouvert, ...points];
+    if (!points.length) { fermerBandeau(); return; }
+    const cur = ouvert || points[0], i = points.indexOf(cur), k = applicables(points).length, sommaire = !!(bandeauG && bandeauG.groupe === g && bandeauG.sommaire);
+    bandeauG = { groupe: g, ordre: points.map(x => x.rid), courant: cur.rid, sommaire };
+    z.innerHTML = `<div class="qa-bandeau fv-bandeau"><div><strong>${esc(g == null ? cur.objetId : nomGroupe(g))}</strong> — ${nf(points.filter(x => etatDe(x) === "a_traiter").length)} point(s) à traiter</div>
+      <div class="outils fv-nav"><button type="button" data-fvn="prec"${i ? "" : " disabled"}>◀ Précédent</button><span>point ${i + 1} / ${points.length}</span>
+        <button type="button" data-fvn="suiv"${i < points.length - 1 ? "" : " disabled"}>Suivant ▶</button><button type="button" class="lien" data-fvn="carte">Recentrer la carte</button></div>
+      <p class="aide" id="fv-carte-msg"></p>
+      <p class="aide fv-clavier">Clavier : <kbd>A</kbd> accepter · <kbd>R</kbd> refuser · <kbd>P</kbd> reporter · <kbd>←</kbd> <kbd>→</kbd> point précédent / suivant · <kbd>C</kbd> recentrer la carte</p>
+      <ul class="qa-liste">${itemHtml(cur, true)}</ul>
+      <details class="fv-sommaire"${sommaire ? " open" : ""}><summary>Tous les points de l'établissement (${points.length})</summary><ol>${points.map(x => `<li${x === cur ? ` class="courant"` : ""}><button type="button" class="lien" data-fv-aller="${x.rid}">${esc(x.priorite.split(/\s/)[0] || "?")} · ${esc(x.type)} – ${esc(x.objetId)}${x.libelle ? ` ${esc(x.libelle)}` : ""}</button></li>`).join("")}</ol></details>
+      <div class="outils">${k > 1 ? `<button type="button" data-fvb="lot">Accepter les ${k} applicables d'un clic</button>` : ""}<button type="button" class="lien" data-fvb="retour">← Retour à la file de vérification</button></div></div>`;
+    z.querySelector("[data-fvb=retour]").addEventListener("click", fermerBandeau);
     const lot = z.querySelector("[data-fvb=lot]"); if (lot) lot.addEventListener("click", () => accepterGroupe(g, true));
-    z.querySelectorAll(".fv-item").forEach(li => {
+    z.querySelector(".fv-sommaire").addEventListener("toggle", ev => { if (bandeauG) bandeauG.sommaire = ev.target.open; });
+    z.querySelectorAll("[data-fvn]").forEach(b => b.addEventListener("click", () => {
+      if (b.dataset.fvn === "carte") { montrer(cur); return; }
+      const j = i + (b.dataset.fvn === "suiv" ? 1 : -1); if (points[j]) bandeauGroupe(g, points[j].rid);
+    }));
+    z.querySelectorAll("[data-fv-aller]").forEach(b => b.addEventListener("click", () => bandeauGroupe(g, +b.dataset.fvAller)));
+    z.querySelectorAll(".fv-bandeau > .qa-liste > .fv-item").forEach(li => {
       const l = fv.lignes.find(x => x.rid === +li.dataset.rid); if (!l) return;
       lierItem(li, l, true);
-      li.querySelectorAll("[data-fvb]").forEach(b => b.addEventListener("click", async () => {
+      // siège : le site choisi dans la liste est entouré sur la carte, avec la position de l'établissement
+      const sel = li.querySelector("select[data-fvb=site]");
+      if (sel && H.focaliser) sel.addEventListener("change", () => { const c = cibles(l); H.focaliser({ sites: [+sel.value], etabs: c.etabs }); });
+      li.querySelectorAll("button[data-fvb]").forEach(b => b.addEventListener("click", async () => {
         const com = li.querySelector("[data-fvl=commentaire]"); if (com) l.commentaire = com.value.trim();
         if (b.dataset.fvb === "siege") await appliquer([l], { site: +li.querySelector("[data-fvb=site]").value }, true);
         if (b.dataset.fvb === "placer") { H.dire(`Cliquez sur la carte pour placer ${l.objetId}.`); H.placer(q => appliquer([l], { lat: q.lat, lon: q.lng }, true)); }
       }));
     });
+    montrer(cur);
   }
+  // raccourcis clavier du bandeau (hors champ de saisie) : A accepter (ou action principale), R refuser, P reporter,
+  // ← → point précédent / suivant, C recentrer la carte
+  function clavier(ev) {
+    if (!bandeauG || !H || !H.zone.hidden || ev.ctrlKey || ev.metaKey || ev.altKey || enCours) return;
+    const t = ev.target; if (t && (/^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName) || t.isContentEditable)) return;
+    const z = H.bandeau(), li = z && z.querySelector(".fv-bandeau > .qa-liste > .fv-item"); if (!li) return;
+    const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
+    const cible = { a: "[data-fvb=siege], [data-fv=accepter], [data-fv=fait], [data-fvb=placer]", r: "[data-fv=refuser]", p: "[data-fv=reporter]" }[k];
+    const nav = { ArrowRight: "[data-fvn=suiv]", ArrowLeft: "[data-fvn=prec]", c: "[data-fvn=carte]" }[k];
+    const b = cible ? li.querySelector(cible) : nav ? z.querySelector(nav) : null;
+    if (b && !b.disabled) { ev.preventDefault(); b.click(); }
+  }
+  function fermerBandeau() { const z = H.bandeau(); if (z) z.innerHTML = ""; bandeauG = null; if (H.focaliser) H.focaliser({}); H.versFile(); }
 
   /* ---------- montage ---------- */
   async function recharger() {
@@ -578,7 +656,7 @@
     return chargement;
   }
   window.FileVerif = {
-    monter(hote) { H = hote; return recharger(); },
+    monter(hote) { H = hote; document.addEventListener("keydown", clavier); return recharger(); },
     recharger,
     afficher() { if (!fv) recharger(); else dessiner(); },
     nombre: aTraiter,

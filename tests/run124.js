@@ -86,6 +86,18 @@ function docFv() {
   // 3. siège : ouvrir, choisir le site dans le bandeau
   await p.click(`${it('VERIF-3')} [data-fv=ouvrir] >> nth=0`); await p.waitForTimeout(1000);
   console.log('VUE OUVERTE :', await p.evaluate(() => ['etab', 'fv'].filter(v => !document.getElementById('vue-' + v).hidden).join(',')), '|', (await p.textContent('#qa-retour')).replace(/\s+/g, ' ').slice(0, 160));
+  const carte = () => p.evaluate(() => (document.getElementById('fv-carte-msg') || {}).textContent + ' | étiquettes : ' + [...document.querySelectorAll('.fv-etiquette')].map(e => e.textContent).join(' ; ') + ' | nav : ' + document.querySelector('.fv-nav span').textContent);
+  console.log('CARTE (siège) :', await carte());
+  await p.screenshot({ path: __C.sorties + '/fv-124-focus.png', clip: { x: 0, y: 0, width: 1300, height: 900 } });
+  await p.click('#qa-retour [data-fvn=suiv]'); await p.waitForTimeout(400);
+  console.log('SUIVANT :', (await p.textContent('#qa-retour .fv-item .fv-tete')).replace(/\s+/g, ' ').trim(), '|', await carte());
+  await p.click('#qa-retour .fv-sommaire summary'); await p.waitForTimeout(200);
+  console.log('SOMMAIRE :', await p.$$eval('#qa-retour .fv-sommaire li', l => l.map(x => (x.className ? '>' : '') + x.textContent.trim()).join(' | ')));
+  await p.click('#qa-retour [data-fv-aller] >> nth=0'); await p.waitForTimeout(400);
+  console.log('RETOUR AU SIÈGE :', await carte());
+  await p.click('#qa-retour .fv-bandeau > div > strong'); await p.keyboard.press('ArrowRight'); await p.waitForTimeout(300);
+  console.log('CLAVIER → :', (await carte()).split('nav : ')[1]); await p.keyboard.press('ArrowLeft'); await p.waitForTimeout(300);
+  console.log('CLAVIER ← :', (await carte()).split('nav : ')[1], '| légende :', await p.textContent('#qa-retour .fv-clavier'));
   console.log('SITES PROPOSÉS :', await p.$$eval('#qa-retour [data-fvb=site] option', l => l.map(o => (o.selected ? '*' : '') + o.textContent).join(' | ')));
   await p.selectOption('#qa-retour [data-fvb=site]', { label: 'SITE-0003 – Site Villejean' }).catch(async () => p.selectOption('#qa-retour [data-fvb=site]', { index: 2 }));
   await p.click('#qa-retour [data-fvb=siege]'); await p.waitForTimeout(2000);
@@ -96,12 +108,17 @@ function docFv() {
   const bi = v => `#qa-retour .fv-item:has-text("${v}")`;
   await p.fill(`${bi('VERIF-6')} [data-fvl=commentaire]`, 'Composante créée : ETAB-0005'); await p.click(`${bi('VERIF-6')} [data-fv=fait]`); await p.waitForTimeout(1200);
   console.log('APRÈS « FAIT » : vue', await vueVisible(), '| bandeau :', await bandeau());
-  await p.click(`${bi('VERIF-7')} [data-fv=refuser]`); await p.waitForTimeout(1200);
+  await p.click('#qa-retour .fv-bandeau > div > strong'); await p.keyboard.press('r'); await p.waitForTimeout(1200);   // refus au clavier
   console.log('APRÈS REFUS : vue', await vueVisible(), '| bandeau', await p.$$eval('#qa-retour .fv-item', l => l.length), 'point(s)');
   await p.click(`${it('VERIF-8')} [data-fv=reporter]`); await p.waitForTimeout(1200);
   console.log('RESTE À TRAITER :', await liste(), '| compteur', await p.textContent('#badge-fv'));
   await p.selectOption('#vue-fv [data-fvf=etat]', 'reportes'); await p.waitForTimeout(300);
   console.log('REPORTÉS :', await liste());
+  // refus de Grist : le message nomme le point et l'action refusée
+  await p.evaluate(() => { const ap = grist.docApi.applyUserActions; grist.docApi.applyUserActions = async acts => {
+    if (acts.some(a => a[0] === 'UpdateRecord' && a[1] === 'Referentiel_sites' && 'Statut' in a[3])) throw new Error('[Sandbox] AssertionError '); return ap(acts); }; });
+  await p.click(`${it('VERIF-8')} [data-fv=accepter]`); await p.waitForTimeout(1500);
+  console.log('REFUS DE GRIST :', await p.textContent('#fv-msg'));
   console.log('ÉTAT FINAL :', JSON.stringify(await etat(), null, 1));
   console.log('COLONNES :', await p.evaluate(() => { const D = window.__DOC__, C = D._grist_Tables_column, T = D._grist_Tables, tr = T.id[T.tableId.indexOf('Verifications')];
     return C.id.map((id, i) => C.parentId[i] === tr && ['Verifie_par', 'Date', 'Decision', 'Commentaire'].includes(C.colId[i]) ? `${C.colId[i]}=${C.formula[i] || '-'}${C.recalcDeps && C.recalcDeps[i] ? ' deps ' + JSON.stringify(C.recalcDeps[i]) : ''}` : null).filter(Boolean).join(' | '); }),
