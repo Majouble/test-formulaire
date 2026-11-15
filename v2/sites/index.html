@@ -144,7 +144,10 @@
   .fv-filtres select, .fv-filtres input { width: 100%; max-width: none; }
   .fv-groupe { list-style: none; border-left: 3px solid var(--accent); padding-left: 8px; margin: 12px 0; }
   .fv-groupe-tete { display: flex; gap: 6px; flex-wrap: wrap; align-items: baseline; }
-  .fv-bandeau > .qa-liste { max-height: 55vh; overflow: auto; }
+  .fv-nav span { font-size: 12px; color: var(--muted); }
+  .fv-sommaire { margin: 6px 0; } .fv-sommaire summary { cursor: pointer; color: var(--accent); font-size: 12px; }
+  .fv-sommaire ol { max-height: 30vh; overflow: auto; margin: 4px 0; padding-left: 22px; font-size: 12px; } .fv-sommaire li.courant { font-weight: 700; }
+  .leaflet-tooltip.fv-etiquette { font-size: 11px; padding: 1px 5px; border-color: #e8590c; }
   @media (max-width: 760px) { .page { grid-template-columns: 1fr; height: auto; } .droite { grid-template-rows: 60vh auto; } }
 </style>
 </head>
@@ -524,6 +527,25 @@ function dessinerCandidatsCarte() {
       .bindTooltip(`${esc(c.nom || c.libelleAdresse)}<br><span style="font-size:11px">${esc(c.source)}${c.detail ? " · " + esc(c.detail) : ""}</span>`)
       .on("click", () => { const el = document.querySelector(`[data-cand="${i}"]`); if (el) { el.scrollIntoView({ block: "nearest" }); el.querySelector("input,button").focus(); } });
   });
+}
+/* File de vérification : objets d'un point entourés (anneau orange, étiquette ; pointillé : position proposée), carte cadrée
+   dessus. Renvoie les objets sans coordonnées. focaliser({}) efface. */
+let coucheFocus = null;
+function focaliser(f) {
+  if (!carte) return [];
+  if (!coucheFocus) coucheFocus = L.layerGroup().addTo(carte);
+  coucheFocus.clearLayers();
+  const pts = [], sansCoord = [], n = (f.sites || []).length + (f.etabs || []).length + (f.points || []).length;
+  const anneau = (lat, lon, txt, pointille) => {
+    const m = L.circleMarker([lat, lon], { radius: 17, color: "#e8590c", weight: 3, fill: false, dashArray: pointille ? "5 5" : null }).addTo(coucheFocus);
+    m.bindTooltip(esc(txt), n <= 8 ? { permanent: true, direction: "top", offset: [0, -16], className: "fv-etiquette" } : { direction: "top" });
+    pts.push([lat, lon]);
+  };
+  for (const id of f.sites || []) { const s = sites.find(x => x.id === id); if (!s) continue; if (s.lat == null) sansCoord.push(s.code || s.nom); else anneau(s.lat, s.lon, `${s.code ? s.code + " – " : ""}${s.nom}${s.actif ? "" : " (inactif)"}`); }
+  for (const id of f.etabs || []) { const e = etabDe(id); if (!e) continue; if (e.lat == null) sansCoord.push(e.nom); else anneau(e.lat, e.lon, `${e.nom} (position de l'établissement)`); }
+  for (const p of f.points || []) if (p.lat != null && p.lon != null) anneau(+p.lat, +p.lon, p.libelle || "position proposée", true);
+  if (pts.length === 1) carte.setView(pts[0], 17); else if (pts.length) carte.fitBounds(pts, { padding: [70, 70], maxZoom: 17 });
+  return sansCoord;
 }
 
 /* ---------- Établissement ---------- */
@@ -1168,7 +1190,7 @@ function hoteFileVerif() {
       if (s.lat != null) carte.setView([s.lat, s.lon], Math.max(carte.getZoom(), 16));
       return true;
     },
-    bandeau: () => $("qa-retour"), placer: rappel => attendrePlacement(rappel), versFile: () => changerVue("fv"), dire: (t, c) => statut(t, c) };
+    bandeau: () => $("qa-retour"), placer: rappel => attendrePlacement(rappel), versFile: () => changerVue("fv"), dire: (t, c) => statut(t, c), focaliser };
 }
 (async function demarrer() {
   initCarte();

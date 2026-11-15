@@ -29,9 +29,10 @@
    - « Accepter la sélection » : points applicables sans saisie, cochés sur la page, avec un aperçu avant écriture.
    - regroupement par établissement (par défaut) : les points d'une même personne morale (ses composantes, ses sites,
      ses lignes retirées, ses campus) sont présentés ensemble ; « Ouvrir » affiche l'établissement et, dans le bandeau,
-     tous ses points à traiter, pour valider établissement par établissement.
+     ses points à traiter un par un (Précédent / Suivant, sommaire), la carte cadrée sur les objets du point (sites cités,
+     position de l'établissement, coordonnées proposées en pointillé) ; après une décision, le point suivant s'affiche.
    API : FileVerif.monter(hote) ; FileVerif.recharger() ; hote = { zone, badge, S, ctx(), sites(), relire(), ouvrirEtab(id),
-         ouvrirSite(id), bandeau() → élément, placer(rappel), versFile(), dire(texte, classe) }.
+         ouvrirSite(id), bandeau() → élément, placer(rappel), versFile(), dire(texte, classe), focaliser({ sites, etabs, points }) → [sans coordonnées] }.
    ===================================================================== */
 (function () {
   "use strict";
@@ -364,10 +365,12 @@
   async function apresEcriture(msg, dansBandeau, cl) {
     await charger();
     if (dansBandeau) {
-      // bandeau d'un établissement : on y reste tant qu'il lui reste des points à traiter
-      const g = bandeauG ? bandeauG.groupe : undefined, reste = g !== undefined && g !== null && fv.lignes.some(x => x.groupe === g && etatDe(x) === "a_traiter");
-      if (reste) bandeauGroupe(g, null);
-      else { const b = H.bandeau(); if (b) b.innerHTML = ""; bandeauG = null; H.versFile(); }
+      // bandeau d'un établissement : point suivant (dans l'ordre affiché) tant qu'il lui reste des points à traiter
+      const g = bandeauG ? bandeauG.groupe : null, ordre = bandeauG ? bandeauG.ordre : [], i = bandeauG ? ordre.indexOf(bandeauG.courant) : -1;
+      const reste = r => { const x = fv.lignes.find(y => y.rid === r); return !!x && x.groupe === g && etatDe(x) === "a_traiter"; };
+      const suivant = [...ordre.slice(i + 1), ...ordre.slice(0, Math.max(i, 0))].find(reste);
+      if (g != null && (suivant != null || fv.lignes.some(x => x.groupe === g && etatDe(x) === "a_traiter"))) bandeauGroupe(g, suivant ?? null);
+      else fermerBandeau();
     }
     dessiner(); dire(msg, cl);
   }
@@ -534,39 +537,75 @@
   /* ---------- ouvrir un point dans la vue « Établissements et sites » ---------- */
   function ouvrir(l) {
     const I = fv.idx, a = l.action || {};
+    // l'établissement du point (tous ses sites sur la carte), puis la carte cadrée sur les objets du point
+    let ok = l.groupe != null && H.ouvrirEtab(l.groupe);
     const site = /^SITE-/.test(l.objetId) ? l.objetId : a.op === "campus" ? (a.sites || []).find(x => I.site.has(x)) : null;   // campus : son premier site
-    let ok = !!site && I.site.has(site) && H.ouvrirSite(I.site.get(site));
+    if (!ok) ok = !!site && I.site.has(site) && H.ouvrirSite(I.site.get(site));
     // établissement du point ; ligne retirée (plus proposée) : celle qui la remplace, ou celle qu'indique la proposition
     if (!ok) for (const code of [l.objetId, a.par, a.parent, (/ETAB-[A-Z]{0,2}\d+/.exec(l.proposition) || [])[0]]) {
       if (code && I.etab.has(code) && H.ouvrirEtab(I.etab.get(code))) { ok = true; break; }
     }
-    if (!ok && l.groupe != null) ok = H.ouvrirEtab(l.groupe);
     if (!ok) { dire(`${l.objetId} : introuvable dans le référentiel (autre référentiel, ou ligne pas encore importée).`, "err"); return; }
     bandeauGroupe(l.groupe, l.rid);
   }
-  // bandeau de la vue « Établissements et sites » : le point ouvert, puis les autres points à traiter du même établissement
+  // objets d'un point à montrer sur la carte : sites cités (objet, proposition, preuve, action), position de l'établissement,
+  // coordonnées proposées
+  function cibles(l) {
+    const I = fv.idx, a = l.action || {}, txt = `${l.objetId} ${l.proposition} ${l.preuve}`;
+    const codes = new Set([...(txt.match(/SITE-[A-Z]{0,2}\d+/g) || []), ...(a.sites || []), ...(a.suggestion ? [a.suggestion] : []), ...(typeof a.site === "string" ? [a.site] : [])]);
+    const sitesR = [...codes].map(c => I.site.get(c)).filter(x => x != null), etabs = new Set();
+    const ids = [...new Set([...(txt.match(/ETAB-[A-Z]{0,2}\d+/g) || []), a.id, a.parent, a.par].filter(x => x && /^ETAB-/.test(x)))];
+    if (a.op === "siege" || (a.op === "position" && a.objet !== "site") || !sitesR.length) ids.forEach(c => { const r = I.etab.get(c); if (r != null) etabs.add(r); });
+    const points = a.op === "position" && a.lat != null && a.lon != null ? [{ lat: a.lat, lon: a.lon, libelle: "position proposée" }] : [];
+    return { sites: sitesR, etabs: [...etabs], points, codes: [...codes].filter(c => !I.site.has(c)) };
+  }
+  function montrer(l) {
+    const c = cibles(l), sansCoord = H.focaliser ? H.focaliser(c) : [], m = document.getElementById("fv-carte-msg"); if (!m) return;
+    const n = c.sites.length + c.etabs.length + c.points.length;
+    m.textContent = !n ? "Rien à situer sur la carte pour ce point." : `Sur la carte, entouré en orange : ${n} objet(s)${c.points.length ? " (pointillé : position proposée)" : ""}.`
+      + (sansCoord.length ? ` Sans coordonnées : ${sansCoord.join(", ")}.` : "") + (c.codes.length ? ` Absents du référentiel des sites : ${c.codes.join(", ")}.` : "");
+  }
+  // bandeau de la vue « Établissements et sites » : un point à la fois (carte cadrée dessus), navigation dans les points
+  // à traiter du même établissement, sommaire repliable
+  const triPoints = (a, b) => a.priorite.localeCompare(b.priorite, "fr") || a.famille.localeCompare(b.famille, "fr") || a.type.localeCompare(b.type, "fr") || a.rid - b.rid;
   function bandeauGroupe(g, rid) {
     const z = H.bandeau(); if (!z) return;
+    let points = g == null ? [] : fv.lignes.filter(x => x.groupe === g && etatDe(x) === "a_traiter").sort(triPoints);
     const ouvert = rid != null ? fv.lignes.find(x => x.rid === rid) : null;
-    const autres = g == null ? [] : fv.lignes.filter(x => x.groupe === g && etatDe(x) === "a_traiter" && x.rid !== rid)
-      .sort((a, b) => a.priorite.localeCompare(b.priorite, "fr") || a.famille.localeCompare(b.famille, "fr") || a.type.localeCompare(b.type, "fr") || a.rid - b.rid);
-    const points = [...(ouvert ? [ouvert] : []), ...autres], k = applicables(points).length;
-    bandeauG = { groupe: g };
-    z.innerHTML = `<div class="qa-bandeau fv-bandeau"><strong>${esc(g == null ? (ouvert ? ouvert.objetId : "") : nomGroupe(g))}</strong> — ${nf(points.filter(x => etatDe(x) === "a_traiter").length)} point(s) à traiter dans la file de vérification
-      <div class="outils">${k > 1 ? `<button type="button" data-fvb="lot">Accepter les ${k} applicables d'un clic</button>` : ""}<button type="button" class="lien" data-fvb="retour">← Retour à la file de vérification</button></div>
-      <ul class="qa-liste">${points.map(x => itemHtml(x, true)).join("")}</ul></div>`;
-    z.querySelector("[data-fvb=retour]").addEventListener("click", () => { z.innerHTML = ""; bandeauG = null; H.versFile(); });
+    if (ouvert && !points.includes(ouvert)) points = [ouvert, ...points];
+    if (!points.length) { fermerBandeau(); return; }
+    const cur = ouvert || points[0], i = points.indexOf(cur), k = applicables(points).length, sommaire = !!(bandeauG && bandeauG.groupe === g && bandeauG.sommaire);
+    bandeauG = { groupe: g, ordre: points.map(x => x.rid), courant: cur.rid, sommaire };
+    z.innerHTML = `<div class="qa-bandeau fv-bandeau"><div><strong>${esc(g == null ? cur.objetId : nomGroupe(g))}</strong> — ${nf(points.filter(x => etatDe(x) === "a_traiter").length)} point(s) à traiter</div>
+      <div class="outils fv-nav"><button type="button" data-fvn="prec"${i ? "" : " disabled"}>◀ Précédent</button><span>point ${i + 1} / ${points.length}</span>
+        <button type="button" data-fvn="suiv"${i < points.length - 1 ? "" : " disabled"}>Suivant ▶</button><button type="button" class="lien" data-fvn="carte">Recentrer la carte</button></div>
+      <p class="aide" id="fv-carte-msg"></p>
+      <ul class="qa-liste">${itemHtml(cur, true)}</ul>
+      <details class="fv-sommaire"${sommaire ? " open" : ""}><summary>Tous les points de l'établissement (${points.length})</summary><ol>${points.map(x => `<li${x === cur ? ` class="courant"` : ""}><button type="button" class="lien" data-fv-aller="${x.rid}">${esc(x.priorite.split(/\s/)[0] || "?")} · ${esc(x.type)} – ${esc(x.objetId)}${x.libelle ? ` ${esc(x.libelle)}` : ""}</button></li>`).join("")}</ol></details>
+      <div class="outils">${k > 1 ? `<button type="button" data-fvb="lot">Accepter les ${k} applicables d'un clic</button>` : ""}<button type="button" class="lien" data-fvb="retour">← Retour à la file de vérification</button></div></div>`;
+    z.querySelector("[data-fvb=retour]").addEventListener("click", fermerBandeau);
     const lot = z.querySelector("[data-fvb=lot]"); if (lot) lot.addEventListener("click", () => accepterGroupe(g, true));
-    z.querySelectorAll(".fv-item").forEach(li => {
+    z.querySelector(".fv-sommaire").addEventListener("toggle", ev => { if (bandeauG) bandeauG.sommaire = ev.target.open; });
+    z.querySelectorAll("[data-fvn]").forEach(b => b.addEventListener("click", () => {
+      if (b.dataset.fvn === "carte") { montrer(cur); return; }
+      const j = i + (b.dataset.fvn === "suiv" ? 1 : -1); if (points[j]) bandeauGroupe(g, points[j].rid);
+    }));
+    z.querySelectorAll("[data-fv-aller]").forEach(b => b.addEventListener("click", () => bandeauGroupe(g, +b.dataset.fvAller)));
+    z.querySelectorAll(".fv-bandeau > .qa-liste > .fv-item").forEach(li => {
       const l = fv.lignes.find(x => x.rid === +li.dataset.rid); if (!l) return;
       lierItem(li, l, true);
-      li.querySelectorAll("[data-fvb]").forEach(b => b.addEventListener("click", async () => {
+      // siège : le site choisi dans la liste est entouré sur la carte, avec la position de l'établissement
+      const sel = li.querySelector("select[data-fvb=site]");
+      if (sel && H.focaliser) sel.addEventListener("change", () => { const c = cibles(l); H.focaliser({ sites: [+sel.value], etabs: c.etabs }); });
+      li.querySelectorAll("button[data-fvb]").forEach(b => b.addEventListener("click", async () => {
         const com = li.querySelector("[data-fvl=commentaire]"); if (com) l.commentaire = com.value.trim();
         if (b.dataset.fvb === "siege") await appliquer([l], { site: +li.querySelector("[data-fvb=site]").value }, true);
         if (b.dataset.fvb === "placer") { H.dire(`Cliquez sur la carte pour placer ${l.objetId}.`); H.placer(q => appliquer([l], { lat: q.lat, lon: q.lng }, true)); }
       }));
     });
+    montrer(cur);
   }
+  function fermerBandeau() { const z = H.bandeau(); if (z) z.innerHTML = ""; bandeauG = null; if (H.focaliser) H.focaliser({}); H.versFile(); }
 
   /* ---------- montage ---------- */
   async function recharger() {

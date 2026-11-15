@@ -86,6 +86,15 @@ function docFv() {
   // 3. siège : ouvrir, choisir le site dans le bandeau
   await p.click(`${it('VERIF-3')} [data-fv=ouvrir] >> nth=0`); await p.waitForTimeout(1000);
   console.log('VUE OUVERTE :', await p.evaluate(() => ['etab', 'fv'].filter(v => !document.getElementById('vue-' + v).hidden).join(',')), '|', (await p.textContent('#qa-retour')).replace(/\s+/g, ' ').slice(0, 160));
+  const carte = () => p.evaluate(() => (document.getElementById('fv-carte-msg') || {}).textContent + ' | étiquettes : ' + [...document.querySelectorAll('.fv-etiquette')].map(e => e.textContent).join(' ; ') + ' | nav : ' + document.querySelector('.fv-nav span').textContent);
+  console.log('CARTE (siège) :', await carte());
+  await p.screenshot({ path: __C.sorties + '/fv-124-focus.png', clip: { x: 0, y: 0, width: 1300, height: 900 } });
+  await p.click('#qa-retour [data-fvn=suiv]'); await p.waitForTimeout(400);
+  console.log('SUIVANT :', (await p.textContent('#qa-retour .fv-item .fv-tete')).replace(/\s+/g, ' ').trim(), '|', await carte());
+  await p.click('#qa-retour .fv-sommaire summary'); await p.waitForTimeout(200);
+  console.log('SOMMAIRE :', await p.$$eval('#qa-retour .fv-sommaire li', l => l.map(x => (x.className ? '>' : '') + x.textContent.trim()).join(' | ')));
+  await p.click('#qa-retour [data-fv-aller] >> nth=0'); await p.waitForTimeout(400);
+  console.log('RETOUR AU SIÈGE :', await carte());
   console.log('SITES PROPOSÉS :', await p.$$eval('#qa-retour [data-fvb=site] option', l => l.map(o => (o.selected ? '*' : '') + o.textContent).join(' | ')));
   await p.selectOption('#qa-retour [data-fvb=site]', { label: 'SITE-0003 – Site Villejean' }).catch(async () => p.selectOption('#qa-retour [data-fvb=site]', { index: 2 }));
   await p.click('#qa-retour [data-fvb=siege]'); await p.waitForTimeout(2000);
