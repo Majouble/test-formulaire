@@ -11,7 +11,25 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.59.3 (15/11/2026)";
+  const VERSION = "2.60.0 (15/11/2026)";
+
+  /* ---------- version publiée ----------
+     GitHub Pages laisse les navigateurs garder chaque fichier 10 minutes. Au chargement, la page lit version.json sans
+     cache ; si une autre version est publiée, elle se recharge une fois avec ?v=<version> : la page et ses scripts
+     (appelés avec ?v=<version>, outils/versionner.js) sont alors pris à jour. Rien en local (file:) ni dans le kit. */
+  (function verifierVersion() {
+    try {
+      const s = document.currentScript;
+      if (!s || !s.src || !/^https?:$/.test(location.protocol) || window.__KIT_WIDGET_VERSION__ || !window.fetch) return;
+      fetch(new URL("../version.json", s.src).href, { cache: "no-store" }).then(r => r.ok ? r.json() : null).then(j => {
+        if (!j || !j.version || j.version === VERSION) return;
+        const num = String(j.version).split(" ")[0], p = new URLSearchParams(location.search);
+        if (p.get("v") === num) return;   // déjà rechargée pour cette version : le serveur n'est pas encore à jour
+        p.set("v", num);
+        location.replace(`${location.pathname}?${p}${location.hash}`);
+      }).catch(() => { /* version.json illisible : la page reste telle quelle */ });
+    } catch (_) { /* pas de vérification */ }
+  })();
 
   /* ---------- Noms par défaut ---------- */
   const TABLE_CONFIG = "Config";          // seul nom fixe : c'est là qu'on lit les autres

@@ -19,7 +19,7 @@ Un document de production n'utilise que des adresses `…/prod/…` ; un documen
 
 ## Mise en production
 
-1. Dans `v2/commun/socle.js`, passer `VERSION` à un numéro sans `alpha` (par exemple `2.0.1 (jj/mm/aaaa)`).
+1. Dans `v2/commun/socle.js`, passer `VERSION` à un numéro sans `alpha` (par exemple `2.0.1 (jj/mm/aaaa)`). À chaque changement de `VERSION`, même en test, lancer `node outils/versionner.js` : les pages appellent leurs scripts avec `?v=<version>` et `v2/version.json` donne la version publiée (une page plus ancienne en cache se recharge d'elle-même ; l'essai `run125` échoue si on l'oublie).
 2. Lancer `sh outils/publier-prod.sh` : le dossier `prod/` est recréé à partir de `v2/` (refus si la version contient `alpha`, `beta` ou `dev`).
 3. Valider et pousser ; GitHub Pages publie en une à deux minutes.
 4. Dans chaque document de production, vider le cache (Ctrl+F5) et vérifier le numéro de version dans l'administration.

@@ -27,8 +27,9 @@ function vue(chemin) {
     }
     return clic.call(this);
   }; })();</script>`);
-  html = html.replace(/<script src="(\.\.?\/[^"]+|[\w.-]+\.js)"><\/script>/g, (_, src) => `<script>\n${enScript(lire(path.join(dossier, src)))}\n</script>`);
-  html = html.replace(/<link rel="stylesheet" href="([\w.-]+\.css)">/g, (_, href) => `<style>\n${lire(path.join(dossier, href))}\n</style>`);
+  // ?v=<version> (outils/versionner.js) ignoré : le fichier est intégré
+  html = html.replace(/<script src="(\.\.?\/[^"?]+|[\w.-]+\.js)(?:\?v=[^"]*)?"><\/script>/g, (_, src) => `<script>\n${enScript(lire(path.join(dossier, src)))}\n</script>`);
+  html = html.replace(/<link rel="stylesheet" href="([\w.-]+\.css)(?:\?v=[^"]*)?">/g, (_, href) => `<style>\n${lire(path.join(dossier, href))}\n</style>`);
   const reste = html.match(/<script[^>]+src="https?:[^"]+"|<link[^>]+href="https?:[^"]+"/i);
   if (reste) throw new Error(`${chemin} : ressource en ligne restante (${reste[0]})`);
   return html;
