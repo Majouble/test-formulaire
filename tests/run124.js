@@ -52,6 +52,7 @@ function docFv() {
   await p.click('[data-vue=fv]'); await p.waitForTimeout(800);
   const liste = () => p.$$eval('#vue-fv .fv-item', l => l.map(li => li.querySelector('.fv-tete strong').textContent + ' [' + [...li.querySelectorAll('button')].map(b => b.textContent.trim()).join('/') + (li.querySelector('.fv-coche') ? ', cochable' : '') + ']').join(' | '));
   console.log('LISTE :', await liste());
+  console.log('GROUPES :', await p.$$eval('#vue-fv .fv-groupe', l => l.map(g => g.querySelector('.fv-groupe-tete').textContent.replace(/\s+/g, ' ').trim() + ' → ' + [...g.querySelectorAll('.fv-item')].map(li => li.querySelector('.meta').textContent.split(' · ')[0]).join(',')).join(' | ')));
   console.log('ACADÉMIES :', await p.$$eval('#vue-fv [data-fvf=acad] option', l => l.map(o => o.textContent).join(', ')));
   // filtre : application d'un clic
   await p.selectOption('#vue-fv [data-fvf=mode]', 'auto'); await p.waitForTimeout(300);
@@ -88,10 +89,15 @@ function docFv() {
   console.log('SITES PROPOSÉS :', await p.$$eval('#qa-retour [data-fvb=site] option', l => l.map(o => (o.selected ? '*' : '') + o.textContent).join(' | ')));
   await p.selectOption('#qa-retour [data-fvb=site]', { label: 'SITE-0003 – Site Villejean' }).catch(async () => p.selectOption('#qa-retour [data-fvb=site]', { index: 2 }));
   await p.click('#qa-retour [data-fvb=siege]'); await p.waitForTimeout(2000);
-  console.log('APRÈS SIÈGE : vue', await p.evaluate(() => ['etab', 'fv'].filter(v => !document.getElementById('vue-' + v).hidden).join(',')), '|', await p.textContent('#fv-msg'));
-  // 4. fait à la main, refus, report
-  await p.fill(`${it('VERIF-6')} [data-fvl=commentaire]`, 'Composante créée : ETAB-0005'); await p.click(`${it('VERIF-6')} [data-fv=fait]`); await p.waitForTimeout(1200);
-  await p.click(`${it('VERIF-7')} [data-fv=refuser]`); await p.waitForTimeout(1200);
+  const vueVisible = () => p.evaluate(() => ['etab', 'fv'].filter(v => !document.getElementById('vue-' + v).hidden).join(','));
+  const bandeau = () => p.$$eval('#qa-retour .fv-item', l => l.map(li => li.querySelector('.meta').textContent.split(' · ')[0] + ' [' + [...li.querySelectorAll('button')].map(b => b.textContent.trim()).join('/') + ']').join(' | '));
+  console.log('APRÈS SIÈGE : vue', await vueVisible(), '|', await p.textContent('#statut'), '| bandeau :', (await p.textContent('#qa-retour .fv-bandeau')).replace(/\s+/g, ' ').slice(0, 90), '|', await bandeau());
+  // 4. dans le bandeau de l'établissement : fait à la main, refus ; puis report depuis la liste
+  const bi = v => `#qa-retour .fv-item:has-text("${v}")`;
+  await p.fill(`${bi('VERIF-6')} [data-fvl=commentaire]`, 'Composante créée : ETAB-0005'); await p.click(`${bi('VERIF-6')} [data-fv=fait]`); await p.waitForTimeout(1200);
+  console.log('APRÈS « FAIT » : vue', await vueVisible(), '| bandeau :', await bandeau());
+  await p.click(`${bi('VERIF-7')} [data-fv=refuser]`); await p.waitForTimeout(1200);
+  console.log('APRÈS REFUS : vue', await vueVisible(), '| bandeau', await p.$$eval('#qa-retour .fv-item', l => l.length), 'point(s)');
   await p.click(`${it('VERIF-8')} [data-fv=reporter]`); await p.waitForTimeout(1200);
   console.log('RESTE À TRAITER :', await liste(), '| compteur', await p.textContent('#badge-fv'));
   await p.selectOption('#vue-fv [data-fvf=etat]', 'reportes'); await p.waitForTimeout(300);
