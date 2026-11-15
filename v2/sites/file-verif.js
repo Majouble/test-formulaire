@@ -27,6 +27,9 @@
                                                est le nom du campus (obligatoire si le nom est « à préciser »)
      Sans action (création de composante, campus, nommage…) : « Fait à la main » enregistre seulement la décision.
    - « Accepter la sélection » : points applicables sans saisie, cochés sur la page, avec un aperçu avant écriture.
+   - regroupement par établissement (par défaut) : les points d'une même personne morale (ses composantes, ses sites,
+     ses lignes retirées, ses campus) sont présentés ensemble ; « Ouvrir » affiche l'établissement et, dans le bandeau,
+     tous ses points à traiter, pour valider établissement par établissement.
    API : FileVerif.monter(hote) ; FileVerif.recharger() ; hote = { zone, badge, S, ctx(), sites(), relire(), ouvrirEtab(id),
          ouvrirSite(id), bandeau() → élément, placer(rappel), versFile(), dire(texte, classe) }.
    ===================================================================== */
@@ -43,10 +46,10 @@
     valeur: /^valeur_?retenue$/, commentaire: /^commentaire$/, par: /^verifie_?par$/, date: /^date$/, action: /^action$/ };
   const OPS = { composante: "composante interne", rattachement: "rattachement", retirer: "ligne retirée", siege: "siège", position: "position",
     maj: "champ mis à jour", uai: "UAI ajouté", confirmer: "confirmation", campus: "campus" };
-  const PAGE = 40, CLE_FILTRES = "socle-v2-sites-fv";
-  const FILTRES0 = { priorite: "", famille: "", type: "", traitement: "", acad: "", etat: "a_traiter", mode: "", q: "" };
+  const PAGE = 40, PAGE_G = 15, CLE_FILTRES = "socle-v2-sites-fv";
+  const FILTRES0 = { priorite: "", famille: "", type: "", traitement: "", acad: "", etat: "a_traiter", mode: "", q: "", grouper: "1" };
 
-  let H = null, fv = null, page = 0, enCours = false, chargement = null;
+  let H = null, fv = null, page = 0, enCours = false, chargement = null, bandeauG = null;
   const coches = new Set();
   let filtres = (() => { try { return { ...FILTRES0, ...JSON.parse(localStorage.getItem(CLE_FILTRES) || "{}") }; } catch (_) { return { ...FILTRES0 }; } })();
   const garderFiltres = () => { try { localStorage.setItem(CLE_FILTRES, JSON.stringify(filtres)); } catch (_) { /* stockage indisponible */ } };
@@ -70,6 +73,7 @@
     const kE = colCode(te, /^ETAB-[A-Z]{0,2}\d+$/);
     if (kE) te.id.forEach((rid, i) => { const k = String(te[kE][i] ?? "").trim(); if (k) { if (!I.etab.has(k)) I.etab.set(k, rid); I.codeEtab.set(rid, k); } });
     if (ctx.ce.nom && te[ctx.ce.nom]) te.id.forEach((rid, i) => I.nomE.set(rid, String(te[ctx.ce.nom][i] ?? "")));
+    I.ratt = new Map(); if (ctx.ce.ratt && te[ctx.ce.ratt]) te.id.forEach((rid, i) => { const r = refId(te[ctx.ce.ratt][i]); if (r) I.ratt.set(rid, r); });
     const ca = ctx.ce.academie;
     if (ca && te[ca]) {
       let lib = x => x == null ? "" : String(x);
@@ -101,9 +105,21 @@
         valeur: txt("valeur", i), commentaire: txt("commentaire", i), par: txt("par", i), date: v("date", i), action, erreur };
     });
     const I = await index(ctx, meta), siteE = new Map(H.sites().map(s => [s.id, s.etab]));
+    // personne morale du point : composante → établissement de rattachement, ligne retirée → celle qui la remplace,
+    // site ou campus → établissement du (premier) site, sinon l'établissement cité dans la proposition ou la preuve
+    const pm = r => { let p = r; const vus = new Set(); while (p != null && I.ratt.get(p) && !vus.has(p)) { vus.add(p); p = I.ratt.get(p); } return p; };
+    const etabDuPoint = l => {
+      const a = l.action || {};
+      let r = a.op === "composante" || a.op === "rattachement" ? I.etab.get(a.parent) : a.op === "retirer" ? I.etab.get(a.par) : null;
+      if (r == null && /^ETAB-/.test(l.objetId)) r = I.etab.get(l.objetId);
+      if (r == null) { const sc = a.op === "campus" ? (a.sites || [])[0] : (/SITE-[A-Z]{0,2}\d+/.exec(l.objetId) || /SITE-[A-Z]{0,2}\d+/.exec(`${l.proposition} ${l.preuve}`) || [])[0]; if (sc) r = siteE.get(I.site.get(sc)); }
+      if (r == null) { const c = (/ETAB-[A-Z]{0,2}\d+/.exec(`${l.proposition} ${l.preuve}`) || [])[0]; if (c) r = I.etab.get(c); }
+      return r == null ? null : r;
+    };
     lignes.forEach(l => {
-      const r = /^ETAB-/.test(l.objetId) ? I.etab.get(l.objetId) : /^SITE-/.test(l.objetId) ? siteE.get(I.site.get(l.objetId)) : null;
-      l.acad = r != null ? I.acadE.get(r) || "" : "";
+      const r = /^ETAB-/.test(l.objetId) ? I.etab.get(l.objetId) : /^SITE-/.test(l.objetId) ? siteE.get(I.site.get(l.objetId)) : null, e = etabDuPoint(l);
+      l.groupe = e == null ? null : pm(e);
+      l.acad = (r != null ? I.acadE.get(r) : "") || (l.groupe != null ? I.acadE.get(l.groupe) : "") || "";
     });
     const tm = meta[tv.t], formule = k => !!(c[k] && tm.colonnes[c[k]] && (tm.colonnes[c[k]].isFormula || tm.colonnes[c[k]].formula));
     fv = { table: tv.t, cols: c, meta, lignes, idx: I, statutEcrit: !!c.statut && !formule("statut") };
@@ -153,24 +169,38 @@
   function boutons(l, dansBandeau) {
     const m = modeDe(l), a = l.action, ouvrable = /^(ETAB|SITE)-/.test(l.objetId) || /ETAB-[A-Z]{0,2}\d+/.test(l.proposition) || !!(a && a.op === "campus" && (a.sites || []).length);
     const b = [];
-    if (!dansBandeau && ouvrable) b.push(`<button type="button" class="lien" data-fv="ouvrir">Ouvrir</button>`);
+    if (!dansBandeau && (ouvrable || l.groupe != null)) b.push(`<button type="button" class="lien" data-fv="ouvrir">Ouvrir</button>`);
     if (m === "auto" || (m === "saisie" && (a.op === "maj" || a.op === "campus"))) b.push(`<button type="button" data-fv="accepter" title="Écrit dans le référentiel : ${esc(l.effet || OPS[a.op])}">Accepter et appliquer</button>`);
     else if (m === "saisie" && !dansBandeau) b.push(`<button type="button" data-fv="ouvrir" title="Choisir sur la carte ou dans la liste des sites">Ouvrir pour appliquer</button>`);
     else if (m === "main") b.push(`<button type="button" data-fv="fait" title="Enregistre seulement la décision : la modification se fait à la main">Fait à la main</button>`);
     b.push(`<button type="button" data-fv="refuser">Refuser</button>`, `<button type="button" data-fv="reporter">Reporter</button>`);
     return b.join("");
   }
-  function itemHtml(l) {
+  // outils du bandeau : choix du site du siège, placement sur la carte
+  function extraBandeau(l) {
+    const a = l.action, I = fv.idx; if (!a || etatDe(l) === "traites") return "";
+    if (a.op === "siege") {
+      const r = I.etab.get(a.id), ss = H.sites().filter(s => s.etab === r).sort((x, y) => (y.actif - x.actif) || x.nom.localeCompare(y.nom, "fr"));
+      const sug = a.suggestion ? I.site.get(a.suggestion) : null;
+      return ss.length ? `<div class="outils"><label>Siège <select data-fvb="site">${ss.map(s => `<option value="${s.id}"${s.id === sug ? " selected" : ""}>${esc(I.codeSite.get(s.id) || "")} – ${esc(s.nom)}${s.commune ? ` (${esc(s.commune)})` : ""}${s.actif ? "" : " [inactif]"}</option>`).join("")}</select></label>
+        <button type="button" data-fvb="siege">Désigner comme siège et accepter</button></div>`
+        : `<div class="aide">Aucun site rattaché à l'établissement : ajoutez le site de la direction (lieux IGN, OpenStreetMap, adresse ou clic sur la carte), puis rouvrez ce point.</div>`;
+    }
+    if (a.op === "position") return `<div class="outils"><button type="button" data-fvb="placer">${a.lat == null ? "Placer" : "Replacer"} d'un clic sur la carte et accepter</button>${a.lat != null ? `<span class="aide">ou acceptez les coordonnées proposées (${a.lat}, ${a.lon})</span>` : ""}</div>`;
+    return "";
+  }
+  function itemHtml(l, dansBandeau) {
     const m = modeDe(l), et = etatDe(l), g = /^1/.test(l.priorite) ? "haute" : /^2/.test(l.priorite) ? "moyenne" : "basse";
     return `<li class="qa-item fv-item${et === "traites" ? " traite" : ""}" data-rid="${l.rid}">
-      <div class="fv-tete">${m === "auto" && et !== "traites" ? `<input type="checkbox" class="fv-coche" aria-label="Sélectionner ${esc(l.vid)}"${coches.has(l.rid) ? " checked" : ""}>` : ""}
+      <div class="fv-tete">${m === "auto" && et !== "traites" && !dansBandeau ? `<input type="checkbox" class="fv-coche" aria-label="Sélectionner ${esc(l.vid)}"${coches.has(l.rid) ? " checked" : ""}>` : ""}
         <span class="qa-g ${g}" title="${esc(l.priorite)}">${esc(l.priorite.split(/\s/)[0] || "?")}</span><strong>${esc(l.type)}</strong>
         <span class="meta">${esc(l.vid)} · ${esc(l.objetId)}${l.libelle ? ` – ${esc(l.libelle)}` : ""}${l.etab && l.etab !== l.libelle ? ` · ${esc(l.etab)}` : ""}${l.commune ? ` · ${esc(l.commune)}` : ""}${l.acad ? ` · ${esc(l.acad)}` : ""}</span>
         ${l.sensible ? `<span class="pastille warn">sensible</span>` : ""}${m === "main" ? `<span class="pastille">à la main</span>` : m === "saisie" ? `<span class="pastille reco">choix à faire</span>` : ""}</div>
       <div>${esc(l.proposition)}</div>
       <div class="meta">${l.effet ? `Effet : ${esc(l.effet)}` : ""}${l.preuve ? ` · ${esc(l.preuve)}` : ""}${l.source ? ` · ${esc(l.source)}` : ""}${l.erreur ? ` · <span class="qe-danger">${esc(l.erreur)}</span>` : ""}</div>
+      ${dansBandeau ? extraBandeau(l) : ""}
       ${et === "traites" ? `<div class="meta">Décision : <strong>${esc(l.decision || "—")}</strong>${l.valeur ? ` (${esc(l.valeur)})` : ""}${l.par ? ` · ${esc(l.par)}` : ""}${l.commentaire ? ` · ${esc(l.commentaire)}` : ""}</div>`
-        : `<div class="outils fv-actions">${champValeur(l)}<input type="text" data-fvl="commentaire" value="${esc(l.commentaire)}" placeholder="Commentaire" aria-label="Commentaire ${esc(l.vid)}">${boutons(l, false)}</div>`}
+        : `<div class="outils fv-actions">${champValeur(l)}<input type="text" data-fvl="commentaire" value="${esc(l.commentaire)}" placeholder="Commentaire" aria-label="Commentaire ${esc(l.vid)}">${boutons(l, !!dansBandeau)}</div>`}
     </li>`;
   }
   function dessiner() {
@@ -182,9 +212,11 @@
         dans une table « Verifications » (colonnes Vérif ID, Objet ID, Statut, Décision, Valeur retenue, Commentaire, Action…), puis rouvrez cet onglet.</p>`;
       badge(); return;
     }
-    const base = fv.lignes.filter(l => filtres.etat === "tous" || etatDe(l) === filtres.etat), l = filtrer(), nbPages = Math.max(1, Math.ceil(l.length / PAGE));
+    const base = fv.lignes.filter(l => filtres.etat === "tous" || etatDe(l) === filtres.etat), l = filtrer(), grouper = filtres.grouper === "1";
+    const groupes = grouper ? grouperPoints(l) : null, nbPages = Math.max(1, Math.ceil((grouper ? groupes.length : l.length) / (grouper ? PAGE_G : PAGE)));
     page = Math.min(page, nbPages - 1);
-    const vue = l.slice(page * PAGE, page * PAGE + PAGE), auto = vue.filter(x => modeDe(x) === "auto" && etatDe(x) !== "traites");
+    const gVue = grouper ? groupes.slice(page * PAGE_G, page * PAGE_G + PAGE_G) : null;
+    const vue = grouper ? gVue.flatMap(g => g.points) : l.slice(page * PAGE, page * PAGE + PAGE), auto = vue.filter(x => modeDe(x) === "auto" && etatDe(x) !== "traites");
     for (const r of [...coches]) if (!l.some(x => x.rid === r)) coches.delete(r);
     const parEtat = { a_traiter: 0, reportes: 0, traites: 0 }; fv.lignes.forEach(x => parEtat[etatDe(x)]++);
     z.innerHTML = `<p class="aide">Points de la table <strong>${esc(fv.table)}</strong> : ${nf(parEtat.a_traiter)} à traiter, ${nf(parEtat.reportes)} reporté(s), ${nf(parEtat.traites)} traité(s).
@@ -198,14 +230,15 @@
         ${selectHtml("acad", "Académie", options("acad", base), "Toutes")}
         <label>Application <select data-fvf="mode">${[["", "Toutes"], ["auto", "Applicable d'un clic"], ["saisie", "Choix à faire"], ["main", "À la main"]].map(([v, t]) => `<option value="${v}"${filtres.mode === v ? " selected" : ""}>${t}</option>`).join("")}</select></label>
         <label>Texte <input type="search" data-fvf="q" value="${esc(filtres.q)}" placeholder="nom, identifiant, commune…"></label>
+        <label>Présentation <select data-fvf="grouper"><option value="1"${grouper ? " selected" : ""}>Par établissement</option><option value=""${grouper ? "" : " selected"}>Point par point</option></select></label>
         <button type="button" class="lien" data-fv-global="raz">Effacer les filtres</button>
       </div>
       <p class="statut" id="fv-msg" role="status"></p>
-      <div class="boutons fv-lot"><strong>${nf(l.length)} point(s)</strong>
+      <div class="boutons fv-lot"><strong>${nf(l.length)} point(s)${grouper ? `, ${nf(groupes.length)} établissement(s)` : ""}</strong>
         ${auto.length ? `<label><input type="checkbox" data-fv-global="tout"${auto.every(x => coches.has(x.rid)) ? " checked" : ""}> cocher les ${auto.length} applicables de la page</label>` : ""}
         <button type="button" data-fv-global="lot"${coches.size ? "" : " disabled"}>Accepter la sélection (${coches.size})</button>
         <button type="button" class="lien" data-fv-global="recharger">Relire la table</button></div>
-      ${vue.length ? `<ul class="qa-liste fv-liste">${vue.map(itemHtml).join("")}</ul>` : `<p class="vide">Aucun point pour ces filtres.</p>`}
+      ${!vue.length ? `<p class="vide">Aucun point pour ces filtres.</p>` : grouper ? `<ul class="qa-liste fv-liste">${gVue.map(groupeHtml).join("")}</ul>` : `<ul class="qa-liste fv-liste">${vue.map(x => itemHtml(x, false)).join("")}</ul>`}
       ${nbPages > 1 ? `<div class="boutons"><button type="button" data-fv-page="-1"${page ? "" : " disabled"}>← Précédents</button> page ${page + 1} / ${nbPages} <button type="button" data-fv-page="1"${page < nbPages - 1 ? "" : " disabled"}>Suivants →</button></div>` : ""}`;
     lier(z);
     badge();
@@ -222,12 +255,40 @@
       if (k === "tout") { z.querySelectorAll(".fv-item").forEach(li => { const c = li.querySelector(".fv-coche"); if (c) { if (b.checked) coches.add(+li.dataset.rid); else coches.delete(+li.dataset.rid); } }); dessiner(); }
       if (k === "lot") await accepterLot();
     }));
+    z.querySelectorAll("[data-fv-groupe]").forEach(b => b.addEventListener("click", async () => {
+      const g = b.dataset.fvGroupe === "" ? null : +b.dataset.fvGroupe;
+      if (b.dataset.act === "ouvrir") { if (g != null && H.ouvrirEtab(g)) bandeauGroupe(g, null); else dire("Établissement introuvable dans le référentiel (ligne retirée ?).", "err"); }
+      if (b.dataset.act === "lot") await accepterGroupe(g, false);
+    }));
     z.querySelectorAll(".fv-item").forEach(li => {
       const l = fv.lignes.find(x => x.rid === +li.dataset.rid); if (!l) return;
       const c = li.querySelector(".fv-coche"); if (c) c.addEventListener("change", () => { if (c.checked) coches.add(l.rid); else coches.delete(l.rid); const b = z.querySelector("[data-fv-global=lot]"); if (b) { b.disabled = !coches.size; b.textContent = `Accepter la sélection (${coches.size})`; } });
       lierItem(li, l, false);
     });
   }
+  /* ---------- regroupement par établissement ---------- */
+  const nomGroupe = g => g == null ? "Sans établissement identifié" : `${fv.idx.nomE.get(g) || `ligne ${g}`}${fv.idx.codeEtab.get(g) ? ` (${fv.idx.codeEtab.get(g)})` : ""}`;
+  function grouperPoints(l) {
+    const m = new Map(); l.forEach(x => { if (!m.has(x.groupe)) m.set(x.groupe, []); m.get(x.groupe).push(x); });
+    return [...m].map(([g, points]) => ({ g, points, prio: points.map(x => x.priorite).sort()[0] || "", nom: nomGroupe(g) }))
+      .sort((a, b) => (a.g == null) - (b.g == null) || a.prio.localeCompare(b.prio, "fr") || b.points.length - a.points.length || a.nom.localeCompare(b.nom, "fr"));
+  }
+  const applicables = points => points.filter(x => modeDe(x) === "auto" && etatDe(x) === "a_traiter");
+  function groupeHtml(G) {
+    const k = applicables(G.points).length;
+    return `<li class="fv-groupe"><div class="fv-groupe-tete"><strong>${esc(G.nom)}</strong> <span class="meta">${nf(G.points.length)} point(s)${k ? ` · ${k} applicable(s) d'un clic` : ""}</span>
+      ${G.g != null ? `<button type="button" class="lien" data-fv-groupe="${G.g}" data-act="ouvrir">Ouvrir l'établissement et ses points</button>` : ""}
+      ${k > 1 ? `<button type="button" data-fv-groupe="${G.g == null ? "" : G.g}" data-act="lot">Accepter les ${k} applicables</button>` : ""}</div>
+      <ul class="qa-liste">${G.points.map(x => itemHtml(x, false)).join("")}</ul></li>`;
+  }
+  // tous les points à traiter d'un établissement, appliqués ensemble (aperçu avant écriture)
+  async function accepterGroupe(g, dansBandeau) {
+    const l = applicables(fv.lignes.filter(x => x.groupe === g)); if (!l.length) return;
+    const n = new Map(); l.forEach(x => n.set(x.action.op, (n.get(x.action.op) || 0) + 1));
+    if (!confirm(`${nomGroupe(g)} : accepter et appliquer ${nf(l.length)} point(s) (${[...n].map(([op, k]) => `${nf(k)} ${OPS[op]}`).join(", ")}) ?`)) return;
+    await appliquer(l, {}, dansBandeau);
+  }
+
   // champs et boutons d'un point (liste ou bandeau)
   function lierItem(racine, l, dansBandeau) {
     racine.querySelectorAll("[data-fvl]").forEach(e => e.addEventListener("change", async () => {
@@ -301,7 +362,13 @@
     enCours = false;
   }
   async function apresEcriture(msg, dansBandeau, cl) {
-    await charger(); if (dansBandeau) { const b = H.bandeau(); if (b) b.innerHTML = ""; H.versFile(); }
+    await charger();
+    if (dansBandeau) {
+      // bandeau d'un établissement : on y reste tant qu'il lui reste des points à traiter
+      const g = bandeauG ? bandeauG.groupe : undefined, reste = g !== undefined && g !== null && fv.lignes.some(x => x.groupe === g && etatDe(x) === "a_traiter");
+      if (reste) bandeauGroupe(g, null);
+      else { const b = H.bandeau(); if (b) b.innerHTML = ""; bandeauG = null; H.versFile(); }
+    }
     dessiner(); dire(msg, cl);
   }
 
@@ -473,33 +540,32 @@
     if (!ok) for (const code of [l.objetId, a.par, a.parent, (/ETAB-[A-Z]{0,2}\d+/.exec(l.proposition) || [])[0]]) {
       if (code && I.etab.has(code) && H.ouvrirEtab(I.etab.get(code))) { ok = true; break; }
     }
+    if (!ok && l.groupe != null) ok = H.ouvrirEtab(l.groupe);
     if (!ok) { dire(`${l.objetId} : introuvable dans le référentiel (autre référentiel, ou ligne pas encore importée).`, "err"); return; }
-    bandeau(l);
+    bandeauGroupe(l.groupe, l.rid);
   }
-  function bandeau(l) {
+  // bandeau de la vue « Établissements et sites » : le point ouvert, puis les autres points à traiter du même établissement
+  function bandeauGroupe(g, rid) {
     const z = H.bandeau(); if (!z) return;
-    const a = l.action, I = fv.idx, m = modeDe(l);
-    let extra = "";
-    if (a && a.op === "siege" && etatDe(l) !== "traites") {
-      const r = I.etab.get(a.id), ss = H.sites().filter(s => s.etab === r).sort((x, y) => (y.actif - x.actif) || x.nom.localeCompare(y.nom, "fr"));
-      const sug = a.suggestion ? I.site.get(a.suggestion) : null;
-      extra = ss.length ? `<div class="outils"><label>Siège <select data-fvb="site">${ss.map(s => `<option value="${s.id}"${s.id === sug ? " selected" : ""}>${esc(I.codeSite.get(s.id) || "")} – ${esc(s.nom)}${s.commune ? ` (${esc(s.commune)})` : ""}${s.actif ? "" : " [inactif]"}</option>`).join("")}</select></label>
-        <button type="button" data-fvb="siege">Désigner comme siège et accepter</button></div>`
-        : `<div class="aide">Aucun site rattaché à l'établissement : ajoutez le site de la direction ci-dessous (lieux IGN, OpenStreetMap, adresse ou clic sur la carte), puis rouvrez ce point.</div>`;
-    }
-    if (a && a.op === "position" && etatDe(l) !== "traites") extra = `<div class="outils"><button type="button" data-fvb="placer">${a.lat == null ? "Placer" : "Replacer"} d'un clic sur la carte et accepter</button>${a.lat != null ? `<span class="aide">ou acceptez les coordonnées proposées (${a.lat}, ${a.lon})</span>` : ""}</div>`;
-    z.innerHTML = `<div class="qa-bandeau fv-bandeau" data-rid="${l.rid}"><strong>${esc(l.type)}</strong> — ${esc(l.vid)} · ${esc(l.objetId)}${l.libelle ? ` ${esc(l.libelle)}` : ""}<br>${esc(l.proposition)}
-      ${l.preuve ? `<div class="aide">${esc(l.preuve)}</div>` : ""}${extra}
-      ${etatDe(l) === "traites" ? `<div class="aide">Déjà traité : ${esc(l.decision)}${l.valeur ? ` (${esc(l.valeur)})` : ""}.</div>` : `<div class="outils">${(a && a.op === "maj") || m === "main" ? champValeur(l) : ""}<input type="text" data-fvl="commentaire" value="${esc(l.commentaire)}" placeholder="Commentaire" aria-label="Commentaire">${boutons(l, true)}</div>`}
-      <div class="outils"><button type="button" class="lien" data-fvb="retour">← Retour à la file de vérification</button></div></div>`;
-    lierItem(z.querySelector(".fv-bandeau"), l, true);
-    z.querySelectorAll("[data-fvb]").forEach(b => b.addEventListener("click", async () => {
-      const k = b.dataset.fvb;
-      if (k === "retour") { z.innerHTML = ""; H.versFile(); return; }
-      const com = z.querySelector("[data-fvl=commentaire]"); if (com) l.commentaire = com.value.trim();
-      if (k === "siege") await appliquer([l], { site: +z.querySelector("[data-fvb=site]").value }, true);
-      if (k === "placer") { H.dire(`Cliquez sur la carte pour placer ${l.objetId}.`); H.placer(q => appliquer([l], { lat: q.lat, lon: q.lng }, true)); }
-    }));
+    const ouvert = rid != null ? fv.lignes.find(x => x.rid === rid) : null;
+    const autres = g == null ? [] : fv.lignes.filter(x => x.groupe === g && etatDe(x) === "a_traiter" && x.rid !== rid)
+      .sort((a, b) => a.priorite.localeCompare(b.priorite, "fr") || a.famille.localeCompare(b.famille, "fr") || a.type.localeCompare(b.type, "fr") || a.rid - b.rid);
+    const points = [...(ouvert ? [ouvert] : []), ...autres], k = applicables(points).length;
+    bandeauG = { groupe: g };
+    z.innerHTML = `<div class="qa-bandeau fv-bandeau"><strong>${esc(g == null ? (ouvert ? ouvert.objetId : "") : nomGroupe(g))}</strong> — ${nf(points.filter(x => etatDe(x) === "a_traiter").length)} point(s) à traiter dans la file de vérification
+      <div class="outils">${k > 1 ? `<button type="button" data-fvb="lot">Accepter les ${k} applicables d'un clic</button>` : ""}<button type="button" class="lien" data-fvb="retour">← Retour à la file de vérification</button></div>
+      <ul class="qa-liste">${points.map(x => itemHtml(x, true)).join("")}</ul></div>`;
+    z.querySelector("[data-fvb=retour]").addEventListener("click", () => { z.innerHTML = ""; bandeauG = null; H.versFile(); });
+    const lot = z.querySelector("[data-fvb=lot]"); if (lot) lot.addEventListener("click", () => accepterGroupe(g, true));
+    z.querySelectorAll(".fv-item").forEach(li => {
+      const l = fv.lignes.find(x => x.rid === +li.dataset.rid); if (!l) return;
+      lierItem(li, l, true);
+      li.querySelectorAll("[data-fvb]").forEach(b => b.addEventListener("click", async () => {
+        const com = li.querySelector("[data-fvl=commentaire]"); if (com) l.commentaire = com.value.trim();
+        if (b.dataset.fvb === "siege") await appliquer([l], { site: +li.querySelector("[data-fvb=site]").value }, true);
+        if (b.dataset.fvb === "placer") { H.dire(`Cliquez sur la carte pour placer ${l.objetId}.`); H.placer(q => appliquer([l], { lat: q.lat, lon: q.lng }, true)); }
+      }));
+    });
   }
 
   /* ---------- montage ---------- */
