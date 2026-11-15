@@ -27,7 +27,9 @@
                                                Latitude, Longitude, Surface_ha) et colonne Campus des sites ; la valeur retenue
                                                est le nom du campus (obligatoire si le nom est « à préciser »)
      Sans action (création de composante, campus, nommage…) : « Fait à la main » enregistre seulement la décision.
-   - « Accepter la sélection » : points applicables sans saisie, cochés sur la page, avec un aperçu avant écriture.
+   - « Accepter la sélection » : points applicables sans saisie, cochés sur la page, avec un aperçu avant écriture ;
+     « Accepter les N applicables du filtre » : tous ceux qui répondent aux filtres, toutes pages confondues, écrits par
+     lots de 150 avec l'avancement affiché.
    - regroupement par établissement (par défaut) : les points d'une même personne morale (ses composantes, ses sites,
      ses lignes retirées, ses campus) sont présentés ensemble ; « Ouvrir » affiche l'établissement et, dans le bandeau,
      ses points à traiter un par un (Précédent / Suivant, sommaire), la carte cadrée sur les objets du point (sites cités,
@@ -223,6 +225,7 @@
     const gVue = grouper ? groupes.slice(page * PAGE_G, page * PAGE_G + PAGE_G) : null;
     const vue = grouper ? gVue.flatMap(g => g.points) : l.slice(page * PAGE, page * PAGE + PAGE), auto = vue.filter(x => modeDe(x) === "auto" && etatDe(x) !== "traites");
     for (const r of [...coches]) if (!l.some(x => x.rid === r)) coches.delete(r);
+    const nFiltre = l.filter(x => modeDe(x) === "auto" && etatDe(x) === "a_traiter").length;
     const parEtat = { a_traiter: 0, reportes: 0, traites: 0 }; fv.lignes.forEach(x => parEtat[etatDe(x)]++);
     z.innerHTML = `<p class="aide">Points de la table <strong>${esc(fv.table)}</strong> : ${nf(parEtat.a_traiter)} à traiter, ${nf(parEtat.reportes)} reporté(s), ${nf(parEtat.traites)} traité(s).
         « Accepter et appliquer » écrit la proposition dans le référentiel ; « Ouvrir » montre l'établissement ou le site sur la carte.</p>
@@ -242,6 +245,7 @@
       <div class="boutons fv-lot"><strong>${nf(l.length)} point(s)${grouper ? `, ${nf(groupes.length)} établissement(s)` : ""}</strong>
         ${auto.length ? `<label><input type="checkbox" data-fv-global="tout"${auto.every(x => coches.has(x.rid)) ? " checked" : ""}> cocher les ${auto.length} applicables de la page</label>` : ""}
         <button type="button" data-fv-global="lot"${coches.size ? "" : " disabled"}>Accepter la sélection (${coches.size})</button>
+        ${nFiltre ? `<button type="button" data-fv-global="filtre" title="Tous les points applicables d'un clic qui répondent aux filtres, sur toutes les pages">Accepter les ${nf(nFiltre)} applicables du filtre</button>` : ""}
         <button type="button" class="lien" data-fv-global="recharger">Relire la table</button></div>
       ${!vue.length ? `<p class="vide">Aucun point pour ces filtres.</p>` : grouper ? `<ul class="qa-liste fv-liste">${gVue.map(groupeHtml).join("")}</ul>` : `<ul class="qa-liste fv-liste">${vue.map(x => itemHtml(x, false)).join("")}</ul>`}
       ${nbPages > 1 ? `<div class="boutons"><button type="button" data-fv-page="-1"${page ? "" : " disabled"}>← Précédents</button> page ${page + 1} / ${nbPages} <button type="button" data-fv-page="1"${page < nbPages - 1 ? "" : " disabled"}>Suivants →</button></div>` : ""}`;
@@ -259,6 +263,7 @@
       if (k === "recharger") { await recharger(); }
       if (k === "tout") { z.querySelectorAll(".fv-item").forEach(li => { const c = li.querySelector(".fv-coche"); if (c) { if (b.checked) coches.add(+li.dataset.rid); else coches.delete(+li.dataset.rid); } }); dessiner(); }
       if (k === "lot") await accepterLot();
+      if (k === "filtre") await accepterFiltre();
     }));
     z.querySelectorAll("[data-fv-groupe]").forEach(b => b.addEventListener("click", async () => {
       const g = b.dataset.fvGroupe === "" ? null : +b.dataset.fvGroupe;
@@ -533,39 +538,61 @@
     }
     return { acts, ok, erreurs, nRefs, absents };
   }
+  // un lot : modifications du référentiel et décisions d'un bloc ; refus de Grist (rien n'a été écrit) : point par point,
+  // référentiel puis décision, une action à la fois si besoin, pour écrire ce qui passe et dire ce qui bloque
+  async function appliquerLot(lignes, surcharge) {
+    const p = await preparerActions(lignes, surcharge);
+    const decision = l => {
+      if (surcharge.site != null && fv.cols.valeur) l.valeur = fv.idx.codeSite.get(surcharge.site) || String(surcharge.site);
+      if (surcharge.lat != null && fv.cols.valeur) l.valeur = `${(+surcharge.lat).toFixed(6)}, ${(+surcharge.lon).toFixed(6)}`;
+      const modif = (l.action.op === "maj" && l.valeur && String(l.valeur) !== String(l.action.valeur)) || (l.action.op === "campus" && l.valeur && l.valeur !== l.action.nom);
+      return ["UpdateRecord", fv.table, l.rid, champsDecision(l, modif ? "Modifier" : "Accepter")];
+    };
+    let ok = p.ok, nRefs = p.nRefs;
+    if (!p.ok.length) return { ok: [], erreurs: p.erreurs, nRefs: 0, absents: 0 };
+    try { await ecrire([...p.acts, ...p.ok.map(decision)]); }
+    catch (err) {
+      ok = []; nRefs = 0;
+      for (const l of p.ok) {
+        try {
+          const q = await preparerActions([l], surcharge);
+          if (!q.ok.length) { p.erreurs.push(...q.erreurs); continue; }
+          await ecrireDetaille(q.acts); await ecrire([decision(l)]); ok.push(l); nRefs += q.nRefs;
+        } catch (e) { p.erreurs.push({ l, msg: e.message || String(e) }); }
+      }
+    }
+    return { ok, erreurs: p.erreurs, nRefs, absents: p.absents };
+  }
+  const TAILLE_LOT = 150;
   async function appliquer(lignes, surcharge, dansBandeau) {
     if (enCours) return; enCours = true;
     let etape = "préparation de la table des vérifications";
     try {
       await preparer(); etape = "colonnes du référentiel"; await assurerColonnes(lignes);
-      etape = "préparation des modifications"; const p = await preparerActions(lignes, surcharge); etape = "écriture";
-      if (!p.ok.length) { dire(p.erreurs.map(e => `${e.l.vid} : ${e.msg}`).join(" ; "), "err"); enCours = false; return; }
-      const decision = l => {
-        if (surcharge.site != null && fv.cols.valeur) l.valeur = fv.idx.codeSite.get(surcharge.site) || String(surcharge.site);
-        if (surcharge.lat != null && fv.cols.valeur) l.valeur = `${(+surcharge.lat).toFixed(6)}, ${(+surcharge.lon).toFixed(6)}`;
-        const modif = (l.action.op === "maj" && l.valeur && String(l.valeur) !== String(l.action.valeur)) || (l.action.op === "campus" && l.valeur && l.valeur !== l.action.nom);
-        return ["UpdateRecord", fv.table, l.rid, champsDecision(l, modif ? "Modifier" : "Accepter")];
-      };
-      let ok = p.ok, nRefs = p.nRefs;
-      try { await ecrire([...p.acts, ...p.ok.map(decision)]); }
-      catch (err) {
-        // refus de Grist (rien n'a été écrit) : point par point, référentiel puis décision ; une action à la fois si besoin,
-        // pour écrire ce qui passe et dire quel point et quelle action bloquent
-        ok = []; nRefs = 0;
-        for (const l of p.ok) {
-          try {
-            const q = await preparerActions([l], surcharge);
-            if (!q.ok.length) { p.erreurs.push(...q.erreurs); continue; }
-            await ecrireDetaille(q.acts); await ecrire([decision(l)]); ok.push(l); nRefs += q.nRefs;
-          } catch (e) { p.erreurs.push({ l, msg: e.message || String(e) }); }
-        }
+      etape = "écriture";
+      // par lots de 150 points : une acceptation en masse avance lot par lot, chaque lot est écrit d'un bloc
+      const bilan = { ok: [], erreurs: [], nRefs: 0, absents: 0 }, nLots = Math.ceil(lignes.length / TAILLE_LOT);
+      for (let k = 0; k < nLots; k++) {
+        if (nLots > 1) dire(`Acceptation en cours : lot ${k + 1} / ${nLots} (${nf(bilan.ok.length)} point(s) écrits)…`);
+        const r = await appliquerLot(lignes.slice(k * TAILLE_LOT, (k + 1) * TAILLE_LOT), surcharge);
+        bilan.ok.push(...r.ok); bilan.erreurs.push(...r.erreurs); bilan.nRefs += r.nRefs; bilan.absents += r.absents;
+        r.ok.forEach(l => coches.delete(l.rid));
       }
-      ok.forEach(l => coches.delete(l.rid));
+      if (!bilan.ok.length && bilan.erreurs.length) { dire(`Non appliqué : ${listeErreurs(bilan.erreurs)}.`, "err"); enCours = false; return; }
       await H.relire();
-      await apresEcriture(`${nf(ok.length)} point(s) accepté(s) et appliqué(s)${nRefs ? `, ${nf(nRefs)} référence(s) reportée(s)` : ""}${p.absents ? ` (dont ${nf(p.absents)} ligne(s) à retirer absente(s) du référentiel : rien à écrire)` : ""}.`
-        + (p.erreurs.length ? ` Non appliqués : ${p.erreurs.map(e => `${e.l.vid} – ${e.l.type} (${e.msg})`).join(" ; ")}.` : ""), dansBandeau && ok.length > 0, p.erreurs.length ? "err" : "ok");
+      await apresEcriture(`${nf(bilan.ok.length)} point(s) accepté(s) et appliqué(s)${bilan.nRefs ? `, ${nf(bilan.nRefs)} référence(s) reportée(s)` : ""}${bilan.absents ? ` (dont ${nf(bilan.absents)} ligne(s) à retirer absente(s) du référentiel : rien à écrire)` : ""}.`
+        + (bilan.erreurs.length ? ` Non appliqués (${nf(bilan.erreurs.length)}) : ${listeErreurs(bilan.erreurs)}.` : ""), dansBandeau && bilan.ok.length > 0, bilan.erreurs.length ? "err" : "ok");
     } catch (err) { dire(`Non appliqué (${etape}) : ${err.message || err}`, "err"); }
     enCours = false;
+  }
+  const listeErreurs = e => e.slice(0, 25).map(x => `${x.l.vid} – ${x.l.type} (${x.msg})`).join(" ; ") + (e.length > 25 ? ` ; et ${nf(e.length - 25)} autre(s)` : "");
+  // tous les points applicables d'un clic qui répondent aux filtres, toutes pages confondues
+  async function accepterFiltre() {
+    const l = filtrer().filter(x => modeDe(x) === "auto" && etatDe(x) === "a_traiter"); if (!l.length) return;
+    const n = new Map(); l.forEach(x => n.set(x.action.op, (n.get(x.action.op) || 0) + 1));
+    const actifs = Object.entries(filtres).filter(([k, v]) => v && !["etat", "grouper"].includes(k)).map(([k, v]) => `${k === "acad" ? "académie" : k === "q" ? "texte" : k} = ${v}`);
+    if (!confirm(`Accepter et appliquer ${nf(l.length)} point(s), toutes pages confondues${actifs.length ? ` (filtres : ${actifs.join(", ")})` : " (aucun filtre : toute la file)"} :\n${[...n].map(([op, k]) => `- ${nf(k)} ${OPS[op]}`).join("\n")}\n\nLes modifications sont écrites dans le référentiel, par lots de ${TAILLE_LOT} ; les références vers les lignes retirées sont reportées sur la ligne qui les remplace.`)) return;
+    await appliquer(l, {}, false);
   }
   async function accepterLot() {
     const l = fv.lignes.filter(x => coches.has(x.rid) && modeDe(x) === "auto" && etatDe(x) !== "traites"); if (!l.length) return;
