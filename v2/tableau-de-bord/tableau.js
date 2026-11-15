@@ -11,7 +11,7 @@
     if (!window.Geo) {        // commun/geo.js absent de la page : chargé ici, puis le tableau de bord est monté
       let module = null;
       const s = document.createElement("script");
-      s.src = new URL("../commun/geo.js", ICI).href;
+      s.src = new URL("../commun/geo.js" + new URL(ICI, location.href).search, ICI).href;   // même ?v=<version> que ce fichier
       s.onload = () => { module = monter(RACINE, CTX); };
       s.onerror = () => { RACINE.innerHTML = `<p style="margin:16px;color:#b42318">Fond de carte introuvable (${s.src}) : rechargez la page.</p>`; };
       document.head.appendChild(s);
