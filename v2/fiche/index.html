@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.3"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.3"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.3"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.3"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.3"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.3"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.4"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.4"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.4"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.4"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.4"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.4"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -66,6 +66,13 @@
   .detail tr.nouveau td { background: var(--jaune); color: #161616; }
   .mot-nouveau { font-weight: 700; }
   .note-restreint { display: none; font-style: italic; font-size: 12px; }
+  .annexe, .renvoi { display: none; }
+  .renvoi { font-size: 11px; font-style: italic; color: var(--gris); }
+  .entete-annexe { border-bottom: 2px solid #161616; padding-bottom: 6px; margin-bottom: 4px; font-size: 13px; }
+  .annexe h3 { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin: 14px 0 4px; }
+  .annexe-tuile h4 { margin: 10px 0 2px; font-size: 14px; break-after: avoid; }
+  .annexe-tuile h4 span { font-weight: 400; font-size: 12px; color: #4a4a4a; }
+  .annexe-tuile .detail { display: block; padding: 0; }
   .pied { margin-top: 20px; padding-top: 6px; border-top: 1px solid var(--bord); font-size: 12px; color: var(--gris); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .invite { color: var(--gris); padding: 30px 0; text-align: center; }
   @media (max-width: 640px) { .grille { grid-template-columns: 1fr; } .tuile.l2 { grid-column: auto; } }
@@ -131,8 +138,17 @@
     .tuile { background: #fff !important; border-color: #161616; box-shadow: none !important; margin: 0 !important; break-inside: avoid; }
     .tuile.l2, .tuile.l3 { grid-column: 1 / -1; } .tuile.ouverte:not(.l2):not(.l3) { grid-column: auto; }
     .tuile .detail { display: block; }
-    body:not(.imprimer-restreint) .tuile.restreint .contenu-restreint { display: none; }
-    body:not(.imprimer-restreint) .tuile.restreint .note-restreint { display: block; }
+    body:not(.imprimer-restreint) .restreint .contenu-restreint { display: none; }
+    body:not(.imprimer-restreint) .restreint .note-restreint { display: block; }
+    /* synthèse en page 1 (comme la maquette) : tuiles sans détail, trois par ligne, puis l'annexe sur les pages suivantes */
+    body.mp-synthese .tuile .detail { display: none !important; }
+    body.mp-synthese .grille { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    body.mp-synthese .tuile.l2 { grid-column: span 2; }
+    body.mp-synthese .tuile .tete { padding: 9px 11px; }
+    body.mp-synthese .tuile .grand { font-size: 19px; }
+    body.mp-synthese .renvoi { display: block; }
+    body.mp-synthese:not(.imprimer-restreint) .restreint .renvoi { display: none; }
+    body.mp-synthese .annexe { display: block; break-before: page; }
     .badge { background: #161616; border-color: #161616; } .badge.non { background: #fff; color: #4a4a4a; border-color: #767676; }
     .entete .repere { background: none; border: 1.5px solid #161616; }
     .detail tr.nouveau td, .tuile .pastille { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -148,6 +164,8 @@
   <datalist id="liste-etabs"></datalist>
   <button id="actualiser" title="Relire les tables du document">Actualiser</button>
   <label title="Sans cette case, les tuiles marquées « diffusion restreinte » n'impriment que leur synthèse"><input type="checkbox" id="imprimerRestreint"> détail restreint</label>
+  <select id="miseEnPage" aria-label="Mise en page à l'impression" style="width:auto">
+    <option value="synthese">Synthèse en page 1, détail ensuite</option><option value="complet">Tuiles détaillées</option></select>
   <button id="imprimer">Imprimer</button>
   <button id="ouvrirReglages">⚙ Réglages</button>
 </header>
@@ -253,20 +271,23 @@ function htmlTuile(t, k) {
   }</tbody></table>${t.reste ? `<p class="periode">… et ${t.reste} autre${t.reste > 1 ? "s" : ""} ligne${t.reste > 1 ? "s" : ""}.</p>` : ""}` : "";
   const ventil = t.ventilation.length ? `<ul class="ventilation">${t.ventilation.map(v => `<li><b>${esc(v.texte)}</b> ${esc(v.valeur)}</li>`).join("")}</ul>` : "";
   const contenu = ventil + tableau || (t.vide ? '<p class="periode">Aucune ligne pour cet établissement.</p>' : "");
+  const detail = `${t.restreint ? '<p class="note-restreint">Diffusion restreinte : détail non imprimé.</p>' : ""}
+    <div class="contenu-restreint">${contenu}</div>
+    ${t.source || t.maj ? `<p class="source">${[t.source ? "Source : " + esc(t.source) : "", t.maj ? "mis à jour le " + esc(t.maj) : ""].filter(Boolean).join(" · ")}</p>` : ""}`;
+  if (k === "annexe") return `<div class="annexe-tuile${t.restreint ? " restreint" : ""}"><h4>${esc(t.titre)} <span>${esc([t.grand, t.legende, t.periode].filter(Boolean).join(" · "))}</span></h4><div class="detail">${detail}</div></div>`;
   return `<section class="${classes}" style="${empilement(t.couches)}">
   <button type="button" class="tete" data-tuile="${k}" aria-expanded="${ouverte}">
     <span class="titre">${esc(t.titre)}</span>
     <span class="grand"><span>${esc(t.grand)}</span>${t.nouveaux ? `<span class="pastille">${t.nouveaux} nouveau${t.nouveaux > 1 ? "x" : ""}</span>` : ""}</span>
     ${t.legende ? `<span class="legende">${esc(t.legende)}</span>` : ""}
     ${t.periode ? `<span class="periode">${esc(t.periode)}</span>` : ""}
+    ${aDuDetail(t) ? '<span class="renvoi">Détail en pages suivantes</span>' : ""}
   </button>
-  <div class="detail">
-    ${t.restreint ? '<p class="note-restreint">Diffusion restreinte : détail non imprimé.</p>' : ""}
-    <div class="contenu-restreint">${contenu}</div>
-    ${t.source || t.maj ? `<p class="source">${[t.source ? "Source : " + esc(t.source) : "", t.maj ? "mis à jour le " + esc(t.maj) : ""].filter(Boolean).join(" · ")}</p>` : ""}
-  </div>
+  <div class="detail">${detail}</div>
 </section>`;
 }
+// tuile dont le détail mérite une page d'annexe : ventilation ou lignes
+const aDuDetail = t => t.ventilation.length > 0 || t.detail.length > 0;
 function afficher() {
   const cfg = actuelle(), zone = $("fiche");
   if (!cfg.referentiel.table) { zone.innerHTML = '<p class="invite">Ouvrez « ⚙ Réglages » pour choisir la table des établissements et les tuiles.</p>'; return; }
@@ -288,8 +309,23 @@ function htmlFiche(f, ecran) {
   ${f.badges.length ? `<div class="badges">${f.badges.map(b => `<span class="badge${b.actif ? "" : " non"}">${esc(texteBadge(b))}</span>`).join("")}</div>` : ""}
   ${f.blocs.map(b => `<div class="bloc">${b.titre ? `<h3>${esc(b.titre)}</h3>` : ""}<div class="grille">${b.tuiles.map(t => htmlTuile(t, ecran ? k++ : -1)).join("")}</div></div>`).join("")}
   <div class="pied"><span>Édité le ${esc(heureParis(Date.now() / 1000))}</span>
-    <span class="pas-imprime">Appuyer sur une tuile pour la détailler.</span></div>`;
+    <span class="pas-imprime">Appuyer sur une tuile pour la détailler.</span></div>
+  ${htmlAnnexe(f)}`;
 }
+/* Annexe (impression « synthèse en page 1, détail ensuite ») : sur les pages qui suivent la synthèse, le détail de
+   chaque tuile qui en a, dans l'ordre de la fiche, sous son titre et sa synthèse. Invisible à l'écran. */
+function htmlAnnexe(f) {
+  const tuiles = f.blocs.flatMap(b => b.tuiles).filter(aDuDetail);
+  if (!tuiles.length) return "";
+  return `<section class="annexe" aria-hidden="true"><div class="entete-annexe"><b>${esc(f.titre)}</b> · détail des tuiles</div>
+    ${f.blocs.map(b => { const ts = b.tuiles.filter(aDuDetail); return ts.length ? `${b.titre ? `<h3>${esc(b.titre)}</h3>` : ""}${ts.map(t => htmlTuile(t, "annexe")).join("")}` : ""; }).join("")}</section>`;
+}
+function appliquerMiseEnPage() {
+  const v = $("miseEnPage").value;
+  document.body.classList.toggle("mp-synthese", v === "synthese");
+  document.body.classList.toggle("mp-complet", v !== "synthese");
+}
+$("miseEnPage").addEventListener("change", appliquerMiseEnPage);
 $("fiche").addEventListener("click", e => {
   const b = e.target.closest("[data-tuile]"); if (!b) return;
   const k = Number(b.dataset.tuile);
@@ -653,6 +689,7 @@ function afficherReglages() {
     ${champ("Table des établissements", selTable("referentiel.table", r.table))}
     ${champ("Nom affiché", selColonne("referentiel.titre", r.table, r.titre))}
     ${champ("Clé de rapprochement", selColonne("referentiel.cle", r.table, r.cle), "Colonne comparée aux tables reliées par du texte (UAI…).")}
+    ${champ("Impression proposée", `<select data-champ="impression">${opt("synthese", "synthèse en page 1, détail ensuite", b.impression)}${opt("complet", "tuiles détaillées", b.impression)}</select>`)}
     ${champ("Repère « nouveau »", `<select data-champ="nouveau">${opt("point", "lignes saisies après le dernier point de situation", b.nouveau)}${opt("", "aucun", b.nouveau)}</select>`)}
     ${champ("Sous le nom", `<div class="cases">${cases || '<span class="aide">Choisissez d\'abord la table.</span>'}</div>`, "", true)}
     ${champ("Filtres rapides proposés", `<div class="cases">${colonnes(r.table).map(c => `<label><input type="checkbox" data-liste="filtresRapides" value="${esc(c.colId)}"${b.filtresRapides.includes(c.colId) ? " checked" : ""}> ${esc(c.label || c.colId)}</label>`).join("")}</div>
@@ -714,6 +751,7 @@ $("reglages").addEventListener("click", async e => {
       config = M.normaliserConfig(brouillon);
       try { await grist.setOptions(optionsPage()); } catch (err) { message("Enregistrement impossible : " + (err.message || err)); return; }
       brouillon = null; $("reglages").hidden = true; $("reglages").innerHTML = "";
+      $("miseEnPage").value = config.impression; appliquerMiseEnPage();
       message("Réglages enregistrés.", "info"); setTimeout(() => message(""), 3000); await rafraichir(false); return;
   }
   ouvertes.clear();
@@ -774,6 +812,7 @@ async function demarrer(options) {
       message("Fiche pas encore réglée : voici une configuration de départ, à compléter puis enregistrer.", "info");
       $("reglages").hidden = false; afficherReglages();
     }
+    $("miseEnPage").value = actuelle().impression; appliquerMiseEnPage();
     await rafraichir(true);
   } catch (e) { console.error(e); message("Démarrage impossible : " + (e.message || e)); }
 }
