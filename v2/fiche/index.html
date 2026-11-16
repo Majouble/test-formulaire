@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>PRISME · Fiche établissement</title>
+<!-- Widget « Fiche établissement » du socle v2 : un établissement par page A4, en tuiles empilées (synthèse, puis détail au clic).
+     Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.1"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.1"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.1"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.1"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.1"></script>
+<style>
+  :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
+          --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
+  :root[data-theme="dark"] { --bleu: #8585f6; --bleu-pale: #21213f; --gris: #a5a5a5; --bord: #3c3c3c; --fond: #242424; --texte: #cecece; --page: #1e1e1e; --attention: #33281a; }
+  :root[data-theme="dark"] :is(select, input, textarea, button:not(.principal)) { background: #161616; color: #cecece; border-color: #3c3c3c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Marianne, Arial, sans-serif; color: var(--texte); background: var(--page); }
+  header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 8px 12px; border-bottom: 2px solid var(--bleu); }
+  header h1 { font-size: 15px; margin: 0; color: var(--bleu); }
+  header .version { color: var(--gris); font-size: 11px; }
+  header .spacer { flex: 1; }
+  header input[type=text] { width: min(340px, 100%); }
+  button { font: inherit; padding: 5px 11px; border-radius: 4px; border: 1px solid var(--bleu); background: #fff; color: var(--bleu); cursor: pointer; }
+  button.principal { background: var(--bleu); color: #fff; }
+  button.petit { padding: 2px 8px; font-size: 12px; }
+  select, input[type=text], input[type=number], textarea { padding: 4px 6px; border: 1px solid #bbb; border-radius: 4px; font: inherit; background: #fff; color: var(--texte); width: 100%; }
+  .message { margin: 8px 12px; padding: 6px 10px; border-radius: 4px; display: none; }
+  .message.erreur { display: block; background: #fee; color: var(--rouge); }
+  .message.info { display: block; background: var(--bleu-pale); }
+
+  /* ---------- la fiche ---------- */
+  main { max-width: 210mm; margin: 0 auto; padding: 16px 14px 32px; }
+  .entete { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; border-bottom: 2px solid var(--bleu); padding-bottom: 8px; }
+  .entete .surtitre { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--bleu); }
+  .entete h2 { margin: 2px 0; font-size: 26px; line-height: 1.15; }
+  .entete .details { color: var(--gris); }
+  .entete .repere { font-size: 12px; font-weight: 700; background: var(--jaune); color: #161616; padding: 2px 8px; border-radius: 3px; }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 2px; }
+  .badge { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--bleu); background: var(--bleu); color: #fff; }
+  .badge.non { background: transparent; color: var(--gris); border-color: var(--bord); }
+  .bloc > h3 { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--bleu); margin: 18px 0 8px; }
+  .grille { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 12px; }
+  .tuile { border: 1px solid var(--bord); border-radius: 6px; background: var(--bleu-pale); }
+  .tuile.restreint { background: var(--attention); }
+  .tuile.l2 { grid-column: span 2; } .tuile.l3, .tuile.ouverte { grid-column: 1 / -1; }
+  .tuile .tete { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 12px 14px; cursor: pointer; border-radius: 6px; }
+  .tuile .tete:focus-visible { outline: 3px solid var(--bleu); outline-offset: 2px; }
+  .tuile .titre { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--gris); }
+  .tuile .grand { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 22px; font-weight: 700; line-height: 1.2; }
+  .tuile.vide .grand { color: var(--gris); }
+  .tuile .pastille { font-size: 12px; font-weight: 700; background: var(--jaune); color: #161616; padding: 1px 6px; border-radius: 3px; }
+  .tuile .periode, .tuile .source { font-size: 12px; color: var(--gris); }
+  .tuile .detail { display: none; padding: 0 14px 12px; }
+  .tuile.ouverte .detail { display: block; }
+  .ventilation { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 8px; padding: 8px 0 0; border-top: 1px solid var(--bord); list-style: none; }
+  .detail table { width: 100%; border-collapse: collapse; font-size: 13px; border-top: 1px solid var(--bord); }
+  .detail th { text-align: left; font-size: 12px; color: var(--gris); font-weight: 600; padding: 6px 6px 2px; }
+  .detail td { padding: 3px 6px; vertical-align: top; }
+  .detail td:first-child { font-weight: 700; white-space: nowrap; }
+  .detail tr.nouveau td { background: var(--jaune); color: #161616; }
+  .mot-nouveau { font-weight: 700; }
+  .note-restreint { display: none; font-style: italic; font-size: 12px; }
+  .pied { margin-top: 20px; padding-top: 6px; border-top: 1px solid var(--bord); font-size: 12px; color: var(--gris); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .invite { color: var(--gris); padding: 30px 0; text-align: center; }
+  @media (max-width: 640px) { .grille { grid-template-columns: 1fr; } .tuile.l2 { grid-column: auto; } }
+
+  /* ---------- réglages ---------- */
+  #reglages { margin: 10px 12px; padding: 10px; border: 1px solid var(--bord); border-radius: 6px; background: var(--fond); }
+  #reglages .barre { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  #reglages details { border: 1px solid var(--bord); border-radius: 6px; margin-bottom: 8px; background: var(--page); }
+  #reglages summary { cursor: pointer; padding: 6px 10px; font-weight: 600; }
+  .champs { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 14px; padding: 8px 10px 10px; }
+  .champs .large { grid-column: 1 / -1; }
+  .champs label > span { display: block; font-weight: 600; font-size: 12px; margin-bottom: 2px; }
+  .aide { color: var(--gris); font-size: 11px; }
+  .cases { display: flex; flex-wrap: wrap; gap: 2px 12px; max-height: 120px; overflow: auto; }
+  .cases label { white-space: nowrap; font-weight: normal; }
+  .carte { margin: 6px 10px; }
+  .carte > summary { display: flex; gap: 8px; align-items: center; }
+  .carte > summary .spacer { flex: 1; }
+  .ligne-badge { display: grid; grid-template-columns: 2fr 1.3fr 1.3fr 1.3fr auto; gap: 6px; align-items: end; padding: 4px 10px; }
+  #alertes:empty { display: none; }
+  #alertes { margin-bottom: 8px; padding: 6px 10px; background: #fff4e5; color: #6e4400; border-radius: 4px; font-size: 12px; }
+  #alertes li { margin-left: 16px; }
+
+  /* ---------- impression : A4, toutes les tuiles détaillées, détail restreint masqué par défaut ---------- */
+  @page { size: A4; margin: 12mm; }
+  @media print {
+    header, #reglages, .message, .pas-imprime, .md-liste { display: none !important; }
+    body { background: #fff; color: #161616; font-size: 12px; }
+    main { max-width: none; padding: 0; }
+    .grille { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .tuile { background: #fff !important; border-color: #161616; box-shadow: none !important; margin: 0 !important; break-inside: avoid; }
+    .tuile.l2, .tuile.l3 { grid-column: 1 / -1; } .tuile.ouverte:not(.l2):not(.l3) { grid-column: auto; }
+    .tuile .detail { display: block; }
+    body:not(.imprimer-restreint) .tuile.restreint .contenu-restreint { display: none; }
+    body:not(.imprimer-restreint) .tuile.restreint .note-restreint { display: block; }
+    .badge { background: #161616; border-color: #161616; } .badge.non { background: #fff; color: #4a4a4a; border-color: #767676; }
+    .entete .repere { background: none; border: 1.5px solid #161616; }
+    .detail tr.nouveau td, .tuile .pastille { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="prisme-logo" data-variante="compact"></span>Fiche établissement</h1>
+  <span class="version" id="version"></span>
+  <span class="spacer"></span>
+  <input type="text" id="recherche" list="liste-etabs" placeholder="Rechercher un établissement (nom, UAI…)" aria-label="Rechercher un établissement">
+  <datalist id="liste-etabs"></datalist>
+  <button id="actualiser" title="Relire les tables du document">Actualiser</button>
+  <label title="Sans cette case, les tuiles marquées « diffusion restreinte » n'impriment que leur synthèse"><input type="checkbox" id="imprimerRestreint"> détail restreint</label>
+  <button id="imprimer">Imprimer</button>
+  <button id="ouvrirReglages">⚙ Réglages</button>
+</header>
+<div id="message" class="message"></div>
+<section id="reglages" hidden></section>
+<main id="fiche"></main>
+
+<script>
+"use strict";
+/* =====================================================================
+   Fiche établissement — page du widget
+   Définit : l'affichage de la fiche, le choix de l'établissement, l'impression et le panneau de réglages.
+   Utilise : window.Socle (schéma des tables, configuration de départ), window.FicheMoteur (calculs), API des widgets Grist.
+   État : config (réglages enregistrés), brouillon (réglages en cours de modification, affichés en direct),
+          schema et donnees (tables lues), etabId (établissement affiché), ouvertes (tuiles dépliées).
+   ===================================================================== */
+const M = window.FicheMoteur;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const RAFRAICHIR_APRES = 60;
+const heureParis = s => new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" }).format(new Date(s * 1000)).replace(" ", " à ");   // secondes : au changement d'établissement, les tables plus anciennes sont relues
+
+let config = null, brouillon = null, schema = {}, tablesDoc = [], donnees = {}, chargeLe = 0, lecteur = null, marque = null;
+let etabId = null, tableLiee = null, demarre = false;
+const ouvertes = new Set();
+const actuelle = () => brouillon || config || M.normaliserConfig(null);
+
+function message(texte, type = "erreur") { const m = $("message"); m.className = "message" + (texte ? " " + type : ""); m.textContent = texte || ""; }
+
+/* ---------- lecture du document ---------- */
+async function chargerSchema() {
+  const T = await grist.docApi.fetchTable("_grist_Tables");
+  tablesDoc = T.tableId.filter(t => t && !/^GristHidden|^_grist/.test(t)).sort((a, b) => a.localeCompare(b, "fr"));
+  schema = await Socle.instantaneSchema(tablesDoc);
+}
+async function chargerDonnees(forcer) {
+  const cfg = actuelle(), besoin = M.tablesNecessaires(cfg, schema);
+  const vieux = forcer || Date.now() / 1000 - chargeLe > RAFRAICHIR_APRES;
+  for (const t of besoin) if (vieux || !donnees[t]) donnees[t] = await grist.docApi.fetchTable(t);
+  if (vieux) chargeLe = Date.now() / 1000;
+  lecteur = M.creerLecteur(schema, donnees);
+  // repère « nouveau » : heure du dernier point de situation enregistré (table Points_situation du widget Point de situation)
+  const ps = donnees.Points_situation;
+  marque = ps && ps.Horodatage ? Math.max(...ps.Horodatage.filter(x => typeof x === "number"), -Infinity) : null;
+  if (marque === -Infinity) marque = null;
+}
+
+/* ---------- choix de l'établissement : ligne sélectionnée dans Grist, ou recherche ---------- */
+let correspondances = new Map();
+function remplirRecherche() {
+  const r = actuelle().referentiel, l = $("liste-etabs");
+  correspondances = new Map();
+  if (!lecteur || !r.table || !r.titre) { l.innerHTML = ""; return; }
+  const opts = lecteur.lignes(r.table).map(e => {
+    const lib = [lecteur.texte(r.table, r.titre, e[r.titre]), r.cle ? lecteur.texte(r.table, r.cle, e[r.cle]) : ""].filter(Boolean).join(" — ");
+    correspondances.set(lib, e.id);
+    return lib;
+  }).sort((a, b) => a.localeCompare(b, "fr"));
+  l.innerHTML = opts.map(o => `<option value="${esc(o)}">`).join("");
+}
+$("recherche").addEventListener("change", () => {
+  const id = correspondances.get($("recherche").value);
+  if (!id) return;
+  etabId = id; $("recherche").value = ""; $("recherche").blur(); afficher();
+  if (tableLiee && tableLiee === actuelle().referentiel.table) grist.setCursorPos({ rowId: id }).catch(() => {});
+});
+
+/* ---------- affichage de la fiche ---------- */
+function empilement(n) {   // bords décalés sous la tuile : une couche par niveau de détail
+  const p = [];
+  for (let i = 1; i < n; i++) p.push(`0 ${5 * i}px 0 -${3 * i}px var(--page)`, `0 ${5 * i}px 0 -${3 * i - 1}px var(--bord)`);
+  return p.length ? `box-shadow:${p.join(",")};margin-bottom:${5 * (n - 1)}px` : "";
+}
+function htmlTuile(t, k) {
+  const ouverte = ouvertes.has(k);
+  const classes = ["tuile", "l" + t.largeur, ouverte ? "ouverte" : "", t.vide ? "vide" : "", t.restreint ? "restreint" : ""].filter(Boolean).join(" ");
+  const tableau = t.detail.length ? `<table><thead><tr>${t.colonnesDetail.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${
+    t.detail.map(l => `<tr${l.nouveau ? ' class="nouveau"' : ""}>${l.cellules.map((c, i) => `<td>${i === 0 && l.nouveau ? '<span class="mot-nouveau">Nouveau · </span>' : ""}${esc(c)}</td>`).join("")}</tr>`).join("")
+  }</tbody></table>${t.reste ? `<p class="periode">… et ${t.reste} autre${t.reste > 1 ? "s" : ""} ligne${t.reste > 1 ? "s" : ""}.</p>` : ""}` : "";
+  const ventil = t.ventilation.length ? `<ul class="ventilation">${t.ventilation.map(v => `<li><b>${esc(v.texte)}</b> ${esc(v.valeur)}</li>`).join("")}</ul>` : "";
+  const contenu = ventil + tableau || (t.vide ? '<p class="periode">Aucune ligne pour cet établissement.</p>' : "");
+  return `<section class="${classes}" style="${empilement(t.couches)}">
+  <button type="button" class="tete" data-tuile="${k}" aria-expanded="${ouverte}">
+    <span class="titre">${esc(t.titre)}</span>
+    <span class="grand"><span>${esc(t.grand)}</span>${t.nouveaux ? `<span class="pastille">${t.nouveaux} nouveau${t.nouveaux > 1 ? "x" : ""}</span>` : ""}</span>
+    ${t.legende ? `<span class="legende">${esc(t.legende)}</span>` : ""}
+    ${t.periode ? `<span class="periode">${esc(t.periode)}</span>` : ""}
+  </button>
+  <div class="detail">
+    ${t.restreint ? '<p class="note-restreint">Diffusion restreinte : détail non imprimé.</p>' : ""}
+    <div class="contenu-restreint">${contenu}</div>
+    ${t.source || t.maj ? `<p class="source">${[t.source ? "Source : " + esc(t.source) : "", t.maj ? "mis à jour le " + esc(t.maj) : ""].filter(Boolean).join(" · ")}</p>` : ""}
+  </div>
+</section>`;
+}
+function afficher() {
+  const cfg = actuelle(), zone = $("fiche");
+  if (!cfg.referentiel.table) { zone.innerHTML = '<p class="invite">Ouvrez « ⚙ Réglages » pour choisir la table des établissements et les tuiles.</p>'; return; }
+  if (!lecteur) return;
+  if (etabId == null || !lecteur.ligne(cfg.referentiel.table, etabId)) {
+    zone.innerHTML = '<p class="invite">Choisissez un établissement : sélectionnez sa ligne dans Grist ou recherchez-le ci-dessus.</p>'; return;
+  }
+  const f = M.construireFiche(cfg, lecteur, etabId, { marque });
+  let k = 0;
+  zone.innerHTML = `<div class="entete">
+    <div><div class="surtitre">Fiche établissement</div><h2>${esc(f.titre)}</h2><div class="details">${f.details.map(esc).join(" · ")}</div></div>
+    ${marque != null && cfg.nouveau === "point" ? `<span class="repere">Surligné = nouveau depuis le point du ${esc(heureParis(marque))}</span>` : ""}
+  </div>
+  ${f.badges.length ? `<div class="badges">${f.badges.map(b => `<span class="badge${b.actif ? "" : " non"}">${esc(b.actif ? b.libelle : b.libelle + " : non")}</span>`).join("")}</div>` : ""}
+  ${f.blocs.map(b => `<div class="bloc">${b.titre ? `<h3>${esc(b.titre)}</h3>` : ""}<div class="grille">${b.tuiles.map(t => htmlTuile(t, k++)).join("")}</div></div>`).join("")}
+  <div class="pied"><span>Édité le ${esc(heureParis(Date.now() / 1000))}</span>
+    <span class="pas-imprime">Appuyer sur une tuile pour la détailler.</span></div>`;
+}
+$("fiche").addEventListener("click", e => {
+  const b = e.target.closest("[data-tuile]"); if (!b) return;
+  const k = Number(b.dataset.tuile);
+  ouvertes.has(k) ? ouvertes.delete(k) : ouvertes.add(k);
+  afficher();
+  const nb = document.querySelector(`[data-tuile="${k}"]`); if (nb) nb.focus();
+});
+$("imprimer").addEventListener("click", () => window.print());
+$("imprimerRestreint").addEventListener("change", e => document.body.classList.toggle("imprimer-restreint", e.target.checked));
+$("actualiser").addEventListener("click", () => rafraichir(true));
+async function rafraichir(forcer) {
+  try { await chargerDonnees(forcer); remplirRecherche(); afficher(); }
+  catch (e) { console.error(e); message("Lecture impossible : " + (e.message || e)); }
+}
+
+/* =====================================================================
+   Réglages : modifiés dans le brouillon, appliqués en direct à la fiche, enregistrés dans les options du widget
+   ===================================================================== */
+const opt = (v, lib, sel) => `<option value="${esc(v)}"${v === sel ? " selected" : ""}>${esc(lib)}</option>`;
+const colonnes = t => schema[t] || [];
+function selTable(champ, val, vide = "— choisir —") {
+  return `<select data-champ="${champ}" data-recharge="1">${opt("", vide, val)}${tablesDoc.map(t => opt(t, t, val)).join("")}</select>`;
+}
+function selColonne(champ, table, val, vide = "— aucune —", filtre = () => true) {
+  const cols = colonnes(table).filter(filtre);
+  const inconnue = val && !cols.some(c => c.colId === val) ? opt(val, `${val} (introuvable)`, val) : "";
+  return `<select data-champ="${champ}">${opt("", vide, val)}${inconnue}${cols.map(c => opt(c.colId, c.label && c.label !== c.colId ? `${c.label} (${c.colId})` : c.colId, val)).join("")}</select>`;
+}
+const estDateCol = c => M.estDate(c.type);
+const champ = (lib, html, aide = "", large = false) => `<label${large ? ' class="large"' : ""}><span>${lib}</span>${html}${aide ? `<div class="aide">${aide}</div>` : ""}</label>`;
+
+function htmlCarteTuile(t, i, n) {
+  const tab = t.table || brouillon.referentiel.table, p = `tuiles.${i}`;
+  const detail = [0, 1, 2, 3, 4].map(k => selColonne(`${p}.detail.${k}`, tab, t.detail[k] || "", k === 0 ? "— aucune (pas de détail) —" : "— aucune —")).join("");
+  return `<details class="carte" data-cle="tuile-${i}"><summary><span>${esc(t.bloc ? t.bloc + " › " : "")}<b>${esc(t.titre)}</b> <span class="aide">${esc(tab || "")}</span></span><span class="spacer"></span>
+    <button class="petit" data-action="monter" data-i="${i}" ${i === 0 ? "disabled" : ""} aria-label="Monter">↑</button>
+    <button class="petit" data-action="descendre" data-i="${i}" ${i === n - 1 ? "disabled" : ""} aria-label="Descendre">↓</button>
+    <button class="petit" data-action="dupliquer" data-i="${i}">Dupliquer</button>
+    <button class="petit" data-action="supprimer" data-i="${i}">Supprimer</button></summary>
+  <div class="champs">
+    ${champ("Titre", `<input type="text" data-champ="${p}.titre" value="${esc(t.titre)}">`)}
+    ${champ("Bloc", `<input type="text" data-champ="${p}.bloc" value="${esc(t.bloc)}">`, "Les tuiles d'un même bloc sont regroupées sous ce titre.")}
+    ${champ("Largeur", `<select data-champ="${p}.largeur" data-type="nombre">${[1, 2, 3].map(x => opt(String(x), ["un tiers", "deux tiers", "toute la largeur"][x - 1], String(t.largeur))).join("")}</select>`)}
+    ${champ("Table", selTable(`${p}.table`, t.table, "— le référentiel —"))}
+    ${champ("Lien vers l'établissement", selColonne(`${p}.lien`, tab, t.lien, "— la table est le référentiel —"), "Référence vers le référentiel, ou colonne texte comparée à la clé (UAI…).")}
+    ${champ("Une ligne par dossier", selColonne(`${p}.parDossier`, tab, t.parDossier, "— toutes les lignes —"), "Ne garde que la version la plus récente de chaque dossier.")}
+    ${champ("Colonne date", selColonne(`${p}.date`, tab, t.date, "— aucune —", estDateCol), "Tri, période, nombre de jours.")}
+    ${champ("Colonne de saisie", selColonne(`${p}.saisie`, tab, t.saisie, "— la colonne date —", estDateCol), "Repère « nouveau » et date de mise à jour.")}
+    ${champ("Depuis", `<input type="text" data-champ="${p}.depuis" value="${esc(t.depuis)}" placeholder="AAAA-MM-JJ ou nombre de jours">`)}
+    ${champ("Filtre : colonne", selColonne(`${p}.filtre.colonne`, tab, t.filtre.colonne))}
+    ${champ("Filtre : valeurs", `<input type="text" data-champ="${p}.filtre.valeurs" value="${esc(t.filtre.valeurs)}" placeholder="a ; b">`, `<label><input type="checkbox" data-champ="${p}.filtre.exclure"${t.filtre.exclure ? " checked" : ""}> exclure ces valeurs</label>`)}
+    ${champ("Synthèse", `<select data-champ="${p}.synthese.mode">${M.MODES.map(([v, l]) => opt(v, l, t.synthese.mode)).join("")}</select>`)}
+    ${champ("Colonne de la synthèse", selColonne(`${p}.synthese.colonne`, tab, t.synthese.colonne), "Pour une somme ou la valeur la plus récente.")}
+    ${champ("Unité", `<input type="text" data-champ="${p}.synthese.unite" value="${esc(t.synthese.unite)}" placeholder="jours, faits, élèves…">`)}
+    ${champ("Légende", `<input type="text" data-champ="${p}.synthese.legende" value="${esc(t.synthese.legende)}" placeholder="Dernier état : {Qualification}">`, "{nombre}, {jours}, {episodes} ou {Colonne} (valeur la plus récente).", true)}
+    ${champ("Ventilation (couche 2)", selColonne(`${p}.ventilation`, tab, t.ventilation), "Décompte par valeur de cette colonne.")}
+    ${champ("Lignes affichées au plus", `<input type="number" min="1" data-champ="${p}.limite" data-type="nombre" value="${esc(t.limite)}">`)}
+    ${champ("Détail (couche 3) : colonnes, dans l'ordre", `<div class="champs" style="padding:0">${detail}</div>`, "", true)}
+    ${champ("Source", `<input type="text" data-champ="${p}.source" value="${esc(t.source)}" placeholder="SDS BV2A, DGESCO…">`)}
+    ${champ("Diffusion restreinte", `<label><input type="checkbox" data-champ="${p}.restreint"${t.restreint ? " checked" : ""}> détail non imprimé par défaut</label>`)}
+  </div></details>`;
+}
+function htmlBadge(b, i) {
+  const tab = b.table || brouillon.referentiel.table, p = `badges.${i}`;
+  return `<div class="ligne-badge">
+    ${champ("Libellé", `<input type="text" data-champ="${p}.libelle" value="${esc(b.libelle)}" placeholder="Bâti dégradé · liste des 200">`)}
+    ${champ("Table", selTable(`${p}.table`, b.table, "— le référentiel —"))}
+    ${champ("Lien", selColonne(`${p}.lien`, tab, b.lien, "—"))}
+    ${champ("Colonne oui / non", selColonne(`${p}.colonne`, tab, b.colonne, "— présence dans la table —"))}
+    <button class="petit" data-action="supprimer-badge" data-i="${i}">Supprimer</button></div>`;
+}
+function afficherReglages() {
+  const z = $("reglages"), b = brouillon, r = b.referentiel;
+  const ouverts = new Set([...z.querySelectorAll("details[open]")].map(d => d.dataset.cle));
+  const premiere = !z.innerHTML;
+  const cases = colonnes(r.table).map(c => `<label><input type="checkbox" data-liste="referentiel.details" value="${esc(c.colId)}"${r.details.includes(c.colId) ? " checked" : ""}> ${esc(c.label || c.colId)}</label>`).join("");
+  z.innerHTML = `<div class="barre"><b>Réglages de la fiche</b><span class="spacer" style="flex:1"></span>
+    <button data-action="proposer" title="Remplace les réglages par une fiche de départ tirée des tables du socle">Configuration de départ</button>
+    <button data-action="annuler">Annuler</button><button class="principal" data-action="enregistrer">Enregistrer</button></div>
+  <ul id="alertes">${M.verifierConfig(b, schema).map(a => `<li>${esc(a)}</li>`).join("")}</ul>
+  <details data-cle="etab"><summary>Établissement</summary><div class="champs">
+    ${champ("Table des établissements", selTable("referentiel.table", r.table))}
+    ${champ("Nom affiché", selColonne("referentiel.titre", r.table, r.titre))}
+    ${champ("Clé de rapprochement", selColonne("referentiel.cle", r.table, r.cle), "Colonne comparée aux tables reliées par du texte (UAI…).")}
+    ${champ("Repère « nouveau »", `<select data-champ="nouveau">${opt("point", "lignes saisies après le dernier point de situation", b.nouveau)}${opt("", "aucun", b.nouveau)}</select>`)}
+    ${champ("Sous le nom", `<div class="cases">${cases || '<span class="aide">Choisissez d\'abord la table.</span>'}</div>`, "", true)}
+  </div></details>
+  <details data-cle="badges"><summary>Badges (${b.badges.length})</summary>
+    <p class="aide" style="margin:6px 10px">Appartenance à une liste, affichée en tête : présence de l'établissement dans la table, ou colonne oui / non.</p>
+    ${b.badges.map(htmlBadge).join("")}<div style="padding:6px 10px"><button class="petit" data-action="ajouter-badge">Ajouter un badge</button></div></details>
+  <details data-cle="tuiles"><summary>Tuiles (${b.tuiles.length})</summary>
+    ${b.tuiles.map((t, i) => htmlCarteTuile(t, i, b.tuiles.length)).join("")}<div style="padding:6px 10px"><button class="petit" data-action="ajouter-tuile">Ajouter une tuile</button></div></details>
+  <details data-cle="json"><summary>Configuration en texte (copier vers un autre document)</summary><div class="champs">
+    <label class="large"><textarea id="json" rows="8">${esc(JSON.stringify(b, null, 1))}</textarea></label>
+    <div><button class="petit" data-action="json">Appliquer ce texte</button></div></div></details>`;
+  z.querySelectorAll("details").forEach(d => { if (ouverts.has(d.dataset.cle) || (premiere && ["etab", "tuiles"].includes(d.dataset.cle))) d.open = true; });
+}
+function ecrire(objet, chemin, valeur) {
+  const p = chemin.split("."); let o = objet;
+  for (const k of p.slice(0, -1)) o = o[k];
+  o[p[p.length - 1]] = valeur;
+}
+async function apresModification(recharger) {
+  brouillon = M.normaliserConfig(brouillon);
+  if (recharger) afficherReglages();
+  else $("alertes").innerHTML = M.verifierConfig(brouillon, schema).map(a => `<li>${esc(a)}</li>`).join("");
+  await rafraichir(false);
+}
+$("reglages").addEventListener("change", e => {
+  const el = e.target;
+  if (el.dataset.liste) {
+    ecrire(brouillon, el.dataset.liste, [...$("reglages").querySelectorAll(`[data-liste="${el.dataset.liste}"]:checked`)].map(x => x.value));
+  } else if (el.dataset.champ) {
+    const v = el.type === "checkbox" ? el.checked : el.dataset.type === "nombre" ? Number(el.value) : el.value;
+    const m = /^(tuiles\.\d+\.detail)\.(\d+)$/.exec(el.dataset.champ);
+    if (m) { const t = brouillon.tuiles[Number(m[1].split(".")[1])], d = [...t.detail]; d[Number(m[2])] = v; t.detail = d.map(x => x || ""); }
+    else ecrire(brouillon, el.dataset.champ, v);
+  } else return;
+  apresModification(!!el.dataset.recharge);
+});
+$("reglages").addEventListener("click", async e => {
+  const b = e.target.closest("[data-action]"); if (!b) return;
+  e.preventDefault();
+  const i = Number(b.dataset.i), T = brouillon.tuiles;
+  switch (b.dataset.action) {
+    case "ajouter-tuile": T.push({ ...JSON.parse(JSON.stringify(M.TUILE_VIDE)), bloc: (T[T.length - 1] || {}).bloc || "" }); break;
+    case "supprimer": if (!confirm(`Supprimer la tuile « ${T[i].titre} » ?`)) return; T.splice(i, 1); break;
+    case "dupliquer": T.splice(i + 1, 0, { ...JSON.parse(JSON.stringify(T[i])), titre: T[i].titre + " (copie)" }); break;
+    case "monter": [T[i - 1], T[i]] = [T[i], T[i - 1]]; break;
+    case "descendre": [T[i + 1], T[i]] = [T[i], T[i + 1]]; break;
+    case "ajouter-badge": brouillon.badges.push({ libelle: "", table: "", lien: "", colonne: "" }); break;
+    case "supprimer-badge": brouillon.badges.splice(i, 1); break;
+    case "json":
+      try { brouillon = M.normaliserConfig(JSON.parse($("json").value)); } catch (err) { message("Texte illisible : " + err.message); return; }
+      break;
+    case "proposer":
+      if (brouillon.tuiles.length && !confirm("Remplacer les réglages actuels par la configuration de départ ?")) return;
+      brouillon = await configurationDeDepart(); break;
+    case "annuler": brouillon = null; $("reglages").hidden = true; $("reglages").innerHTML = ""; message(""); await rafraichir(false); return;
+    case "enregistrer":
+      config = M.normaliserConfig(brouillon);
+      try { await grist.setOptions({ fiche: config }); } catch (err) { message("Enregistrement impossible : " + (err.message || err)); return; }
+      brouillon = null; $("reglages").hidden = true; $("reglages").innerHTML = "";
+      message("Réglages enregistrés.", "info"); setTimeout(() => message(""), 3000); await rafraichir(false); return;
+  }
+  ouvertes.clear();
+  await apresModification(true);
+});
+function ouvrirReglages() {
+  if (!brouillon) brouillon = M.normaliserConfig(config);
+  $("reglages").hidden = false; afficherReglages();
+}
+$("ouvrirReglages").addEventListener("click", ouvrirReglages);
+
+/* ---------- configuration de départ : tirée des rôles du socle (référentiel et table des réponses) ---------- */
+async function configurationDeDepart() {
+  const c = M.normaliserConfig(null);
+  try {
+    const meta = await Socle.lireMeta(), sc = await Socle.lireConfig(meta), g = Socle.general(sc);
+    const assoc = (sc && sc.valeurs.roles) || {}, ctx = { reponses: g.reponses, referentiel: g.referentiel };
+    const col = (r, role) => (r[role] && r[role].col) || "";
+    if (meta[g.referentiel]) {
+      const rf = Socle.resoudreRoles("referentiel", meta[g.referentiel], ctx, assoc.referentiel || {}, {});
+      c.referentiel = { table: g.referentiel, titre: col(rf, "Nom"), cle: col(rf, "UAI"), details: [col(rf, "Type"), col(rf, "Commune"), col(rf, "Academie"), col(rf, "UAI")].filter(Boolean) };
+    }
+    if (meta[g.reponses]) {
+      const rr = Socle.resoudreRoles("reponses", meta[g.reponses], ctx, assoc.reponses || {}, {});
+      const etab = col(rr, "Etablissement"), dossier = col(rr, "Dossier"), saisie = col(rr, "Cree_le"), faits = col(rr, "Date_faits") || saisie;
+      const qualif = col(rr, "Qualification"), desc = col(rr, "Description");
+      const base = { table: g.reponses, lien: etab, parDossier: dossier, date: faits, saisie, source: "PRISME" };
+      c.tuiles = [
+        { ...base, titre: "Situation", bloc: "Situation en cours", largeur: 2, synthese: { mode: "valeur", colonne: qualif, unite: "", legende: "{jours} jour(s) signalé(s)" }, detail: [faits, qualif, desc].filter(Boolean), limite: 10 },
+        { ...base, titre: "Historique", bloc: "Situation en cours", largeur: 1, synthese: { mode: "episodes", colonne: "", unite: "épisode(s)", legende: "{jours} jour(s) au total" }, ventilation: qualif },
+      ];
+    }
+  } catch (e) { console.warn("Configuration de départ incomplète", e); }
+  if (!c.referentiel.table) {
+    const t = tablesDoc.find(x => /etablissement/i.test(x)) || "";
+    c.referentiel.table = t;
+    c.referentiel.titre = (colonnes(t).find(x => /^Text/.test(x.type)) || {}).colId || "";
+  }
+  return M.normaliserConfig(c);
+}
+
+/* ---------- démarrage ---------- */
+async function demarrer(options) {
+  if (demarre) return;
+  demarre = true;
+  $("version").textContent = window.Socle ? `socle ${Socle.VERSION}` : "";
+  try {
+    await chargerSchema();
+    try { tableLiee = grist.selectedTable && grist.selectedTable.getTableId ? await grist.selectedTable.getTableId() : null; } catch (_) { tableLiee = null; }
+    config = options && options.fiche ? M.normaliserConfig(options.fiche) : null;
+    if (!config) {
+      brouillon = await configurationDeDepart();
+      message("Fiche pas encore réglée : voici une configuration de départ, à compléter puis enregistrer.", "info");
+      $("reglages").hidden = false; afficherReglages();
+    }
+    await rafraichir(true);
+  } catch (e) { console.error(e); message("Démarrage impossible : " + (e.message || e)); }
+}
+grist.ready({ requiredAccess: "full", onEditOptions: ouvrirReglages });
+grist.onOptions(opts => demarrer(opts));
+if (grist.onRecord) grist.onRecord(rec => {
+  if (!rec || rec.id == null) return;
+  if (tableLiee && tableLiee !== actuelle().referentiel.table) return;   // widget relié à une autre table : on garde la recherche
+  etabId = rec.id;
+  if (lecteur) rafraichir(false); else afficher();
+});
+setTimeout(() => demarrer(null), 1500);   // si aucune option n'est envoyée
+</script>
+</body>
+</html>
