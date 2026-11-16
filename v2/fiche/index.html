@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.2"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.2"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.2"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.2"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.2"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.2"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.3"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.3"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.3"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.3"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.3"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.3"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -27,6 +27,7 @@
   header input[type=text] { width: min(340px, 100%); }
   button { font: inherit; padding: 5px 11px; border-radius: 4px; border: 1px solid var(--bleu); background: #fff; color: var(--bleu); cursor: pointer; }
   button.principal { background: var(--bleu); color: #fff; }
+  button:disabled { opacity: .45; cursor: default; }
   button.petit { padding: 2px 8px; font-size: 12px; }
   select, input[type=text], input[type=number], textarea { padding: 4px 6px; border: 1px solid #bbb; border-radius: 4px; font: inherit; background: #fff; color: var(--texte); width: 100%; }
   .message { margin: 8px 12px; padding: 6px 10px; border-radius: 4px; display: none; }
@@ -89,6 +90,8 @@
   #avances .filtre { display: flex; flex-direction: column; gap: 3px; padding: 4px 0; border-bottom: 1px dashed var(--bord); }
   #avances .ligne { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
   #avances select, #avances input[type=text], #avances input[type=number] { width: auto; }
+  .modeles { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .modeles select { width: auto; max-width: 240px; } #nomModele { width: 180px; }
   .navigation { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
   #avances .ligne select[data-ch=source] { max-width: 220px; } #avances .ligne select[data-ch=col] { max-width: 200px; } #avances .ligne input[data-ch=val] { width: 200px; }
   #avances .portee { margin-left: 26px; font-size: 12px; } #avances .portee input[type=number] { width: 70px; }
@@ -111,7 +114,7 @@
   .carte { margin: 6px 10px; }
   .carte > summary { display: flex; gap: 8px; align-items: center; }
   .carte > summary .spacer { flex: 1; }
-  .ligne-badge { display: grid; grid-template-columns: 2fr 1.3fr 1.3fr 1.3fr auto; gap: 6px; align-items: end; padding: 4px 10px; }
+  .ligne-badge { display: grid; grid-template-columns: 2fr 1.3fr 1.3fr 1fr 1.3fr auto; gap: 6px; align-items: end; padding: 4px 10px; }
   #alertes:empty { display: none; }
   #alertes { margin-bottom: 8px; padding: 6px 10px; background: #fff4e5; color: #6e4400; border-radius: 4px; font-size: 12px; }
   #alertes li { margin-left: 16px; }
@@ -149,6 +152,11 @@
   <button id="ouvrirReglages">⚙ Réglages</button>
 </header>
 <div class="barre-filtres" id="barreFiltres">
+  <span class="modeles"><select id="modele" aria-label="Modèle de sélection"><option value="">— Modèles —</option></select>
+    <button class="petit" id="enregModele" title="Enregistrer les filtres actuels sous un nom">Enregistrer…</button>
+    <button class="petit" id="supprModele" disabled>Supprimer</button>
+    <span id="formModele" hidden><input type="text" id="nomModele" placeholder="Nom du modèle" aria-label="Nom du modèle">
+      <button class="petit principal" id="validerModele">OK</button><button class="petit" id="annulerModele">Annuler</button></span></span>
   <span class="sous">Filtrer :</span><span id="puces"></span>
   <button class="qchip" id="btnAvances" aria-expanded="false" aria-controls="avances">Filtres avancés</button>
   <button class="lien" id="effacerFiltres" hidden>Effacer les filtres</button>
@@ -175,7 +183,8 @@
              window.FiltresColonnes (filtres avancés, commun/filtres-colonnes.js), API des widgets Grist.
    État : config (réglages enregistrés), brouillon (réglages en cours de modification, affichés en direct),
           schema et donnees (tables lues), etabId (établissement affiché), ouvertes (tuiles dépliées),
-          etat (filtres de la page, enregistrés dans les options du widget, clé « filtres »), selection (établissements retenus).
+          etat (filtres de la page, enregistrés dans les options du widget, clé « filtres »), selection (établissements retenus),
+          modèles de sélection (Config, clé « fiche », ou options de la page, clé « modeles »).
    ===================================================================== */
 const M = window.FicheMoteur;
 const $ = id => document.getElementById(id);
@@ -267,6 +276,8 @@ function afficher() {
   }
   zone.innerHTML = htmlFiche(M.construireFiche(cfg, lecteur, etabId, base), true);
 }
+// « Libellé » ou « Libellé : non » (oui / non) ; « Libellé : valeur » ou « Libellé : — » (valeur de la colonne)
+const texteBadge = b => b.affichage === "valeur" ? `${b.libelle} : ${b.actif ? b.valeur : "—"}` : b.actif ? b.libelle : `${b.libelle} : non`;
 function htmlFiche(f, ecran) {
   const cfg = actuelle();
   let k = 0;
@@ -274,7 +285,7 @@ function htmlFiche(f, ecran) {
     <div><div class="surtitre">Fiche établissement</div><h2>${esc(f.titre)}</h2><div class="details">${f.details.map(esc).join(" · ")}</div></div>
     ${marque != null && cfg.nouveau === "point" ? `<span class="repere">Surligné = nouveau depuis le point du ${esc(heureParis(marque))}</span>` : ""}
   </div>
-  ${f.badges.length ? `<div class="badges">${f.badges.map(b => `<span class="badge${b.actif ? "" : " non"}">${esc(b.actif ? b.libelle : b.libelle + " : non")}</span>`).join("")}</div>` : ""}
+  ${f.badges.length ? `<div class="badges">${f.badges.map(b => `<span class="badge${b.actif ? "" : " non"}">${esc(texteBadge(b))}</span>`).join("")}</div>` : ""}
   ${f.blocs.map(b => `<div class="bloc">${b.titre ? `<h3>${esc(b.titre)}</h3>` : ""}<div class="grille">${b.tuiles.map(t => htmlTuile(t, ecran ? k++ : -1)).join("")}</div></div>`).join("")}
   <div class="pied"><span>Édité le ${esc(heureParis(Date.now() / 1000))}</span>
     <span class="pas-imprime">Appuyer sur une tuile pour la détailler.</span></div>`;
@@ -305,6 +316,7 @@ async function rafraichir(forcer) {
    - sélection : établissements retenus, rangés par nom, parcourus avec ◀ ▶, imprimés en lot (une fiche par page).
    ===================================================================== */
 let etat = etatVide(), dims = [], apresAvances = [], selection = [], minuteurFiltres = null;
+let modelesDoc = [], modelesPage = [], socleConfig = null;   // modèles de sélection : du document (Config, clé « fiche »), de la page
 function etatVide() { return { rapides: {}, avances: [], combinaison: "cascade", formule: "" }; }
 function normaliserEtat(e) {
   const o = { ...etatVide(), ...(e && typeof e === "object" ? e : {}) };
@@ -324,7 +336,8 @@ function recalculerSelection() {
     .map(e => ({ id: e.id, titre: M.titreEtab(e, lecteur, r) })).sort((a, b) => a.titre.localeCompare(b.titre, "fr"));
   if (etabId == null && selection.length) etabId = selection[0].id;
 }
-function appliquerFiltres() {
+function appliquerFiltres(depuisModele) {
+  if (!depuisModele) { $("modele").value = ""; $("supprModele").disabled = true; }
   recalculerSelection();
   // après un changement de filtre : l'établissement affiché reste s'il est retenu, sinon le premier de la sélection
   if (selection.length && filtresActifs() && !selection.some(x => x.id === etabId)) { etabId = selection[0].id; ouvertes.clear(); }
@@ -332,11 +345,69 @@ function appliquerFiltres() {
   clearTimeout(minuteurFiltres);
   minuteurFiltres = setTimeout(sauvegarderFiltres, 600);
 }
+// options de la page : réglages de la fiche (s'ils sont enregistrés), filtres en cours, modèles propres à la page
+const optionsPage = () => ({ ...(config ? { fiche: config } : {}), filtres: etat, modeles: modelesPage });
 function sauvegarderFiltres() {
   try { localStorage.setItem("prisme-fiche-filtres", JSON.stringify(etat)); } catch (_) {}
-  if (!config) return;   // pas encore de réglages enregistrés : rien à écrire dans les options
-  try { Promise.resolve(grist.setOptions({ fiche: config, filtres: etat })).catch(() => {}); } catch (_) {}
+  try { Promise.resolve(grist.setOptions(optionsPage())).catch(() => {}); } catch (_) {}
 }
+
+/* ---------- modèles de sélection : filtres enregistrés sous un nom, pour passer d'un regard à l'autre ----------
+   Enregistrés pour tout le document (Config, clé « fiche », champ « modeles ») quand c'est possible, sinon pour
+   cette page (options du widget) ; même règle que les modèles des Extractions. */
+const modeles = () => [...modelesDoc.map(m => ({ ...m, doc: true })), ...modelesPage.map(m => ({ ...m, doc: false }))];
+function afficherModeles(choisi = "") {
+  const sel = $("modele");
+  sel.innerHTML = '<option value="">— Modèles —</option>' + modeles().map((m, i) => `<option value="${i}">${esc(m.nom)} · ${m.doc ? "document" : "cette page"}</option>`).join("");
+  sel.value = choisi; $("supprModele").disabled = choisi === "";
+}
+async function lireModelesDoc() {
+  try { socleConfig = await Socle.lireConfig(); } catch (_) { socleConfig = null; }
+  const v = socleConfig && socleConfig.valeurs && socleConfig.valeurs.fiche;
+  modelesDoc = v && Array.isArray(v.modeles) ? v.modeles : [];
+}
+async function ecrireModelesDoc(liste) {
+  const v = (socleConfig && socleConfig.valeurs && socleConfig.valeurs.fiche) || {};
+  await Socle.ecrireConfig("fiche", { ...v, modeles: liste });
+  await lireModelesDoc();
+}
+const remplacer = (liste, m) => [...liste.filter(x => x.nom !== m.nom), m].sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
+$("modele").addEventListener("change", e => {
+  const m = modeles()[e.target.value];
+  $("supprModele").disabled = !m;
+  if (!m) return;
+  etat = normaliserEtat(JSON.parse(JSON.stringify(m.filtres)));
+  etabId = null; ouvertes.clear(); fermerPuce();
+  appliquerFiltres(true);
+  if (!selection.length) message(`Modèle « ${m.nom} » : aucun établissement ne répond à ces filtres.`, "info"); else message("");
+});
+$("enregModele").addEventListener("click", () => {
+  const m = modeles()[$("modele").value];
+  $("formModele").hidden = false; $("nomModele").value = m ? m.nom : ""; $("nomModele").focus();
+});
+$("annulerModele").addEventListener("click", () => { $("formModele").hidden = true; });
+$("nomModele").addEventListener("keydown", e => { if (e.key === "Enter") $("validerModele").click(); if (e.key === "Escape") $("annulerModele").click(); });
+$("validerModele").addEventListener("click", async () => {
+  const nom = $("nomModele").value.trim();
+  if (!nom) { message("Donnez un nom au modèle."); return; }
+  const m = { nom, filtres: JSON.parse(JSON.stringify(etat)) };
+  const dejaPage = modelesPage.some(x => x.nom === nom);
+  let doc = false;
+  if (socleConfig && !dejaPage) { try { await ecrireModelesDoc(remplacer(modelesDoc, m)); doc = true; } catch (_) { doc = false; } }
+  if (!doc) { modelesPage = remplacer(modelesPage, m); sauvegarderFiltres(); }
+  $("formModele").hidden = true;
+  afficherModeles(String(modeles().findIndex(x => x.nom === nom && x.doc === doc)));
+  message(doc ? `Modèle « ${nom} » enregistré pour tout le document.` : `Modèle « ${nom} » enregistré pour cette page (seuls les propriétaires partagent un modèle avec tout le document).`, "info");
+});
+$("supprModele").addEventListener("click", async () => {
+  const m = modeles()[$("modele").value];
+  if (!m || !confirm(`Supprimer le modèle « ${m.nom} » ?`)) return;
+  try {
+    if (m.doc) await ecrireModelesDoc(modelesDoc.filter(x => x.nom !== m.nom));
+    else { modelesPage = modelesPage.filter(x => x.nom !== m.nom); sauvegarderFiltres(); }
+    afficherModeles(); message(`Modèle « ${m.nom} » supprimé.`, "info");
+  } catch (e) { message(`Suppression impossible : ${e.message || e} (modèle du document : réservé aux propriétaires).`); }
+});
 
 // ---------- barre : puces, compte, position ----------
 function libellePuce(d) {
@@ -565,7 +636,8 @@ function htmlBadge(b, i) {
     ${champ("Libellé", `<input type="text" data-champ="${p}.libelle" value="${esc(b.libelle)}" placeholder="Bâti dégradé · liste des 200">`)}
     ${champ("Table", selTable(`${p}.table`, b.table, "— le référentiel —"))}
     ${champ("Lien", selColonne(`${p}.lien`, tab, b.lien, "—"))}
-    ${champ("Colonne oui / non", selColonne(`${p}.colonne`, tab, b.colonne, "— présence dans la table —"))}
+    ${champ("Affichage", `<select data-champ="${p}.affichage" data-recharge="1">${opt("oui_non", "oui / non", b.affichage)}${opt("valeur", "valeur de la colonne", b.affichage)}</select>`)}
+    ${champ(b.affichage === "valeur" ? "Colonne affichée" : "Colonne oui / non", selColonne(`${p}.colonne`, tab, b.colonne, b.affichage === "valeur" ? "— choisir —" : "— présence dans la table —"))}
     <button class="petit" data-action="supprimer-badge" data-i="${i}">Supprimer</button></div>`;
 }
 function afficherReglages() {
@@ -587,7 +659,7 @@ function afficherReglages() {
       <label><input type="checkbox" data-champ="filtrerBadges"${b.filtrerBadges ? " checked" : ""}> proposer aussi les badges (oui / non)</label>`, "Puces en haut de la fiche, pour choisir les établissements parcourus et imprimés.", true)}
   </div></details>
   <details data-cle="badges"><summary>Badges (${b.badges.length})</summary>
-    <p class="aide" style="margin:6px 10px">Appartenance à une liste, affichée en tête : présence de l'établissement dans la table, ou colonne oui / non.</p>
+    <p class="aide" style="margin:6px 10px">Affichés en tête : oui / non (présence de l'établissement dans la table, ou colonne cochée), ou valeur d'une colonne (« Label CVL : Niv 3 »).</p>
     ${b.badges.map(htmlBadge).join("")}<div style="padding:6px 10px"><button class="petit" data-action="ajouter-badge">Ajouter un badge</button></div></details>
   <details data-cle="tuiles"><summary>Tuiles (${b.tuiles.length})</summary>
     ${b.tuiles.map((t, i) => htmlCarteTuile(t, i, b.tuiles.length)).join("")}<div style="padding:6px 10px"><button class="petit" data-action="ajouter-tuile">Ajouter une tuile</button></div></details>
@@ -629,7 +701,7 @@ $("reglages").addEventListener("click", async e => {
     case "dupliquer": T.splice(i + 1, 0, { ...JSON.parse(JSON.stringify(T[i])), titre: T[i].titre + " (copie)" }); break;
     case "monter": [T[i - 1], T[i]] = [T[i], T[i - 1]]; break;
     case "descendre": [T[i + 1], T[i]] = [T[i], T[i + 1]]; break;
-    case "ajouter-badge": brouillon.badges.push({ libelle: "", table: "", lien: "", colonne: "" }); break;
+    case "ajouter-badge": brouillon.badges.push({ libelle: "", table: "", lien: "", colonne: "", affichage: "oui_non" }); break;
     case "supprimer-badge": brouillon.badges.splice(i, 1); break;
     case "json":
       try { brouillon = M.normaliserConfig(JSON.parse($("json").value)); } catch (err) { message("Texte illisible : " + err.message); return; }
@@ -640,7 +712,7 @@ $("reglages").addEventListener("click", async e => {
     case "annuler": brouillon = null; $("reglages").hidden = true; $("reglages").innerHTML = ""; message(""); await rafraichir(false); return;
     case "enregistrer":
       config = M.normaliserConfig(brouillon);
-      try { await grist.setOptions({ fiche: config, filtres: etat }); } catch (err) { message("Enregistrement impossible : " + (err.message || err)); return; }
+      try { await grist.setOptions(optionsPage()); } catch (err) { message("Enregistrement impossible : " + (err.message || err)); return; }
       brouillon = null; $("reglages").hidden = true; $("reglages").innerHTML = "";
       message("Réglages enregistrés.", "info"); setTimeout(() => message(""), 3000); await rafraichir(false); return;
   }
@@ -695,6 +767,8 @@ async function demarrer(options) {
     config = options && options.fiche ? M.normaliserConfig(options.fiche) : null;
     let local = null; try { local = JSON.parse(localStorage.getItem("prisme-fiche-filtres") || "null"); } catch (_) {}
     etat = normaliserEtat((options && options.filtres) || local);
+    modelesPage = options && Array.isArray(options.modeles) ? options.modeles : [];
+    await lireModelesDoc(); afficherModeles();
     if (!config) {
       brouillon = await configurationDeDepart();
       message("Fiche pas encore réglée : voici une configuration de départ, à compléter puis enregistrer.", "info");

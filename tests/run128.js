@@ -28,7 +28,7 @@ const CONFIG = {
   ],
 };
 
-(async () => {
+async function principal() {
   const browser = await chromium.launch({ executablePath: __C.chromium });
   const p = await browser.newPage({ viewport: { width: 1000, height: 1200 } });
   p.on('pageerror', e => console.log('PAGEERROR', e.message)); p.on('dialog', d => d.accept());
@@ -105,4 +105,6 @@ const CONFIG = {
   await p.uncheck('[data-liste="filtresRapides"][value="Type"]'); await p.waitForTimeout(400);
   console.log('PUCES APRÈS RÉGLAGE :', JSON.stringify(await p.$$eval('#puces .qchip', l => l.map(x => x.dataset.qf))));
   await browser.close();
-})();
+}
+if (require.main === module) principal();
+module.exports = { docFiltres, CONFIG };
