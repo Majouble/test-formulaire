@@ -22,7 +22,9 @@
      referentiel : { table, titre, details: [colonnes], cle }
      nouveau     : "point" (lignes saisies après le dernier point de situation) ou "" (aucun repère)
      filtresRapides : [colonnes du référentiel proposées comme filtres rapides] ; filtrerBadges : badges proposés aussi
-     badges      : [{ libelle, table, lien, colonne }]   colonne vide = présence de l'établissement dans la table
+     badges      : [{ libelle, table, lien, colonne, affichage }]
+                   affichage « oui_non » : allumé si l'établissement est dans la table (colonne vide) ou si la colonne est vraie ;
+                   affichage « valeur » : « Libellé : valeur de la colonne » (Label CVL : Niv 3), éteint si la valeur est vide
      tuiles      : [{ titre, bloc, largeur 1-3, table, lien, filtre: { colonne, valeurs, exclure }, parDossier, date,
                       saisie, depuis, synthese: { mode, colonne, unite, legende }, ventilation, detail: [colonnes],
                       limite, source, restreint }]
@@ -52,7 +54,7 @@
     out.referentiel = { ...CONFIG_VIDE.referentiel, ...(out.referentiel || {}) };
     if (!Array.isArray(out.referentiel.details)) out.referentiel.details = [];
     if (!Array.isArray(out.filtresRapides)) out.filtresRapides = [];
-    out.badges = (Array.isArray(out.badges) ? out.badges : []).map(b => ({ libelle: "", table: "", lien: "", colonne: "", ...b }));
+    out.badges = (Array.isArray(out.badges) ? out.badges : []).map(b => ({ libelle: "", table: "", lien: "", colonne: "", affichage: "oui_non", ...b }));
     out.tuiles = (Array.isArray(out.tuiles) ? out.tuiles : []).map(t => ({
       ...copie(TUILE_VIDE), ...t,
       filtre: { ...TUILE_VIDE.filtre, ...(t.filtre || {}) },
@@ -161,6 +163,7 @@
       const t = b.table || r.table, nom = b.libelle || `badge ${i + 1}`;
       if (!schema[t]) alertes.push(`Badge « ${nom} » : table introuvable ${t}.`);
       else [b.lien, b.colonne].filter(Boolean).forEach(col => { if (!existe(t, col)) alertes.push(`Badge « ${nom} » : colonne introuvable ${col}.`); });
+      if (b.affichage === "valeur" && !b.colonne) alertes.push(`Badge « ${nom} » : choisissez la colonne dont la valeur s'affiche.`);
     });
     c.tuiles.forEach(t => {
       const tab = t.table || r.table;
@@ -310,9 +313,15 @@
       rattacher: ctx.rattacher || creerRattacheur(lecteur, r.table, r.cle),
     };
   }
-  function badgeActif(b, etab, base) {
-    const lignes = base.rattacher(etab, b.table || base.refTable, b.table ? b.lien : "");
-    return b.colonne ? lignes.some(l => vrai(l[b.colonne])) : lignes.length > 0;
+  // badge d'un établissement : { actif, valeurs, valeur } (valeurs : textes distincts de la colonne en mode « valeur »)
+  function lireBadge(b, etab, base, lecteur) {
+    const tab = b.table || base.refTable, lignes = base.rattacher(etab, tab, b.table ? b.lien : "");
+    if (b.affichage === "valeur") {
+      const valeurs = b.colonne ? [...new Set(lignes.flatMap(l => lecteur.elements(tab, b.colonne, l[b.colonne])).filter(Boolean))] : [];
+      return { actif: valeurs.length > 0, valeurs, valeur: valeurs.join(", ") };
+    }
+    const actif = b.colonne ? lignes.some(l => vrai(l[b.colonne])) : lignes.length > 0;
+    return { actif, valeurs: [actif ? "Oui" : "Non"], valeur: "" };
   }
 
   /* ---------- la fiche d'un établissement ---------- */
@@ -321,7 +330,7 @@
     const etab = r.table ? lecteur.ligne(r.table, etabId) : null;
     if (!etab) return null;
     const contexte = { ...base, etab };
-    const badges = c.badges.map(b => ({ libelle: b.libelle || b.colonne || b.table || r.table, actif: badgeActif(b, etab, base) }));
+    const badges = c.badges.map(b => ({ libelle: b.libelle || b.colonne || b.table || r.table, affichage: b.affichage, ...lireBadge(b, etab, base, lecteur) }));
     const blocs = [];
     c.tuiles.forEach(t => {
       const nom = t.bloc || "";
@@ -354,7 +363,7 @@
       const info = lecteur.colonne(r.table, col);
       if (info) out.push({ id: "col:" + col, libelle: info.label || col, valeurs: e => { const v = lecteur.elements(r.table, col, e[col]); return v.length ? v : [VIDE]; } });
     });
-    if (c.filtrerBadges) c.badges.forEach((b, i) => out.push({ id: "badge:" + i, libelle: b.libelle || `Badge ${i + 1}`, valeurs: e => [badgeActif(b, e, base) ? "Oui" : "Non"] }));
+    if (c.filtrerBadges) c.badges.forEach((b, i) => out.push({ id: "badge:" + i, libelle: b.libelle || `Badge ${i + 1}`, valeurs: e => { const v = lireBadge(b, e, base, lecteur).valeurs; return v.length ? v : [VIDE]; } }));
     return out;
   }
   // décompte des valeurs d'une dimension parmi des établissements (pour la liste à cocher)
