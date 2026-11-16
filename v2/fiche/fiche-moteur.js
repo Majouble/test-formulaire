@@ -2,9 +2,11 @@
    Fiche établissement — moteur (calcul des tuiles, sans affichage)
    ---------------------------------------------------------------------
    Définit : window.FicheMoteur = { CONFIG_VIDE, TUILE_VIDE, MODES, normaliserConfig(c), tablesNecessaires(config, schema),
-             verifierConfig(config, schema), creerLecteur(schema, tables), construireFiche(config, lecteur, etabId, ctx),
-             jourISO(v, type), texteJour(iso) }.
-   Utilise : rien (fonctionne aussi sous Node pour les essais : module.exports).
+             verifierConfig(config, schema), creerLecteur(schema, tables), preparer(config, lecteur, ctx),
+             construireFiche(config, lecteur, etabId, base), dimensionsRapides, compterValeurs, passeRapides,
+             selectionner(config, lecteur, etat, FiltresColonnes, base), sourcesFiltres(config), jourISO, texteJour, estDate }.
+   Utilise : rien ; les filtres avancés reçoivent le moteur FiltresColonnes en paramètre (commun/filtres-colonnes.js).
+   Fonctionne aussi sous Node pour les essais (module.exports).
 
    Une fiche montre UN établissement du référentiel. Elle est faite de badges (appartenance à une liste, oui ou non)
    et de tuiles rangées par blocs. Chaque tuile lit UNE table, n'importe laquelle, et n'en garde que les lignes de
@@ -19,6 +21,7 @@
    Configuration (options du widget, clé « fiche ») :
      referentiel : { table, titre, details: [colonnes], cle }
      nouveau     : "point" (lignes saisies après le dernier point de situation) ou "" (aucun repère)
+     filtresRapides : [colonnes du référentiel proposées comme filtres rapides] ; filtrerBadges : badges proposés aussi
      badges      : [{ libelle, table, lien, colonne }]   colonne vide = présence de l'établissement dans la table
      tuiles      : [{ titre, bloc, largeur 1-3, table, lien, filtre: { colonne, valeurs, exclure }, parDossier, date,
                       saisie, depuis, synthese: { mode, colonne, unite, legende }, ventilation, detail: [colonnes],
@@ -36,7 +39,7 @@
     parDossier: "", date: "", saisie: "", depuis: "", synthese: { mode: "nombre", colonne: "", unite: "", legende: "" },
     ventilation: "", detail: [], limite: 15, source: "", restreint: false,
   };
-  const CONFIG_VIDE = { referentiel: { table: "", titre: "", details: [], cle: "" }, nouveau: "point", badges: [], tuiles: [] };
+  const CONFIG_VIDE = { referentiel: { table: "", titre: "", details: [], cle: "" }, nouveau: "point", filtresRapides: [], filtrerBadges: false, badges: [], tuiles: [] };
 
   const copie = x => JSON.parse(JSON.stringify(x));
   const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
@@ -48,6 +51,7 @@
     const out = { ...copie(CONFIG_VIDE), ...(c && typeof c === "object" ? copie(c) : {}) };
     out.referentiel = { ...CONFIG_VIDE.referentiel, ...(out.referentiel || {}) };
     if (!Array.isArray(out.referentiel.details)) out.referentiel.details = [];
+    if (!Array.isArray(out.filtresRapides)) out.filtresRapides = [];
     out.badges = (Array.isArray(out.badges) ? out.badges : []).map(b => ({ libelle: "", table: "", lien: "", colonne: "", ...b }));
     out.tuiles = (Array.isArray(out.tuiles) ? out.tuiles : []).map(t => ({
       ...copie(TUILE_VIDE), ...t,
@@ -170,26 +174,41 @@
     return alertes;
   }
 
-  /* ---------- lignes d'une table rattachées à l'établissement ---------- */
-  function lignesEtab(lecteur, refTable, cleRef, etab, table, lien) {
-    if (!table || (table === refTable && !lien)) return etab ? [etab] : [];
-    const tout = lecteur.lignes(table), info = lecteur.colonne(table, lien);
-    if (!info || !etab) return [];
-    if (cibleRef(info.type) === refTable) {
-      return /^RefList:/.test(info.type) ? tout.filter(l => Array.isArray(l[lien]) && l[lien].slice(1).includes(etab.id)) : tout.filter(l => l[lien] === etab.id);
+  /* ---------- lignes d'une table rattachées à l'établissement ----------
+     Index construit une fois par table et par lien (puis réutilisé pour chaque établissement) :
+     référence vers le référentiel → numéro de ligne ; sinon texte normalisé comparé à la clé (UAI…). */
+  function creerRattacheur(lecteur, refTable, cleRef) {
+    const index = new Map();
+    const cleDe = etab => norm(cleRef ? lecteur.texte(refTable, cleRef, etab[cleRef]) : "");
+    function indexer(table, lien) {
+      const k = table + "|" + lien;
+      if (index.has(k)) return index.get(k);
+      const info = lecteur.colonne(table, lien), m = new Map();
+      const parRef = !!info && cibleRef(info.type) === refTable;
+      const ajouter = (cle, l) => { if (cle === "" || cle == null) return; const a = m.get(cle); if (a) a.push(l); else m.set(cle, [l]); };
+      if (info) for (const l of lecteur.lignes(table)) {
+        if (parRef) { const v = l[lien]; (Array.isArray(v) ? v.slice(1) : [v]).forEach(id => ajouter(id, l)); }
+        else lecteur.elements(table, lien, l[lien]).forEach(x => ajouter(norm(x), l));
+      }
+      const entree = { parRef, m };
+      index.set(k, entree);
+      return entree;
     }
-    const cle = norm(cleRef ? lecteur.texte(refTable, cleRef, etab[cleRef]) : "");
-    if (!cle) return [];
-    return tout.filter(l => lecteur.elements(table, lien, l[lien]).some(x => norm(x) === cle));
+    return function lignesEtab(etab, table, lien) {
+      if (!etab) return [];
+      if (!table || (table === refTable && !lien)) return [etab];
+      const { parRef, m } = indexer(table, lien);
+      return m.get(parRef ? etab.id : cleDe(etab)) || [];
+    };
   }
   const vrai = v => v === true || (typeof v === "number" && v !== 0) || (typeof v === "string" && v.trim() !== "" && !["non", "false", "0", "faux"].includes(norm(v)));
 
-  /* ---------- une tuile ---------- */
-  function calculerTuile(t, lecteur, ctx) {
+  /* ---------- lignes d'une tuile pour un établissement : rattachement, filtre, période, une par dossier, tri ---------- */
+  function lignesTuile(t, lecteur, ctx) {
     const tab = t.table || ctx.refTable;
     const typeDe = c => (lecteur.colonne(tab, c) || {}).type || "";
     const brut = (l, c) => l[c];
-    let lignes = lignesEtab(lecteur, ctx.refTable, ctx.cle, ctx.etab, tab, t.lien);
+    let lignes = [...ctx.rattacher(ctx.etab, tab, t.lien)];
 
     // filtre sur une colonne : valeurs « a ; b », gardées ou exclues
     if (t.filtre.colonne && String(t.filtre.valeurs).trim()) {
@@ -216,7 +235,13 @@
       lignes = [...par.values()];
     }
     lignes.sort((a, b) => plusRecente(a, b) ? -1 : plusRecente(b, a) ? 1 : 0);
+    return { tab, typeDe, lignes, periode };
+  }
 
+  /* ---------- une tuile ---------- */
+  function calculerTuile(t, lecteur, ctx) {
+    const choisies = lignesTuile(t, lecteur, ctx), { tab, typeDe, lignes } = choisies;
+    let periode = choisies.periode;
     const jours = t.date ? [...new Set(lignes.map(l => jourISO(l[t.date], typeDe(t.date))).filter(Boolean))].sort() : [];
     let episodes = 0;
     jours.forEach((j, i) => { if (i === 0 || (Date.parse(j) - Date.parse(jours[i - 1])) > 86400000) episodes++; });
@@ -274,18 +299,29 @@
     };
   }
 
-  /* ---------- la fiche ----------
-     ctx : { maintenant (secondes), marque (secondes, dernier point de situation) } */
-  function construireFiche(config, lecteur, etabId, ctx = {}) {
+  /* ---------- contexte commun à toutes les fiches d'un même chargement ----------
+     ctx : { maintenant (secondes), marque (secondes, dernier point de situation), rattacher (index, réutilisé) } */
+  function preparer(config, lecteur, ctx = {}) {
     const c = normaliserConfig(config), r = c.referentiel;
+    return {
+      config: c, refTable: r.table, cle: r.cle,
+      maintenant: ctx.maintenant || Date.now() / 1000,
+      marque: c.nouveau === "point" ? ctx.marque ?? null : null,
+      rattacher: ctx.rattacher || creerRattacheur(lecteur, r.table, r.cle),
+    };
+  }
+  function badgeActif(b, etab, base) {
+    const lignes = base.rattacher(etab, b.table || base.refTable, b.table ? b.lien : "");
+    return b.colonne ? lignes.some(l => vrai(l[b.colonne])) : lignes.length > 0;
+  }
+
+  /* ---------- la fiche d'un établissement ---------- */
+  function construireFiche(config, lecteur, etabId, ctx = {}) {
+    const base = ctx.config ? ctx : preparer(config, lecteur, ctx), c = base.config, r = c.referentiel;
     const etab = r.table ? lecteur.ligne(r.table, etabId) : null;
     if (!etab) return null;
-    const contexte = { refTable: r.table, cle: r.cle, etab, maintenant: ctx.maintenant || Date.now() / 1000, marque: c.nouveau === "point" ? ctx.marque ?? null : null };
-    const badges = c.badges.map(b => {
-      const tab = b.table || r.table, lignes = lignesEtab(lecteur, r.table, r.cle, etab, tab, b.table ? b.lien : "");
-      const actif = b.colonne ? lignes.some(l => vrai(l[b.colonne])) : lignes.length > 0;
-      return { libelle: b.libelle || b.colonne || tab, actif };
-    });
+    const contexte = { ...base, etab };
+    const badges = c.badges.map(b => ({ libelle: b.libelle || b.colonne || b.table || r.table, actif: badgeActif(b, etab, base) }));
     const blocs = [];
     c.tuiles.forEach(t => {
       const nom = t.bloc || "";
@@ -295,13 +331,93 @@
     });
     return {
       id: etab.id,
-      titre: r.titre ? lecteur.texte(r.table, r.titre, etab[r.titre]) : `Établissement ${etab.id}`,
+      titre: titreEtab(etab, lecteur, r),
       details: r.details.map(col => lecteur.texte(r.table, col, etab[col])).filter(Boolean),
       badges, blocs,
     };
   }
+  const titreEtab = (etab, lecteur, r) => r.titre ? lecteur.texte(r.table, r.titre, etab[r.titre]) : `Établissement ${etab.id}`;
 
-  const api = { CONFIG_VIDE, TUILE_VIDE, MODES, normaliserConfig, tablesNecessaires, verifierConfig, creerLecteur, construireFiche, jourISO, texteJour, estDate };
+  /* =====================================================================
+     Sélection d'établissements : filtres rapides, puis filtres avancés
+     etat : { rapides: { dimension: [valeurs retenues] }, avances: [filtre], combinaison, formule }
+     - filtres rapides (comme le tableau de bord) : colonnes du référentiel choisies dans les réglages, et badges
+       (Oui / Non) ; un établissement passe s'il a l'une des valeurs retenues de chaque dimension filtrée ;
+     - filtres avancés (moteur des Extractions, FiltresColonnes) : chaque filtre porte sur les lignes d'une tuile
+       (source = numéro de la tuile : rattachement, filtre, période et dossiers de la tuile) ou sur la ligne du
+       référentiel (source vide) ; condition, portée ou comptage, puis combinaison ET / OU / formule.
+     ===================================================================== */
+  const VIDE = "(vide)";
+  function dimensionsRapides(config, lecteur, base) {
+    const c = normaliserConfig(config), r = c.referentiel, out = [];
+    c.filtresRapides.forEach(col => {
+      const info = lecteur.colonne(r.table, col);
+      if (info) out.push({ id: "col:" + col, libelle: info.label || col, valeurs: e => { const v = lecteur.elements(r.table, col, e[col]); return v.length ? v : [VIDE]; } });
+    });
+    if (c.filtrerBadges) c.badges.forEach((b, i) => out.push({ id: "badge:" + i, libelle: b.libelle || `Badge ${i + 1}`, valeurs: e => [badgeActif(b, e, base) ? "Oui" : "Non"] }));
+    return out;
+  }
+  // décompte des valeurs d'une dimension parmi des établissements (pour la liste à cocher)
+  function compterValeurs(dimension, etabs) {
+    const n = new Map();
+    etabs.forEach(e => dimension.valeurs(e).forEach(v => n.set(v, (n.get(v) || 0) + 1)));
+    return [...n].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), "fr")).map(([valeur, nombre]) => ({ valeur, nombre }));
+  }
+  function passeRapides(etab, dims, rapides, sauf) {
+    for (const d of dims) {
+      const retenues = rapides[d.id];
+      if (!retenues || d.id === sauf) continue;
+      if (!d.valeurs(etab).some(v => retenues.includes(v))) return false;
+    }
+    return true;
+  }
+  // contexte de lecture des lignes pour FiltresColonnes
+  function contexteFiltre(lecteur, tab, colDate) {
+    const typeDe = c => (lecteur.colonne(tab, c) || {}).type || "";
+    return {
+      texte: (c, l) => lecteur.texte(tab, c, l[c]),
+      elements: (c, l) => lecteur.elements(tab, c, l[c]),
+      nombre: (c, l) => { const v = l[c]; if (typeof v === "number") return v; if (typeof v === "boolean") return v ? 1 : 0; const n = Number(String(lecteur.texte(tab, c, v)).replace(/\s/g, "").replace(",", ".")); return String(v ?? "").trim() !== "" && Number.isFinite(n) ? n : NaN; },
+      jour: (l, c) => jourISO(l[c || colDate], typeDe(c || colDate)),
+      estDate: c => estDate(typeDe(c)),
+      estDerniere: () => true,   // la tuile garde déjà, si elle le demande, une ligne par dossier
+    };
+  }
+  function passeAvances(etab, etat, FC, lecteur, base) {
+    const avances = etat.avances || [];
+    if (!avances.some(FC.actif)) return true;
+    const tuiles = base.config.tuiles, cache = new Map();
+    const resultats = avances.map(f => {
+      if (!FC.actif(f)) return undefined;
+      const src = f.source === "" || f.source == null ? null : tuiles[Number(f.source)];
+      if (f.source !== "" && f.source != null && !src) return undefined;
+      let lignes, ctxF;
+      if (!src) { lignes = [etab]; ctxF = contexteFiltre(lecteur, base.refTable, ""); }
+      else {
+        if (!cache.has(f.source)) cache.set(f.source, lignesTuile(src, lecteur, { ...base, etab }).lignes);
+        lignes = cache.get(f.source); ctxF = contexteFiltre(lecteur, src.table || base.refTable, src.date);
+      }
+      return FC.evaluer({ ...f, versions: "toutes" }, lignes, ctxF).ok;
+    });
+    return FC.combiner(etat.combinaison || "cascade", etat.formule || "", resultats);
+  }
+  // établissements retenus, rangés par nom
+  function selectionner(config, lecteur, etat, FC, base) {
+    const r = base.config.referentiel, dims = dimensionsRapides(config, lecteur, base), rapides = (etat && etat.rapides) || {};
+    return lecteur.lignes(r.table)
+      .filter(e => passeRapides(e, dims, rapides) && (!FC || passeAvances(e, etat || {}, FC, lecteur, base)))
+      .map(e => ({ id: e.id, titre: titreEtab(e, lecteur, r) }))
+      .sort((a, b) => a.titre.localeCompare(b.titre, "fr"));
+  }
+  // tables dont les colonnes peuvent servir aux filtres avancés : référentiel (source vide) et table de chaque tuile
+  function sourcesFiltres(config) {
+    const c = normaliserConfig(config);
+    return [{ source: "", libelle: "Établissement (référentiel)", table: c.referentiel.table },
+      ...c.tuiles.map((t, i) => ({ source: String(i), libelle: `Tuile « ${t.titre} »`, table: t.table || c.referentiel.table }))];
+  }
+
+  const api = { CONFIG_VIDE, TUILE_VIDE, MODES, normaliserConfig, tablesNecessaires, verifierConfig, creerLecteur, preparer, construireFiche,
+    dimensionsRapides, compterValeurs, passeRapides, passeAvances, selectionner, sourcesFiltres, titreEtab, jourISO, texteJour, estDate };
   if (typeof window !== "undefined") window.FicheMoteur = api;
   if (typeof module !== "undefined") module.exports = api;
 })();

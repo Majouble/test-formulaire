@@ -37,6 +37,7 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 ├── commun/theme.js      thème clair ou sombre de tous les widgets (data-theme sur <html>)
 ├── commun/marque.js     logo PRISME en haut à gauche de tous les widgets (variantes bloc, compact, spectre, centre)
 ├── commun/menu-deroulant.js  menu déroulant des champs à valeurs proposées (<input list> + <datalist>), dans tous les widgets
+├── commun/filtres-colonnes.js  moteur des filtres de colonnes (condition, portée ou comptage avec seuil, versions, combinaison), pour les Extractions et la Fiche établissement
 ├── commun/geo.js        fond de carte commun : départements et académies (Lambert-93, encarts), placement d'un point latitude / longitude
 ├── saisie/              formulaire de saisie
 ├── admin/               administration : installation.js, configuration.js, referentiel.js, equipe.js, planning.js, pages-agents.js (onglet Équipe, Pages de saisie), actions.js, acces.js, liens.js, campagnes.js (onglet Établissements, carte Campagnes), effectifs.js (onglet Référentiel, carte Effectifs), veille.js (onglet Veille), validation.js (onglet Validation), repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css), secours.js (carte « Mode secours » : kit, relais, page de réintégration)
@@ -46,8 +47,7 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 ├── secours/             mode secours sans réseau : grist-hors-ligne.js (Grist simulé, mode veille), relais-n8n.json (relais à importer dans n8n), kit-secours.html (assemblé par outils/construire-secours.js), liste.html (tableau des signalements de A à Z), demo.json, vendor/ (sql.js, MIT)
 ├── reintegration/       réintégration dans Grist des saisies du mode secours
 ├── extractions/        widget « Extractions » : une ligne par établissement, filtres, export Excel (page créée depuis l'onglet Tableau de bord)
-│   └── filtres-colonnes.js  moteur des filtres de colonnes (condition, portée ou comptage avec seuil, versions, combinaison)
-├── fiche/              widget « Fiche établissement » : une page A4 par établissement, tuiles réglables (options du widget, clé « fiche ») ; fiche-moteur.js : calcul des tuiles, sans affichage
+├── fiche/              widget « Fiche établissement » : une page A4 par établissement, tuiles réglables (options du widget, clés « fiche » et « filtres »), filtres rapides et avancés, impression de la sélection ; fiche-moteur.js : calcul des tuiles et de la sélection, sans affichage
 ├── veille/              relais-vigilance-n8n.json : workflow n8n Météo-France → table Vigilances (onglet Veille)
 └── modeles/             exemples de configuration à importer (à venir)
 ```

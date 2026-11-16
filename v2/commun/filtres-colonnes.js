@@ -1,5 +1,5 @@
 /* =====================================================================
-   Extractions — filtres de colonnes (moteur)
+   Filtres de colonnes (moteur commun aux Extractions et à la Fiche établissement)
    ---------------------------------------------------------------------
    Définit : window.FiltresColonnes = { OPERATEURS, PORTEES, MESURES, COMPARAISONS, VERSIONS, COMBINAISONS,
              nouveau(), reprendre(f), actif(f), sansValeur(op), avecColonneMesure(mesure), libelle(f, nomColonne),
@@ -26,7 +26,7 @@
     ["empty", "est vide"], ["nempty", "n'est pas vide"], ["true", "est coché / Oui"], ["false", "n'est pas coché / Non"],
   ];
   const PORTEES = [["une", "au moins une fois"], ["jamais", "jamais"], ["toutes", "à chaque fois"], ["compter", "compter…"]];
-  const MESURES = [["jours", "nombre de jours"], ["distinct", "nombre de valeurs distinctes de"], ["sum", "somme de"],
+  const MESURES = [["lignes", "nombre de lignes"], ["jours", "nombre de jours"], ["distinct", "nombre de valeurs distinctes de"], ["sum", "somme de"],
     ["avg", "moyenne de"], ["min", "minimum de"], ["max", "maximum de"]];
   const COMPARAISONS = [["ge", "≥"], ["gt", ">"], ["eq", "="], ["le", "≤"], ["lt", "<"]];
   const VERSIONS = [["toutes", "toutes les versions"], ["derniere", "dernière version de chaque dossier"]];
@@ -36,7 +36,7 @@
   const normaliser = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
   const libelleDe = (liste, id) => (liste.find(x => x[0] === id) || liste[0])[1];
   const sansValeur = op => SANS_VALEUR.has(op);
-  const avecColonneMesure = m => m !== "jours";
+  const avecColonneMesure = m => m !== "jours" && m !== "lignes";
 
   function nouveau() { return { col: "", op: "contains", val: "", portee: "une", mesure: "jours", colMesure: "", cmp: "ge", seuil: "", versions: "toutes" }; }
   // filtre enregistré (toute version) → filtre complet ; reprise des opérateurs d'avant la 2.55
@@ -107,7 +107,8 @@
     if (f.portee === "toutes") return { ok: prises.length > 0 && vraies.length === prises.length, valeur: null };
     if (f.portee !== "compter") return { ok: vraies.length > 0, valeur: null };
     let valeur;
-    if (f.mesure === "jours") valeur = new Set(vraies.map(r => ctx.jour(r)).filter(Boolean)).size;
+    if (f.mesure === "lignes") valeur = vraies.length;
+    else if (f.mesure === "jours") valeur = new Set(vraies.map(r => ctx.jour(r)).filter(Boolean)).size;
     else if (f.mesure === "distinct") { const s = new Set(); vraies.forEach(r => ctx.elements(f.colMesure, r).forEach(e => { if (String(e).trim()) s.add(normaliser(e)); })); valeur = s.size; }
     else {
       const n = vraies.map(r => ctx.nombre(f.colMesure, r)).filter(x => !isNaN(x));
@@ -154,6 +155,8 @@
     return actifs.every(Boolean);   // cascade, ou formule à corriger (en attendant : tous les filtres)
   }
 
-  window.FiltresColonnes = { OPERATEURS, PORTEES, MESURES, COMPARAISONS, VERSIONS, COMBINAISONS,
+  const api = { OPERATEURS, PORTEES, MESURES, COMPARAISONS, VERSIONS, COMBINAISONS,
     nouveau, reprendre, actif, sansValeur, avecColonneMesure, libelle, evaluer, combiner, erreurFormule };
+  if (typeof window !== "undefined") window.FiltresColonnes = api;
+  if (typeof module !== "undefined") module.exports = api;
 })();
