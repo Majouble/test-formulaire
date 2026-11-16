@@ -136,4 +136,4 @@ async function principal() {
   await browser.close();
 }
 if (require.main === module) principal();
-module.exports = { docFiche };
+module.exports = { docFiche, CONFIG };

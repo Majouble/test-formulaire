@@ -22,6 +22,7 @@
      referentiel : { table, titre, details: [colonnes], cle }
      nouveau     : "point" (lignes saisies après le dernier point de situation) ou "" (aucun repère)
      filtresRapides : [colonnes du référentiel proposées comme filtres rapides] ; filtrerBadges : badges proposés aussi
+     impression  : "synthese" (page 1 : toutes les tuiles en synthèse ; pages suivantes : leur détail) ou "complet" (tuiles détaillées)
      badges      : [{ libelle, table, lien, colonne, affichage }]
                    affichage « oui_non » : allumé si l'établissement est dans la table (colonne vide) ou si la colonne est vraie ;
                    affichage « valeur » : « Libellé : valeur de la colonne » (Label CVL : Niv 3), éteint si la valeur est vide
@@ -41,7 +42,7 @@
     parDossier: "", date: "", saisie: "", depuis: "", synthese: { mode: "nombre", colonne: "", unite: "", legende: "" },
     ventilation: "", detail: [], limite: 15, source: "", restreint: false,
   };
-  const CONFIG_VIDE = { referentiel: { table: "", titre: "", details: [], cle: "" }, nouveau: "point", filtresRapides: [], filtrerBadges: false, badges: [], tuiles: [] };
+  const CONFIG_VIDE = { referentiel: { table: "", titre: "", details: [], cle: "" }, nouveau: "point", impression: "synthese", filtresRapides: [], filtrerBadges: false, badges: [], tuiles: [] };
 
   const copie = x => JSON.parse(JSON.stringify(x));
   const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();

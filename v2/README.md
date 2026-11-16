@@ -47,7 +47,7 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 ├── secours/             mode secours sans réseau : grist-hors-ligne.js (Grist simulé, mode veille), relais-n8n.json (relais à importer dans n8n), kit-secours.html (assemblé par outils/construire-secours.js), liste.html (tableau des signalements de A à Z), demo.json, vendor/ (sql.js, MIT)
 ├── reintegration/       réintégration dans Grist des saisies du mode secours
 ├── extractions/        widget « Extractions » : une ligne par établissement, filtres, export Excel (page créée depuis l'onglet Tableau de bord)
-├── fiche/              widget « Fiche établissement » : une page A4 par établissement, tuiles et badges réglables (options du widget, clés « fiche », « filtres » et « modeles »), filtres rapides et avancés, modèles de sélection, impression de la sélection ; fiche-moteur.js : calcul des tuiles et de la sélection, sans affichage
+├── fiche/              widget « Fiche établissement » : une page A4 par établissement, tuiles et badges réglables (options du widget, clés « fiche », « filtres » et « modeles »), filtres rapides et avancés, modèles de sélection, impression (synthèse en page 1 puis détail, ou tuiles détaillées ; fiche seule ou sélection) ; fiche-moteur.js : calcul des tuiles et de la sélection, sans affichage
 ├── veille/              relais-vigilance-n8n.json : workflow n8n Météo-France → table Vigilances (onglet Veille)
 └── modeles/             exemples de configuration à importer (à venir)
 ```
