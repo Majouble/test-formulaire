@@ -7,11 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.1"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.1"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.1"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.1"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.1"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.2"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.2"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.2"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.2"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.2"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.2"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -68,6 +69,34 @@
   .invite { color: var(--gris); padding: 30px 0; text-align: center; }
   @media (max-width: 640px) { .grille { grid-template-columns: 1fr; } .tuile.l2 { grid-column: auto; } }
 
+  /* ---------- filtres et sélection ---------- */
+  .barre-filtres { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 12px; border-bottom: 1px solid var(--bord); background: var(--fond); }
+  .barre-filtres .sous { font-size: 12px; color: var(--gris); }
+  .barre-filtres .spacer { flex: 1; }
+  .qchip { border-radius: 999px; border-color: var(--bord); color: var(--texte); background: var(--page); padding: 3px 10px; font-size: 12px; }
+  .qchip.on { border-color: var(--bleu); background: var(--bleu-pale); color: var(--bleu); }
+  button.lien { border: none; padding: 2px 0; text-decoration: underline; background: none; }
+  #compteSelection { font-size: 12px; font-weight: 600; }
+  #position { font-size: 12px; color: var(--gris); min-width: 70px; text-align: center; }
+  .qpop { position: fixed; z-index: 20; width: 320px; max-height: 60vh; overflow: auto; background: var(--page); border: 1px solid var(--bord); border-radius: 6px;
+          box-shadow: 0 6px 18px rgba(0,0,0,.18); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .qpop[hidden] { display: none; }
+  .qpop .qrow { display: flex; gap: 6px; }
+  .qpop .qopt { display: flex; gap: 6px; align-items: center; } .qpop .qopt .c { margin-left: auto; color: var(--gris); font-size: 12px; }
+  #avances { margin: 8px 12px; padding: 8px 10px; border: 1px solid var(--bord); border-radius: 6px; background: var(--fond); display: flex; flex-direction: column; gap: 4px; }
+  #avances[hidden] { display: none; }
+  #avances .titre-av { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #avances .filtre { display: flex; flex-direction: column; gap: 3px; padding: 4px 0; border-bottom: 1px dashed var(--bord); }
+  #avances .ligne { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #avances select, #avances input[type=text], #avances input[type=number] { width: auto; }
+  .navigation { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  #avances .ligne select[data-ch=source] { max-width: 220px; } #avances .ligne select[data-ch=col] { max-width: 200px; } #avances .ligne input[data-ch=val] { width: 200px; }
+  #avances .portee { margin-left: 26px; font-size: 12px; } #avances .portee input[type=number] { width: 70px; }
+  #avances .resume { margin-left: 26px; font-size: 11px; color: var(--gris); }
+  #avances .num-f { font-size: 11px; font-weight: 600; color: var(--bleu); min-width: 20px; }
+  #formule { width: 200px; }
+  #lot { display: none; }
+
   /* ---------- réglages ---------- */
   #reglages { margin: 10px 12px; padding: 10px; border: 1px solid var(--bord); border-radius: 6px; background: var(--fond); }
   #reglages .barre { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
@@ -90,7 +119,9 @@
   /* ---------- impression : A4, toutes les tuiles détaillées, détail restreint masqué par défaut ---------- */
   @page { size: A4; margin: 12mm; }
   @media print {
-    header, #reglages, .message, .pas-imprime, .md-liste { display: none !important; }
+    header, #reglages, .message, .pas-imprime, .md-liste, .barre-filtres, #avances, .qpop { display: none !important; }
+    body.lot #fiche { display: none; } body.lot #lot { display: block; }
+    .fiche-lot + .fiche-lot { break-before: page; }
     body { background: #fff; color: #161616; font-size: 12px; }
     main { max-width: none; padding: 0; }
     .grille { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
@@ -117,18 +148,34 @@
   <button id="imprimer">Imprimer</button>
   <button id="ouvrirReglages">⚙ Réglages</button>
 </header>
+<div class="barre-filtres" id="barreFiltres">
+  <span class="sous">Filtrer :</span><span id="puces"></span>
+  <button class="qchip" id="btnAvances" aria-expanded="false" aria-controls="avances">Filtres avancés</button>
+  <button class="lien" id="effacerFiltres" hidden>Effacer les filtres</button>
+  <span class="spacer"></span>
+  <span class="navigation"><span id="compteSelection"></span>
+    <button class="petit" id="precedent" aria-label="Établissement précédent de la sélection">◀</button>
+    <span id="position"></span>
+    <button class="petit" id="suivant" aria-label="Établissement suivant de la sélection">▶</button></span>
+  <button class="petit" id="imprimerSelection" title="Une fiche par page, pour chaque établissement de la sélection">Imprimer la sélection</button>
+</div>
+<section id="avances" hidden aria-label="Filtres avancés"></section>
+<div id="qpop" class="qpop" role="dialog" hidden></div>
 <div id="message" class="message"></div>
 <section id="reglages" hidden></section>
 <main id="fiche"></main>
+<div id="lot"></div>
 
 <script>
 "use strict";
 /* =====================================================================
    Fiche établissement — page du widget
    Définit : l'affichage de la fiche, le choix de l'établissement, l'impression et le panneau de réglages.
-   Utilise : window.Socle (schéma des tables, configuration de départ), window.FicheMoteur (calculs), API des widgets Grist.
+   Utilise : window.Socle (schéma des tables, configuration de départ), window.FicheMoteur (calculs),
+             window.FiltresColonnes (filtres avancés, commun/filtres-colonnes.js), API des widgets Grist.
    État : config (réglages enregistrés), brouillon (réglages en cours de modification, affichés en direct),
-          schema et donnees (tables lues), etabId (établissement affiché), ouvertes (tuiles dépliées).
+          schema et donnees (tables lues), etabId (établissement affiché), ouvertes (tuiles dépliées),
+          etat (filtres de la page, enregistrés dans les options du widget, clé « filtres »), selection (établissements retenus).
    ===================================================================== */
 const M = window.FicheMoteur;
 const $ = id => document.getElementById(id);
@@ -138,6 +185,8 @@ const heureParis = s => new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Par
 
 let config = null, brouillon = null, schema = {}, tablesDoc = [], donnees = {}, chargeLe = 0, lecteur = null, marque = null;
 let etabId = null, tableLiee = null, demarre = false;
+let base = null;                   // contexte commun des fiches (index de rattachement), refait à chaque lecture ou réglage
+const FC = window.FiltresColonnes;
 const ouvertes = new Set();
 const actuelle = () => brouillon || config || M.normaliserConfig(null);
 
@@ -177,8 +226,8 @@ function remplirRecherche() {
 $("recherche").addEventListener("change", () => {
   const id = correspondances.get($("recherche").value);
   if (!id) return;
-  etabId = id; $("recherche").value = ""; $("recherche").blur(); afficher();
-  if (tableLiee && tableLiee === actuelle().referentiel.table) grist.setCursorPos({ rowId: id }).catch(() => {});
+  $("recherche").value = ""; $("recherche").blur();
+  allerA(id);
 });
 
 /* ---------- affichage de la fiche ---------- */
@@ -216,14 +265,17 @@ function afficher() {
   if (etabId == null || !lecteur.ligne(cfg.referentiel.table, etabId)) {
     zone.innerHTML = '<p class="invite">Choisissez un établissement : sélectionnez sa ligne dans Grist ou recherchez-le ci-dessus.</p>'; return;
   }
-  const f = M.construireFiche(cfg, lecteur, etabId, { marque });
+  zone.innerHTML = htmlFiche(M.construireFiche(cfg, lecteur, etabId, base), true);
+}
+function htmlFiche(f, ecran) {
+  const cfg = actuelle();
   let k = 0;
-  zone.innerHTML = `<div class="entete">
+  return `<div class="entete">
     <div><div class="surtitre">Fiche établissement</div><h2>${esc(f.titre)}</h2><div class="details">${f.details.map(esc).join(" · ")}</div></div>
     ${marque != null && cfg.nouveau === "point" ? `<span class="repere">Surligné = nouveau depuis le point du ${esc(heureParis(marque))}</span>` : ""}
   </div>
   ${f.badges.length ? `<div class="badges">${f.badges.map(b => `<span class="badge${b.actif ? "" : " non"}">${esc(b.actif ? b.libelle : b.libelle + " : non")}</span>`).join("")}</div>` : ""}
-  ${f.blocs.map(b => `<div class="bloc">${b.titre ? `<h3>${esc(b.titre)}</h3>` : ""}<div class="grille">${b.tuiles.map(t => htmlTuile(t, k++)).join("")}</div></div>`).join("")}
+  ${f.blocs.map(b => `<div class="bloc">${b.titre ? `<h3>${esc(b.titre)}</h3>` : ""}<div class="grille">${b.tuiles.map(t => htmlTuile(t, ecran ? k++ : -1)).join("")}</div></div>`).join("")}
   <div class="pied"><span>Édité le ${esc(heureParis(Date.now() / 1000))}</span>
     <span class="pas-imprime">Appuyer sur une tuile pour la détailler.</span></div>`;
 }
@@ -238,9 +290,227 @@ $("imprimer").addEventListener("click", () => window.print());
 $("imprimerRestreint").addEventListener("change", e => document.body.classList.toggle("imprimer-restreint", e.target.checked));
 $("actualiser").addEventListener("click", () => rafraichir(true));
 async function rafraichir(forcer) {
-  try { await chargerDonnees(forcer); remplirRecherche(); afficher(); }
+  try {
+    await chargerDonnees(forcer);
+    base = M.preparer(actuelle(), lecteur, { marque });
+    recalculerSelection(); remplirRecherche(); afficherFiltres(); afficher();
+  }
   catch (e) { console.error(e); message("Lecture impossible : " + (e.message || e)); }
 }
+
+/* =====================================================================
+   Filtres et sélection
+   - filtres rapides : puces (colonnes du référentiel et badges choisis dans les réglages), liste de valeurs à cocher ;
+   - filtres avancés : moteur des Extractions sur les lignes d'une tuile ou du référentiel (portée, comptage, ET / OU / formule) ;
+   - sélection : établissements retenus, rangés par nom, parcourus avec ◀ ▶, imprimés en lot (une fiche par page).
+   ===================================================================== */
+let etat = etatVide(), dims = [], apresAvances = [], selection = [], minuteurFiltres = null;
+function etatVide() { return { rapides: {}, avances: [], combinaison: "cascade", formule: "" }; }
+function normaliserEtat(e) {
+  const o = { ...etatVide(), ...(e && typeof e === "object" ? e : {}) };
+  if (!o.rapides || typeof o.rapides !== "object") o.rapides = {};
+  o.avances = (Array.isArray(o.avances) ? o.avances : []).map(f => ({ ...FC.reprendre(f), source: f.source == null ? "" : String(f.source) }));
+  if (!FC.COMBINAISONS.some(x => x[0] === o.combinaison)) o.combinaison = "cascade";
+  return o;
+}
+const filtresActifs = () => Object.keys(etat.rapides).length + etat.avances.filter(FC.actif).length;
+function recalculerSelection() {
+  const r = actuelle().referentiel;
+  if (!lecteur || !base || !r.table) { dims = []; apresAvances = []; selection = []; return; }
+  dims = M.dimensionsRapides(actuelle(), lecteur, base);
+  for (const id of Object.keys(etat.rapides)) if (!dims.some(d => d.id === id)) delete etat.rapides[id];   // filtre retiré des réglages
+  apresAvances = lecteur.lignes(r.table).filter(e => M.passeAvances(e, etat, FC, lecteur, base));
+  selection = apresAvances.filter(e => M.passeRapides(e, dims, etat.rapides))
+    .map(e => ({ id: e.id, titre: M.titreEtab(e, lecteur, r) })).sort((a, b) => a.titre.localeCompare(b.titre, "fr"));
+  if (etabId == null && selection.length) etabId = selection[0].id;
+}
+function appliquerFiltres() {
+  recalculerSelection();
+  // après un changement de filtre : l'établissement affiché reste s'il est retenu, sinon le premier de la sélection
+  if (selection.length && filtresActifs() && !selection.some(x => x.id === etabId)) { etabId = selection[0].id; ouvertes.clear(); }
+  afficherFiltres(); afficher();
+  clearTimeout(minuteurFiltres);
+  minuteurFiltres = setTimeout(sauvegarderFiltres, 600);
+}
+function sauvegarderFiltres() {
+  try { localStorage.setItem("prisme-fiche-filtres", JSON.stringify(etat)); } catch (_) {}
+  if (!config) return;   // pas encore de réglages enregistrés : rien à écrire dans les options
+  try { Promise.resolve(grist.setOptions({ fiche: config, filtres: etat })).catch(() => {}); } catch (_) {}
+}
+
+// ---------- barre : puces, compte, position ----------
+function libellePuce(d) {
+  const v = etat.rapides[d.id];
+  if (!v) return "Toutes";
+  if (!v.length) return "aucune valeur";
+  return v[0] + (v.length > 1 ? ` +${v.length - 1}` : "");
+}
+function afficherFiltres() {
+  $("puces").innerHTML = dims.map(d => `<button class="qchip${etat.rapides[d.id] ? " on" : ""}" data-qf="${esc(d.id)}" aria-haspopup="dialog">${esc(d.libelle)} : <b>${esc(libellePuce(d))}</b> ▾</button>`).join(" ");
+  const nAv = etat.avances.filter(FC.actif).length, btn = $("btnAvances");
+  btn.textContent = nAv ? `Filtres avancés (${nAv})` : "Filtres avancés";
+  btn.classList.toggle("on", nAv > 0);
+  $("effacerFiltres").hidden = !filtresActifs();
+  const total = lecteur && actuelle().referentiel.table ? lecteur.lignes(actuelle().referentiel.table).length : 0;
+  $("compteSelection").textContent = filtresActifs() ? `${selection.length.toLocaleString("fr-FR")} / ${total.toLocaleString("fr-FR")} établissements` : `${total.toLocaleString("fr-FR")} établissements`;
+  afficherPosition();
+  if (!$("avances").hidden) afficherAvances();
+}
+function afficherPosition() {
+  const i = selection.findIndex(x => x.id === etabId);
+  $("position").textContent = !selection.length ? "aucun" : i < 0 ? "hors sélection" : `${i + 1} / ${selection.length}`;
+  $("precedent").disabled = $("suivant").disabled = !selection.length;
+  $("imprimerSelection").disabled = !selection.length;
+}
+function allerA(id, depuisGrist) {
+  etabId = id; ouvertes.clear(); afficher(); afficherPosition();
+  if (!depuisGrist && tableLiee && tableLiee === actuelle().referentiel.table) Promise.resolve(grist.setCursorPos({ rowId: id })).catch(() => {});
+}
+function deplacer(sens) {
+  if (!selection.length) return;
+  const i = selection.findIndex(x => x.id === etabId);
+  allerA(selection[(i < 0 ? 0 : i + sens + selection.length) % selection.length].id);
+}
+$("precedent").addEventListener("click", () => deplacer(-1));
+$("suivant").addEventListener("click", () => deplacer(1));
+$("effacerFiltres").addEventListener("click", () => { etat = etatVide(); fermerPuce(); appliquerFiltres(); });
+
+// ---------- filtres rapides : liste à cocher (comme le tableau de bord) ----------
+function ouvrirPuce(id, ancre) {
+  const d = dims.find(x => x.id === id), pop = $("qpop");
+  if (!d) return;
+  const valeurs = M.compterValeurs(d, apresAvances.filter(e => M.passeRapides(e, dims, etat.rapides, id)));
+  (etat.rapides[id] || []).forEach(v => { if (!valeurs.some(x => x.valeur === v)) valeurs.push({ valeur: v, nombre: 0 }); });
+  const retenues = etat.rapides[id] ? new Set(etat.rapides[id]) : null;
+  pop._toutes = valeurs.map(v => v.valeur); pop.dataset.dim = id;
+  pop.innerHTML = `<b>${esc(d.libelle)}</b>
+    <input type="text" id="qsearch" placeholder="Rechercher…" aria-label="Rechercher une valeur">
+    <div class="qrow"><button class="petit" data-q="tout">Tout</button><button class="petit" data-q="aucune">Aucune</button><button class="petit" data-q="fermer">Fermer</button></div>
+    <div>${valeurs.map(v => `<label class="qopt" data-txt="${esc(v.valeur.toLowerCase())}"><input type="checkbox" value="${esc(v.valeur)}"${!retenues || retenues.has(v.valeur) ? " checked" : ""}>
+      <span>${esc(v.valeur)}</span><span class="c">${v.nombre}</span></label>`).join("") || '<span class="aide">Aucune valeur</span>'}</div>`;
+  const r = ancre.getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 330)) + "px";
+  pop.style.top = (r.bottom + 6) + "px";
+  pop.hidden = false;
+  $("qsearch").focus();
+}
+function fermerPuce() { $("qpop").hidden = true; }
+function retenir(id, valeurs, toutes) {
+  if (valeurs.length === toutes.length) delete etat.rapides[id]; else etat.rapides[id] = valeurs;
+  appliquerFiltres();
+}
+$("puces").addEventListener("click", e => {
+  const b = e.target.closest("[data-qf]"); if (!b) return;
+  e.stopPropagation();
+  if (!$("qpop").hidden && $("qpop").dataset.dim === b.dataset.qf) fermerPuce(); else ouvrirPuce(b.dataset.qf, b);
+});
+$("qpop").addEventListener("click", e => {
+  e.stopPropagation();
+  const pop = $("qpop"), q = e.target.dataset && e.target.dataset.q;
+  if (q === "fermer") fermerPuce();
+  else if (q === "tout" || q === "aucune") {
+    pop.querySelectorAll("input[type=checkbox]").forEach(i => { i.checked = q === "tout"; });
+    retenir(pop.dataset.dim, q === "tout" ? pop._toutes : [], pop._toutes);
+  }
+});
+$("qpop").addEventListener("change", e => {
+  if (e.target.type !== "checkbox") return;
+  const pop = $("qpop");
+  retenir(pop.dataset.dim, [...pop.querySelectorAll("input[type=checkbox]:checked")].map(i => i.value), pop._toutes);
+});
+$("qpop").addEventListener("input", e => {
+  if (e.target.id !== "qsearch") return;
+  const t = e.target.value.trim().toLowerCase();
+  $("qpop").querySelectorAll(".qopt").forEach(l => { l.hidden = t && !l.dataset.txt.includes(t); });
+});
+document.addEventListener("click", () => fermerPuce());
+document.addEventListener("keydown", e => { if (e.key === "Escape") fermerPuce(); });
+
+// ---------- filtres avancés (moteur des Extractions) ----------
+const options = (liste, v) => liste.map(([id, lib]) => `<option value="${esc(id)}"${id === v ? " selected" : ""}>${esc(lib)}</option>`).join("");
+function tableSource(f) { const s = M.sourcesFiltres(actuelle()).find(x => x.source === String(f.source ?? "")); return s ? s.table : actuelle().referentiel.table; }
+const libelleCol = (t, c) => ((colonnes(t).find(x => x.colId === c) || {}).label) || c;
+function valeursColonne(t, c) {
+  if (!lecteur || !c || !lecteur.existe(t)) return [];
+  const n = new Map();
+  for (const l of lecteur.lignes(t)) for (const v of lecteur.elements(t, c, l[c])) n.set(v, (n.get(v) || 0) + 1);
+  return [...n].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "fr")).slice(0, 300);
+}
+function afficherAvances() {
+  const sources = M.sourcesFiltres(actuelle()).map(x => [x.source, x.libelle]);
+  if (!etat.avances.length) etat.avances = [nouveauFiltre()];
+  const nActifs = etat.avances.filter(FC.actif).length;
+  $("avances").innerHTML = `<div class="titre-av"><b>Filtres avancés</b>
+      <select id="combinaison" title="Comment se combinent les filtres"${nActifs < 2 ? " disabled" : ""}>${options(FC.COMBINAISONS, etat.combinaison)}</select>
+      <input type="text" id="formule" placeholder="ex. 1 ET (2 OU 3)" aria-label="Formule de combinaison des filtres" value="${esc(etat.formule)}"${etat.combinaison === "formule" && nActifs > 1 ? "" : " hidden"}>
+      <span class="aide">Chaque filtre lit les lignes d'une tuile (avec son filtre, sa période et ses dossiers) ou la fiche du référentiel.</span></div>
+    ${etat.avances.map((f, i) => {
+      const t = tableSource(f), cols = colonnes(t), n = i + 1, compter = f.portee === "compter";
+      const optCols = (v, vide) => `<option value="">${vide}</option>` + cols.map(c => `<option value="${esc(c.colId)}"${c.colId === v ? " selected" : ""}>${esc(c.label || c.colId)}</option>`).join("");
+      return `<div class="filtre" data-i="${i}">
+      <div class="ligne"><span class="num-f">F${n}</span>
+        <select data-ch="source" aria-label="Source du filtre ${n}">${options(sources, String(f.source ?? ""))}</select>
+        <select data-ch="col" aria-label="Colonne du filtre ${n}">${optCols(f.col, compter ? "— toutes les lignes —" : "— colonne —")}</select>
+        <select data-ch="op" aria-label="Opérateur du filtre ${n}"${f.col ? "" : " hidden"}>${options(FC.OPERATEURS, f.op)}</select>
+        <input type="text" data-ch="val" list="fa-valeurs-${i}" value="${esc(f.val ?? "")}" placeholder="valeur (a ; b = l'un ou l'autre)" aria-label="Valeur du filtre ${n}"${!f.col || FC.sansValeur(f.op) ? " hidden" : ""}>
+        <datalist id="fa-valeurs-${i}">${valeursColonne(t, f.col).map(([v, k]) => `<option value="${esc(v)}" label="${k} ligne${k > 1 ? "s" : ""}"></option>`).join("")}</datalist>
+        <button class="petit" data-retirer="${i}" aria-label="Retirer le filtre ${n}">✕</button></div>
+      <div class="ligne portee">
+        <select data-ch="portee" aria-label="Portée du filtre ${n}">${options(FC.PORTEES, f.portee)}</select>
+        ${compter ? `<select data-ch="mesure" aria-label="Mesure du filtre ${n}">${options(FC.MESURES, f.mesure)}</select>
+        ${FC.avecColonneMesure(f.mesure) ? `<select data-ch="colMesure" aria-label="Colonne mesurée par le filtre ${n}">${optCols(f.colMesure, "— colonne —")}</select>` : ""}
+        <select data-ch="cmp" aria-label="Comparaison du filtre ${n}">${options(FC.COMPARAISONS, f.cmp)}</select>
+        <input type="number" step="any" data-ch="seuil" value="${esc(f.seuil ?? "")}" placeholder="seuil" aria-label="Seuil du filtre ${n}">` : ""}
+      </div>
+      <div class="resume">${FC.actif(f) ? esc(FC.libelle(f, c => libelleCol(t, c))) : "Filtre incomplet : sans effet."}</div></div>`;
+    }).join("")}
+    <div><button class="lien" data-ajouter="1">+ Ajouter un filtre</button></div>`;
+}
+function nouveauFiltre() { return { ...FC.nouveau(), mesure: "lignes", source: actuelle().tuiles.length ? "0" : "" }; }
+$("btnAvances").addEventListener("click", () => {
+  const z = $("avances"); z.hidden = !z.hidden;
+  $("btnAvances").setAttribute("aria-expanded", String(!z.hidden));
+  if (!z.hidden) afficherAvances();
+});
+let minuteurSaisie = null;
+function majFiltre(el, immediat) {
+  const ligne = el.closest(".filtre");
+  if (el.id === "combinaison") etat.combinaison = el.value;
+  else if (el.id === "formule") etat.formule = el.value;
+  else if (ligne && el.dataset.ch) {
+    const f = etat.avances[Number(ligne.dataset.i)];
+    f[el.dataset.ch] = el.value;
+    if (el.dataset.ch === "source") { f.col = ""; f.colMesure = ""; f.val = ""; }
+  } else return;
+  // les listes qui changent la forme de la ligne la redessinent ; la saisie de texte garde le focus
+  const redessiner = immediat || ["source", "col", "op", "portee", "mesure"].includes(el.dataset.ch) || el.id === "combinaison";
+  clearTimeout(minuteurSaisie);
+  minuteurSaisie = setTimeout(() => {
+    appliquerFiltres();
+    if (redessiner) afficherAvances();
+    else document.querySelectorAll("#avances .filtre").forEach((d, i) => {
+      const f = etat.avances[i], r = d.querySelector(".resume");
+      if (f && r) r.textContent = FC.actif(f) ? FC.libelle(f, c => libelleCol(tableSource(f), c)) : "Filtre incomplet : sans effet.";
+    });
+  }, redessiner ? 0 : 350);
+}
+$("avances").addEventListener("change", e => majFiltre(e.target, true));
+$("avances").addEventListener("input", e => { if (e.target.matches("input[type=text], input[type=number]")) majFiltre(e.target, false); });
+$("avances").addEventListener("click", e => {
+  const r = e.target.closest("[data-retirer]"), a = e.target.closest("[data-ajouter]");
+  if (r) { etat.avances.splice(Number(r.dataset.retirer), 1); appliquerFiltres(); afficherAvances(); }
+  if (a) { etat.avances.push(nouveauFiltre()); afficherAvances(); }
+});
+
+// ---------- impression de la sélection : une fiche par page ----------
+$("imprimerSelection").addEventListener("click", () => {
+  if (!selection.length || !lecteur) return;
+  if (selection.length > 50 && !confirm(`Imprimer ${selection.length} fiches (une par page) ?`)) return;
+  $("lot").innerHTML = selection.map(x => `<div class="fiche-lot">${htmlFiche(M.construireFiche(actuelle(), lecteur, x.id, base), false)}</div>`).join("");
+  document.body.classList.add("lot");
+  window.print();
+});
+window.addEventListener("afterprint", () => { document.body.classList.remove("lot"); $("lot").innerHTML = ""; });
 
 /* =====================================================================
    Réglages : modifiés dans le brouillon, appliqués en direct à la fiche, enregistrés dans les options du widget
@@ -313,6 +583,8 @@ function afficherReglages() {
     ${champ("Clé de rapprochement", selColonne("referentiel.cle", r.table, r.cle), "Colonne comparée aux tables reliées par du texte (UAI…).")}
     ${champ("Repère « nouveau »", `<select data-champ="nouveau">${opt("point", "lignes saisies après le dernier point de situation", b.nouveau)}${opt("", "aucun", b.nouveau)}</select>`)}
     ${champ("Sous le nom", `<div class="cases">${cases || '<span class="aide">Choisissez d\'abord la table.</span>'}</div>`, "", true)}
+    ${champ("Filtres rapides proposés", `<div class="cases">${colonnes(r.table).map(c => `<label><input type="checkbox" data-liste="filtresRapides" value="${esc(c.colId)}"${b.filtresRapides.includes(c.colId) ? " checked" : ""}> ${esc(c.label || c.colId)}</label>`).join("")}</div>
+      <label><input type="checkbox" data-champ="filtrerBadges"${b.filtrerBadges ? " checked" : ""}> proposer aussi les badges (oui / non)</label>`, "Puces en haut de la fiche, pour choisir les établissements parcourus et imprimés.", true)}
   </div></details>
   <details data-cle="badges"><summary>Badges (${b.badges.length})</summary>
     <p class="aide" style="margin:6px 10px">Appartenance à une liste, affichée en tête : présence de l'établissement dans la table, ou colonne oui / non.</p>
@@ -368,7 +640,7 @@ $("reglages").addEventListener("click", async e => {
     case "annuler": brouillon = null; $("reglages").hidden = true; $("reglages").innerHTML = ""; message(""); await rafraichir(false); return;
     case "enregistrer":
       config = M.normaliserConfig(brouillon);
-      try { await grist.setOptions({ fiche: config }); } catch (err) { message("Enregistrement impossible : " + (err.message || err)); return; }
+      try { await grist.setOptions({ fiche: config, filtres: etat }); } catch (err) { message("Enregistrement impossible : " + (err.message || err)); return; }
       brouillon = null; $("reglages").hidden = true; $("reglages").innerHTML = "";
       message("Réglages enregistrés.", "info"); setTimeout(() => message(""), 3000); await rafraichir(false); return;
   }
@@ -391,6 +663,7 @@ async function configurationDeDepart() {
     if (meta[g.referentiel]) {
       const rf = Socle.resoudreRoles("referentiel", meta[g.referentiel], ctx, assoc.referentiel || {}, {});
       c.referentiel = { table: g.referentiel, titre: col(rf, "Nom"), cle: col(rf, "UAI"), details: [col(rf, "Type"), col(rf, "Commune"), col(rf, "Academie"), col(rf, "UAI")].filter(Boolean) };
+      c.filtresRapides = [col(rf, "Academie"), col(rf, "Departement"), col(rf, "Type")].filter(Boolean);
     }
     if (meta[g.reponses]) {
       const rr = Socle.resoudreRoles("reponses", meta[g.reponses], ctx, assoc.reponses || {}, {});
@@ -420,6 +693,8 @@ async function demarrer(options) {
     await chargerSchema();
     try { tableLiee = grist.selectedTable && grist.selectedTable.getTableId ? await grist.selectedTable.getTableId() : null; } catch (_) { tableLiee = null; }
     config = options && options.fiche ? M.normaliserConfig(options.fiche) : null;
+    let local = null; try { local = JSON.parse(localStorage.getItem("prisme-fiche-filtres") || "null"); } catch (_) {}
+    etat = normaliserEtat((options && options.filtres) || local);
     if (!config) {
       brouillon = await configurationDeDepart();
       message("Fiche pas encore réglée : voici une configuration de départ, à compléter puis enregistrer.", "info");
@@ -433,8 +708,8 @@ grist.onOptions(opts => demarrer(opts));
 if (grist.onRecord) grist.onRecord(rec => {
   if (!rec || rec.id == null) return;
   if (tableLiee && tableLiee !== actuelle().referentiel.table) return;   // widget relié à une autre table : on garde la recherche
-  etabId = rec.id;
-  if (lecteur) rafraichir(false); else afficher();
+  if (!lecteur || Date.now() / 1000 - chargeLe > RAFRAICHIR_APRES) { etabId = rec.id; rafraichir(false); }
+  else if (rec.id !== etabId) allerA(rec.id, true);
 });
 setTimeout(() => demarrer(null), 1500);   // si aucune option n'est envoyée
 </script>
