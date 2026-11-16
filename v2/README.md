@@ -12,6 +12,7 @@ Ce dossier contient la version de développement des widgets v2. La version fig�
 | Référentiel des sites | `https://majouble.github.io/test-formulaire/prod/sites/` | `https://majouble.github.io/test-formulaire/v2/sites/` |
 | Réintégration du mode secours | `https://majouble.github.io/test-formulaire/prod/reintegration/` | `https://majouble.github.io/test-formulaire/v2/reintegration/` |
 | Tableau des signalements de A à Z (aussi dans le kit) | `https://majouble.github.io/test-formulaire/prod/secours/liste.html` | `https://majouble.github.io/test-formulaire/v2/secours/liste.html` |
+| Fiche établissement (en développement) | — | `https://majouble.github.io/test-formulaire/v2/fiche/` |
 | Kit de secours (fichier à enregistrer sur les postes) | `https://majouble.github.io/test-formulaire/prod/secours/kit-secours.html` | `https://majouble.github.io/test-formulaire/v2/secours/kit-secours.html` |
 | Version 1 | `https://majouble.github.io/test-formulaire/` | — |
 
@@ -46,6 +47,7 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 ├── reintegration/       réintégration dans Grist des saisies du mode secours
 ├── extractions/        widget « Extractions » : une ligne par établissement, filtres, export Excel (page créée depuis l'onglet Tableau de bord)
 │   └── filtres-colonnes.js  moteur des filtres de colonnes (condition, portée ou comptage avec seuil, versions, combinaison)
+├── fiche/              widget « Fiche établissement » : une page A4 par établissement, tuiles réglables (options du widget, clé « fiche ») ; fiche-moteur.js : calcul des tuiles, sans affichage
 ├── veille/              relais-vigilance-n8n.json : workflow n8n Météo-France → table Vigilances (onglet Veille)
 └── modeles/             exemples de configuration à importer (à venir)
 ```

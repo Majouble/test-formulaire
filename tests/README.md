@@ -8,7 +8,7 @@ Scénarios Playwright qui ouvrent les widgets (`v2/…`) dans Chromium avec un *
 cd tests
 npm install
 npx playwright install chromium     # ou : CHROMIUM=/chemin/vers/chromium
-sh lancer.sh                        # suite actuelle (run63 à run126)
+sh lancer.sh                        # suite actuelle (run63 à run127)
 sh lancer.sh run74 run76            # quelques scénarios
 ```
 
@@ -98,6 +98,7 @@ Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pou
 | `run121` | 2.53 : Extractions — colonnes fusionnées préfixées : date sur chaque entrée (choix multiples, texte sur plusieurs lignes, ligne sans date) |
 | `run122` | 2.54 : menu déroulant des champs à valeurs proposées — filtre de colonne des Extractions (plusieurs valeurs), filtre commun du tableau de bord (« est l'une des valeurs »), liste complète des sites du formulaire par la flèche |
 | `run126` | 2.61 : File de vérification, acceptation en masse — tous les applicables du filtre (toutes pages), par lots de 150 |
+| `run127` | 2.62 : Fiche établissement — configuration de départ, fiche sur cinq tables (référence et UAI), badges, repère « nouveau », dépliage, recherche, impression (détail restreint masqué), réglages |
 | `run125` | 2.60 : version publiée — scripts appelés avec `?v=<version>`, `version.json` à jour (`outils/versionner.js --verifier`) ; page servie en http plus ancienne que la version publiée : rechargée une fois avec `?v=` |
 | `run124` | 2.57 : Référentiel des sites, onglet « File de vérification » — filtres, acceptation en lot (composante interne, ligne retirée avec report des références, position), valeur retenue (Modifier), siège choisi dans le bandeau, fait à la main, refus, report, campus au nom à préciser (table des campus et colonne Campus des sites créées), regroupement par établissement, bandeau point par point (Précédent / Suivant, sommaire) et carte cadrée sur les objets du point, raccourcis clavier, refus de Grist (message qui nomme le point et l'action), formules de déclenchement |
 | `run123` | 2.55 : Extractions — filtres à comptage et seuil (nombre de jours, somme, maximum), versions par filtre (toutes / dernière de chaque dossier), portées jamais et à chaque fois, opérateur ≥, combinaison par formule, colonnes des valeurs comptées, Excel |
