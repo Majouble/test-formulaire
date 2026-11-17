@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.8"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.8"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.8"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.8"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.8"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.8"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.9"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.9"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.9"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.9"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.9"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.9"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -130,6 +130,7 @@
   .aide { color: var(--gris); font-size: 11px; }
   .cases { display: flex; flex-wrap: wrap; gap: 2px 12px; max-height: 120px; overflow: auto; }
   .cases label { white-space: nowrap; font-weight: normal; }
+  .case-detail { display: inline-flex; gap: 6px; align-items: baseline; margin-right: 10px; } .case-detail .aide { white-space: nowrap; }
   .carte { margin: 6px 10px; }
   .carte > summary { display: flex; gap: 8px; align-items: center; }
   .carte > summary .spacer { flex: 1; }
@@ -794,7 +795,9 @@ function afficherReglages() {
   const z = $("reglages"), b = brouillon, r = b.referentiel;
   const ouverts = new Set([...z.querySelectorAll("details[open]")].map(d => d.dataset.cle));
   const premiere = !z.innerHTML;
-  const cases = colonnes(r.table).map(c => `<label><input type="checkbox" data-liste="referentiel.details" value="${esc(c.colId)}"${r.details.includes(c.colId) ? " checked" : ""}> ${esc(c.label || c.colId)}</label>`).join("");
+  // chaque colonne : affichée sous le nom, et au besoin précédée de son libellé (« Effectif : 612 »)
+  const cases = colonnes(r.table).map(c => `<span class="case-detail"><label><input type="checkbox" data-liste="referentiel.details" value="${esc(c.colId)}"${r.details.includes(c.colId) ? " checked" : ""}> ${esc(c.label || c.colId)}</label>
+    <label class="aide"><input type="checkbox" data-liste="referentiel.libelles" value="${esc(c.colId)}"${r.libelles.includes(c.colId) ? " checked" : ""}> avec libellé</label></span>`).join("");
   z.innerHTML = `<div class="barre"><b>Réglages de la fiche</b><span class="spacer" style="flex:1"></span>
     <button data-action="proposer" title="Remplace les réglages par une fiche de départ tirée des tables du socle">Configuration de départ</button>
     <button data-action="annuler">Annuler</button><button class="principal" data-action="enregistrer">Enregistrer</button></div>
@@ -807,7 +810,7 @@ function afficherReglages() {
       `Chaque partenaire y règle sa propre fiche (réglages, filtres, modèles), rangée dans sa ligne de la table ${PART.table}${schema[PART.table] ? "" : " (à créer : administration, onglet Accès, carte « Partenaires »)"} ; la fiche de cette page sert de modèle de départ.`, true) : ""}
     ${champ("Impression proposée", `<select data-champ="impression">${opt("synthese", "synthèse en page 1, détail ensuite", b.impression)}${opt("complet", "tuiles détaillées", b.impression)}</select>`)}
     ${champ("Repère « nouveau »", `<select data-champ="nouveau">${opt("point", "lignes saisies après le dernier point de situation", b.nouveau)}${opt("", "aucun", b.nouveau)}</select>`)}
-    ${champ("Sous le nom", `<div class="cases">${cases || '<span class="aide">Choisissez d\'abord la table.</span>'}</div>`, "", true)}
+    ${champ("Sous le nom", `<div class="cases">${cases || '<span class="aide">Choisissez d\'abord la table.</span>'}</div>`, "Cochez « avec libellé » pour afficher « Libellé : valeur » (le libellé est celui de la colonne dans Grist).", true)}
     ${champ("Filtres rapides proposés", `<div class="cases">${colonnes(r.table).map(c => `<label><input type="checkbox" data-liste="filtresRapides" value="${esc(c.colId)}"${b.filtresRapides.includes(c.colId) ? " checked" : ""}> ${esc(c.label || c.colId)}</label>`).join("")}</div>
       <label><input type="checkbox" data-champ="filtrerBadges"${b.filtrerBadges ? " checked" : ""}> proposer aussi les badges (oui / non)</label>`, "Puces en haut de la fiche, pour choisir les établissements parcourus et imprimés.", true)}
   </div></details>
