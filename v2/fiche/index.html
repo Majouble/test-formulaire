@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.23"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.23"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.23"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.23"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.23"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.23"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.24"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.24"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.24"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.24"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.24"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.24"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -58,6 +58,9 @@
   .couleurs-badge { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
   .couleurs-badge .regle { display: inline-flex; gap: 4px; align-items: center; border: 1px solid var(--bord); border-radius: 4px; padding: 2px 4px; }
   .couleurs-badge input, .couleurs-badge select { width: auto; } .couleurs-badge input { width: 110px; }
+  .filtres-sup { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
+  .filtres-sup .regle { display: inline-flex; gap: 4px; align-items: center; border: 1px solid var(--bord); border-radius: 4px; padding: 2px 4px; }
+  .filtres-sup select { width: auto; max-width: 220px; } .filtres-sup input { width: 200px; }
   .bloc > h3 { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--bleu); margin: 18px 0 8px; }
   .grille { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 12px; }
   .tuile { border: 1px solid var(--bord); border-radius: 6px; background: var(--bleu-pale); }
@@ -914,6 +917,13 @@ function htmlCarteTuile(t, i, n) {
     ${champ("Depuis", `<input type="text" data-champ="${p}.depuis" value="${esc(t.depuis)}" placeholder="AAAA-MM-JJ ou nombre de jours">`)}
     ${champ("Filtre : colonne", selColonne(`${p}.filtre.colonne`, tab, t.filtre.colonne))}
     ${champ("Filtre : valeurs", `<input type="text" data-champ="${p}.filtre.valeurs" value="${esc(t.filtre.valeurs)}" placeholder="a ; b">`, `<label><input type="checkbox" data-champ="${p}.filtre.exclure"${t.filtre.exclure ? " checked" : ""}> exclure ces valeurs</label>`)}
+    <div class="filtres-sup"><span class="aide">Autres filtres (tous appliqués) :</span>
+      ${(t.filtresSup || []).map((f, k) => `<span class="regle">${selColonne(`${p}.filtresSup.${k}.colonne`, tab, f.colonne)}
+        <select data-champ="${p}.filtresSup.${k}.exclure" aria-label="Garder ou exclure, filtre ${k + 2}">${opt("", "est l'une de", f.exclure ? "1" : "")}${opt("1", "n'est aucune de", f.exclure ? "1" : "")}</select>
+        <input type="text" data-champ="${p}.filtresSup.${k}.valeurs" value="${esc(f.valeurs)}" placeholder="Retour à la normale ; J+1" aria-label="Valeurs du filtre ${k + 2}">
+        <button class="petit" data-action="supprimer-filtre" data-i="${i}" data-k="${k}" aria-label="Retirer le filtre ${k + 2}">✕</button></span>`).join("")}
+      <button class="petit" data-action="ajouter-filtre" data-i="${i}">+ filtre</button>
+    </div>
     ${champ("Synthèse", `<select data-champ="${p}.synthese.mode" data-recharge="1">${M.MODES.map(([v, l]) => opt(v, l, t.synthese.mode)).join("")}</select>`)}
     ${champ("Colonne de la synthèse", selColonne(`${p}.synthese.colonne`, tab, t.synthese.colonne), "Pour une somme ou la valeur la plus récente.")}
     ${t.synthese.mode === "valeur" ? champ("Valeurs à ignorer", `<input type="text" data-champ="${p}.synthese.ignorer" value="${esc(t.synthese.ignorer)}" placeholder="Retour à la normale ; RAS">`,
@@ -1031,6 +1041,8 @@ $("reglages").addEventListener("click", async e => {
     case "descendre-badge": { const B = brouillon.badges; [B[i + 1], B[i]] = [B[i], B[i + 1]]; break; }
     case "ajouter-couleur": brouillon.badges[i].couleurs.push({ valeur: brouillon.badges[i].affichage === "valeur" ? "" : "Oui", couleur: "vert" }); break;
     case "supprimer-couleur": brouillon.badges[i].couleurs.splice(Number(b.dataset.k), 1); break;
+    case "ajouter-filtre": (T[i].filtresSup = T[i].filtresSup || []).push({ colonne: "", valeurs: "", exclure: true }); break;
+    case "supprimer-filtre": T[i].filtresSup.splice(Number(b.dataset.k), 1); break;
     case "json":
       try { brouillon = M.normaliserConfig(JSON.parse($("json").value)); } catch (err) { message("Texte illisible : " + err.message); return; }
       break;
