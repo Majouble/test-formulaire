@@ -30,7 +30,8 @@
                    couleurs : [{ valeur, couleur }] — première règle dont la valeur correspond (« Oui », « Non », « Niv 3 »,
                    « vide ») ; sans règle : bleu si allumé, contour gris si éteint
      tuiles      : [{ titre, bloc, largeur 1-3, table, lien, filtre: { colonne, valeurs, exclure }, parDossier, date,
-                      saisie, depuis, synthese: { mode, colonne, unite, legende }, ventilation, ventilationColonnes: [colonnes],
+                      saisie, depuis, synthese: { mode, colonne, unite, legende, ignorer (« a ; b », valeur la plus récente),
+                      ignorerMemeJour }, ventilation, ventilationColonnes: [colonnes],
                       ventilationAffichage ("liste" | "barres"), detail: [colonnes],
                       limite, source, restreint, masquerSiVide (tuile omise quand elle est vide) }]
    ===================================================================== */
@@ -43,7 +44,7 @@
   ];
   const TUILE_VIDE = {
     titre: "Nouvelle tuile", bloc: "", largeur: 1, table: "", lien: "", filtre: { colonne: "", valeurs: "", exclure: false },
-    parDossier: "", date: "", saisie: "", depuis: "", synthese: { mode: "nombre", colonne: "", unite: "", legende: "" },
+    parDossier: "", date: "", saisie: "", depuis: "", synthese: { mode: "nombre", colonne: "", unite: "", legende: "", ignorer: "", ignorerMemeJour: true },
     ventilation: "", ventilationColonnes: [], ventilationAffichage: "liste", detail: [], limite: 15, source: "", restreint: false, masquerSiVide: false,
   };
   const CONFIG_VIDE = { referentiel: { table: "", titre: "", details: [], libelles: [], cle: "" }, nouveau: "point", impression: "synthese", filtresRapides: [], filtrerBadges: false, badges: [], tuiles: [] };
@@ -259,7 +260,16 @@
     jours.forEach((j, i) => { if (i === 0 || (Date.parse(j) - Date.parse(jours[i - 1])) > 86400000) episodes++; });
     const nombre = col => lignes.reduce((s, l) => s + (Number(l[col]) || 0), 0);
     const premiere = lignes[0] || null;
-    const valeurDe = col => premiere ? lecteur.texte(tab, col, premiere[col]) : "";
+    // valeur la plus récente : en sautant les valeurs ignorées (« Retour à la normale ; RAS »), cherchée parmi les lignes
+    // du jour le plus récent (réglage par défaut) pour ne pas ressortir un état ancien ; à défaut, la plus récente
+    const ignorees = new Set(String(t.synthese.ignorer || "").split(";").map(norm).filter(Boolean));
+    let ligneValeur = premiere;
+    if (t.synthese.mode === "valeur" && ignorees.size && premiere && t.synthese.colonne) {
+      const jour0 = t.date ? jourISO(premiere[t.date], typeDe(t.date)) : "";
+      const candidates = t.synthese.ignorerMemeJour !== false && jour0 ? lignes.filter(l => jourISO(l[t.date], typeDe(t.date)) === jour0) : lignes;
+      ligneValeur = candidates.find(l => !ignorees.has(norm(lecteur.texte(tab, t.synthese.colonne, l[t.synthese.colonne])))) || premiere;
+    }
+    const valeurDe = col => { const l = col === t.synthese.colonne ? ligneValeur : premiere; return l ? lecteur.texte(tab, col, l[col]) : ""; };
 
     const s = t.synthese, unite = s.unite ? ` ${s.unite}` : "";
     // couche 2 : ventilation, calculée d'abord (la synthèse et la légende peuvent s'en servir)
