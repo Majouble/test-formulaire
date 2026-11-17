@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.19"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.19"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.19"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.19"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.19"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.19"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.20"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.20"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.20"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.20"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.20"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.20"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -24,6 +24,7 @@
   header h1 { font-size: 15px; margin: 0; color: var(--bleu); }
   header .version { color: var(--gris); font-size: 11px; }
   header .spacer { flex: 1; }
+  .groupe-impression { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 2px 6px; border: 1px solid var(--bord); border-radius: 6px; }
   header input[type=text] { width: min(340px, 100%); }
   button { font: inherit; padding: 5px 11px; border-radius: 4px; border: 1px solid var(--bleu); background: #fff; color: var(--bleu); cursor: pointer; }
   button.principal { background: var(--bleu); color: #fff; }
@@ -170,6 +171,8 @@
   body.impression.mp-synthese .note-detail { display: inline; }
   body.impression.mp-synthese .pied { margin-top: 10px; }
   body.impression.mp-synthese .annexe { display: block; break-before: page; }
+  body.impression.mp-seule .annexe, body.impression.mp-seule .note-detail { display: none !important; }
+  body.impression.mp-seule .tuile.a-detail .titre::after { content: "" !important; }
 
   /* ---------- impression : A4, toutes les tuiles détaillées, détail restreint masqué par défaut ---------- */
   @page { size: A4; margin: 12mm; }
@@ -202,10 +205,13 @@
   <input type="text" id="recherche" list="liste-etabs" placeholder="Rechercher un établissement (nom, UAI…)" aria-label="Rechercher un établissement">
   <datalist id="liste-etabs"></datalist>
   <button id="actualiser" title="Relire les tables du document">Actualiser</button>
-  <label title="Sans cette case, les tuiles marquées « diffusion restreinte » n'impriment que leur synthèse"><input type="checkbox" id="imprimerRestreint"> détail restreint</label>
-  <select id="miseEnPage" aria-label="Mise en page à l'impression" style="width:auto">
-    <option value="synthese">Synthèse en page 1, détail ensuite</option><option value="complet">Tuiles détaillées</option></select>
-  <button id="imprimer">Imprimer</button>
+  <span class="groupe-impression" role="group" aria-label="Impression">
+    <select id="miseEnPage" aria-label="Mise en page à l'impression" style="width:auto">
+      <option value="synthese">Synthèse en page 1, détail ensuite</option><option value="seule">Synthèse seulement (une page)</option><option value="complet">Tuiles détaillées</option></select>
+    <label title="Sans cette case, les tuiles marquées « diffusion restreinte » n'impriment que leur synthèse"><input type="checkbox" id="imprimerRestreint"> détail restreint</label>
+    <button id="imprimer" title="Imprimer la fiche affichée">Imprimer la fiche</button>
+    <button id="imprimerSelection" title="Une fiche après l'autre, pour chaque établissement de la sélection">Imprimer la sélection</button>
+  </span>
   <button id="ouvrirReglages">⚙ Réglages</button>
 </header>
 <div class="barre-filtres" id="barreFiltres">
@@ -224,7 +230,6 @@
     <button class="petit" id="precedent" aria-label="Établissement précédent de la sélection">◀</button>
     <span id="position"></span>
     <button class="petit" id="suivant" aria-label="Établissement suivant de la sélection">▶</button></span>
-  <button class="petit" id="imprimerSelection" title="Une fiche par page, pour chaque établissement de la sélection">Imprimer la sélection</button>
 </div>
 <section id="avances" hidden aria-label="Sélection d'établissements"></section>
 <div id="qpop" class="qpop" role="dialog" hidden></div>
@@ -310,7 +315,9 @@ function remplirRecherche() {
   const r = actuelle().referentiel, l = $("liste-etabs");
   correspondances = new Map();
   if (!lecteur || !r.table || !r.titre) { l.innerHTML = ""; return; }
-  const opts = lecteur.lignes(r.table).map(e => {
+  // recherche limitée aux établissements de la sélection
+  const retenus = new Set(selection.map(x => x.id));
+  const opts = lecteur.lignes(r.table).filter(e => retenus.has(e.id)).map(e => {
     const lib = [lecteur.texte(r.table, r.titre, e[r.titre]), r.cle ? lecteur.texte(r.table, r.cle, e[r.cle]) : ""].filter(Boolean).join(" — ");
     correspondances.set(lib, e.id);
     return lib;
@@ -369,6 +376,7 @@ function afficher() {
   const cfg = actuelle(), zone = $("fiche");
   if (!cfg.referentiel.table) { zone.innerHTML = '<p class="invite">Ouvrez « ⚙ Réglages » pour choisir la table des établissements et les tuiles.</p>'; return; }
   if (!lecteur) return;
+  if (etabId == null && !selection.length && filtresActifs()) { zone.innerHTML = '<p class="invite">Aucun établissement ne répond aux filtres.</p>'; return; }
   if (etabId == null || !lecteur.ligne(cfg.referentiel.table, etabId)) {
     zone.innerHTML = '<p class="invite">Choisissez un établissement : sélectionnez sa ligne dans Grist ou recherchez-le ci-dessus.</p>'; return;
   }
@@ -400,8 +408,10 @@ function htmlAnnexe(f) {
 }
 function appliquerMiseEnPage() {
   const v = $("miseEnPage").value;
-  document.body.classList.toggle("mp-synthese", v === "synthese");
-  document.body.classList.toggle("mp-complet", v !== "synthese");
+  // « seule » : la page de synthèse, sans les pages de détail
+  document.body.classList.toggle("mp-synthese", v === "synthese" || v === "seule");
+  document.body.classList.toggle("mp-seule", v === "seule");
+  document.body.classList.toggle("mp-complet", v === "complet");
 }
 $("miseEnPage").addEventListener("change", appliquerMiseEnPage);
 $("fiche").addEventListener("click", e => {
@@ -450,14 +460,15 @@ function recalculerSelection() {
   apresAvances = lecteur.lignes(r.table).filter(e => M.passeAvances(e, etat, FC, lecteur, base));
   selection = apresAvances.filter(e => M.passeRapides(e, dims, etat.rapides))
     .map(e => ({ id: e.id, titre: M.titreEtab(e, lecteur, r) })).sort((a, b) => a.titre.localeCompare(b.titre, "fr"));
-  if (etabId == null && selection.length) etabId = selection[0].id;
+  // pas de fiche hors de la sélection : l'établissement affiché en fait partie, sinon le premier retenu
+  if (!selection.some(x => x.id === etabId)) { etabId = selection.length ? selection[0].id : null; ouvertes.clear(); }
 }
 function appliquerFiltres(depuisModele) {
   if (!depuisModele) { $("modele").value = ""; majBoutonsModele(); }
   recalculerSelection();
   // après un changement de filtre : l'établissement affiché reste s'il est retenu, sinon le premier de la sélection
   if (selection.length && filtresActifs() && !selection.some(x => x.id === etabId)) { etabId = selection[0].id; ouvertes.clear(); }
-  afficherFiltres(); afficher();
+  remplirRecherche(); afficherFiltres(); afficher();
   clearTimeout(minuteurFiltres);
   minuteurFiltres = setTimeout(sauvegarderFiltres, 600);
 }
@@ -637,6 +648,11 @@ function afficherPosition() {
   $("imprimerSelection").disabled = !selection.length;
 }
 function allerA(id, depuisGrist) {
+  if (!selection.some(x => x.id === id)) {   // ligne choisie dans Grist hors de la sélection : la fiche ne change pas
+    if (depuisGrist) message("Cet établissement ne fait pas partie de la sélection en cours : effacez ou changez les filtres pour l'afficher.", "info");
+    return;
+  }
+  if (depuisGrist) message("");
   etabId = id; ouvertes.clear(); afficher(); afficherPosition();
   if (!depuisGrist && tableLiee && tableLiee === actuelle().referentiel.table) Promise.resolve(grist.setCursorPos({ rowId: id })).catch(() => {});
 }
@@ -926,7 +942,7 @@ function afficherReglages() {
     ${champ("Clé de rapprochement", selColonne("referentiel.cle", r.table, r.cle), "Colonne comparée aux tables reliées par du texte (UAI…).")}
     ${source == null && (proprietaire || !pagePartenaires) ? champ("Page des partenaires", `<label><input type="checkbox" id="pagePartenaires"${pagePartenaires ? " checked" : ""}> page ouverte aux partenaires par leur lien</label>`,
       `Chaque partenaire y règle sa propre fiche (réglages, filtres, modèles), rangée dans sa ligne de la table ${PART.table}${schema[PART.table] ? "" : " (à créer : administration, onglet Accès, carte « Partenaires »)"} ; la fiche de cette page sert de modèle de départ.`, true) : ""}
-    ${champ("Impression proposée", `<select data-champ="impression">${opt("synthese", "synthèse en page 1, détail ensuite", b.impression)}${opt("complet", "tuiles détaillées", b.impression)}</select>`)}
+    ${champ("Impression proposée", `<select data-champ="impression">${opt("synthese", "synthèse en page 1, détail ensuite", b.impression)}${opt("seule", "synthèse seulement (une page)", b.impression)}${opt("complet", "tuiles détaillées", b.impression)}</select>`)}
     ${champ("Repère « nouveau »", `<select data-champ="nouveau">${opt("point", "lignes saisies après le dernier point de situation", b.nouveau)}${opt("", "aucun", b.nouveau)}</select>`)}
     ${champ("Sous le nom", `<div class="cases">${cases || '<span class="aide">Choisissez d\'abord la table.</span>'}</div>`, "Cochez « avec libellé » pour afficher « Libellé : valeur » (le libellé est celui de la colonne dans Grist).", true)}
     ${champ("Filtres rapides proposés", `<div class="cases">${colonnes(r.table).map(c => `<label><input type="checkbox" data-liste="filtresRapides" value="${esc(c.colId)}"${b.filtresRapides.includes(c.colId) ? " checked" : ""}> ${esc(c.label || c.colId)}</label>`).join("")}</div>
