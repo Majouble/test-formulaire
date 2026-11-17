@@ -438,16 +438,38 @@
     if (/^\d+$/.test(v) && !sources.some(x => x.source === v)) { const t = config.tuiles[Number(v)]; return sources.find(x => x.table === (t && (t.table || config.referentiel.table))) || null; }
     return sources.find(x => x.source === v) || null;
   }
+  /* Période de la sélection (comme les Extractions) : dates fixes (du, au) ou les N derniers jours (relative : un
+     modèle « bloqués ces 7 derniers jours » reste juste le lendemain). Elle restreint les lignes lues par chaque
+     filtre, d'après la colonne date de sa table ; seule (sans filtre), elle retient les établissements qui ont au
+     moins une ligne dans la période dans la première table à dossiers (les signalements). */
+  function bornesPeriode(periode, maintenant) {
+    const p = periode || {};
+    if (p.mode === "jours" && Number(p.jours) > 0) {
+      const t = (maintenant || Date.now() / 1000) * 1000;
+      return { du: fmtJourParis.format(new Date(t - (Number(p.jours) - 1) * 86400000)), au: fmtJourParis.format(new Date(t)) };
+    }
+    if (p.mode === "dates" && (p.du || p.au)) return { du: jourISO(p.du) || "", au: jourISO(p.au) || "" };
+    return null;
+  }
+  function lignesDansPeriode(lignes, src, lecteur, bornes) {
+    if (!bornes || !src.date) return lignes;
+    const type = (lecteur.colonne(src.table, src.date) || {}).type;
+    return lignes.filter(l => { const j = jourISO(l[src.date], type); return j && (!bornes.du || j >= bornes.du) && (!bornes.au || j <= bornes.au); });
+  }
   function passeAvances(etab, etat, FC, lecteur, base) {
-    const avances = etat.avances || [];
-    if (!avances.some(FC.actif)) return true;
+    const avances = etat.avances || [], bornes = bornesPeriode(etat.periode, base.maintenant);
     const sources = base.sources || (base.sources = sourcesFiltres(base.config, lecteur.schema));
+    if (!avances.some(FC.actif)) {
+      if (!bornes) return true;
+      const src = sources.find(x => x.dossier && x.date) || sources.find(x => x.source !== "" && x.date);
+      return !src || lignesDansPeriode(base.rattacher(etab, src.table, src.lien), src, lecteur, bornes).length > 0;
+    }
     const resultats = avances.map(f => {
       if (!FC.actif(f)) return undefined;
       const src = sourceDe(f, sources, base.config);
       if (!src) return undefined;
-      // toutes les lignes de l'établissement dans la table, comme dans les Extractions
-      const lignes = src.source === "" ? [etab] : base.rattacher(etab, src.table, src.lien);
+      // toutes les lignes de l'établissement dans la table (dans la période), comme dans les Extractions
+      const lignes = src.source === "" ? [etab] : lignesDansPeriode(base.rattacher(etab, src.table, src.lien), src, lecteur, bornes);
       const ctxF = contexteFiltre(lecteur, src.table, src.date);
       if (f.versions === "derniere" && src.dossier) {
         const dernieres = new Map();
@@ -491,7 +513,7 @@
   }
 
   const api = { CONFIG_VIDE, TUILE_VIDE, MODES, normaliserConfig, tablesNecessaires, verifierConfig, creerLecteur, preparer, construireFiche,
-    dimensionsRapides, compterValeurs, passeRapides, passeAvances, selectionner, sourcesFiltres, titreEtab, jourISO, texteJour, estDate };
+    dimensionsRapides, compterValeurs, passeRapides, passeAvances, bornesPeriode, selectionner, sourcesFiltres, titreEtab, jourISO, texteJour, estDate };
   if (typeof window !== "undefined") window.FicheMoteur = api;
   if (typeof module !== "undefined") module.exports = api;
 })();

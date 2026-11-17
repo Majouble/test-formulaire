@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.11"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.11"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.11"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.11"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.11"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.11"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.12"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.12"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.12"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.12"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.12"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.12"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -120,6 +120,7 @@
   .modeles select { width: auto; max-width: 240px; } #nomModele { width: 180px; }
   .navigation { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
   #avances .ligne select[data-ch=source] { max-width: 220px; } #avances .ligne select[data-ch=col] { max-width: 200px; } #avances .ligne input[data-ch=val] { width: 200px; }
+  #avances .periode { gap: 6px; padding: 4px 0; border-bottom: 1px dashed var(--bord); } #avances input[type=date] { width: auto; }
   #avances .portee { margin-left: 26px; font-size: 12px; } #avances .portee input[type=number] { width: 70px; }
   #avances .resume { margin-left: 26px; font-size: 11px; color: var(--gris); }
   #avances .num-f { font-size: 11px; font-weight: 600; color: var(--bleu); min-width: 20px; }
@@ -402,15 +403,17 @@ async function rafraichir(forcer) {
    ===================================================================== */
 let etat = etatVide(), dims = [], apresAvances = [], selection = [], minuteurFiltres = null;
 let modelesDoc = [], modelesPage = [], socleConfig = null;   // modèles de sélection : du document (Config, clé « fiche »), de la page
-function etatVide() { return { rapides: {}, avances: [], combinaison: "cascade", formule: "" }; }
+function etatVide() { return { rapides: {}, avances: [], combinaison: "cascade", formule: "", periode: { mode: "", du: "", au: "", jours: 7 } }; }
 function normaliserEtat(e) {
   const o = { ...etatVide(), ...(e && typeof e === "object" ? e : {}) };
   if (!o.rapides || typeof o.rapides !== "object") o.rapides = {};
+  o.periode = { ...etatVide().periode, ...(o.periode && typeof o.periode === "object" ? o.periode : {}) };
   o.avances = (Array.isArray(o.avances) ? o.avances : []).map(f => ({ ...FC.reprendre(f), source: f.source == null ? "" : String(f.source) }));
   if (!FC.COMBINAISONS.some(x => x[0] === o.combinaison)) o.combinaison = "cascade";
   return o;
 }
-const filtresActifs = () => Object.keys(etat.rapides).length + etat.avances.filter(FC.actif).length;
+const periodeActive = () => !!(base && M.bornesPeriode(etat.periode, base.maintenant));
+const filtresActifs = () => Object.keys(etat.rapides).length + etat.avances.filter(FC.actif).length + (periodeActive() ? 1 : 0);
 function recalculerSelection() {
   const r = actuelle().referentiel;
   if (!lecteur || !base || !r.table) { dims = []; apresAvances = []; selection = []; return; }
@@ -563,8 +566,9 @@ function libellePuce(d) {
 function afficherFiltres() {
   $("puces").innerHTML = dims.map(d => `<button class="qchip${etat.rapides[d.id] ? " on" : ""}" data-qf="${esc(d.id)}" aria-haspopup="dialog">${esc(d.libelle)} : <b>${esc(libellePuce(d))}</b> ▾</button>`).join(" ");
   const nAv = etat.avances.filter(FC.actif).length, btn = $("btnAvances");
-  btn.textContent = nAv ? `Sélection (${nAv} filtre${nAv > 1 ? "s" : ""})` : "Sélection d'établissements…";
-  btn.classList.toggle("on", nAv > 0);
+  const parts = [nAv ? `${nAv} filtre${nAv > 1 ? "s" : ""}` : "", periodeActive() ? "période" : ""].filter(Boolean);
+  btn.textContent = parts.length ? `Sélection (${parts.join(", ")})` : "Sélection d'établissements…";
+  btn.classList.toggle("on", parts.length > 0);
   $("effacerFiltres").hidden = !filtresActifs();
   const total = lecteur && actuelle().referentiel.table ? lecteur.lignes(actuelle().referentiel.table).length : 0;
   $("compteSelection").textContent = filtresActifs() ? `${selection.length.toLocaleString("fr-FR")} / ${total.toLocaleString("fr-FR")} établissements` : `${total.toLocaleString("fr-FR")} établissements`;
@@ -663,6 +667,12 @@ function afficherAvances() {
       <select id="combinaison" title="Comment se combinent les filtres"${nActifs < 2 ? " disabled" : ""}>${options(FC.COMBINAISONS, etat.combinaison)}</select>
       <input type="text" id="formule" placeholder="ex. 1 ET (2 OU 3)" aria-label="Formule de combinaison des filtres" value="${esc(etat.formule)}"${etat.combinaison === "formule" && nActifs > 1 ? "" : " hidden"}>
       <span class="aide">Comme dans les Extractions : chaque filtre porte sur toutes les lignes de l'établissement dans une table (ex. Reponses : Qualification est égal à Blocage, compter le nombre de jours ≥ 3). Enregistrez la sélection en modèle pour la retrouver.</span></div>
+    <div class="ligne periode"><b>Période</b>
+      <select id="periodeMode" aria-label="Période de la sélection">${options([["", "toute la période"], ["dates", "du … au …"], ["jours", "les N derniers jours"]], etat.periode.mode)}</select>
+      ${etat.periode.mode === "dates" ? `du <input type="date" id="periodeDu" value="${esc(etat.periode.du)}" aria-label="Début de la période"> au <input type="date" id="periodeAu" value="${esc(etat.periode.au)}" aria-label="Fin de la période">` : ""}
+      ${etat.periode.mode === "jours" ? `<input type="number" min="1" id="periodeJours" value="${esc(etat.periode.jours)}" aria-label="Nombre de jours" style="width:70px"> derniers jours, aujourd'hui compris` : ""}
+      ${etat.periode.mode ? `<span class="aide">Les filtres ne lisent que les lignes de la période (colonne date de chaque table) ; sans filtre, sont retenus les établissements qui ont au moins un signalement dans la période.</span>` : ""}
+    </div>
     ${etat.avances.map((f, i) => {
       const t = tableSource(f), cols = colonnes(t), n = i + 1, compter = f.portee === "compter";
       const optCols = (v, vide) => `<option value="">${vide}</option>` + cols.map(c => `<option value="${esc(c.colId)}"${c.colId === v ? " selected" : ""}>${esc(c.label || c.colId)}</option>`).join("");
@@ -700,6 +710,10 @@ let minuteurSaisie = null;
 function majFiltre(el, immediat) {
   const ligne = el.closest(".filtre");
   if (el.id === "combinaison") etat.combinaison = el.value;
+  else if (el.id === "periodeMode") etat.periode.mode = el.value;
+  else if (el.id === "periodeDu") etat.periode.du = el.value;
+  else if (el.id === "periodeAu") etat.periode.au = el.value;
+  else if (el.id === "periodeJours") etat.periode.jours = Number(el.value) || "";
   else if (el.id === "formule") etat.formule = el.value;
   else if (ligne && el.dataset.ch) {
     const f = etat.avances[Number(ligne.dataset.i)];
@@ -707,7 +721,7 @@ function majFiltre(el, immediat) {
     if (el.dataset.ch === "source") { f.col = ""; f.colMesure = ""; f.val = ""; f.versions = (sourceFiltre(f) || {}).dossier ? "derniere" : "toutes"; }
   } else return;
   // les listes qui changent la forme de la ligne la redessinent ; la saisie de texte garde le focus
-  const redessiner = immediat || ["source", "col", "op", "portee", "mesure"].includes(el.dataset.ch) || el.id === "combinaison";
+  const redessiner = immediat || ["source", "col", "op", "portee", "mesure"].includes(el.dataset.ch) || ["combinaison", "periodeMode"].includes(el.id);
   clearTimeout(minuteurSaisie);
   minuteurSaisie = setTimeout(() => {
     appliquerFiltres();
