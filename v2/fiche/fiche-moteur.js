@@ -27,6 +27,8 @@
      badges      : [{ libelle, table, lien, colonne, affichage }]
                    affichage « oui_non » : allumé si l'établissement est dans la table (colonne vide) ou si la colonne est vraie ;
                    affichage « valeur » : « Libellé : valeur de la colonne » (Label CVL : Niv 3), éteint si la valeur est vide
+                   couleurs : [{ valeur, couleur }] — première règle dont la valeur correspond (« Oui », « Non », « Niv 3 »,
+                   « vide ») ; sans règle : bleu si allumé, contour gris si éteint
      tuiles      : [{ titre, bloc, largeur 1-3, table, lien, filtre: { colonne, valeurs, exclure }, parDossier, date,
                       saisie, depuis, synthese: { mode, colonne, unite, legende }, ventilation, ventilationColonnes: [colonnes],
                       ventilationAffichage ("liste" | "barres"), detail: [colonnes],
@@ -58,7 +60,8 @@
     if (!Array.isArray(out.referentiel.details)) out.referentiel.details = [];
     if (!Array.isArray(out.referentiel.libelles)) out.referentiel.libelles = [];
     if (!Array.isArray(out.filtresRapides)) out.filtresRapides = [];
-    out.badges = (Array.isArray(out.badges) ? out.badges : []).map(b => ({ libelle: "", table: "", lien: "", colonne: "", affichage: "oui_non", ...b }));
+    out.badges = (Array.isArray(out.badges) ? out.badges : []).map(b => ({ libelle: "", table: "", lien: "", colonne: "", affichage: "oui_non", ...b,
+      couleurs: (Array.isArray(b.couleurs) ? b.couleurs : []).map(x => ({ valeur: "", couleur: "vert", ...x })) }));
     out.tuiles = (Array.isArray(out.tuiles) ? out.tuiles : []).map(t => ({
       ...copie(TUILE_VIDE), ...t,
       filtre: { ...TUILE_VIDE.filtre, ...(t.filtre || {}) },
@@ -343,12 +346,17 @@
   // badge d'un établissement : { actif, valeurs, valeur } (valeurs : textes distincts de la colonne en mode « valeur »)
   function lireBadge(b, etab, base, lecteur) {
     const tab = b.table || base.refTable, lignes = base.rattacher(etab, tab, b.table ? b.lien : "");
+    let r;
     if (b.affichage === "valeur") {
       const valeurs = b.colonne ? [...new Set(lignes.flatMap(l => lecteur.elements(tab, b.colonne, l[b.colonne])).filter(Boolean))] : [];
-      return { actif: valeurs.length > 0, valeurs, valeur: valeurs.join(", ") };
+      r = { actif: valeurs.length > 0, valeurs, valeur: valeurs.join(", ") };
+    } else {
+      const actif = b.colonne ? lignes.some(l => vrai(l[b.colonne])) : lignes.length > 0;
+      r = { actif, valeurs: [actif ? "Oui" : "Non"], valeur: "" };
     }
-    const actif = b.colonne ? lignes.some(l => vrai(l[b.colonne])) : lignes.length > 0;
-    return { actif, valeurs: [actif ? "Oui" : "Non"], valeur: "" };
+    // couleur : première règle dont la valeur est l'une des valeurs du badge (« vide » : badge éteint)
+    const regle = (b.couleurs || []).find(c => { const v = norm(c.valeur); return v && (v === "vide" ? !r.actif : r.valeurs.some(x => norm(x) === v)); });
+    return { ...r, couleur: regle ? regle.couleur : "" };
   }
 
   /* ---------- la fiche d'un établissement ---------- */
