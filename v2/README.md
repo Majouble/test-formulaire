@@ -89,6 +89,7 @@ Les widgets sont des pages statiques (HTML et JavaScript, sans serveur propre) a
 | `Actions` | Suivi des actions de la cellule | Onglet Actions |
 | `Vigilances`, `Vigilances_journal` | Veille météo, écrites par le relais n8n | Onglet Veille |
 | `Administration`, `Cellule` | Tables vides qui portent les pages réservées (règles d'accès) | Installation |
+| `Partenaires` | Partenaires ouverts par lien (nom, clé, lien, actif) ; colonne `Fiche` : leurs réglages, filtres et modèles de la fiche établissement (JSON) | Onglet Accès, carte « Partenaires » |
 
 ### Clés de Config
 
@@ -99,6 +100,7 @@ Les widgets sont des pages statiques (HTML et JavaScript, sans serveur propre) a
 | `schema` | Socle | Copie des colonnes lue par les liens d'établissement |
 | `annuaire_en`, `referentiel_esr`, `effectifs` | Référentiel | Réglages et trace des imports (`regles_esr`, règle des écoles d'ingénieurs, abandonnée en 2.56 : n'est plus lue) |
 | `planning`, `repartition` | Équipe | Fonctions, modèles de journée ; critères de périmètre |
+| `partenaires` | Accès | Tables ouvertes en lecture aux partenaires (`tables`) |
 | `liens`, `campagnes`, `acces_invites` | Établissements, Équipe | Mise en place des liens, publipostage, campagnes ; durée des liens invités |
 | `validation` | Validation | Circuits de visas |
 | `veille` | Veille | Seuil, phénomènes suivis |
@@ -110,7 +112,7 @@ Les widgets sont des pages statiques (HTML et JavaScript, sans serveur propre) a
 
 ### Accès
 
-Les règles d'accès Grist sont générées par l'onglet Accès (`admin/acces.js`), repérées par le mémo « Socle v2 », et réappliquées à la publication d'un formulaire quand elles ne correspondent plus. Attributs utilisateur : `Agent` (compte Grist, par adresse), `Invite` (lien d'invité, par clé), un attribut par groupe de liens d'établissement (`Etab`). Le détail des profils est dans le guide de l'administrateur.
+Les règles d'accès Grist sont générées par l'onglet Accès (`admin/acces.js`), repérées par le mémo « Socle v2 », et réappliquées à la publication d'un formulaire quand elles ne correspondent plus. Attributs utilisateur : `Agent` (compte Grist, par adresse), `Invite` (lien d'invité, par clé), un attribut par groupe de liens d'établissement (`Etab`), `Partenaire` (lien de partenaire, par clé : lecture seule des tables ouvertes aux partenaires, sa ligne de `Partenaires` pour ses réglages de fiche). Le détail des profils est dans le guide de l'administrateur.
 
 ### Dépendances extérieures
 
