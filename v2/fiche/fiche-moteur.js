@@ -32,7 +32,8 @@
      tuiles      : [{ titre, bloc, largeur 1-3, table, lien, filtre: { colonne, valeurs, exclure }, parDossier, date,
                       saisie, depuis, synthese: { mode, colonne, unite, legende, ignorer (« a ; b », valeur la plus récente),
                       ignorerMemeJour }, ventilation, ventilationColonnes: [colonnes],
-                      ventilationAffichage ("liste" | "barres"), detail: [colonnes],
+                      ventilationAffichage ("liste" | "barres"), ventilationExclure (« a ; b » : valeurs retirées de la
+                      ventilation par valeur, des barres et de {ventilation}/{principal}), detail: [colonnes],
                       limite, source, restreint, masquerSiVide (tuile omise quand elle est vide) }]
    ===================================================================== */
 (function () {
@@ -45,7 +46,7 @@
   const TUILE_VIDE = {
     titre: "Nouvelle tuile", bloc: "", largeur: 1, table: "", lien: "", filtre: { colonne: "", valeurs: "", exclure: false },
     parDossier: "", date: "", saisie: "", depuis: "", synthese: { mode: "nombre", colonne: "", unite: "", legende: "", ignorer: "", ignorerMemeJour: true },
-    ventilation: "", ventilationColonnes: [], ventilationAffichage: "liste", detail: [], limite: 15, source: "", restreint: false, masquerSiVide: false,
+    ventilation: "", ventilationExclure: "", ventilationColonnes: [], ventilationAffichage: "liste", detail: [], limite: 15, source: "", restreint: false, masquerSiVide: false,
   };
   const CONFIG_VIDE = { referentiel: { table: "", titre: "", details: [], libelles: [], cle: "" }, nouveau: "point", impression: "synthese", filtresRapides: [], filtrerBadges: false, badges: [], tuiles: [] };
 
@@ -282,10 +283,10 @@
       ventilation = t.ventilationColonnes.map(c => ({ valeur: (lecteur.colonne(tab, c) || {}).label || c, n: nombre(c) }));
       baseParts = ventilation.reduce((x, v) => x + v.n, 0);
     } else if (t.ventilation) {
-      const comptes = new Map();
+      const comptes = new Map(), exclues = new Set(String(t.ventilationExclure || "").split(";").map(norm).filter(Boolean));
       for (const l of lignes) {
         const vals = lecteur.elements(tab, t.ventilation, l[t.ventilation]);
-        for (const v of vals.length ? vals : ["(vide)"]) comptes.set(v, (comptes.get(v) || 0) + (s.mode === "somme" ? Number(l[s.colonne]) || 0 : 1));
+        for (const v of vals.length ? vals : ["(vide)"]) if (!exclues.has(norm(v))) comptes.set(v, (comptes.get(v) || 0) + (s.mode === "somme" ? Number(l[s.colonne]) || 0 : 1));
       }
       ventilation = [...comptes].map(([valeur, n]) => ({ valeur, n }));
       baseParts = s.mode === "somme" ? nombre(s.colonne) : lignes.length;
