@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.21"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.21"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.21"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.21"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.21"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.21"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.22"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.22"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.22"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.22"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.22"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.22"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -920,7 +920,7 @@ function htmlCarteTuile(t, i, n) {
       `<label><input type="checkbox" data-champ="${p}.synthese.ignorerMemeJour"${t.synthese.ignorerMemeJour !== false ? " checked" : ""}> parmi les lignes du jour le plus récent seulement</label><br>
       Affiche la valeur la plus récente qui n'est pas l'une de celles-ci (l'état du jour reste visible après un retour à la normale) ; pour lire toutes les versions de la journée, laissez « Une ligne par dossier » vide.`) : ""}
     ${champ("Unité", `<input type="text" data-champ="${p}.synthese.unite" value="${esc(t.synthese.unite)}" placeholder="jours, faits, élèves…">`)}
-    ${champ("Légende", `<input type="text" data-champ="${p}.synthese.legende" value="${esc(t.synthese.legende)}" placeholder="Dernier état : {Qualification}">`, "{nombre}, {jours}, {episodes}, {total} (colonnes comparées), {principal} (première valeur de la ventilation et sa part) ou {Colonne} (valeur la plus récente).", true)}
+    ${champ("Légende", `<input type="text" data-champ="${p}.synthese.legende" value="${esc(t.synthese.legende)}" placeholder="Dernier état : {Qualification}">`, "{nombre}, {jours}, {episodes}, {total} (colonnes comparées), {principal} (première valeur de la ventilation et sa part), {ventilation} (« 2 A, 3 B et 1 C » ; {ventilation:2} : les deux premières, le reste en « autres ») ou {Colonne} (valeur la plus récente). Exemple : « dont {ventilation} ».", true)}
     ${champ("Ventilation par valeur (couche 2)", selColonne(`${p}.ventilation`, tab, t.ventilation), "Décompte par valeur de cette colonne (Catégorie, Thème…).")}
     ${champ("Ou ventilation par colonnes", `<div class="cases">${colonnes(tab).filter(c => /^(Int|Numeric)$/.test(c.type)).map(c => `<label><input type="checkbox" data-liste="${p}.ventilationColonnes" value="${esc(c.colId)}"${t.ventilationColonnes.includes(c.colId) ? " checked" : ""}> ${esc(c.label || c.colId)}</label>`).join("") || '<span class="aide">Aucune colonne numérique dans cette table.</span>'}</div>`, "Une colonne par thème (Moyens, Climat, Parcoursup…) : une barre par colonne cochée, somme sur les lignes ; remplace la ventilation par valeur. Synthèse « Total des colonnes comparées » pour leur somme.", true)}
     ${champ("Affichage de la ventilation", `<select data-champ="${p}.ventilationAffichage">${opt("liste", "liste de nombres", t.ventilationAffichage)}${opt("barres", "barres (les trois premières aussi sur la synthèse)", t.ventilationAffichage)}</select>`)}

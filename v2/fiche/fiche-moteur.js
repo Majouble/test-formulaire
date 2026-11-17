@@ -159,7 +159,7 @@
 
   // colonnes citées par une tuile, pour signaler celles qui n'existent pas (ou plus)
   function colonnesTuile(t) {
-    const legende = [...String(t.synthese.legende || "").matchAll(/\{([^{}]+)\}/g)].map(m => m[1].trim()).filter(x => !["nombre", "jours", "episodes", "total", "principal"].includes(x));
+    const legende = [...String(t.synthese.legende || "").matchAll(/\{([^{}]+)\}/g)].map(m => m[1].trim()).filter(x => !["nombre", "jours", "episodes", "total", "principal"].includes(x) && !/^ventilation\b/.test(x));
     return [t.lien, t.filtre.colonne, t.parDossier, t.date, t.saisie, t.synthese.colonne, t.ventilation, ...t.ventilationColonnes, ...t.detail, ...legende].filter(Boolean);
   }
   function verifierConfig(config, schema) {
@@ -316,6 +316,15 @@
       if (c === "episodes") return String(episodes);
       if (c === "total") return nombreFr(total);
       if (c === "principal") return principal;
+      // {ventilation} : « 2 A, 3 B et 1 C » (ventilation de la tuile, plus grandes valeurs d'abord, sans les zéros ni « (vide) ») ;
+      // {ventilation:2} : les 2 premières seulement, le reste regroupé (« et 1 autre »)
+      const mv = /^ventilation(?:\s*:\s*(\d+))?$/.exec(c);
+      if (mv) {
+        const l = ventilation.filter(v => v.n > 0 && v.valeur !== "(vide)"), max = mv[1] ? Math.max(1, Number(mv[1])) : l.length;
+        const parts = l.slice(0, max).map(v => `${v.texte} ${v.valeur}`), reste = l.slice(max).reduce((x, v) => x + v.n, 0);
+        if (reste > 0) parts.push(`${nombreFr(reste)} autre${reste > 1 ? "s" : ""}`);
+        return parts.length > 1 ? parts.slice(0, -1).join(", ") + " et " + parts[parts.length - 1] : parts.join("");
+      }
       return valeurDe(c);
     }
     if (!periode && jours.length && s.mode !== "valeur") periode = jours.length === 1 ? `Le ${texteJour(jours[0])}` : `Du ${texteJour(jours[0])} au ${texteJour(jours[jours.length - 1])}`;
