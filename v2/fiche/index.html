@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.7"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.7"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.7"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.7"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.7"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.7"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.8"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.8"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.8"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.8"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.8"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.8"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -192,7 +192,7 @@
     <span id="formModele" hidden><input type="text" id="nomModele" placeholder="Nom du modèle" aria-label="Nom du modèle">
       <button class="petit principal" id="validerModele">OK</button><button class="petit" id="annulerModele">Annuler</button></span></span>
   <span class="sous">Filtrer :</span><span id="puces"></span>
-  <button class="qchip" id="btnAvances" aria-expanded="false" aria-controls="avances">Filtres avancés</button>
+  <button class="qchip" id="btnAvances" aria-expanded="false" aria-controls="avances">Sélection d'établissements…</button>
   <button class="lien" id="effacerFiltres" hidden>Effacer les filtres</button>
   <span class="spacer"></span>
   <span class="navigation"><span id="compteSelection"></span>
@@ -201,7 +201,7 @@
     <button class="petit" id="suivant" aria-label="Établissement suivant de la sélection">▶</button></span>
   <button class="petit" id="imprimerSelection" title="Une fiche par page, pour chaque établissement de la sélection">Imprimer la sélection</button>
 </div>
-<section id="avances" hidden aria-label="Filtres avancés"></section>
+<section id="avances" hidden aria-label="Sélection d'établissements"></section>
 <div id="qpop" class="qpop" role="dialog" hidden></div>
 <div id="message" class="message"></div>
 <section id="reglages" hidden></section>
@@ -554,7 +554,7 @@ function libellePuce(d) {
 function afficherFiltres() {
   $("puces").innerHTML = dims.map(d => `<button class="qchip${etat.rapides[d.id] ? " on" : ""}" data-qf="${esc(d.id)}" aria-haspopup="dialog">${esc(d.libelle)} : <b>${esc(libellePuce(d))}</b> ▾</button>`).join(" ");
   const nAv = etat.avances.filter(FC.actif).length, btn = $("btnAvances");
-  btn.textContent = nAv ? `Filtres avancés (${nAv})` : "Filtres avancés";
+  btn.textContent = nAv ? `Sélection (${nAv} filtre${nAv > 1 ? "s" : ""})` : "Sélection d'établissements…";
   btn.classList.toggle("on", nAv > 0);
   $("effacerFiltres").hidden = !filtresActifs();
   const total = lecteur && actuelle().referentiel.table ? lecteur.lignes(actuelle().referentiel.table).length : 0;
@@ -634,7 +634,9 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") fermerPuce()
 
 // ---------- filtres avancés (moteur des Extractions) ----------
 const options = (liste, v) => liste.map(([id, lib]) => `<option value="${esc(id)}"${id === v ? " selected" : ""}>${esc(lib)}</option>`).join("");
-function tableSource(f) { const s = M.sourcesFiltres(actuelle()).find(x => x.source === String(f.source ?? "")); return s ? s.table : actuelle().referentiel.table; }
+const sourcesSelection = () => M.sourcesFiltres(actuelle(), schema);
+const sourceFiltre = f => sourcesSelection().find(x => x.source === String(f.source ?? "")) || null;
+function tableSource(f) { const s = sourceFiltre(f); return s ? s.table : actuelle().referentiel.table; }
 const libelleCol = (t, c) => ((colonnes(t).find(x => x.colId === c) || {}).label) || c;
 function valeursColonne(t, c) {
   if (!lecteur || !c || !lecteur.existe(t)) return [];
@@ -643,25 +645,28 @@ function valeursColonne(t, c) {
   return [...n].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "fr")).slice(0, 300);
 }
 function afficherAvances() {
-  const sources = M.sourcesFiltres(actuelle()).map(x => [x.source, x.libelle]);
+  const sources = sourcesSelection().map(x => [x.source, x.libelle]);
+  // filtres enregistrés avant la 2.62.0-alpha.8 (source = numéro de tuile) : ramenés à la table de la tuile
+  etat.avances.forEach(f => { if (/^\d+$/.test(String(f.source)) && !sources.some(x => x[0] === String(f.source))) { const t = actuelle().tuiles[Number(f.source)]; f.source = t ? (t.table || "") : ""; } });
   if (!etat.avances.length) etat.avances = [nouveauFiltre()];
   const nActifs = etat.avances.filter(FC.actif).length;
-  $("avances").innerHTML = `<div class="titre-av"><b>Filtres avancés</b>
+  $("avances").innerHTML = `<div class="titre-av"><b>Sélection d'établissements</b>
       <select id="combinaison" title="Comment se combinent les filtres"${nActifs < 2 ? " disabled" : ""}>${options(FC.COMBINAISONS, etat.combinaison)}</select>
       <input type="text" id="formule" placeholder="ex. 1 ET (2 OU 3)" aria-label="Formule de combinaison des filtres" value="${esc(etat.formule)}"${etat.combinaison === "formule" && nActifs > 1 ? "" : " hidden"}>
-      <span class="aide">Chaque filtre lit les lignes d'une tuile (avec son filtre, sa période et ses dossiers) ou la fiche du référentiel.</span></div>
+      <span class="aide">Comme dans les Extractions : chaque filtre porte sur toutes les lignes de l'établissement dans une table (ex. Reponses : Qualification est égal à Blocage, compter le nombre de jours ≥ 3). Enregistrez la sélection en modèle pour la retrouver.</span></div>
     ${etat.avances.map((f, i) => {
       const t = tableSource(f), cols = colonnes(t), n = i + 1, compter = f.portee === "compter";
       const optCols = (v, vide) => `<option value="">${vide}</option>` + cols.map(c => `<option value="${esc(c.colId)}"${c.colId === v ? " selected" : ""}>${esc(c.label || c.colId)}</option>`).join("");
       return `<div class="filtre" data-i="${i}">
       <div class="ligne"><span class="num-f">F${n}</span>
-        <select data-ch="source" aria-label="Source du filtre ${n}">${options(sources, String(f.source ?? ""))}</select>
+        <select data-ch="source" aria-label="Table du filtre ${n}">${options(sources, String(f.source ?? ""))}</select>
         <select data-ch="col" aria-label="Colonne du filtre ${n}">${optCols(f.col, compter ? "— toutes les lignes —" : "— colonne —")}</select>
         <select data-ch="op" aria-label="Opérateur du filtre ${n}"${f.col ? "" : " hidden"}>${options(FC.OPERATEURS, f.op)}</select>
         <input type="text" data-ch="val" list="fa-valeurs-${i}" value="${esc(f.val ?? "")}" placeholder="valeur (a ; b = l'un ou l'autre)" aria-label="Valeur du filtre ${n}"${!f.col || FC.sansValeur(f.op) ? " hidden" : ""}>
         <datalist id="fa-valeurs-${i}">${valeursColonne(t, f.col).map(([v, k]) => `<option value="${esc(v)}" label="${k} ligne${k > 1 ? "s" : ""}"></option>`).join("")}</datalist>
         <button class="petit" data-retirer="${i}" aria-label="Retirer le filtre ${n}">✕</button></div>
       <div class="ligne portee">
+        ${(sourceFiltre(f) || {}).dossier ? `<select data-ch="versions" aria-label="Versions lues par le filtre ${n}">${options(FC.VERSIONS, f.versions)}</select>` : ""}
         <select data-ch="portee" aria-label="Portée du filtre ${n}">${options(FC.PORTEES, f.portee)}</select>
         ${compter ? `<select data-ch="mesure" aria-label="Mesure du filtre ${n}">${options(FC.MESURES, f.mesure)}</select>
         ${FC.avecColonneMesure(f.mesure) ? `<select data-ch="colMesure" aria-label="Colonne mesurée par le filtre ${n}">${optCols(f.colMesure, "— colonne —")}</select>` : ""}
@@ -672,7 +677,11 @@ function afficherAvances() {
     }).join("")}
     <div><button class="lien" data-ajouter="1">+ Ajouter un filtre</button></div>`;
 }
-function nouveauFiltre() { return { ...FC.nouveau(), mesure: "lignes", source: actuelle().tuiles.length ? "0" : "" }; }
+// nouveau filtre : sur la première table à dossiers (les signalements), sinon la première table rattachée
+function nouveauFiltre() {
+  const s = sourcesSelection(), choix = s.find(x => x.dossier) || s[1] || s[0];
+  return { ...FC.nouveau(), mesure: "jours", versions: choix && choix.dossier ? "derniere" : "toutes", source: choix ? choix.source : "" };
+}
 $("btnAvances").addEventListener("click", () => {
   const z = $("avances"); z.hidden = !z.hidden;
   $("btnAvances").setAttribute("aria-expanded", String(!z.hidden));
@@ -686,7 +695,7 @@ function majFiltre(el, immediat) {
   else if (ligne && el.dataset.ch) {
     const f = etat.avances[Number(ligne.dataset.i)];
     f[el.dataset.ch] = el.value;
-    if (el.dataset.ch === "source") { f.col = ""; f.colMesure = ""; f.val = ""; }
+    if (el.dataset.ch === "source") { f.col = ""; f.colMesure = ""; f.val = ""; f.versions = (sourceFiltre(f) || {}).dossier ? "derniere" : "toutes"; }
   } else return;
   // les listes qui changent la forme de la ligne la redessinent ; la saisie de texte garde le focus
   const redessiner = immediat || ["source", "col", "op", "portee", "mesure"].includes(el.dataset.ch) || el.id === "combinaison";
