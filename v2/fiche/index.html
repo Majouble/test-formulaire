@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.16"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.16"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.16"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.16"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.16"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.16"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.17"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.17"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.17"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.17"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.17"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.17"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -212,6 +212,7 @@
   <span class="modeles" id="sourceZone" hidden><label class="sous" for="source">Fiche réglée :</label><select id="source" style="width:auto;max-width:260px"></select></span>
   <span class="modeles"><select id="modele" aria-label="Modèle de sélection"><option value="">— Modèles —</option></select>
     <button class="petit" id="enregModele" title="Enregistrer les filtres actuels sous un nom">Enregistrer…</button>
+    <button class="petit" id="defautModele" disabled title="Ouvrir la fiche sur ce modèle">☆ Par défaut</button>
     <button class="petit" id="supprModele" disabled>Supprimer</button>
     <span id="formModele" hidden><input type="text" id="nomModele" placeholder="Nom du modèle" aria-label="Nom du modèle">
       <button class="petit principal" id="validerModele">OK</button><button class="petit" id="annulerModele">Annuler</button></span></span>
@@ -427,7 +428,7 @@ async function rafraichir(forcer) {
    - sélection : établissements retenus, rangés par nom, parcourus avec ◀ ▶, imprimés en lot (une fiche par page).
    ===================================================================== */
 let etat = etatVide(), dims = [], apresAvances = [], selection = [], minuteurFiltres = null;
-let modelesDoc = [], modelesPage = [], socleConfig = null;   // modèles de sélection : du document (Config, clé « fiche »), de la page
+let modelesDoc = [], modelesPage = [], socleConfig = null, modeleDefaut = null;   // modeleDefaut : nom du modèle appliqué à l'ouverture (null : celui de la page)   // modèles de sélection : du document (Config, clé « fiche »), de la page
 function etatVide() { return { rapides: {}, avances: [], combinaison: "cascade", formule: "", periode: { mode: "", du: "", au: "", jours: 7 } }; }
 function normaliserEtat(e) {
   const o = { ...etatVide(), ...(e && typeof e === "object" ? e : {}) };
@@ -450,7 +451,7 @@ function recalculerSelection() {
   if (etabId == null && selection.length) etabId = selection[0].id;
 }
 function appliquerFiltres(depuisModele) {
-  if (!depuisModele) { $("modele").value = ""; $("supprModele").disabled = true; }
+  if (!depuisModele) { $("modele").value = ""; majBoutonsModele(); }
   recalculerSelection();
   // après un changement de filtre : l'établissement affiché reste s'il est retenu, sinon le premier de la sélection
   if (selection.length && filtresActifs() && !selection.some(x => x.id === etabId)) { etabId = selection[0].id; ouvertes.clear(); }
@@ -459,7 +460,7 @@ function appliquerFiltres(depuisModele) {
   minuteurFiltres = setTimeout(sauvegarderFiltres, 600);
 }
 // contenu enregistré : réglages de la fiche (s'ils existent), filtres en cours, modèles propres à la page ou au partenaire
-const contenuSource = () => ({ ...(config ? { fiche: config } : {}), filtres: etat, modeles: modelesPage });
+const contenuSource = () => ({ ...(config ? { fiche: config } : {}), filtres: etat, modeles: modelesPage, ...(modeleDefaut != null ? { modeleDefaut } : {}) });
 async function ecrireSource() {
   if (source == null) { optionsDePage = { ...contenuSource(), partenaires: pagePartenaires }; return grist.setOptions(optionsDePage); }
   const contenu = contenuSource();
@@ -491,6 +492,7 @@ function chargerSource() {
   if (!p) try { local = JSON.parse(localStorage.getItem("prisme-fiche-filtres") || "null"); } catch (_) {}
   etat = normaliserEtat(c.filtres || local);
   modelesPage = Array.isArray(c.modeles) ? c.modeles : [];
+  modeleDefaut = typeof c.modeleDefaut === "string" ? c.modeleDefaut : null;
 }
 // propriétaire sur une page des partenaires : choix de la fiche réglée (celle de la page, ou celle d'un partenaire)
 function afficherSource() {
@@ -504,22 +506,38 @@ function afficherSource() {
 /* ---------- modèles de sélection : filtres enregistrés sous un nom, pour passer d'un regard à l'autre ----------
    Page ordinaire : modèles du document (Config, clé « fiche ») quand c'est possible, sinon de la page (options du
    widget) ; même règle que les modèles des Extractions.
-   Page des partenaires : la table Config leur étant fermée, les modèles préparés par le propriétaire sur la fiche de
-   la page sont « communs » (options de la page) : chaque partenaire les voit et les applique, sans pouvoir les modifier ;
-   ses propres modèles vont dans sa ligne de la table Partenaires. */
+   Page des partenaires : les modèles du document (ligne « fiche » de Config, lisible des partenaires) et ceux que le
+   propriétaire prépare sur la fiche de la page (« communs », options de la page) : chaque partenaire les voit et les
+   applique, sans pouvoir les modifier ; ses propres modèles vont dans sa ligne de la table Partenaires.
+   Modèle par défaut : appliqué à l'ouverture (nom enregistré avec la page, ou dans la ligne du partenaire ; un
+   partenaire qui n'en a pas choisi prend celui de la page). */
 const modeles = () => source != null
-  ? [...(Array.isArray(optionsDePage.modeles) ? optionsDePage.modeles : []).map(m => ({ ...m, origine: "commun" })), ...modelesPage.map(m => ({ ...m, origine: "partenaire" }))]
+  ? [...modelesDoc.map(m => ({ ...m, origine: "document" })), ...(Array.isArray(optionsDePage.modeles) ? optionsDePage.modeles : []).map(m => ({ ...m, origine: "commun" })), ...modelesPage.map(m => ({ ...m, origine: "partenaire" }))]
   : [...modelesDoc.map(m => ({ ...m, origine: "document" })), ...modelesPage.map(m => ({ ...m, origine: pagePartenaires ? "commun" : "page" }))];
+const nomDefaut = () => modeleDefaut != null ? modeleDefaut : source != null && typeof optionsDePage.modeleDefaut === "string" ? optionsDePage.modeleDefaut : "";
+function majBoutonsModele() {
+  const m = modeles()[$("modele").value], b = $("defautModele"), d = !!m && m.nom === nomDefaut();
+  $("supprModele").disabled = !m; b.disabled = !m;
+  b.textContent = d ? "★ Par défaut" : "☆ Par défaut";
+  b.title = d ? "Modèle appliqué à l'ouverture : cliquer pour ne plus en appliquer" : "Ouvrir la fiche sur ce modèle";
+}
+// à l'ouverture : filtres du modèle par défaut, s'il existe encore
+function appliquerModeleDefaut() {
+  const nom = nomDefaut(), i = nom ? modeles().findIndex(x => x.nom === nom) : -1;
+  afficherModeles(i < 0 ? "" : String(i));
+  if (i >= 0) { etat = normaliserEtat(JSON.parse(JSON.stringify(modeles()[i].filtres))); etabId = null; }
+}
 const ORIGINES = { document: "document", page: "cette page", commun: "commun aux partenaires", partenaire: "partenaire" };
 function afficherModeles(choisi = "") {
   const sel = $("modele");
-  sel.innerHTML = '<option value="">— Modèles —</option>' + modeles().map((m, i) => `<option value="${i}">${esc(m.nom)} · ${ORIGINES[m.origine]}</option>`).join("");
-  sel.value = choisi; $("supprModele").disabled = choisi === "";
+  const d = nomDefaut();
+  sel.innerHTML = '<option value="">— Modèles —</option>' + modeles().map((m, i) => `<option value="${i}">${m.nom === d ? "★ " : ""}${esc(m.nom)} · ${ORIGINES[m.origine]}</option>`).join("");
+  sel.value = choisi; majBoutonsModele();
 }
 async function lireModelesDoc() {
-  // page des partenaires : pas de modèles du document (ils seraient invisibles des partenaires)
-  if (pagePartenaires) { socleConfig = null; modelesDoc = []; return; }
+  // partenaire : seules les lignes de Config ouvertes par les règles d'accès (dont « fiche ») ; pas d'écriture
   try { socleConfig = await Socle.lireConfig(); } catch (_) { socleConfig = null; }
+  if (pagePartenaires && !proprietaire) socleConfig = socleConfig ? { ...socleConfig, lectureSeule: true } : null;
   const v = socleConfig && socleConfig.valeurs && socleConfig.valeurs.fiche;
   modelesDoc = v && Array.isArray(v.modeles) ? v.modeles : [];
 }
@@ -534,13 +552,13 @@ $("source").addEventListener("change", async e => {
   brouillon = null; $("reglages").hidden = true; $("reglages").innerHTML = "";
   chargerSource(); etabId = null; ouvertes.clear(); fermerPuce();
   await lireModelesDoc();
-  afficherModeles(); $("miseEnPage").value = actuelle().impression; appliquerMiseEnPage();
+  appliquerModeleDefaut(); $("miseEnPage").value = actuelle().impression; appliquerMiseEnPage();
   message(source == null ? "" : `Fiche du partenaire « ${(partenaires.find(x => x.id === source) || {}).nom} » : vos changements sont enregistrés dans sa ligne de la table ${PART.table}.`, "info");
   await rafraichir(false);
 });
 $("modele").addEventListener("change", e => {
   const m = modeles()[e.target.value];
-  $("supprModele").disabled = !m;
+  majBoutonsModele();
   if (!m) return;
   etat = normaliserEtat(JSON.parse(JSON.stringify(m.filtres)));
   etabId = null; ouvertes.clear(); fermerPuce();
@@ -559,7 +577,7 @@ $("validerModele").addEventListener("click", async () => {
   const m = { nom, filtres: JSON.parse(JSON.stringify(etat)) };
   const dejaPage = modelesPage.some(x => x.nom === nom);
   let doc = false;
-  if (socleConfig && !dejaPage && source == null) { try { await ecrireModelesDoc(remplacer(modelesDoc, m)); doc = true; } catch (_) { doc = false; } }
+  if (socleConfig && !socleConfig.lectureSeule && !pagePartenaires && !dejaPage && source == null) { try { await ecrireModelesDoc(remplacer(modelesDoc, m)); doc = true; } catch (_) { doc = false; } }
   if (!doc) { modelesPage = remplacer(modelesPage, m); try { await ecrireSource(); } catch (err) { message("Enregistrement impossible : " + (err.message || err)); return; } }
   $("formModele").hidden = true;
   const origine = doc ? "document" : source != null ? "partenaire" : pagePartenaires ? "commun" : "page";
@@ -568,9 +586,20 @@ $("validerModele").addEventListener("click", async () => {
     commun: `Modèle « ${nom} » enregistré pour tous les partenaires de cette page.`,
     page: `Modèle « ${nom} » enregistré pour cette page (seuls les propriétaires partagent un modèle avec tout le document).` }[origine], "info");
 });
+$("defautModele").addEventListener("click", async () => {
+  const m = modeles()[$("modele").value];
+  if (!m) return;
+  const retirer = m.nom === nomDefaut(), avant = modeleDefaut;
+  modeleDefaut = retirer ? "" : m.nom;
+  try { await ecrireSource(); } catch (err) { modeleDefaut = avant; message("Enregistrement impossible : " + (err.message || err)); return; }
+  afficherModeles($("modele").value);
+  message(retirer ? "Plus de modèle par défaut : la fiche s'ouvrira sur les derniers filtres utilisés."
+    : `La fiche s'ouvrira désormais sur le modèle « ${m.nom} »` + (source == null && pagePartenaires ? " (pour les partenaires qui n'en ont pas choisi d'autre)." : "."), "info");
+});
 $("supprModele").addEventListener("click", async () => {
   const m = modeles()[$("modele").value];
   if (!m) return;
+  if (source != null && m.origine === "document") { message(`« ${m.nom} » est un modèle du document : il se modifie hors de la page des partenaires, par un propriétaire.`); return; }
   if (source != null && m.origine === "commun") { message(`« ${m.nom} » est un modèle commun aux partenaires : il se modifie sur la fiche de la page, par un propriétaire.`); return; }
   if (!confirm(`Supprimer le modèle « ${m.nom} » ?`)) return;
   try {
@@ -1022,7 +1051,7 @@ async function demarrer(options) {
     source = pagePartenaires && !proprietaire && partenaires.length ? partenaires[0].id : null;
     chargerSource(); afficherSource();
     await lireModelesDoc();
-    afficherModeles();
+    appliquerModeleDefaut();
     if (!config) {
       brouillon = await configurationDeDepart();
       message("Fiche pas encore réglée : voici une configuration de départ, à compléter puis enregistrer.", "info");
