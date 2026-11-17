@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.17"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.17"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.17"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.17"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.17"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.17"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.18"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.18"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.18"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.18"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.18"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.18"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -249,6 +249,8 @@
 const M = window.FicheMoteur;
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// texte des cellules : « **mot** » (gras à la manière du markdown, fréquent dans les descriptions collées) affiché en gras
+const escGras = s => esc(s).replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, "<strong>$1</strong>");
 const RAFRAICHIR_APRES = 60;
 const heureParis = s => new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" }).format(new Date(s * 1000)).replace(" ", " à ");   // secondes : au changement d'établissement, les tables plus anciennes sont relues
 
@@ -332,7 +334,7 @@ function htmlTuile(t, k) {
   const ouverte = ouvertes.has(k);
   const classes = ["tuile", "l" + t.largeur, ouverte ? "ouverte" : "", t.vide ? "vide" : "", t.restreint ? "restreint" : "", aDuDetail(t) ? "a-detail" : ""].filter(Boolean).join(" ");
   const tableau = t.detail.length ? `<table><thead><tr>${t.colonnesDetail.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${
-    t.detail.map(l => `<tr${l.nouveau ? ' class="nouveau"' : ""}>${l.cellules.map((c, i) => `<td>${i === 0 && l.nouveau ? '<span class="mot-nouveau">Nouveau · </span>' : ""}${esc(c)}</td>`).join("")}</tr>`).join("")
+    t.detail.map(l => `<tr${l.nouveau ? ' class="nouveau"' : ""}>${l.cellules.map((c, i) => `<td>${i === 0 && l.nouveau ? '<span class="mot-nouveau">Nouveau · </span>' : ""}${escGras(c)}</td>`).join("")}</tr>`).join("")
   }</tbody></table>${t.reste ? `<p class="periode">… et ${t.reste} autre${t.reste > 1 ? "s" : ""} ligne${t.reste > 1 ? "s" : ""}.</p>` : ""}` : "";
   const ventil = !t.ventilation.length ? "" : t.barres ? htmlBarres(t.ventilation, false)
     : `<ul class="ventilation">${t.ventilation.map(v => `<li><b>${esc(v.texte)}</b> ${esc(v.valeur)}</li>`).join("")}</ul>`;
@@ -340,12 +342,12 @@ function htmlTuile(t, k) {
   const detail = `${t.restreint ? '<p class="note-restreint">Diffusion restreinte : détail non imprimé.</p>' : ""}
     <div class="contenu-restreint">${contenu}</div>
     ${t.source || t.maj ? `<p class="source">${[t.source ? "Source : " + esc(t.source) : "", t.maj ? "mis à jour le " + esc(t.maj) : ""].filter(Boolean).join(" · ")}</p>` : ""}`;
-  if (k === "annexe") return `<div class="annexe-tuile${t.restreint ? " restreint" : ""}"><h4>${esc(t.titre)} <span>${esc([t.grand, t.legende, t.periode].filter(Boolean).join(" · "))}</span></h4><div class="detail">${detail}</div></div>`;
+  if (k === "annexe") return `<div class="annexe-tuile${t.restreint ? " restreint" : ""}"><h4>${esc(t.titre)} <span>${escGras([t.grand, t.legende, t.periode].filter(Boolean).join(" · "))}</span></h4><div class="detail">${detail}</div></div>`;
   return `<section class="${classes}" style="${empilement(t.couches)}">
   <button type="button" class="tete" data-tuile="${k}" aria-expanded="${ouverte}">
     <span class="titre">${esc(t.titre)}</span>
-    <span class="grand"><span>${esc(t.grand)}</span>${t.nouveaux ? `<span class="pastille">${t.nouveaux} nouveau${t.nouveaux > 1 ? "x" : ""}</span>` : ""}</span>
-    ${t.legende ? `<span class="legende">${esc(t.legende)}</span>` : ""}
+    <span class="grand"><span>${escGras(t.grand)}</span>${t.nouveaux ? `<span class="pastille">${t.nouveaux} nouveau${t.nouveaux > 1 ? "x" : ""}</span>` : ""}</span>
+    ${t.legende ? `<span class="legende">${escGras(t.legende)}</span>` : ""}
     ${t.periode ? `<span class="periode">${esc(t.periode)}</span>` : ""}
     ${t.barres && t.ventilation.length ? htmlBarres(t.ventilation.slice(0, 3), true) : ""}
   </button>
