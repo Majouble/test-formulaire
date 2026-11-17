@@ -8,7 +8,7 @@ Scénarios Playwright qui ouvrent les widgets (`v2/…`) dans Chromium avec un *
 cd tests
 npm install
 npx playwright install chromium     # ou : CHROMIUM=/chemin/vers/chromium
-sh lancer.sh                        # suite actuelle (run63 à run131)
+sh lancer.sh                        # suite actuelle (run63 à run133)
 sh lancer.sh run74 run76            # quelques scénarios
 ```
 
@@ -103,6 +103,8 @@ Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pou
 | `run129` | 2.62 : Fiche établissement — badges à valeur (« Label CVL : Niv 3 », filtre rapide), modèles de sélection (document par Config, page sans Config), application, remise à zéro, suppression |
 | `run130` | 2.62 : Fiche établissement — impression synthèse en page 1 puis annexe de détail (restreint respecté), tuiles détaillées, sélection ; pages des PDF comptées |
 | `run131` | 2.62 : Fiche établissement — ventilation par colonnes (consultation lycéenne), total, `{principal}`, barres (synthèse et détail), tuile vide, réglages, impression |
+| `run132` | 2.62 : partenaires, onglet Accès — table Partenaires (clé, lien en page seule), tables ouvertes (Config), règles (attribut, sa ligne, lecture seule, clés des établissements et auteur illisibles) |
+| `run133` | 2.62 : Fiche établissement, page des partenaires — propriétaire (choix de la fiche réglée, ligne du partenaire), partenaire (sa ligne, tables refusées ignorées, réglages et modèles dans sa ligne) |
 | `run125` | 2.60 : version publiée — scripts appelés avec `?v=<version>`, `version.json` à jour (`outils/versionner.js --verifier`) ; page servie en http plus ancienne que la version publiée : rechargée une fois avec `?v=` |
 | `run124` | 2.57 : Référentiel des sites, onglet « File de vérification » — filtres, acceptation en lot (composante interne, ligne retirée avec report des références, position), valeur retenue (Modifier), siège choisi dans le bandeau, fait à la main, refus, report, campus au nom à préciser (table des campus et colonne Campus des sites créées), regroupement par établissement, bandeau point par point (Précédent / Suivant, sommaire) et carte cadrée sur les objets du point, raccourcis clavier, refus de Grist (message qui nomme le point et l'action), formules de déclenchement |
 | `run123` | 2.55 : Extractions — filtres à comptage et seuil (nombre de jours, somme, maximum), versions par filtre (toutes / dernière de chaque dossier), portées jamais et à chaque fois, opérateur ≥, combinaison par formule, colonnes des valeurs comptées, Excel |

@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.62.0-alpha.5 (17/11/2026)";
+  const VERSION = "2.62.0-alpha.6 (17/11/2026)";
 
   /* ---------- version publiée ----------
      GitHub Pages laisse les navigateurs garder chaque fichier 10 minutes. Au chargement, la page lit version.json sans
@@ -450,6 +450,11 @@ return sorted(champs)`;
      Clé dans Agents.Cle_acces, page de saisie dans Agents.Page_saisie, lien dans Agents.Lien_acces (?Invite_=<clé>).
      Attribut utilisateur « Invite » (onglet Accès) : l'invité a les droits d'un agent actif de l'équipe. */
   const INVITE = { attribut: "Invite", cle: "Cle_acces", page: "Page_saisie", lien: "Lien_acces", expire: "Lien_expire_le", valide: "Lien_valide" };
+  /* Partenaires (2.62) : consultation des fiches établissement par lien personnel (?Partenaire_=<clé>).
+     Table Partenaires : une ligne par partenaire (nom, clé, lien, actif) ; colonne Fiche = ses réglages, filtres et
+     modèles de la fiche (JSON), qu'il est seul à lire et modifier. Attribut utilisateur « Partenaire » (onglet Accès) :
+     lecture seule des tables ouvertes aux partenaires (clé « partenaires » de Config), rien d'autre. */
+  const PARTENAIRES = { table: "Partenaires", attribut: "Partenaire", nom: "Nom", cle: "Cle", lien: "Lien", actif: "Actif", fiche: "Fiche" };
   // Durées de validité d'un lien d'invité (clé « acces_invites » de Config, réglée dans l'onglet Équipe › Agents)
   const DUREES_INVITE = [["24h", "24 heures", 24], ["72h", "3 jours", 72], ["7j", "7 jours", 168], ["30j", "30 jours", 720], ["illimite", "sans limite", 0]];
   // Auteur d'une ligne (formule d'initialisation) : adresse du compte Grist, sinon « Invité : <nom> » pour le lien d'un agent,
@@ -1168,7 +1173,7 @@ return sorted(champs)`;
     PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
     norm, cibleRef, lireMeta, lireConfig, activerCacheLecture, viderCacheLecture, oublierStructure, surEcriture, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer, COLONNES_ETABLISSEMENT,
-    instantaneSchema, majSchemaPublic, tableauxDeBord, valeurTableauxDeBord, INVITE, DUREES_INVITE, formuleAuteur, auteurAMettreAJour,
+    instantaneSchema, majSchemaPublic, tableauxDeBord, valeurTableauxDeBord, INVITE, PARTENAIRES, DUREES_INVITE, formuleAuteur, auteurAMettreAJour,
     REGIONS_ACADEMIQUES, regionDeAcademie, genreSection, rattachementSection, colonnesHistoriqueTableau, MOUVEMENTS_TABLEAU,
     ECHELONS_VISA, COLONNES_VISEURS, STATUTS_VALIDATION, STATUT, COLONNE_STATUT, MARQUE_STATUT, estFavorable, reglagesValidation,
     optionsStatutValidation, formuleStatutValidation, statutValidation, viseurCouvre,

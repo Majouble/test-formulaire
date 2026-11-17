@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.5"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.5"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.5"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.5"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.5"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.5"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.6"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.6"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.6"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.6"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.6"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.6"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -109,6 +109,7 @@
   #avances .ligne { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
   #avances select, #avances input[type=text], #avances input[type=number] { width: auto; }
   .modeles { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .modeles[hidden], #formModele[hidden] { display: none; }
   .modeles select { width: auto; max-width: 240px; } #nomModele { width: 180px; }
   .navigation { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
   #avances .ligne select[data-ch=source] { max-width: 220px; } #avances .ligne select[data-ch=col] { max-width: 200px; } #avances .ligne input[data-ch=val] { width: 200px; }
@@ -184,6 +185,7 @@
   <button id="ouvrirReglages">⚙ Réglages</button>
 </header>
 <div class="barre-filtres" id="barreFiltres">
+  <span class="modeles" id="sourceZone" hidden><label class="sous" for="source">Fiche réglée :</label><select id="source" style="width:auto;max-width:260px"></select></span>
   <span class="modeles"><select id="modele" aria-label="Modèle de sélection"><option value="">— Modèles —</option></select>
     <button class="petit" id="enregModele" title="Enregistrer les filtres actuels sous un nom">Enregistrer…</button>
     <button class="petit" id="supprModele" disabled>Supprimer</button>
@@ -216,7 +218,8 @@
    État : config (réglages enregistrés), brouillon (réglages en cours de modification, affichés en direct),
           schema et donnees (tables lues), etabId (établissement affiché), ouvertes (tuiles dépliées),
           etat (filtres de la page, enregistrés dans les options du widget, clé « filtres »), selection (établissements retenus),
-          modèles de sélection (Config, clé « fiche », ou options de la page, clé « modeles »).
+          modèles de sélection (Config, clé « fiche », ou options de la page, clé « modeles »),
+          source (page, ou ligne d'un partenaire de la table Partenaires sur une page des partenaires).
    ===================================================================== */
 const M = window.FicheMoteur;
 const $ = id => document.getElementById(id);
@@ -227,6 +230,14 @@ const heureParis = s => new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Par
 let config = null, brouillon = null, schema = {}, tablesDoc = [], donnees = {}, chargeLe = 0, lecteur = null, marque = null;
 let etabId = null, tableLiee = null, demarre = false;
 let base = null;                   // contexte commun des fiches (index de rattachement), refait à chaque lecture ou réglage
+const illisibles = new Set();      // tables refusées par les règles d'accès
+/* Source des réglages, filtres et modèles :
+   - la page (options du widget), cas ordinaire ;
+   - sur une page des partenaires (option « partenaires », réglée par un propriétaire), la ligne du partenaire dans la
+     table Partenaires (colonne Fiche, en JSON) : un partenaire ouvert par son lien ne lit que sa ligne et y enregistre
+     ses propres réglages ; la fiche de la page sert de modèle de départ. Un propriétaire choisit la fiche qu'il règle. */
+const PART = Socle.PARTENAIRES;
+let optionsDePage = {}, pagePartenaires = false, partenaires = [], proprietaire = false, source = null;
 const FC = window.FiltresColonnes;
 const ouvertes = new Set();
 const actuelle = () => brouillon || config || M.normaliserConfig(null);
@@ -242,7 +253,11 @@ async function chargerSchema() {
 async function chargerDonnees(forcer) {
   const cfg = actuelle(), besoin = M.tablesNecessaires(cfg, schema);
   const vieux = forcer || Date.now() / 1000 - chargeLe > RAFRAICHIR_APRES;
-  for (const t of besoin) if (vieux || !donnees[t]) donnees[t] = await grist.docApi.fetchTable(t);
+  // table illisible avec les droits de la personne (lien de partenaire…) : ignorée, ses tuiles restent vides
+  for (const t of besoin) if (vieux || !(t in donnees)) {
+    try { donnees[t] = await grist.docApi.fetchTable(t); illisibles.delete(t); }
+    catch (_) { donnees[t] = null; illisibles.add(t); }
+  }
   if (vieux) chargeLe = Date.now() / 1000;
   lecteur = M.creerLecteur(schema, donnees);
   // repère « nouveau » : heure du dernier point de situation enregistré (table Points_situation du widget Point de situation)
@@ -406,11 +421,48 @@ function appliquerFiltres(depuisModele) {
   clearTimeout(minuteurFiltres);
   minuteurFiltres = setTimeout(sauvegarderFiltres, 600);
 }
-// options de la page : réglages de la fiche (s'ils sont enregistrés), filtres en cours, modèles propres à la page
-const optionsPage = () => ({ ...(config ? { fiche: config } : {}), filtres: etat, modeles: modelesPage });
+// contenu enregistré : réglages de la fiche (s'ils existent), filtres en cours, modèles propres à la page ou au partenaire
+const contenuSource = () => ({ ...(config ? { fiche: config } : {}), filtres: etat, modeles: modelesPage });
+async function ecrireSource() {
+  if (source == null) { optionsDePage = { ...contenuSource(), partenaires: pagePartenaires }; return grist.setOptions(optionsDePage); }
+  const contenu = contenuSource();
+  await grist.docApi.applyUserActions([["UpdateRecord", PART.table, source, { [PART.fiche]: JSON.stringify(contenu) }]]);
+  const p = partenaires.find(x => x.id === source); if (p) p.contenu = contenu;
+}
 function sauvegarderFiltres() {
-  try { localStorage.setItem("prisme-fiche-filtres", JSON.stringify(etat)); } catch (_) {}
-  try { Promise.resolve(grist.setOptions(optionsPage())).catch(() => {}); } catch (_) {}
+  if (source == null) try { localStorage.setItem("prisme-fiche-filtres", JSON.stringify(etat)); } catch (_) {}
+  try { Promise.resolve(ecrireSource()).catch(() => {}); } catch (_) {}
+}
+// lignes lisibles de la table Partenaires (toutes pour un propriétaire, la sienne pour un partenaire) ;
+// propriétaire : seul à pouvoir lire les règles d'accès du document
+async function lirePartenaires() {
+  partenaires = []; proprietaire = false;
+  if (!pagePartenaires) return;
+  try { await grist.docApi.fetchTable("_grist_ACLRules"); proprietaire = true; } catch (_) {}
+  if (!schema[PART.table]) return;
+  try {
+    const d = await grist.docApi.fetchTable(PART.table), col = k => d[k] || [];
+    partenaires = d.id.map((id, i) => { let contenu = {}; try { contenu = JSON.parse(col(PART.fiche)[i] || "{}") || {}; } catch (_) {}
+      return { id, nom: String(col(PART.nom)[i] || `Partenaire ${id}`), contenu }; }).sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
+  } catch (_) { partenaires = []; }
+}
+// réglages, filtres et modèles de la source choisie ; un partenaire sans réglages part de la fiche de la page
+function chargerSource() {
+  const p = source == null ? null : partenaires.find(x => x.id === source), c = p ? p.contenu : optionsDePage;
+  const fiche = c.fiche || (p ? optionsDePage.fiche : null);
+  config = fiche ? M.normaliserConfig(fiche) : null;
+  let local = null;
+  if (!p) try { local = JSON.parse(localStorage.getItem("prisme-fiche-filtres") || "null"); } catch (_) {}
+  etat = normaliserEtat(c.filtres || local);
+  modelesPage = Array.isArray(c.modeles) ? c.modeles : [];
+}
+// propriétaire sur une page des partenaires : choix de la fiche réglée (celle de la page, ou celle d'un partenaire)
+function afficherSource() {
+  const sel = $("source"), voir = pagePartenaires && proprietaire;
+  $("sourceZone").hidden = !voir;
+  if (!voir) return;
+  sel.innerHTML = `<option value="">Fiche de la page (modèle de départ)</option>` + partenaires.map(p => `<option value="${p.id}">${esc(p.nom)}</option>`).join("");
+  sel.value = source == null ? "" : String(source);
 }
 
 /* ---------- modèles de sélection : filtres enregistrés sous un nom, pour passer d'un regard à l'autre ----------
@@ -419,7 +471,8 @@ function sauvegarderFiltres() {
 const modeles = () => [...modelesDoc.map(m => ({ ...m, doc: true })), ...modelesPage.map(m => ({ ...m, doc: false }))];
 function afficherModeles(choisi = "") {
   const sel = $("modele");
-  sel.innerHTML = '<option value="">— Modèles —</option>' + modeles().map((m, i) => `<option value="${i}">${esc(m.nom)} · ${m.doc ? "document" : "cette page"}</option>`).join("");
+  const ici = source != null ? "partenaire" : "cette page";
+  sel.innerHTML = '<option value="">— Modèles —</option>' + modeles().map((m, i) => `<option value="${i}">${esc(m.nom)} · ${m.doc ? "document" : ici}</option>`).join("");
   sel.value = choisi; $("supprModele").disabled = choisi === "";
 }
 async function lireModelesDoc() {
@@ -433,6 +486,15 @@ async function ecrireModelesDoc(liste) {
   await lireModelesDoc();
 }
 const remplacer = (liste, m) => [...liste.filter(x => x.nom !== m.nom), m].sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
+$("source").addEventListener("change", async e => {
+  source = e.target.value === "" ? null : Number(e.target.value);
+  brouillon = null; $("reglages").hidden = true; $("reglages").innerHTML = "";
+  chargerSource(); etabId = null; ouvertes.clear(); fermerPuce();
+  if (source == null) await lireModelesDoc(); else { modelesDoc = []; socleConfig = null; }
+  afficherModeles(); $("miseEnPage").value = actuelle().impression; appliquerMiseEnPage();
+  message(source == null ? "" : `Fiche du partenaire « ${(partenaires.find(x => x.id === source) || {}).nom} » : vos changements sont enregistrés dans sa ligne de la table ${PART.table}.`, "info");
+  await rafraichir(false);
+});
 $("modele").addEventListener("change", e => {
   const m = modeles()[e.target.value];
   $("supprModele").disabled = !m;
@@ -454,11 +516,12 @@ $("validerModele").addEventListener("click", async () => {
   const m = { nom, filtres: JSON.parse(JSON.stringify(etat)) };
   const dejaPage = modelesPage.some(x => x.nom === nom);
   let doc = false;
-  if (socleConfig && !dejaPage) { try { await ecrireModelesDoc(remplacer(modelesDoc, m)); doc = true; } catch (_) { doc = false; } }
-  if (!doc) { modelesPage = remplacer(modelesPage, m); sauvegarderFiltres(); }
+  if (socleConfig && !dejaPage && source == null) { try { await ecrireModelesDoc(remplacer(modelesDoc, m)); doc = true; } catch (_) { doc = false; } }
+  if (!doc) { modelesPage = remplacer(modelesPage, m); try { await ecrireSource(); } catch (err) { message("Enregistrement impossible : " + (err.message || err)); return; } }
   $("formModele").hidden = true;
   afficherModeles(String(modeles().findIndex(x => x.nom === nom && x.doc === doc)));
-  message(doc ? `Modèle « ${nom} » enregistré pour tout le document.` : `Modèle « ${nom} » enregistré pour cette page (seuls les propriétaires partagent un modèle avec tout le document).`, "info");
+  message(doc ? `Modèle « ${nom} » enregistré pour tout le document.` : source != null ? `Modèle « ${nom} » enregistré dans les réglages du partenaire.`
+    : `Modèle « ${nom} » enregistré pour cette page (seuls les propriétaires partagent un modèle avec tout le document).`, "info");
 });
 $("supprModele").addEventListener("click", async () => {
   const m = modeles()[$("modele").value];
@@ -703,6 +766,10 @@ function htmlBadge(b, i) {
     ${champ(b.affichage === "valeur" ? "Colonne affichée" : "Colonne oui / non", selColonne(`${p}.colonne`, tab, b.colonne, b.affichage === "valeur" ? "— choisir —" : "— présence dans la table —"))}
     <button class="petit" data-action="supprimer-badge" data-i="${i}">Supprimer</button></div>`;
 }
+function alertesReglages(b) {
+  const tables = new Set([b.referentiel.table, ...b.tuiles.map(t => t.table || b.referentiel.table), ...b.badges.map(x => x.table || b.referentiel.table)]);
+  return [...M.verifierConfig(b, schema), ...[...illisibles].filter(t => tables.has(t)).map(t => `Table ${t} illisible avec vos droits : ses tuiles et badges restent vides.`)];
+}
 function afficherReglages() {
   const z = $("reglages"), b = brouillon, r = b.referentiel;
   const ouverts = new Set([...z.querySelectorAll("details[open]")].map(d => d.dataset.cle));
@@ -711,11 +778,13 @@ function afficherReglages() {
   z.innerHTML = `<div class="barre"><b>Réglages de la fiche</b><span class="spacer" style="flex:1"></span>
     <button data-action="proposer" title="Remplace les réglages par une fiche de départ tirée des tables du socle">Configuration de départ</button>
     <button data-action="annuler">Annuler</button><button class="principal" data-action="enregistrer">Enregistrer</button></div>
-  <ul id="alertes">${M.verifierConfig(b, schema).map(a => `<li>${esc(a)}</li>`).join("")}</ul>
+  <ul id="alertes">${alertesReglages(b).map(a => `<li>${esc(a)}</li>`).join("")}</ul>
   <details data-cle="etab"><summary>Établissement</summary><div class="champs">
     ${champ("Table des établissements", selTable("referentiel.table", r.table))}
     ${champ("Nom affiché", selColonne("referentiel.titre", r.table, r.titre))}
     ${champ("Clé de rapprochement", selColonne("referentiel.cle", r.table, r.cle), "Colonne comparée aux tables reliées par du texte (UAI…).")}
+    ${source == null && (proprietaire || !pagePartenaires) ? champ("Page des partenaires", `<label><input type="checkbox" id="pagePartenaires"${pagePartenaires ? " checked" : ""}> page ouverte aux partenaires par leur lien</label>`,
+      `Chaque partenaire y règle sa propre fiche (réglages, filtres, modèles), rangée dans sa ligne de la table ${PART.table}${schema[PART.table] ? "" : " (à créer : administration, onglet Accès, carte « Partenaires »)"} ; la fiche de cette page sert de modèle de départ.`, true) : ""}
     ${champ("Impression proposée", `<select data-champ="impression">${opt("synthese", "synthèse en page 1, détail ensuite", b.impression)}${opt("complet", "tuiles détaillées", b.impression)}</select>`)}
     ${champ("Repère « nouveau »", `<select data-champ="nouveau">${opt("point", "lignes saisies après le dernier point de situation", b.nouveau)}${opt("", "aucun", b.nouveau)}</select>`)}
     ${champ("Sous le nom", `<div class="cases">${cases || '<span class="aide">Choisissez d\'abord la table.</span>'}</div>`, "", true)}
@@ -740,7 +809,7 @@ function ecrire(objet, chemin, valeur) {
 async function apresModification(recharger) {
   brouillon = M.normaliserConfig(brouillon);
   if (recharger) afficherReglages();
-  else $("alertes").innerHTML = M.verifierConfig(brouillon, schema).map(a => `<li>${esc(a)}</li>`).join("");
+  else $("alertes").innerHTML = alertesReglages(brouillon).map(a => `<li>${esc(a)}</li>`).join("");
   await rafraichir(false);
 }
 $("reglages").addEventListener("change", e => {
@@ -776,7 +845,9 @@ $("reglages").addEventListener("click", async e => {
     case "annuler": brouillon = null; $("reglages").hidden = true; $("reglages").innerHTML = ""; message(""); await rafraichir(false); return;
     case "enregistrer":
       config = M.normaliserConfig(brouillon);
-      try { await grist.setOptions(optionsPage()); } catch (err) { message("Enregistrement impossible : " + (err.message || err)); return; }
+      if ($("pagePartenaires")) pagePartenaires = $("pagePartenaires").checked;
+      try { await ecrireSource(); } catch (err) { message("Enregistrement impossible : " + (err.message || err)); return; }
+      if (source == null) { await lirePartenaires(); afficherSource(); }
       brouillon = null; $("reglages").hidden = true; $("reglages").innerHTML = "";
       $("miseEnPage").value = config.impression; appliquerMiseEnPage();
       message("Réglages enregistrés.", "info"); setTimeout(() => message(""), 3000); await rafraichir(false); return;
@@ -829,11 +900,13 @@ async function demarrer(options) {
   try {
     await chargerSchema();
     try { tableLiee = grist.selectedTable && grist.selectedTable.getTableId ? await grist.selectedTable.getTableId() : null; } catch (_) { tableLiee = null; }
-    config = options && options.fiche ? M.normaliserConfig(options.fiche) : null;
-    let local = null; try { local = JSON.parse(localStorage.getItem("prisme-fiche-filtres") || "null"); } catch (_) {}
-    etat = normaliserEtat((options && options.filtres) || local);
-    modelesPage = options && Array.isArray(options.modeles) ? options.modeles : [];
-    await lireModelesDoc(); afficherModeles();
+    optionsDePage = options || {}; pagePartenaires = !!optionsDePage.partenaires;
+    await lirePartenaires();
+    // partenaire ouvert par son lien : sa ligne ; propriétaire : la page, puis le choix d'une fiche de partenaire
+    source = pagePartenaires && !proprietaire && partenaires.length ? partenaires[0].id : null;
+    chargerSource(); afficherSource();
+    if (source == null) await lireModelesDoc();
+    afficherModeles();
     if (!config) {
       brouillon = await configurationDeDepart();
       message("Fiche pas encore réglée : voici une configuration de départ, à compléter puis enregistrer.", "info");
