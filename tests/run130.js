@@ -49,5 +49,10 @@ const pages = f => (fs.readFileSync(f, 'latin1').match(/\/Type\s*\/Page(?!s)/g) 
   console.log('LOT, LARGEUR DES SYNTHÈSES (px) :', JSON.stringify(await p.$$eval('#lot .page-synthese', l => l.map(e => Math.round(e.getBoundingClientRect().width)))));
   await p.pdf({ path: __C.sorties + '/fiche-130-lot.pdf', format: 'A4', printBackground: true, margin: { top: '12mm', bottom: '12mm', left: '12mm', right: '12mm' } });
   console.log('PDF LOT : pages', pages(__C.sorties + '/fiche-130-lot.pdf'));
+  // « synthèse seulement » : une page par établissement, ni annexe ni renvoi
+  await p.evaluate(() => { const s = document.getElementById('miseEnPage'); s.value = 'seule'; s.dispatchEvent(new Event('change')); document.getElementById('imprimerSelection').click(); window.dispatchEvent(new Event('beforeprint')); });
+  console.log('SYNTHÈSE SEULE : annexes', await p.$$eval('#lot .annexe', l => l.filter(n => getComputedStyle(n).display !== 'none').length), '| renvoi', await p.$eval('#lot .note-detail', n => getComputedStyle(n).display));
+  await p.pdf({ path: __C.sorties + '/fiche-130-seule.pdf', format: 'A4', printBackground: true, margin: { top: '12mm', bottom: '12mm', left: '12mm', right: '12mm' } });
+  console.log('PDF SYNTHÈSES SEULES : pages', pages(__C.sorties + '/fiche-130-seule.pdf'));
   await browser.close();
 })();

@@ -23,7 +23,7 @@
      referentiel : { table, titre, details: [colonnes], libelles: [colonnes affichées « Libellé : valeur »], cle }
      nouveau     : "point" (lignes saisies après le dernier point de situation) ou "" (aucun repère)
      filtresRapides : [colonnes du référentiel proposées comme filtres rapides] ; filtrerBadges : badges proposés aussi
-     impression  : "synthese" (page 1 : toutes les tuiles en synthèse ; pages suivantes : leur détail) ou "complet" (tuiles détaillées)
+     impression  : "synthese" (page 1 : toutes les tuiles en synthèse ; pages suivantes : leur détail) , "seule" (la page de synthèse seulement) ou "complet" (tuiles détaillées)
      badges      : [{ libelle, table, lien, colonne, affichage }]
                    affichage « oui_non » : allumé si l'établissement est dans la table (colonne vide) ou si la colonne est vraie ;
                    affichage « valeur » : « Libellé : valeur de la colonne » (Label CVL : Niv 3), éteint si la valeur est vide
