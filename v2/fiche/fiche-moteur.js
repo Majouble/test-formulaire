@@ -32,7 +32,7 @@
      tuiles      : [{ titre, bloc, largeur 1-3, table, lien, filtre: { colonne, valeurs, exclure }, parDossier, date,
                       saisie, depuis, synthese: { mode, colonne, unite, legende }, ventilation, ventilationColonnes: [colonnes],
                       ventilationAffichage ("liste" | "barres"), detail: [colonnes],
-                      limite, source, restreint }]
+                      limite, source, restreint, masquerSiVide (tuile omise quand elle est vide) }]
    ===================================================================== */
 (function () {
   "use strict";
@@ -44,7 +44,7 @@
   const TUILE_VIDE = {
     titre: "Nouvelle tuile", bloc: "", largeur: 1, table: "", lien: "", filtre: { colonne: "", valeurs: "", exclure: false },
     parDossier: "", date: "", saisie: "", depuis: "", synthese: { mode: "nombre", colonne: "", unite: "", legende: "" },
-    ventilation: "", ventilationColonnes: [], ventilationAffichage: "liste", detail: [], limite: 15, source: "", restreint: false,
+    ventilation: "", ventilationColonnes: [], ventilationAffichage: "liste", detail: [], limite: 15, source: "", restreint: false, masquerSiVide: false,
   };
   const CONFIG_VIDE = { referentiel: { table: "", titre: "", details: [], libelles: [], cle: "" }, nouveau: "point", impression: "synthese", filtresRapides: [], filtrerBadges: false, badges: [], tuiles: [] };
 
@@ -323,7 +323,8 @@
 
     return {
       titre: t.titre, largeur: t.largeur, restreint: !!t.restreint, source: t.source,
-      grand, legende, periode, vide: lignes.length === 0,
+      // vide : aucune ligne, ou valeur la plus récente non renseignée (point de vigilance sans texte…)
+      grand, legende, periode, vide: lignes.length === 0 || (s.mode === "valeur" && !valeurDe(s.colonne)),
       nouveaux: lignes.filter(estNouvelle).length,
       ventilation, barres: t.ventilationAffichage === "barres", colonnesDetail: t.detail.map(c => (lecteur.colonne(tab, c) || {}).label || c),
       detail, reste: t.detail.length ? Math.max(0, lignes.length - limite) : 0,
@@ -369,9 +370,11 @@
     const blocs = [];
     c.tuiles.forEach(t => {
       const nom = t.bloc || "";
+      const tuile = calculerTuile(t, lecteur, contexte);
+      if (t.masquerSiVide && tuile.vide) return;   // tuile affichée seulement si elle est renseignée (bloc omis s'il reste vide)
       let bloc = blocs.find(b => b.titre === nom);
       if (!bloc) blocs.push(bloc = { titre: nom, tuiles: [] });
-      bloc.tuiles.push(calculerTuile(t, lecteur, contexte));
+      bloc.tuiles.push(tuile);
     });
     return {
       id: etab.id,

@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.10"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.10"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.10"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.10"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.10"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.10"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.11"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.11"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.11"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.11"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.11"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.11"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -782,10 +782,11 @@ function htmlCarteTuile(t, i, n) {
     ${champ("Lignes affichées au plus", `<input type="number" min="1" data-champ="${p}.limite" data-type="nombre" value="${esc(t.limite)}">`)}
     ${champ("Détail (couche 3) : colonnes, dans l'ordre", `<div class="champs" style="padding:0">${detail}</div>`, "", true)}
     ${champ("Source", `<input type="text" data-champ="${p}.source" value="${esc(t.source)}" placeholder="SDS BV2A, DGESCO…">`)}
+    ${champ("Affichage", `<label><input type="checkbox" data-champ="${p}.masquerSiVide"${t.masquerSiVide ? " checked" : ""}> seulement si elle est renseignée</label>`, "Tuile absente de la fiche quand elle n'a aucune ligne, ou quand la valeur affichée est vide (point de vigilance…).")}
     ${champ("Diffusion restreinte", `<label><input type="checkbox" data-champ="${p}.restreint"${t.restreint ? " checked" : ""}> détail non imprimé par défaut</label>`)}
   </div></details>`;
 }
-function htmlBadge(b, i) {
+function htmlBadge(b, i, liste) {
   const tab = b.table || brouillon.referentiel.table, p = `badges.${i}`;
   return `<div class="ligne-badge">
     ${champ("Libellé", `<input type="text" data-champ="${p}.libelle" value="${esc(b.libelle)}" placeholder="Bâti dégradé · liste des 200">`)}
@@ -793,7 +794,10 @@ function htmlBadge(b, i) {
     ${champ("Lien", selColonne(`${p}.lien`, tab, b.lien, "—"))}
     ${champ("Affichage", `<select data-champ="${p}.affichage" data-recharge="1">${opt("oui_non", "oui / non", b.affichage)}${opt("valeur", "valeur de la colonne", b.affichage)}</select>`)}
     ${champ(b.affichage === "valeur" ? "Colonne affichée" : "Colonne oui / non", selColonne(`${p}.colonne`, tab, b.colonne, b.affichage === "valeur" ? "— choisir —" : "— présence dans la table —"))}
-    <button class="petit" data-action="supprimer-badge" data-i="${i}">Supprimer</button>
+    <span style="display:inline-flex;gap:4px">
+      <button class="petit" data-action="monter-badge" data-i="${i}" ${i === 0 ? "disabled" : ""} aria-label="Monter le badge ${esc(b.libelle || i + 1)}">↑</button>
+      <button class="petit" data-action="descendre-badge" data-i="${i}" ${i === liste.length - 1 ? "disabled" : ""} aria-label="Descendre le badge ${esc(b.libelle || i + 1)}">↓</button>
+      <button class="petit" data-action="supprimer-badge" data-i="${i}">Supprimer</button></span>
     <div class="couleurs-badge"><span class="aide">Couleurs :</span>
       ${b.couleurs.map((c, k) => `<span class="regle">si <input type="text" list="${b.affichage === "valeur" ? `valeurs-badge-${i}` : "valeurs-oui-non"}" data-champ="${p}.couleurs.${k}.valeur" value="${esc(c.valeur)}" placeholder="${b.affichage === "valeur" ? "Niv 3, vide…" : "Oui, Non"}" aria-label="Valeur de la règle de couleur ${k + 1}">
         → <select data-champ="${p}.couleurs.${k}.couleur" aria-label="Couleur de la règle ${k + 1}">${COULEURS.map(([v, l]) => opt(v, l, c.couleur)).join("")}</select>
@@ -877,6 +881,8 @@ $("reglages").addEventListener("click", async e => {
     case "descendre": [T[i + 1], T[i]] = [T[i], T[i + 1]]; break;
     case "ajouter-badge": brouillon.badges.push({ libelle: "", table: "", lien: "", colonne: "", affichage: "oui_non" }); break;
     case "supprimer-badge": brouillon.badges.splice(i, 1); break;
+    case "monter-badge": { const B = brouillon.badges; [B[i - 1], B[i]] = [B[i], B[i - 1]]; break; }
+    case "descendre-badge": { const B = brouillon.badges; [B[i + 1], B[i]] = [B[i], B[i + 1]]; break; }
     case "ajouter-couleur": brouillon.badges[i].couleurs.push({ valeur: brouillon.badges[i].affichage === "valeur" ? "" : "Oui", couleur: "vert" }); break;
     case "supprimer-couleur": brouillon.badges[i].couleurs.splice(Number(b.dataset.k), 1); break;
     case "json":
