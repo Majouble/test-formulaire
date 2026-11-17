@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.14"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.14"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.14"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.14"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.14"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.14"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.15"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.15"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.15"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.15"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.15"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.15"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -762,23 +762,32 @@ $("imprimerSelection").addEventListener("click", () => {
   document.body.classList.add("lot");
   window.print();
 });
-// page de synthèse : mesurée à la largeur d'une A4 juste avant l'impression, réduite si elle dépasse une page
-// (hauteur utile 297 − 2 × 12 mm, avec une marge de sécurité ; au plus réduite de moitié)
-const HAUTEUR_PAGE = (297 - 24) * 96 / 25.4 * 0.96;
+/* Page de synthèse ajustée à la page A4 juste avant l'impression : agrandie si elle est courte, réduite si elle
+   déborde, pour remplir la page. Pour un facteur z, la page est mise en page sur une largeur 186 mm / z puis zoomée
+   de z : elle garde ainsi la largeur utile et sa hauteur finale vaut (hauteur à cette largeur) × z. Le plus grand z
+   qui tient dans la hauteur utile (297 − 2 × 12 mm, marge de sécurité) est cherché par dichotomie, entre 0,5 et 1,35. */
+const HAUTEUR_PAGE = (297 - 24) * 96 / 25.4 * 0.96, ZOOM_MIN = 0.5, ZOOM_MAX = 1.35;
+function ajusterPage(el) {
+  el.style.zoom = ""; el.style.width = "";
+  const largeur = el.getBoundingClientRect().width;
+  const hauteurA = z => { el.style.width = `${largeur / z}px`; return el.getBoundingClientRect().height * z; };
+  let bas = ZOOM_MIN, haut = ZOOM_MAX;
+  if (hauteurA(ZOOM_MAX) <= HAUTEUR_PAGE) bas = ZOOM_MAX;
+  else for (let i = 0; i < 9; i++) { const z = (bas + haut) / 2; if (hauteurA(z) <= HAUTEUR_PAGE) bas = z; else haut = z; }
+  el.style.width = `${largeur / bas}px`; el.style.zoom = bas.toFixed(3);
+}
 function preparerImpression() {
   document.body.classList.add("impression");
   const zone = document.body.classList.contains("lot") ? $("lot") : $("fiche");
   zone.querySelectorAll(".page-synthese").forEach(el => {
-    el.style.zoom = "";
-    if (!document.body.classList.contains("mp-synthese")) return;
-    const h = el.getBoundingClientRect().height;
-    if (h > HAUTEUR_PAGE) el.style.zoom = Math.max(0.5, HAUTEUR_PAGE / h).toFixed(3);
+    el.style.zoom = ""; el.style.width = "";
+    if (document.body.classList.contains("mp-synthese")) ajusterPage(el);
   });
 }
 window.addEventListener("beforeprint", preparerImpression);
 window.addEventListener("afterprint", () => {
   document.body.classList.remove("impression", "lot"); $("lot").innerHTML = "";
-  document.querySelectorAll(".page-synthese").forEach(el => { el.style.zoom = ""; });
+  document.querySelectorAll(".page-synthese").forEach(el => { el.style.zoom = ""; el.style.width = ""; });
 });
 
 /* =====================================================================
