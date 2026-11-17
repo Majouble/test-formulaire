@@ -24,8 +24,12 @@ function doc(partenaire) {
 async function ouvrir(browser, partenaire) {
   const p = await browser.newPage({ viewport: { width: 1000, height: 1100 } });
   p.on('pageerror', e => console.log('PAGEERROR', e.message)); p.on('dialog', x => x.accept());
-  const refus = partenaire ? `const __f=grist.docApi.fetchTable.bind(grist.docApi);grist.docApi.fetchTable=async n=>{if(['Points_situation','Config','Bati','_grist_ACLRules'].includes(n))throw new Error('Blocked by table read access rules');return __f(n);};` : '';
-  await p.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__DOC__=${JSON.stringify(doc(partenaire))};` + fs.readFileSync('mock.js') + `;${refus}`
+  // partenaire : Grist lui refuse les métadonnées, les règles d'accès et les tables fermées ; de Config, il ne lit que la copie de structure
+  const d = doc(partenaire), T = d._grist_Tables, C = d._grist_Tables_column, copie = {};
+  T.tableId.forEach((t, k) => { if (['Etablissements', 'Reponses', 'Faits_etablissement', 'Liste_200', 'Partenaires'].includes(t)) copie[t] = C.id.map((_, i) => i).filter(i => C.parentId[i] === T.id[k]).map(i => ({ colId: C.colId[i], label: C.label[i], type: C.type[i], visibleCol: '' })); });
+  const configPart = { id: [1], Cle: ['schema_partenaires'], Valeur: [JSON.stringify({ tables: copie })] };
+  const refus = partenaire ? `const __f=grist.docApi.fetchTable.bind(grist.docApi);grist.docApi.fetchTable=async n=>{if(n==='Config')return ${JSON.stringify(configPart)};if(['Points_situation','Bati','_grist_ACLRules','_grist_Tables','_grist_Tables_column'].includes(n))throw new Error('Blocked by table read access rules');return __f(n);};` : '';
+  await p.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__DOC__=${JSON.stringify(d)};` + fs.readFileSync('mock.js') + `;${refus}`
     + `window.__OPTS=null;grist.ready=()=>{};grist.onOptions=cb=>setTimeout(()=>cb(${JSON.stringify({ fiche: MODELE, partenaires: true, modeles: partenaire ? COMMUNS : [] })}),50);grist.setOptions=async o=>{window.__OPTS=JSON.parse(JSON.stringify(o));};`
     + `grist.onRecord=cb=>{window.__REC=cb;};grist.setCursorPos=async()=>{};grist.selectedTable={getTableId:async()=>'Etablissements'};` }));
   await p.goto('file://' + __C.racine + '/v2/fiche/index.html'); await p.waitForTimeout(1100);

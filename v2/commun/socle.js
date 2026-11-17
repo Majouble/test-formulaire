@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.62.0-alpha.15 (17/11/2026)";
+  const VERSION = "2.62.0-alpha.16 (17/11/2026)";
 
   /* ---------- version publiée ----------
      GitHub Pages laisse les navigateurs garder chaque fichier 10 minutes. Au chargement, la page lit version.json sans
@@ -454,7 +454,8 @@ return sorted(champs)`;
      Table Partenaires : une ligne par partenaire (nom, clé, lien, actif) ; colonne Fiche = ses réglages, filtres et
      modèles de la fiche (JSON), qu'il est seul à lire et modifier. Attribut utilisateur « Partenaire » (onglet Accès) :
      lecture seule des tables ouvertes aux partenaires (clé « partenaires » de Config), rien d'autre. */
-  const PARTENAIRES = { table: "Partenaires", attribut: "Partenaire", nom: "Nom", cle: "Cle", lien: "Lien", actif: "Actif", fiche: "Fiche" };
+  const PARTENAIRES = { table: "Partenaires", attribut: "Partenaire", nom: "Nom", cle: "Cle", lien: "Lien", actif: "Actif", fiche: "Fiche",
+    schema: "schema_partenaires" };   // copie des colonnes des tables ouvertes (clé de Config, seule ligne de Config lisible des partenaires)
   // Durées de validité d'un lien d'invité (clé « acces_invites » de Config, réglée dans l'onglet Équipe › Agents)
   const DUREES_INVITE = [["24h", "24 heures", 24], ["72h", "3 jours", 72], ["7j", "7 jours", 168], ["30j", "30 jours", 720], ["illimite", "sans limite", 0]];
   // Auteur d'une ligne (formule d'initialisation) : adresse du compte Grist, sinon « Invité : <nom> » pour le lien d'un agent,
