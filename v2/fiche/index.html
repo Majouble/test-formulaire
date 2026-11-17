@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.12"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.12"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.12"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.12"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.12"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.12"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.13"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.13"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.13"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.13"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.13"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.13"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -786,8 +786,11 @@ function htmlCarteTuile(t, i, n) {
     ${champ("Depuis", `<input type="text" data-champ="${p}.depuis" value="${esc(t.depuis)}" placeholder="AAAA-MM-JJ ou nombre de jours">`)}
     ${champ("Filtre : colonne", selColonne(`${p}.filtre.colonne`, tab, t.filtre.colonne))}
     ${champ("Filtre : valeurs", `<input type="text" data-champ="${p}.filtre.valeurs" value="${esc(t.filtre.valeurs)}" placeholder="a ; b">`, `<label><input type="checkbox" data-champ="${p}.filtre.exclure"${t.filtre.exclure ? " checked" : ""}> exclure ces valeurs</label>`)}
-    ${champ("Synthèse", `<select data-champ="${p}.synthese.mode">${M.MODES.map(([v, l]) => opt(v, l, t.synthese.mode)).join("")}</select>`)}
+    ${champ("Synthèse", `<select data-champ="${p}.synthese.mode" data-recharge="1">${M.MODES.map(([v, l]) => opt(v, l, t.synthese.mode)).join("")}</select>`)}
     ${champ("Colonne de la synthèse", selColonne(`${p}.synthese.colonne`, tab, t.synthese.colonne), "Pour une somme ou la valeur la plus récente.")}
+    ${t.synthese.mode === "valeur" ? champ("Valeurs à ignorer", `<input type="text" data-champ="${p}.synthese.ignorer" value="${esc(t.synthese.ignorer)}" placeholder="Retour à la normale ; RAS">`,
+      `<label><input type="checkbox" data-champ="${p}.synthese.ignorerMemeJour"${t.synthese.ignorerMemeJour !== false ? " checked" : ""}> parmi les lignes du jour le plus récent seulement</label><br>
+      Affiche la valeur la plus récente qui n'est pas l'une de celles-ci (l'état du jour reste visible après un retour à la normale) ; pour lire toutes les versions de la journée, laissez « Une ligne par dossier » vide.`) : ""}
     ${champ("Unité", `<input type="text" data-champ="${p}.synthese.unite" value="${esc(t.synthese.unite)}" placeholder="jours, faits, élèves…">`)}
     ${champ("Légende", `<input type="text" data-champ="${p}.synthese.legende" value="${esc(t.synthese.legende)}" placeholder="Dernier état : {Qualification}">`, "{nombre}, {jours}, {episodes}, {total} (colonnes comparées), {principal} (première valeur de la ventilation et sa part) ou {Colonne} (valeur la plus récente).", true)}
     ${champ("Ventilation par valeur (couche 2)", selColonne(`${p}.ventilation`, tab, t.ventilation), "Décompte par valeur de cette colonne (Catégorie, Thème…).")}
