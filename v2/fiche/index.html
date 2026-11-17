@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.25"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.25"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.25"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.25"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.25"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.25"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.26"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.26"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.26"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.26"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.26"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.26"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -306,6 +306,47 @@ async function chargerSchema() {
     tablesDoc = Object.keys(schema).sort(TRI);
   }
 }
+/* Lecture rapide par l'API SQL de Grist (comme la saisie) : lue directement dans la base du document, sans passer par
+   le moteur de calcul, qui traite les demandes une par une (une grande table y fait attendre toutes les autres).
+   Refusée sans accès complet au document (lien de partenaire, règles d'accès) : lecture habituelle (fetchTable).
+   Points_situation, lue seulement pour l'heure du dernier point : sa seule colonne Horodatage. */
+let jetonSQL = null, sqlRefuse = "";
+const listeSQL = ["ChoiceList", "RefList", "Attachments"];
+async function lireTableSQL(tid, seules) {
+  if (sqlRefuse) throw new Error(sqlRefuse);
+  if (!grist.docApi.getAccessToken) { sqlRefuse = "jeton d'accès indisponible"; throw new Error(sqlRefuse); }
+  if (!jetonSQL || Date.now() > jetonSQL.expire) {
+    const j = await grist.docApi.getAccessToken({ readOnly: true });
+    jetonSQL = { ...j, expire: Date.now() + Math.max(30, Math.min(Number(j.ttl) || 300, 600) - 20) * 1000 };
+  }
+  const meta = (schema[tid] || []).filter(c => c.colId !== "id" && c.colId !== "manualSort" && !String(c.colId).startsWith("gristHelper") && (!seules || seules.includes(c.colId)));
+  if (!schema[tid]) throw new Error("table inconnue");
+  const q = x => `"${String(x).replace(/"/g, '""')}"`;
+  const sql = `SELECT id${meta.map(c => `, ${q(c.colId)}`).join("")} FROM ${q(tid)}`;
+  const r = await fetch(`${jetonSQL.baseUrl}/sql?q=${encodeURIComponent(sql)}&auth=${encodeURIComponent(jetonSQL.token)}`);
+  if (r.status === 401 || r.status === 403) { sqlRefuse = `lecture SQL refusée (${r.status})`; throw new Error(sqlRefuse); }
+  if (!r.ok) throw new Error(`lecture SQL : erreur ${r.status}`);
+  const recs = (await r.json()).records || [];
+  // valeurs telles que les donnerait fetchTable : cases à cocher en booléens, listes au format ["L", …]
+  const conv = meta.map(c => {
+    const ty = String(c.type || "").split(":")[0];
+    if (ty === "Bool") return v => v == null ? v : !!v;
+    if (listeSQL.includes(ty)) return v => { if (typeof v !== "string" || !v.startsWith("[")) return v; try { return ["L", ...JSON.parse(v)]; } catch (_) { return v; } };
+    return v => v;
+  });
+  const t = { id: recs.map(x => x.fields.id) };
+  meta.forEach((c, k) => { t[c.colId] = recs.map(x => conv[k](x.fields[c.colId])); });
+  return t;
+}
+const durees = {};   // dernière lecture de chaque table : { ms, mode, lignes }
+async function lireTable(t, seules) {
+  const t0 = performance.now();
+  let d, mode = "SQL";
+  try { d = await lireTableSQL(t, seules); }
+  catch (_) { mode = "fetchTable"; d = await grist.docApi.fetchTable(t); }
+  durees[t] = { ms: Math.round(performance.now() - t0), mode, lignes: d && d.id ? d.id.length : 0 };
+  return d;
+}
 const enVol = new Map();   // lectures en cours, partagées (démarrage et première ligne envoyée par Grist)
 async function chargerDonnees(forcer) {
   const cfg = actuelle(), besoin = M.tablesNecessaires(cfg, schema);
@@ -313,9 +354,11 @@ async function chargerDonnees(forcer) {
   const a = besoin.filter(t => vieux || !(t in donnees));
   // tables lues en parallèle ; table illisible avec les droits de la personne (lien de partenaire…) : ignorée, ses tuiles restent vides
   let faites = 0;
+  // Points_situation demandée seulement pour le repère « nouveau » (aucune tuile, badge ni référentiel ne la lit)
+  const psSeule = a.includes("Points_situation") && !M.tablesNecessaires({ ...cfg, nouveau: "" }, schema).includes("Points_situation");
   if (a.length) attente(`Lecture des données : 0 / ${a.length} table${a.length > 1 ? "s" : ""}…`);
   await Promise.all(a.map(t => {
-    if (!enVol.has(t)) enVol.set(t, grist.docApi.fetchTable(t).then(d => { donnees[t] = d; illisibles.delete(t); }, () => { donnees[t] = null; illisibles.add(t); })
+    if (!enVol.has(t)) enVol.set(t, lireTable(t, t === "Points_situation" && psSeule ? ["Horodatage"] : null).then(d => { donnees[t] = d; illisibles.delete(t); }, () => { donnees[t] = null; illisibles.add(t); })
       .finally(() => enVol.delete(t)));
     return enVol.get(t).then(() => attente(`Lecture des données : ${++faites} / ${a.length} table${a.length > 1 ? "s" : ""}…`));
   }));
@@ -458,9 +501,10 @@ async function rafraichir(forcer) {
     base = M.preparer(actuelle(), lecteur, { marque });
     recalculerSelection(); remplirRecherche(); afficherFiltres(); afficher();
     const t2 = performance.now();
-    console.info(`[fiche] lecture ${Math.round(t1 - t0)} ms, calcul ${Math.round(t2 - t1)} ms`,
-      Object.fromEntries(Object.entries(donnees).map(([t, d]) => [t, d && d.id ? d.id.length : 0])));
-    $("version").title = `Dernier chargement : lecture des tables ${(Math.round((t1 - t0) / 100) / 10).toLocaleString("fr-FR")} s, calcul ${(Math.round((t2 - t1) / 100) / 10).toLocaleString("fr-FR")} s`;
+    const s1 = x => (Math.round(x / 100) / 10).toLocaleString("fr-FR");
+    console.info(`[fiche] lecture ${Math.round(t1 - t0)} ms, calcul ${Math.round(t2 - t1)} ms`, durees);
+    $("version").title = `Dernier chargement : lecture des tables ${s1(t1 - t0)} s, calcul ${s1(t2 - t1)} s\n`
+      + Object.entries(durees).sort((x, y) => y[1].ms - x[1].ms).map(([t, d]) => `${t} : ${s1(d.ms)} s, ${d.lignes} lignes (${d.mode})`).join("\n");
   }
   catch (e) { console.error(e); message("Lecture impossible : " + (e.message || e)); }
   finally { attente(""); }
