@@ -101,6 +101,7 @@ Les widgets sont des pages statiques (HTML et JavaScript, sans serveur propre) a
 | `annuaire_en`, `referentiel_esr`, `effectifs` | Référentiel | Réglages et trace des imports (`regles_esr`, règle des écoles d'ingénieurs, abandonnée en 2.56 : n'est plus lue) |
 | `planning`, `repartition` | Équipe | Fonctions, modèles de journée ; critères de périmètre |
 | `partenaires` | Accès | Tables ouvertes en lecture aux partenaires (`tables`) |
+| `schema_partenaires` | Accès (écrite), Fiche établissement (lue) | Copie des colonnes des tables ouvertes aux partenaires et de `Partenaires` (Grist cache ses métadonnées aux liens) ; seule ligne de Config lisible d'un partenaire |
 | `liens`, `campagnes`, `acces_invites` | Établissements, Équipe | Mise en place des liens, publipostage, campagnes ; durée des liens invités |
 | `validation` | Validation | Circuits de visas |
 | `veille` | Veille | Seuil, phénomènes suivis |

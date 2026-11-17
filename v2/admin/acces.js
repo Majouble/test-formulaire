@@ -310,6 +310,10 @@
     const fixes = [PART.nom, PART.cle, PART.lien, PART.actif].filter(c => meta[PART.table].colonnes[c]).sort();
     if (fixes.length) ajouterEn(PART.table, fixes.join(","), `${PART.table} — nom, clé, lien, actif`,
       [{ aclFormula: P, permissionsText: "-U", memo: `${MEMO} — ${qui} : nom, clé, lien et état en lecture seule` }], ["Partenaire : nom, clé, lien et état en lecture seule."]);
+    // copie des colonnes des tables ouvertes (Grist cache ses métadonnées aux liens) : seule ligne de Config lisible
+    ajouterEn(S.TABLE_CONFIG, "*", `${S.TABLE_CONFIG} — structure des tables pour les partenaires`,
+      [{ aclFormula: `${P} and rec.Cle == "${PART.schema}"`, permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : structure des tables ouvertes (clé ${PART.schema})` }],
+      [`Partenaire : la seule ligne « ${PART.schema} » de Config (colonnes des tables ouvertes), pour que la fiche démarre.`]);
     for (const t of tablesPartenaires()) {
       const cols = meta[t].colonnes;
       for (const c of [R.LIEN.cle, R.LIEN.lien]) if (cols[c]) ajouterEn(t, c, `${t} — ${c === R.LIEN.cle ? "clé" : "lien"} d'accès des établissements`,
@@ -583,12 +587,20 @@
       await charger(); pagesDoc = await lirePagesDoc(); dessiner(); direPart("Liens mis à jour.");
     } catch (e) { direPart(`Refusé par Grist (${e.message || e}).`, true); }
   }
+  // copie des colonnes des tables ouvertes et de la table Partenaires, lue par la fiche ouverte par un lien
+  async function majSchemaPartenaires() {
+    if (!avecPartenaires()) return;
+    const tables = [...tablesPartenaires(), PART.table].filter(t => meta[t]);
+    const v = { tables: await S.instantaneSchema(tables), maj: new Date().toISOString() };
+    const avant = config && config.valeurs && config.valeurs[PART.schema];
+    if (!avant || JSON.stringify(avant.tables) !== JSON.stringify(v.tables)) await S.ecrireConfig(PART.schema, v);
+  }
   async function enregistrerTablesPartenaires() {
     const tables = [...document.querySelectorAll("[data-part-table]:checked")].map(i => i.dataset.partTable);
     try {
       const v = (config && config.valeurs && config.valeurs.partenaires) || {};
       await S.ecrireConfig("partenaires", { ...v, tables });
-      await charger(); pagesDoc = await lirePagesDoc(); dessiner();
+      await charger(); await majSchemaPartenaires(); await charger(); pagesDoc = await lirePagesDoc(); dessiner();
       direPart(`${tables.length} table(s) ouverte(s) aux partenaires.${aJour(reglesProposees()) ? "" : " Appliquez maintenant les règles."}`);
     } catch (e) { direPart(`Enregistrement refusé (${e.message || e}).`, true); }
   }
@@ -667,6 +679,7 @@
       await grist.docApi.applyUserActions([...(ids.length ? [["BulkRemoveRecord", "_grist_ACLRules", ids]] : []), ...ajouts,
         ...(fantomes.length ? [["BulkRemoveRecord", "_grist_ACLResources", fantomes]] : [])]);
       await R.majSchemaPublic(meta, config, general, formulaires);
+      await majSchemaPartenaires();
     }
   }
   // Après la publication d'un formulaire (nouvelle sous-table, nouvelles questions de visa…) : si les règles du socle

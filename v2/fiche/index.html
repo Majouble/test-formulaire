@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.15"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.15"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.15"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.15"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.15"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.15"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.16"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.16"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.16"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.16"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.16"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.16"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -269,10 +269,21 @@ const actuelle = () => brouillon || config || M.normaliserConfig(null);
 function message(texte, type = "erreur") { const m = $("message"); m.className = "message" + (texte ? " " + type : ""); m.textContent = texte || ""; }
 
 /* ---------- lecture du document ---------- */
+// Structure des tables : métadonnées de Grist ; pour un lien (partenaire, établissement), que Grist en prive,
+// copie tenue à jour par l'administration dans Config (clé « schema_partenaires », sinon « schema »)
 async function chargerSchema() {
-  const T = await grist.docApi.fetchTable("_grist_Tables");
-  tablesDoc = T.tableId.filter(t => t && !/^GristHidden|^_grist/.test(t)).sort((a, b) => a.localeCompare(b, "fr"));
-  schema = await Socle.instantaneSchema(tablesDoc);
+  try {
+    const T = await grist.docApi.fetchTable("_grist_Tables");
+    tablesDoc = T.tableId.filter(t => t && !/^GristHidden|^_grist/.test(t)).sort((a, b) => a.localeCompare(b, "fr"));
+    schema = await Socle.instantaneSchema(tablesDoc);
+  } catch (e) {
+    const C = await grist.docApi.fetchTable("Config").catch(() => null);
+    const lire = cle => { const i = C && C.Cle ? C.Cle.indexOf(cle) : -1; try { return i < 0 ? null : JSON.parse(C.Valeur[i]); } catch (_) { return null; } };
+    const copie = lire(PART.schema) || lire("schema");
+    if (!copie || !copie.tables) throw new Error("structure du document illisible avec ce lien : un propriétaire doit appliquer les règles d'accès (onglet Accès), qui en écrivent une copie pour les partenaires");
+    schema = copie.tables;
+    tablesDoc = Object.keys(schema).sort((a, b) => a.localeCompare(b, "fr"));
+  }
 }
 async function chargerDonnees(forcer) {
   const cfg = actuelle(), besoin = M.tablesNecessaires(cfg, schema);
@@ -465,7 +476,6 @@ async function lirePartenaires() {
   partenaires = []; proprietaire = false;
   if (!pagePartenaires) return;
   try { await grist.docApi.fetchTable("_grist_ACLRules"); proprietaire = true; } catch (_) {}
-  if (!schema[PART.table]) return;
   try {
     const d = await grist.docApi.fetchTable(PART.table), col = k => d[k] || [];
     partenaires = d.id.map((id, i) => { let contenu = {}; try { contenu = JSON.parse(col(PART.fiche)[i] || "{}") || {}; } catch (_) {}
