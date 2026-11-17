@@ -44,6 +44,9 @@ const pages = f => (fs.readFileSync(f, 'latin1').match(/\/Type\s*\/Page(?!s)/g) 
   await p.click('#imprimerSelection'); await p.waitForTimeout(200);
   await p.emulateMedia({ media: 'print' });
   console.log('LOT : fiches', await p.$$eval('#lot .fiche-lot', l => l.length), '| annexes', await p.$$eval('#lot .annexe', l => l.length));
+  // synthèse de chaque fiche ajustée à la largeur utile d'une A4 (186 mm ≈ 703 px), pas à celle de la fenêtre
+  await p.evaluate(() => window.dispatchEvent(new Event('beforeprint')));
+  console.log('LOT, LARGEUR DES SYNTHÈSES (px) :', JSON.stringify(await p.$$eval('#lot .page-synthese', l => l.map(e => Math.round(e.getBoundingClientRect().width)))));
   await p.pdf({ path: __C.sorties + '/fiche-130-lot.pdf', format: 'A4', printBackground: true, margin: { top: '12mm', bottom: '12mm', left: '12mm', right: '12mm' } });
   console.log('PDF LOT : pages', pages(__C.sorties + '/fiche-130-lot.pdf'));
   await browser.close();
