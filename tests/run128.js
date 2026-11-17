@@ -66,7 +66,7 @@ async function principal() {
   await p.fill('#avances .filtre[data-i="0"] [data-ch=val]', 'Blocage'); await p.waitForTimeout(600);
   console.log('F1 BLOCAGE :', await etatBarre(), '|', await p.textContent('#avances .filtre[data-i="0"] .resume'), '|', await p.textContent('#btnAvances'));
   await p.click('#avances [data-ajouter]'); await p.waitForTimeout(150);
-  await p.selectOption('#avances .filtre[data-i="1"] [data-ch=source]', '1'); await p.waitForTimeout(150);
+  await p.selectOption('#avances .filtre[data-i="1"] [data-ch=source]', 'Faits_etablissement'); await p.waitForTimeout(150);
   await p.selectOption('#avances .filtre[data-i="1"] [data-ch=portee]', 'compter'); await p.waitForTimeout(150);
   await p.selectOption('#avances .filtre[data-i="1"] [data-ch=mesure]', 'lignes'); await p.waitForTimeout(150);
   await p.fill('#avances .filtre[data-i="1"] [data-ch=seuil]', '3'); await p.waitForTimeout(600);
@@ -100,6 +100,16 @@ async function principal() {
   console.log('APRÈS IMPRESSION : lot vidé', await p.evaluate(() => document.getElementById('lot').innerHTML === ''));
   await p.screenshot({ path: __C.sorties + '/fiche-128-filtres.png', fullPage: false });
 
+  // « bloqués depuis au moins 2 jours » : Reponses, Qualification = Blocage, compter le nombre de jours ≥ 2 (dernière version des dossiers)
+  await p.click('#avances [data-retirer="1"]'); await p.waitForTimeout(150); await p.click('#avances [data-retirer="0"]'); await p.waitForTimeout(150);
+  console.log('F1 PAR DÉFAUT :', await p.$eval('#avances .filtre[data-i="0"] [data-ch=source]', s => s.value), '|', await p.$eval('#avances .filtre[data-i="0"] [data-ch=versions]', s => s.value));
+  await p.selectOption('#avances .filtre[data-i="0"] [data-ch=col]', 'Qualification'); await p.waitForTimeout(150);
+  await p.selectOption('#avances .filtre[data-i="0"] [data-ch=op]', 'eq'); await p.waitForTimeout(150);
+  await p.fill('#avances .filtre[data-i="0"] [data-ch=val]', 'Blocage'); await p.waitForTimeout(500);
+  await p.selectOption('#avances .filtre[data-i="0"] [data-ch=portee]', 'compter'); await p.waitForTimeout(150);
+  await p.selectOption('#avances .filtre[data-i="0"] [data-ch=mesure]', 'jours'); await p.waitForTimeout(150);
+  await p.fill('#avances .filtre[data-i="0"] [data-ch=seuil]', '2'); await p.waitForTimeout(600);
+  console.log('BLOQUÉS ≥ 2 JOURS :', await etatBarre(), '|', await p.textContent('#avances .filtre[data-i="0"] .resume'));
   // réglages : puces proposées
   await p.click('#ouvrirReglages'); await p.waitForTimeout(300);
   await p.uncheck('[data-liste="filtresRapides"][value="Type"]'); await p.waitForTimeout(400);

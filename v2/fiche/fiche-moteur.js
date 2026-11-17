@@ -133,7 +133,7 @@
       if (typeof v === "number") return nombreFr(v);
       return String(v);
     }
-    return { colonne, lignes, ligne, texte, elements, existe: t => !!tables[t] };
+    return { colonne, lignes, ligne, texte, elements, existe: t => !!tables[t], schema };
   }
 
   /* ---------- tables à charger : celles des tuiles et des badges, le référentiel, les cibles des références ---------- */
@@ -418,21 +418,31 @@
       estDerniere: () => true,   // la tuile garde déjà, si elle le demande, une ligne par dossier
     };
   }
+  // source d'un filtre : nom de table (vide = référentiel) ; avant la 2.62.0-alpha.8, numéro de tuile
+  function sourceDe(f, sources, config) {
+    const v = f.source == null ? "" : String(f.source);
+    if (/^\d+$/.test(v) && !sources.some(x => x.source === v)) { const t = config.tuiles[Number(v)]; return sources.find(x => x.table === (t && (t.table || config.referentiel.table))) || null; }
+    return sources.find(x => x.source === v) || null;
+  }
   function passeAvances(etab, etat, FC, lecteur, base) {
     const avances = etat.avances || [];
     if (!avances.some(FC.actif)) return true;
-    const tuiles = base.config.tuiles, cache = new Map();
+    const sources = base.sources || (base.sources = sourcesFiltres(base.config, lecteur.schema));
     const resultats = avances.map(f => {
       if (!FC.actif(f)) return undefined;
-      const src = f.source === "" || f.source == null ? null : tuiles[Number(f.source)];
-      if (f.source !== "" && f.source != null && !src) return undefined;
-      let lignes, ctxF;
-      if (!src) { lignes = [etab]; ctxF = contexteFiltre(lecteur, base.refTable, ""); }
-      else {
-        if (!cache.has(f.source)) cache.set(f.source, lignesTuile(src, lecteur, { ...base, etab }).lignes);
-        lignes = cache.get(f.source); ctxF = contexteFiltre(lecteur, src.table || base.refTable, src.date);
+      const src = sourceDe(f, sources, base.config);
+      if (!src) return undefined;
+      // toutes les lignes de l'établissement dans la table, comme dans les Extractions
+      const lignes = src.source === "" ? [etab] : base.rattacher(etab, src.table, src.lien);
+      const ctxF = contexteFiltre(lecteur, src.table, src.date);
+      if (f.versions === "derniere" && src.dossier) {
+        const dernieres = new Map();
+        for (const l of lignes) { const k = l[src.dossier] || l.id, p = dernieres.get(k);
+          if (!p || (Number(l[src.date]) || 0) > (Number(p[src.date]) || 0) || ((Number(l[src.date]) || 0) === (Number(p[src.date]) || 0) && l.id > p.id)) dernieres.set(k, l); }
+        const garde = new Set(dernieres.values());
+        ctxF.estDerniere = l => garde.has(l);
       }
-      return FC.evaluer({ ...f, versions: "toutes" }, lignes, ctxF).ok;
+      return FC.evaluer(src.dossier ? f : { ...f, versions: "toutes" }, lignes, ctxF).ok;
     });
     return FC.combiner(etat.combinaison || "cascade", etat.formule || "", resultats);
   }
@@ -445,10 +455,25 @@
       .sort((a, b) => a.titre.localeCompare(b.titre, "fr"));
   }
   // tables dont les colonnes peuvent servir aux filtres avancés : référentiel (source vide) et table de chaque tuile
-  function sourcesFiltres(config) {
-    const c = normaliserConfig(config);
-    return [{ source: "", libelle: "Établissement (référentiel)", table: c.referentiel.table },
-      ...c.tuiles.map((t, i) => ({ source: String(i), libelle: `Tuile « ${t.titre} »`, table: t.table || c.referentiel.table }))];
+  /* Tables proposées aux filtres de sélection : le référentiel, puis chaque table rattachée aux établissements
+     (celles des tuiles et des badges, et toute table qui a une référence vers le référentiel ou une colonne
+     portant la clé). Pour chacune : lien, colonne date (nombre de jours) et colonne dossier (dernière version),
+     repris d'une tuile qui lit la table, sinon devinés. */
+  function sourcesFiltres(config, schema) {
+    const c = normaliserConfig(config), r = c.referentiel, out = [{ source: "", libelle: "Établissement (référentiel)", table: r.table, lien: "", date: "", dossier: "" }];
+    if (!schema || !r.table) return out;
+    const cols = t => schema[t] || [];
+    const deviner = t => {
+      const tuile = c.tuiles.find(x => (x.table || r.table) === t && x.lien);
+      const lien = tuile ? tuile.lien : ((cols(t).find(x => cibleRef(x.type) === r.table) || cols(t).find(x => r.cle && x.colId === r.cle) || {}).colId || "");
+      const date = (tuile && (tuile.date || tuile.saisie)) || (cols(t).find(x => estDate(x.type)) || {}).colId || "";
+      const dossier = (tuile && tuile.parDossier) || (cols(t).find(x => cibleRef(x.type) === t && /dossier/i.test(x.colId)) || {}).colId || "";
+      const titres = c.tuiles.filter(x => (x.table || r.table) === t).map(x => x.titre);
+      return { source: t, table: t, lien, date, dossier, libelle: titres.length ? `${t} (${titres.join(", ")})` : t };
+    };
+    const candidates = [...new Set([...c.tuiles.map(x => x.table), ...c.badges.map(x => x.table), ...Object.keys(schema)].filter(t => t && t !== r.table && schema[t]))];
+    for (const t of candidates) { const s = deviner(t); if (s.lien) out.push(s); }
+    return out;
   }
 
   const api = { CONFIG_VIDE, TUILE_VIDE, MODES, normaliserConfig, tablesNecessaires, verifierConfig, creerLecteur, preparer, construireFiche,
