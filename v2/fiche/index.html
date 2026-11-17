@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.4"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.4"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.4"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.4"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.4"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.4"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.5"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.5"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.5"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.5"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.5"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.5"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -59,6 +59,17 @@
   .tuile .detail { display: none; padding: 0 14px 12px; }
   .tuile.ouverte .detail { display: block; }
   .ventilation { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 8px; padding: 8px 0 0; border-top: 1px solid var(--bord); list-style: none; }
+  .barres { display: grid; gap: 4px; margin: 0 0 8px; padding: 8px 0 0; border-top: 1px solid var(--bord); }
+  .barre-ligne { display: grid; grid-template-columns: minmax(90px, 32%) minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 13px; }
+  .barre-lib { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .barre-piste { display: block; height: 12px; background: var(--page); border: 1px solid var(--bord); border-radius: 2px; overflow: hidden; }
+  .barre-val { display: block; height: 100%; background: var(--bleu); }
+  .barre-n { font-weight: 700; white-space: nowrap; } .barre-p { font-weight: 400; color: var(--gris); }
+  .barres.compactes { margin: 4px 0 0; padding: 0; border-top: none; gap: 2px; }
+  /* compactes (synthèse) : libellé et nombre sur une ligne, barre fine dessous, pour ne pas couper les libellés */
+  .compactes .barre-ligne { font-size: 12px; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "lib n" "piste piste"; gap: 0 6px; }
+  .compactes .barre-lib { grid-area: lib; } .compactes .barre-n { grid-area: n; } .compactes .barre-piste { grid-area: piste; height: 6px; }
+  .tuile.ouverte .tete .compactes { display: none; }   /* tuile dépliée : les barres complètes suffisent */
   .detail table { width: 100%; border-collapse: collapse; font-size: 13px; border-top: 1px solid var(--bord); }
   .detail th { text-align: left; font-size: 12px; color: var(--gris); font-weight: 600; padding: 6px 6px 2px; }
   .detail td { padding: 3px 6px; vertical-align: top; }
@@ -147,11 +158,14 @@
     body.mp-synthese .tuile .tete { padding: 9px 11px; }
     body.mp-synthese .tuile .grand { font-size: 19px; }
     body.mp-synthese .renvoi { display: block; }
+    body.mp-synthese .tuile.ouverte .tete .compactes { display: grid; }
+    body.mp-complet .tete .compactes { display: none; }
     body.mp-synthese:not(.imprimer-restreint) .restreint .renvoi { display: none; }
     body.mp-synthese .annexe { display: block; break-before: page; }
     .badge { background: #161616; border-color: #161616; } .badge.non { background: #fff; color: #4a4a4a; border-color: #767676; }
     .entete .repere { background: none; border: 1.5px solid #161616; }
-    .detail tr.nouveau td, .tuile .pastille { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .detail tr.nouveau td, .tuile .pastille, .barre-val { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .barre-val { background: #000091; } .barre-piste { border-color: #767676; background: #fff; }
   }
 </style>
 </head>
@@ -269,7 +283,8 @@ function htmlTuile(t, k) {
   const tableau = t.detail.length ? `<table><thead><tr>${t.colonnesDetail.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${
     t.detail.map(l => `<tr${l.nouveau ? ' class="nouveau"' : ""}>${l.cellules.map((c, i) => `<td>${i === 0 && l.nouveau ? '<span class="mot-nouveau">Nouveau · </span>' : ""}${esc(c)}</td>`).join("")}</tr>`).join("")
   }</tbody></table>${t.reste ? `<p class="periode">… et ${t.reste} autre${t.reste > 1 ? "s" : ""} ligne${t.reste > 1 ? "s" : ""}.</p>` : ""}` : "";
-  const ventil = t.ventilation.length ? `<ul class="ventilation">${t.ventilation.map(v => `<li><b>${esc(v.texte)}</b> ${esc(v.valeur)}</li>`).join("")}</ul>` : "";
+  const ventil = !t.ventilation.length ? "" : t.barres ? htmlBarres(t.ventilation, false)
+    : `<ul class="ventilation">${t.ventilation.map(v => `<li><b>${esc(v.texte)}</b> ${esc(v.valeur)}</li>`).join("")}</ul>`;
   const contenu = ventil + tableau || (t.vide ? '<p class="periode">Aucune ligne pour cet établissement.</p>' : "");
   const detail = `${t.restreint ? '<p class="note-restreint">Diffusion restreinte : détail non imprimé.</p>' : ""}
     <div class="contenu-restreint">${contenu}</div>
@@ -281,10 +296,20 @@ function htmlTuile(t, k) {
     <span class="grand"><span>${esc(t.grand)}</span>${t.nouveaux ? `<span class="pastille">${t.nouveaux} nouveau${t.nouveaux > 1 ? "x" : ""}</span>` : ""}</span>
     ${t.legende ? `<span class="legende">${esc(t.legende)}</span>` : ""}
     ${t.periode ? `<span class="periode">${esc(t.periode)}</span>` : ""}
+    ${t.barres && t.ventilation.length ? htmlBarres(t.ventilation.slice(0, 3), true) : ""}
     ${aDuDetail(t) ? '<span class="renvoi">Détail en pages suivantes</span>' : ""}
   </button>
   <div class="detail">${detail}</div>
 </section>`;
+}
+/* barres horizontales de la ventilation : longueur relative à la plus grande valeur, nombre et part en texte
+   (lisibles sans couleur, à l'impression comme à l'écran) ; compactes = les trois premières, dans la synthèse */
+function htmlBarres(vs, compactes) {
+  const max = Math.max(...vs.map(v => v.n), 0);
+  return `<span class="barres${compactes ? " compactes" : ""}">${vs.map(v => `<span class="barre-ligne">
+    <span class="barre-lib" title="${esc(v.valeur)}">${esc(v.valeur)}</span>
+    <span class="barre-piste"><span class="barre-val" style="width:${max > 0 ? Math.max(0, v.n / max * 100).toFixed(1) : 0}%"></span></span>
+    <span class="barre-n">${esc(v.texte)} <span class="barre-p">(${v.part} %)</span></span></span>`).join("")}</span>`;
 }
 // tuile dont le détail mérite une page d'annexe : ventilation ou lignes
 const aDuDetail = t => t.ventilation.length > 0 || t.detail.length > 0;
@@ -658,8 +683,10 @@ function htmlCarteTuile(t, i, n) {
     ${champ("Synthèse", `<select data-champ="${p}.synthese.mode">${M.MODES.map(([v, l]) => opt(v, l, t.synthese.mode)).join("")}</select>`)}
     ${champ("Colonne de la synthèse", selColonne(`${p}.synthese.colonne`, tab, t.synthese.colonne), "Pour une somme ou la valeur la plus récente.")}
     ${champ("Unité", `<input type="text" data-champ="${p}.synthese.unite" value="${esc(t.synthese.unite)}" placeholder="jours, faits, élèves…">`)}
-    ${champ("Légende", `<input type="text" data-champ="${p}.synthese.legende" value="${esc(t.synthese.legende)}" placeholder="Dernier état : {Qualification}">`, "{nombre}, {jours}, {episodes} ou {Colonne} (valeur la plus récente).", true)}
-    ${champ("Ventilation (couche 2)", selColonne(`${p}.ventilation`, tab, t.ventilation), "Décompte par valeur de cette colonne.")}
+    ${champ("Légende", `<input type="text" data-champ="${p}.synthese.legende" value="${esc(t.synthese.legende)}" placeholder="Dernier état : {Qualification}">`, "{nombre}, {jours}, {episodes}, {total} (colonnes comparées), {principal} (première valeur de la ventilation et sa part) ou {Colonne} (valeur la plus récente).", true)}
+    ${champ("Ventilation par valeur (couche 2)", selColonne(`${p}.ventilation`, tab, t.ventilation), "Décompte par valeur de cette colonne (Catégorie, Thème…).")}
+    ${champ("Ou ventilation par colonnes", `<div class="cases">${colonnes(tab).filter(c => /^(Int|Numeric)$/.test(c.type)).map(c => `<label><input type="checkbox" data-liste="${p}.ventilationColonnes" value="${esc(c.colId)}"${t.ventilationColonnes.includes(c.colId) ? " checked" : ""}> ${esc(c.label || c.colId)}</label>`).join("") || '<span class="aide">Aucune colonne numérique dans cette table.</span>'}</div>`, "Une colonne par thème (Moyens, Climat, Parcoursup…) : une barre par colonne cochée, somme sur les lignes ; remplace la ventilation par valeur. Synthèse « Total des colonnes comparées » pour leur somme.", true)}
+    ${champ("Affichage de la ventilation", `<select data-champ="${p}.ventilationAffichage">${opt("liste", "liste de nombres", t.ventilationAffichage)}${opt("barres", "barres (les trois premières aussi sur la synthèse)", t.ventilationAffichage)}</select>`)}
     ${champ("Lignes affichées au plus", `<input type="number" min="1" data-champ="${p}.limite" data-type="nombre" value="${esc(t.limite)}">`)}
     ${champ("Détail (couche 3) : colonnes, dans l'ordre", `<div class="champs" style="padding:0">${detail}</div>`, "", true)}
     ${champ("Source", `<input type="text" data-champ="${p}.source" value="${esc(t.source)}" placeholder="SDS BV2A, DGESCO…">`)}

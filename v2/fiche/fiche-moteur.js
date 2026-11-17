@@ -12,7 +12,8 @@
    et de tuiles rangées par blocs. Chaque tuile lit UNE table, n'importe laquelle, et n'en garde que les lignes de
    l'établissement ; les couches vont du plus synthétique au plus détaillé :
      1. synthèse : un chiffre ou une valeur (nombre de lignes, de jours, d'épisodes, somme, dernière valeur) et une légende ;
-     2. ventilation (facultative) : décompte par valeur d'une colonne ;
+     2. ventilation (facultative) : décompte par valeur d'une colonne, ou comparaison de colonnes numériques
+        (une ligne par établissement, une colonne par thème) ; en liste ou en barres ;
      3. détail (facultatif) : les lignes, les plus récentes d'abord, avec les colonnes choisies ;
      4. source et date de mise à jour.
    Rattachement d'une ligne à l'établissement (« lien ») : colonne Référence (ou liste de références) vers le référentiel,
@@ -27,7 +28,8 @@
                    affichage « oui_non » : allumé si l'établissement est dans la table (colonne vide) ou si la colonne est vraie ;
                    affichage « valeur » : « Libellé : valeur de la colonne » (Label CVL : Niv 3), éteint si la valeur est vide
      tuiles      : [{ titre, bloc, largeur 1-3, table, lien, filtre: { colonne, valeurs, exclure }, parDossier, date,
-                      saisie, depuis, synthese: { mode, colonne, unite, legende }, ventilation, detail: [colonnes],
+                      saisie, depuis, synthese: { mode, colonne, unite, legende }, ventilation, ventilationColonnes: [colonnes],
+                      ventilationAffichage ("liste" | "barres"), detail: [colonnes],
                       limite, source, restreint }]
    ===================================================================== */
 (function () {
@@ -35,12 +37,12 @@
 
   const MODES = [
     ["nombre", "Nombre de lignes"], ["jours", "Nombre de jours (colonne date)"], ["episodes", "Nombre d'épisodes (jours consécutifs)"],
-    ["somme", "Somme d'une colonne"], ["valeur", "Valeur la plus récente d'une colonne"],
+    ["somme", "Somme d'une colonne"], ["total", "Total des colonnes comparées (ventilation par colonnes)"], ["valeur", "Valeur la plus récente d'une colonne"],
   ];
   const TUILE_VIDE = {
     titre: "Nouvelle tuile", bloc: "", largeur: 1, table: "", lien: "", filtre: { colonne: "", valeurs: "", exclure: false },
     parDossier: "", date: "", saisie: "", depuis: "", synthese: { mode: "nombre", colonne: "", unite: "", legende: "" },
-    ventilation: "", detail: [], limite: 15, source: "", restreint: false,
+    ventilation: "", ventilationColonnes: [], ventilationAffichage: "liste", detail: [], limite: 15, source: "", restreint: false,
   };
   const CONFIG_VIDE = { referentiel: { table: "", titre: "", details: [], cle: "" }, nouveau: "point", impression: "synthese", filtresRapides: [], filtrerBadges: false, badges: [], tuiles: [] };
 
@@ -61,6 +63,7 @@
       filtre: { ...TUILE_VIDE.filtre, ...(t.filtre || {}) },
       synthese: { ...TUILE_VIDE.synthese, ...(t.synthese || {}) },
       detail: Array.isArray(t.detail) ? t.detail.filter(Boolean) : [],
+      ventilationColonnes: Array.isArray(t.ventilationColonnes) ? t.ventilationColonnes.filter(Boolean) : [],
       largeur: Math.min(3, Math.max(1, Number(t.largeur) || 1)),
     }));
     return out;
@@ -150,8 +153,8 @@
 
   // colonnes citées par une tuile, pour signaler celles qui n'existent pas (ou plus)
   function colonnesTuile(t) {
-    const legende = [...String(t.synthese.legende || "").matchAll(/\{([^{}]+)\}/g)].map(m => m[1].trim()).filter(x => !["nombre", "jours", "episodes"].includes(x));
-    return [t.lien, t.filtre.colonne, t.parDossier, t.date, t.saisie, t.synthese.colonne, t.ventilation, ...t.detail, ...legende].filter(Boolean);
+    const legende = [...String(t.synthese.legende || "").matchAll(/\{([^{}]+)\}/g)].map(m => m[1].trim()).filter(x => !["nombre", "jours", "episodes", "total", "principal"].includes(x));
+    return [t.lien, t.filtre.colonne, t.parDossier, t.date, t.saisie, t.synthese.colonne, t.ventilation, ...t.ventilationColonnes, ...t.detail, ...legende].filter(Boolean);
   }
   function verifierConfig(config, schema) {
     const c = normaliserConfig(config), alertes = [];
@@ -172,6 +175,7 @@
       colonnesTuile(t).forEach(col => { if (!existe(tab, col)) alertes.push(`Tuile « ${t.titre} » : colonne introuvable ${col}.`); });
       if (["jours", "episodes"].includes(t.synthese.mode) && !t.date) alertes.push(`Tuile « ${t.titre} » : le nombre de jours demande une colonne date.`);
       if (["somme", "valeur"].includes(t.synthese.mode) && !t.synthese.colonne) alertes.push(`Tuile « ${t.titre} » : choisissez la colonne de la synthèse.`);
+      if (t.synthese.mode === "total" && !t.ventilationColonnes.length) alertes.push(`Tuile « ${t.titre} » : le total demande des colonnes à comparer (ventilation par colonnes).`);
       const lien = t.lien && (schema[tab] || []).find(x => x.colId === t.lien);
       if (lien && !cibleRef(lien.type) && !r.cle) alertes.push(`Tuile « ${t.titre} » : le lien ${t.lien} n'est pas une référence ; indiquez la clé du référentiel (UAI…).`);
     });
@@ -253,37 +257,58 @@
     const premiere = lignes[0] || null;
     const valeurDe = col => premiere ? lecteur.texte(tab, col, premiere[col]) : "";
 
-    // couche 1 : synthèse
     const s = t.synthese, unite = s.unite ? ` ${s.unite}` : "";
+    // couche 2 : ventilation, calculée d'abord (la synthèse et la légende peuvent s'en servir)
+    //  - par colonnes : une barre par colonne numérique choisie (Moyens, Climat, Parcoursup…), somme sur les lignes ;
+    //  - par valeur : décompte des valeurs d'une colonne (ou somme de la colonne de synthèse si elle est en « somme »).
+    // part : pourcentage du total des colonnes, ou du nombre de lignes (une ligne peut porter plusieurs valeurs)
+    let ventilation = [], baseParts = 0;
+    if (t.ventilationColonnes.length) {
+      ventilation = t.ventilationColonnes.map(c => ({ valeur: (lecteur.colonne(tab, c) || {}).label || c, n: nombre(c) }));
+      baseParts = ventilation.reduce((x, v) => x + v.n, 0);
+    } else if (t.ventilation) {
+      const comptes = new Map();
+      for (const l of lignes) {
+        const vals = lecteur.elements(tab, t.ventilation, l[t.ventilation]);
+        for (const v of vals.length ? vals : ["(vide)"]) comptes.set(v, (comptes.get(v) || 0) + (s.mode === "somme" ? Number(l[s.colonne]) || 0 : 1));
+      }
+      ventilation = [...comptes].map(([valeur, n]) => ({ valeur, n }));
+      baseParts = s.mode === "somme" ? nombre(s.colonne) : lignes.length;
+    }
+    ventilation = ventilation.map(v => ({ ...v, texte: nombreFr(v.n), part: baseParts > 0 ? Math.round(v.n / baseParts * 100) : 0 }))
+      .sort((x, y) => y.n - x.n || x.valeur.localeCompare(y.valeur, "fr"));
+    const total = t.ventilationColonnes.reduce((x, c) => x + nombre(c), 0);
+    const principal = ventilation.length && ventilation[0].n > 0 ? `${ventilation[0].valeur} (${ventilation[0].part} %)` : "";
+
+    // couche 1 : synthèse
     let grand;
     if (s.mode === "jours") grand = `${jours.length}${unite}`;
     else if (s.mode === "episodes") grand = `${episodes}${unite}`;
-    else if (s.mode === "somme") grand = `${nombreFr(nombre(s.colonne))}${unite}`;
+    else if (s.mode === "somme") grand = lignes.length ? `${nombreFr(nombre(s.colonne))}${unite}` : "—";   // aucune ligne : pas de donnée, pas zéro
+    else if (s.mode === "total") grand = lignes.length ? `${nombreFr(total)}${unite}` : "—";
     else if (s.mode === "valeur") grand = premiere ? `${valeurDe(s.colonne) || "—"}${unite}` : "—";
     else grand = `${lignes.length}${unite}`;
-    const legende = String(s.legende || "").replace(/\{([^{}]+)\}/g, (m, c) => {
-      c = c.trim();
+    let trous = 0, remplis = 0;   // légende dont tous les trous sont vides : non affichée (« Thème principal : » seul)
+    let legende = String(s.legende || "").replace(/\{([^{}]+)\}/g, (m, c) => {
+      const v = valeurTrou(c.trim());
+      trous++; if (v !== "") remplis++;
+      return v;
+    }).trim();
+    if (trous && !remplis) legende = "";
+    function valeurTrou(c) {
       if (c === "nombre") return String(lignes.length);
       if (c === "jours") return String(jours.length);
       if (c === "episodes") return String(episodes);
+      if (c === "total") return nombreFr(total);
+      if (c === "principal") return principal;
       return valeurDe(c);
-    }).trim();
+    }
     if (!periode && jours.length && s.mode !== "valeur") periode = jours.length === 1 ? `Le ${texteJour(jours[0])}` : `Du ${texteJour(jours[0])} au ${texteJour(jours[jours.length - 1])}`;
 
     // repère « nouveau » : saisie (ou date) postérieure au dernier point de situation
     const colNouveau = t.saisie || t.date;
     const estNouvelle = l => ctx.marque != null && colNouveau && typeof l[colNouveau] === "number" && l[colNouveau] > ctx.marque;
 
-    // couche 2 : ventilation par valeur
-    let ventilation = [];
-    if (t.ventilation) {
-      const comptes = new Map();
-      for (const l of lignes) {
-        const vals = lecteur.elements(tab, t.ventilation, l[t.ventilation]);
-        for (const v of vals.length ? vals : ["(vide)"]) comptes.set(v, (comptes.get(v) || 0) + (s.mode === "somme" ? Number(l[s.colonne]) || 0 : 1));
-      }
-      ventilation = [...comptes].map(([valeur, n]) => ({ valeur, n, texte: nombreFr(n) })).sort((x, y) => y.n - x.n || x.valeur.localeCompare(y.valeur, "fr"));
-    }
     // couche 3 : détail des lignes
     const limite = Math.max(1, Number(t.limite) || 15);
     const detail = t.detail.length ? lignes.slice(0, limite).map(l => ({ cellules: t.detail.map(c => lecteur.texte(tab, c, l[c])), nouveau: estNouvelle(l) })) : [];
@@ -296,7 +321,7 @@
       titre: t.titre, largeur: t.largeur, restreint: !!t.restreint, source: t.source,
       grand, legende, periode, vide: lignes.length === 0,
       nouveaux: lignes.filter(estNouvelle).length,
-      ventilation, colonnesDetail: t.detail.map(c => (lecteur.colonne(tab, c) || {}).label || c),
+      ventilation, barres: t.ventilationAffichage === "barres", colonnesDetail: t.detail.map(c => (lecteur.colonne(tab, c) || {}).label || c),
       detail, reste: t.detail.length ? Math.max(0, lignes.length - limite) : 0,
       maj: maj ? lecteur.texte(tab, colMaj, maj[colMaj]) : "",
       couches: 2 + (ventilation.length ? 1 : 0) + (detail.length ? 1 : 0),

@@ -8,7 +8,7 @@ Scénarios Playwright qui ouvrent les widgets (`v2/…`) dans Chromium avec un *
 cd tests
 npm install
 npx playwright install chromium     # ou : CHROMIUM=/chemin/vers/chromium
-sh lancer.sh                        # suite actuelle (run63 à run130)
+sh lancer.sh                        # suite actuelle (run63 à run131)
 sh lancer.sh run74 run76            # quelques scénarios
 ```
 
@@ -102,6 +102,7 @@ Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pou
 | `run128` | 2.62 : Fiche établissement, filtres — puces (référentiel, badges), filtres avancés sur une tuile (condition, comptage, ET / OU / formule), sélection ◀ ▶, options, impression en lot |
 | `run129` | 2.62 : Fiche établissement — badges à valeur (« Label CVL : Niv 3 », filtre rapide), modèles de sélection (document par Config, page sans Config), application, remise à zéro, suppression |
 | `run130` | 2.62 : Fiche établissement — impression synthèse en page 1 puis annexe de détail (restreint respecté), tuiles détaillées, sélection ; pages des PDF comptées |
+| `run131` | 2.62 : Fiche établissement — ventilation par colonnes (consultation lycéenne), total, `{principal}`, barres (synthèse et détail), tuile vide, réglages, impression |
 | `run125` | 2.60 : version publiée — scripts appelés avec `?v=<version>`, `version.json` à jour (`outils/versionner.js --verifier`) ; page servie en http plus ancienne que la version publiée : rechargée une fois avec `?v=` |
 | `run124` | 2.57 : Référentiel des sites, onglet « File de vérification » — filtres, acceptation en lot (composante interne, ligne retirée avec report des références, position), valeur retenue (Modifier), siège choisi dans le bandeau, fait à la main, refus, report, campus au nom à préciser (table des campus et colonne Campus des sites créées), regroupement par établissement, bandeau point par point (Précédent / Suivant, sommaire) et carte cadrée sur les objets du point, raccourcis clavier, refus de Grist (message qui nomme le point et l'action), formules de déclenchement |
 | `run123` | 2.55 : Extractions — filtres à comptage et seuil (nombre de jours, somme, maximum), versions par filtre (toutes / dernière de chaque dossier), portées jamais et à chaque fois, opérateur ≥, combinaison par formule, colonnes des valeurs comptées, Excel |
