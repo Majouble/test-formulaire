@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.13"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.13"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.13"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.13"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.13"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.13"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.14"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.14"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.14"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.14"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.14"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.14"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -84,8 +84,7 @@
   .detail tr.nouveau td { background: var(--jaune); color: #161616; }
   .mot-nouveau { font-weight: 700; }
   .note-restreint { display: none; font-style: italic; font-size: 12px; }
-  .annexe, .renvoi { display: none; }
-  .renvoi { font-size: 11px; font-style: italic; color: var(--gris); }
+  .annexe, .note-detail { display: none; }
   .entete-annexe { border-bottom: 2px solid #161616; padding-bottom: 6px; margin-bottom: 4px; font-size: 13px; }
   .annexe h3 { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin: 14px 0 4px; }
   .annexe-tuile h4 { margin: 10px 0 2px; font-size: 14px; break-after: avoid; }
@@ -147,6 +146,31 @@
   #alertes { margin-bottom: 8px; padding: 6px 10px; background: #fff4e5; color: #6e4400; border-radius: 4px; font-size: 12px; }
   #alertes li { margin-left: 16px; }
 
+  /* ---------- page de synthèse imprimée (« synthèse en page 1, détail ensuite ») ----------
+     Classe « impression » posée sur body juste avant d'imprimer (beforeprint) : la page prend la largeur utile d'une A4,
+     la synthèse se resserre, puis le script la mesure et la réduit (zoom) si elle dépasse une page. */
+  body.impression { font-size: 12px; }
+  body.impression main { max-width: none; width: 186mm; padding: 0; }
+  body.impression .tuile { background: #fff !important; border-color: #161616; box-shadow: none !important; margin: 0 !important; break-inside: avoid; }
+  body.impression.lot #fiche { display: none; } body.impression.lot #lot { display: block; }
+  body.impression.mp-synthese .tuile .detail { display: none !important; }
+  body.impression.mp-synthese .grille { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  body.impression.mp-synthese .tuile.l2 { grid-column: span 2; } body.impression.mp-synthese .tuile.l3 { grid-column: 1 / -1; }
+  body.impression.mp-synthese .tuile.ouverte:not(.l2):not(.l3) { grid-column: auto; }
+  body.impression.mp-synthese .tuile .tete { padding: 6px 9px; gap: 1px; }
+  body.impression.mp-synthese .tuile .grand { font-size: 16px; }
+  body.impression.mp-synthese .tuile .titre { font-size: 11px; }
+  body.impression.mp-synthese .tuile .legende, body.impression.mp-synthese .tuile .periode { font-size: 11px; }
+  body.impression.mp-synthese .bloc > h3 { margin: 10px 0 4px; font-size: 11px; }
+  body.impression.mp-synthese .entete h2 { font-size: 22px; }
+  body.impression.mp-synthese .badges { margin: 6px 0 0; gap: 4px; } body.impression.mp-synthese .badge { font-size: 11px; padding: 2px 8px; }
+  body.impression.mp-synthese .tuile.ouverte .tete .compactes { display: grid; }
+  body.impression.mp-synthese .tuile.a-detail .titre::after { content: " ▸"; }
+  body.impression.mp-synthese:not(.imprimer-restreint) .tuile.restreint.a-detail .titre::after { content: ""; }
+  body.impression.mp-synthese .note-detail { display: inline; }
+  body.impression.mp-synthese .pied { margin-top: 10px; }
+  body.impression.mp-synthese .annexe { display: block; break-before: page; }
+
   /* ---------- impression : A4, toutes les tuiles détaillées, détail restreint masqué par défaut ---------- */
   @page { size: A4; margin: 12mm; }
   @media print {
@@ -161,17 +185,7 @@
     .tuile .detail { display: block; }
     body:not(.imprimer-restreint) .restreint .contenu-restreint { display: none; }
     body:not(.imprimer-restreint) .restreint .note-restreint { display: block; }
-    /* synthèse en page 1 (comme la maquette) : tuiles sans détail, trois par ligne, puis l'annexe sur les pages suivantes */
-    body.mp-synthese .tuile .detail { display: none !important; }
-    body.mp-synthese .grille { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    body.mp-synthese .tuile.l2 { grid-column: span 2; }
-    body.mp-synthese .tuile .tete { padding: 9px 11px; }
-    body.mp-synthese .tuile .grand { font-size: 19px; }
-    body.mp-synthese .renvoi { display: block; }
-    body.mp-synthese .tuile.ouverte .tete .compactes { display: grid; }
     body.mp-complet .tete .compactes { display: none; }
-    body.mp-synthese:not(.imprimer-restreint) .restreint .renvoi { display: none; }
-    body.mp-synthese .annexe { display: block; break-before: page; }
     .badge { background: #161616; border-color: #161616; } .badge.non { background: #fff; color: #4a4a4a; border-color: #767676; }
     .badge[class*=" c-"] { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .entete .repere { background: none; border: 1.5px solid #161616; }
@@ -304,7 +318,7 @@ function empilement(n) {   // bords décalés sous la tuile : une couche par niv
 }
 function htmlTuile(t, k) {
   const ouverte = ouvertes.has(k);
-  const classes = ["tuile", "l" + t.largeur, ouverte ? "ouverte" : "", t.vide ? "vide" : "", t.restreint ? "restreint" : ""].filter(Boolean).join(" ");
+  const classes = ["tuile", "l" + t.largeur, ouverte ? "ouverte" : "", t.vide ? "vide" : "", t.restreint ? "restreint" : "", aDuDetail(t) ? "a-detail" : ""].filter(Boolean).join(" ");
   const tableau = t.detail.length ? `<table><thead><tr>${t.colonnesDetail.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${
     t.detail.map(l => `<tr${l.nouveau ? ' class="nouveau"' : ""}>${l.cellules.map((c, i) => `<td>${i === 0 && l.nouveau ? '<span class="mot-nouveau">Nouveau · </span>' : ""}${esc(c)}</td>`).join("")}</tr>`).join("")
   }</tbody></table>${t.reste ? `<p class="periode">… et ${t.reste} autre${t.reste > 1 ? "s" : ""} ligne${t.reste > 1 ? "s" : ""}.</p>` : ""}` : "";
@@ -322,7 +336,6 @@ function htmlTuile(t, k) {
     ${t.legende ? `<span class="legende">${esc(t.legende)}</span>` : ""}
     ${t.periode ? `<span class="periode">${esc(t.periode)}</span>` : ""}
     ${t.barres && t.ventilation.length ? htmlBarres(t.ventilation.slice(0, 3), true) : ""}
-    ${aDuDetail(t) ? '<span class="renvoi">Détail en pages suivantes</span>' : ""}
   </button>
   <div class="detail">${detail}</div>
 </section>`;
@@ -352,14 +365,15 @@ const texteBadge = b => b.affichage === "valeur" ? `${b.libelle} : ${b.actif ? b
 function htmlFiche(f, ecran) {
   const cfg = actuelle();
   let k = 0;
-  return `<div class="entete">
+  return `<div class="page-synthese"><div class="entete">
     <div><div class="surtitre">Fiche établissement</div><h2>${esc(f.titre)}</h2><div class="details">${f.details.map(esc).join(" · ")}</div></div>
     ${marque != null && cfg.nouveau === "point" ? `<span class="repere">Surligné = nouveau depuis le point du ${esc(heureParis(marque))}</span>` : ""}
   </div>
   ${f.badges.length ? `<div class="badges">${f.badges.map(b => `<span class="badge${b.couleur ? ` c-${esc(b.couleur)}` : b.actif ? "" : " non"}">${esc(texteBadge(b))}</span>`).join("")}</div>` : ""}
   ${f.blocs.map(b => `<div class="bloc">${b.titre ? `<h3>${esc(b.titre)}</h3>` : ""}<div class="grille">${b.tuiles.map(t => htmlTuile(t, ecran ? k++ : -1)).join("")}</div></div>`).join("")}
   <div class="pied"><span>Édité le ${esc(heureParis(Date.now() / 1000))}</span>
-    <span class="pas-imprime">Appuyer sur une tuile pour la détailler.</span></div>
+    <span class="pas-imprime">Appuyer sur une tuile pour la détailler.</span>
+    ${f.blocs.some(b => b.tuiles.some(aDuDetail)) ? '<span class="note-detail">▸ détail de la tuile en pages suivantes</span>' : ""}</div></div>
   ${htmlAnnexe(f)}`;
 }
 /* Annexe (impression « synthèse en page 1, détail ensuite ») : sur les pages qui suivent la synthèse, le détail de
@@ -748,7 +762,24 @@ $("imprimerSelection").addEventListener("click", () => {
   document.body.classList.add("lot");
   window.print();
 });
-window.addEventListener("afterprint", () => { document.body.classList.remove("lot"); $("lot").innerHTML = ""; });
+// page de synthèse : mesurée à la largeur d'une A4 juste avant l'impression, réduite si elle dépasse une page
+// (hauteur utile 297 − 2 × 12 mm, avec une marge de sécurité ; au plus réduite de moitié)
+const HAUTEUR_PAGE = (297 - 24) * 96 / 25.4 * 0.96;
+function preparerImpression() {
+  document.body.classList.add("impression");
+  const zone = document.body.classList.contains("lot") ? $("lot") : $("fiche");
+  zone.querySelectorAll(".page-synthese").forEach(el => {
+    el.style.zoom = "";
+    if (!document.body.classList.contains("mp-synthese")) return;
+    const h = el.getBoundingClientRect().height;
+    if (h > HAUTEUR_PAGE) el.style.zoom = Math.max(0.5, HAUTEUR_PAGE / h).toFixed(3);
+  });
+}
+window.addEventListener("beforeprint", preparerImpression);
+window.addEventListener("afterprint", () => {
+  document.body.classList.remove("impression", "lot"); $("lot").innerHTML = "";
+  document.querySelectorAll(".page-synthese").forEach(el => { el.style.zoom = ""; });
+});
 
 /* =====================================================================
    Réglages : modifiés dans le brouillon, appliqués en direct à la fiche, enregistrés dans les options du widget
