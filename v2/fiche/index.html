@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.6"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.6"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.6"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.6"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.6"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.6"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.7"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.7"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.7"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.7"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.7"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.7"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -466,16 +466,23 @@ function afficherSource() {
 }
 
 /* ---------- modèles de sélection : filtres enregistrés sous un nom, pour passer d'un regard à l'autre ----------
-   Enregistrés pour tout le document (Config, clé « fiche », champ « modeles ») quand c'est possible, sinon pour
-   cette page (options du widget) ; même règle que les modèles des Extractions. */
-const modeles = () => [...modelesDoc.map(m => ({ ...m, doc: true })), ...modelesPage.map(m => ({ ...m, doc: false }))];
+   Page ordinaire : modèles du document (Config, clé « fiche ») quand c'est possible, sinon de la page (options du
+   widget) ; même règle que les modèles des Extractions.
+   Page des partenaires : la table Config leur étant fermée, les modèles préparés par le propriétaire sur la fiche de
+   la page sont « communs » (options de la page) : chaque partenaire les voit et les applique, sans pouvoir les modifier ;
+   ses propres modèles vont dans sa ligne de la table Partenaires. */
+const modeles = () => source != null
+  ? [...(Array.isArray(optionsDePage.modeles) ? optionsDePage.modeles : []).map(m => ({ ...m, origine: "commun" })), ...modelesPage.map(m => ({ ...m, origine: "partenaire" }))]
+  : [...modelesDoc.map(m => ({ ...m, origine: "document" })), ...modelesPage.map(m => ({ ...m, origine: pagePartenaires ? "commun" : "page" }))];
+const ORIGINES = { document: "document", page: "cette page", commun: "commun aux partenaires", partenaire: "partenaire" };
 function afficherModeles(choisi = "") {
   const sel = $("modele");
-  const ici = source != null ? "partenaire" : "cette page";
-  sel.innerHTML = '<option value="">— Modèles —</option>' + modeles().map((m, i) => `<option value="${i}">${esc(m.nom)} · ${m.doc ? "document" : ici}</option>`).join("");
+  sel.innerHTML = '<option value="">— Modèles —</option>' + modeles().map((m, i) => `<option value="${i}">${esc(m.nom)} · ${ORIGINES[m.origine]}</option>`).join("");
   sel.value = choisi; $("supprModele").disabled = choisi === "";
 }
 async function lireModelesDoc() {
+  // page des partenaires : pas de modèles du document (ils seraient invisibles des partenaires)
+  if (pagePartenaires) { socleConfig = null; modelesDoc = []; return; }
   try { socleConfig = await Socle.lireConfig(); } catch (_) { socleConfig = null; }
   const v = socleConfig && socleConfig.valeurs && socleConfig.valeurs.fiche;
   modelesDoc = v && Array.isArray(v.modeles) ? v.modeles : [];
@@ -490,7 +497,7 @@ $("source").addEventListener("change", async e => {
   source = e.target.value === "" ? null : Number(e.target.value);
   brouillon = null; $("reglages").hidden = true; $("reglages").innerHTML = "";
   chargerSource(); etabId = null; ouvertes.clear(); fermerPuce();
-  if (source == null) await lireModelesDoc(); else { modelesDoc = []; socleConfig = null; }
+  await lireModelesDoc();
   afficherModeles(); $("miseEnPage").value = actuelle().impression; appliquerMiseEnPage();
   message(source == null ? "" : `Fiche du partenaire « ${(partenaires.find(x => x.id === source) || {}).nom} » : vos changements sont enregistrés dans sa ligne de la table ${PART.table}.`, "info");
   await rafraichir(false);
@@ -519,15 +526,19 @@ $("validerModele").addEventListener("click", async () => {
   if (socleConfig && !dejaPage && source == null) { try { await ecrireModelesDoc(remplacer(modelesDoc, m)); doc = true; } catch (_) { doc = false; } }
   if (!doc) { modelesPage = remplacer(modelesPage, m); try { await ecrireSource(); } catch (err) { message("Enregistrement impossible : " + (err.message || err)); return; } }
   $("formModele").hidden = true;
-  afficherModeles(String(modeles().findIndex(x => x.nom === nom && x.doc === doc)));
-  message(doc ? `Modèle « ${nom} » enregistré pour tout le document.` : source != null ? `Modèle « ${nom} » enregistré dans les réglages du partenaire.`
-    : `Modèle « ${nom} » enregistré pour cette page (seuls les propriétaires partagent un modèle avec tout le document).`, "info");
+  const origine = doc ? "document" : source != null ? "partenaire" : pagePartenaires ? "commun" : "page";
+  afficherModeles(String(modeles().findIndex(x => x.nom === nom && x.origine === origine)));
+  message({ document: `Modèle « ${nom} » enregistré pour tout le document.`, partenaire: `Modèle « ${nom} » enregistré dans les réglages du partenaire.`,
+    commun: `Modèle « ${nom} » enregistré pour tous les partenaires de cette page.`,
+    page: `Modèle « ${nom} » enregistré pour cette page (seuls les propriétaires partagent un modèle avec tout le document).` }[origine], "info");
 });
 $("supprModele").addEventListener("click", async () => {
   const m = modeles()[$("modele").value];
-  if (!m || !confirm(`Supprimer le modèle « ${m.nom} » ?`)) return;
+  if (!m) return;
+  if (source != null && m.origine === "commun") { message(`« ${m.nom} » est un modèle commun aux partenaires : il se modifie sur la fiche de la page, par un propriétaire.`); return; }
+  if (!confirm(`Supprimer le modèle « ${m.nom} » ?`)) return;
   try {
-    if (m.doc) await ecrireModelesDoc(modelesDoc.filter(x => x.nom !== m.nom));
+    if (m.origine === "document") await ecrireModelesDoc(modelesDoc.filter(x => x.nom !== m.nom));
     else { modelesPage = modelesPage.filter(x => x.nom !== m.nom); sauvegarderFiltres(); }
     afficherModeles(); message(`Modèle « ${m.nom} » supprimé.`, "info");
   } catch (e) { message(`Suppression impossible : ${e.message || e} (modèle du document : réservé aux propriétaires).`); }
@@ -905,7 +916,7 @@ async function demarrer(options) {
     // partenaire ouvert par son lien : sa ligne ; propriétaire : la page, puis le choix d'une fiche de partenaire
     source = pagePartenaires && !proprietaire && partenaires.length ? partenaires[0].id : null;
     chargerSource(); afficherSource();
-    if (source == null) await lireModelesDoc();
+    await lireModelesDoc();
     afficherModeles();
     if (!config) {
       brouillon = await configurationDeDepart();
