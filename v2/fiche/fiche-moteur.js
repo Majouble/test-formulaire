@@ -289,7 +289,8 @@
       const comptes = new Map(), exclues = new Set(String(t.ventilationExclure || "").split(";").map(norm).filter(Boolean));
       for (const l of lignes) {
         const vals = lecteur.elements(tab, t.ventilation, l[t.ventilation]);
-        for (const v of vals.length ? vals : ["(vide)"]) if (!exclues.has(norm(v))) comptes.set(v, (comptes.get(v) || 0) + (s.mode === "somme" ? Number(l[s.colonne]) || 0 : 1));
+        // valeur nulle d'une colonne numérique (0 blessé…) : rien à décompter (sinon « 1 0 »)
+        for (const v of vals.length ? vals : ["(vide)"]) if (!exclues.has(norm(v)) && !/^0+([.,]0+)?$/.test(String(v).trim())) comptes.set(v, (comptes.get(v) || 0) + (s.mode === "somme" ? Number(l[s.colonne]) || 0 : 1));
       }
       ventilation = [...comptes].map(([valeur, n]) => ({ valeur, n }));
       baseParts = s.mode === "somme" ? nombre(s.colonne) : lignes.length;
