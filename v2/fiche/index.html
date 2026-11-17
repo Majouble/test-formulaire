@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.9"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.9"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.9"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.9"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.9"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.9"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.10"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.10"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.10"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.10"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.10"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.10"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -44,6 +44,13 @@
   .badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 2px; }
   .badge { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--bleu); background: var(--bleu); color: #fff; }
   .badge.non { background: transparent; color: var(--gris); border-color: var(--bord); }
+  /* couleurs choisies badge par badge (texte toujours écrit : la couleur n'est jamais seule porteuse du sens) */
+  .badge.c-vert { background: #18753c; border-color: #18753c; color: #fff; } .badge.c-rouge { background: #ce0500; border-color: #ce0500; color: #fff; }
+  .badge.c-orange { background: #b34000; border-color: #b34000; color: #fff; } .badge.c-jaune { background: #ffe600; border-color: #b3a100; color: #161616; }
+  .badge.c-bleu { background: #000091; border-color: #000091; color: #fff; } .badge.c-gris { background: #e5e5e5; border-color: #929292; color: #161616; }
+  .couleurs-badge { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
+  .couleurs-badge .regle { display: inline-flex; gap: 4px; align-items: center; border: 1px solid var(--bord); border-radius: 4px; padding: 2px 4px; }
+  .couleurs-badge input, .couleurs-badge select { width: auto; } .couleurs-badge input { width: 110px; }
   .bloc > h3 { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--bleu); margin: 18px 0 8px; }
   .grille { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 12px; }
   .tuile { border: 1px solid var(--bord); border-radius: 6px; background: var(--bleu-pale); }
@@ -165,6 +172,7 @@
     body.mp-synthese:not(.imprimer-restreint) .restreint .renvoi { display: none; }
     body.mp-synthese .annexe { display: block; break-before: page; }
     .badge { background: #161616; border-color: #161616; } .badge.non { background: #fff; color: #4a4a4a; border-color: #767676; }
+    .badge[class*=" c-"] { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .entete .repere { background: none; border: 1.5px solid #161616; }
     .detail tr.nouveau td, .tuile .pastille, .barre-val { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .barre-val { background: #000091; } .barre-piste { border-color: #767676; background: #fff; }
@@ -347,7 +355,7 @@ function htmlFiche(f, ecran) {
     <div><div class="surtitre">Fiche établissement</div><h2>${esc(f.titre)}</h2><div class="details">${f.details.map(esc).join(" · ")}</div></div>
     ${marque != null && cfg.nouveau === "point" ? `<span class="repere">Surligné = nouveau depuis le point du ${esc(heureParis(marque))}</span>` : ""}
   </div>
-  ${f.badges.length ? `<div class="badges">${f.badges.map(b => `<span class="badge${b.actif ? "" : " non"}">${esc(texteBadge(b))}</span>`).join("")}</div>` : ""}
+  ${f.badges.length ? `<div class="badges">${f.badges.map(b => `<span class="badge${b.couleur ? ` c-${esc(b.couleur)}` : b.actif ? "" : " non"}">${esc(texteBadge(b))}</span>`).join("")}</div>` : ""}
   ${f.blocs.map(b => `<div class="bloc">${b.titre ? `<h3>${esc(b.titre)}</h3>` : ""}<div class="grille">${b.tuiles.map(t => htmlTuile(t, ecran ? k++ : -1)).join("")}</div></div>`).join("")}
   <div class="pied"><span>Édité le ${esc(heureParis(Date.now() / 1000))}</span>
     <span class="pas-imprime">Appuyer sur une tuile pour la détailler.</span></div>
@@ -785,8 +793,16 @@ function htmlBadge(b, i) {
     ${champ("Lien", selColonne(`${p}.lien`, tab, b.lien, "—"))}
     ${champ("Affichage", `<select data-champ="${p}.affichage" data-recharge="1">${opt("oui_non", "oui / non", b.affichage)}${opt("valeur", "valeur de la colonne", b.affichage)}</select>`)}
     ${champ(b.affichage === "valeur" ? "Colonne affichée" : "Colonne oui / non", selColonne(`${p}.colonne`, tab, b.colonne, b.affichage === "valeur" ? "— choisir —" : "— présence dans la table —"))}
-    <button class="petit" data-action="supprimer-badge" data-i="${i}">Supprimer</button></div>`;
+    <button class="petit" data-action="supprimer-badge" data-i="${i}">Supprimer</button>
+    <div class="couleurs-badge"><span class="aide">Couleurs :</span>
+      ${b.couleurs.map((c, k) => `<span class="regle">si <input type="text" list="${b.affichage === "valeur" ? `valeurs-badge-${i}` : "valeurs-oui-non"}" data-champ="${p}.couleurs.${k}.valeur" value="${esc(c.valeur)}" placeholder="${b.affichage === "valeur" ? "Niv 3, vide…" : "Oui, Non"}" aria-label="Valeur de la règle de couleur ${k + 1}">
+        → <select data-champ="${p}.couleurs.${k}.couleur" aria-label="Couleur de la règle ${k + 1}">${COULEURS.map(([v, l]) => opt(v, l, c.couleur)).join("")}</select>
+        <button class="petit" data-action="supprimer-couleur" data-i="${i}" data-k="${k}" aria-label="Retirer la règle de couleur ${k + 1}">✕</button></span>`).join("")}
+      <button class="petit" data-action="ajouter-couleur" data-i="${i}">+ couleur</button>
+      ${b.affichage === "valeur" ? `<datalist id="valeurs-badge-${i}">${valeursColonne(tab, b.colonne).map(([v]) => `<option value="${esc(v)}">`).join("")}<option value="vide"></datalist>` : ""}
+    </div></div>`;
 }
+const COULEURS = [["vert", "vert"], ["rouge", "rouge"], ["orange", "orange"], ["jaune", "jaune"], ["bleu", "bleu"], ["gris", "gris"]];
 function alertesReglages(b) {
   const tables = new Set([b.referentiel.table, ...b.tuiles.map(t => t.table || b.referentiel.table), ...b.badges.map(x => x.table || b.referentiel.table)]);
   return [...M.verifierConfig(b, schema), ...[...illisibles].filter(t => tables.has(t)).map(t => `Table ${t} illisible avec vos droits : ses tuiles et badges restent vides.`)];
@@ -815,7 +831,9 @@ function afficherReglages() {
       <label><input type="checkbox" data-champ="filtrerBadges"${b.filtrerBadges ? " checked" : ""}> proposer aussi les badges (oui / non)</label>`, "Puces en haut de la fiche, pour choisir les établissements parcourus et imprimés.", true)}
   </div></details>
   <details data-cle="badges"><summary>Badges (${b.badges.length})</summary>
-    <p class="aide" style="margin:6px 10px">Affichés en tête : oui / non (présence de l'établissement dans la table, ou colonne cochée), ou valeur d'une colonne (« Label CVL : Niv 3 »).</p>
+    <p class="aide" style="margin:6px 10px">Affichés en tête : oui / non (présence de l'établissement dans la table, ou colonne cochée), ou valeur d'une colonne (« Label CVL : Niv 3 »).
+      Couleurs : la première règle dont la valeur correspond s'applique (« Oui », « Non », une valeur de la colonne, « vide ») ; sans règle, bleu si allumé, contour gris sinon.</p>
+    <datalist id="valeurs-oui-non"><option value="Oui"><option value="Non"></datalist>
     ${b.badges.map(htmlBadge).join("")}<div style="padding:6px 10px"><button class="petit" data-action="ajouter-badge">Ajouter un badge</button></div></details>
   <details data-cle="tuiles"><summary>Tuiles (${b.tuiles.length})</summary>
     ${b.tuiles.map((t, i) => htmlCarteTuile(t, i, b.tuiles.length)).join("")}<div style="padding:6px 10px"><button class="petit" data-action="ajouter-tuile">Ajouter une tuile</button></div></details>
@@ -859,6 +877,8 @@ $("reglages").addEventListener("click", async e => {
     case "descendre": [T[i + 1], T[i]] = [T[i], T[i + 1]]; break;
     case "ajouter-badge": brouillon.badges.push({ libelle: "", table: "", lien: "", colonne: "", affichage: "oui_non" }); break;
     case "supprimer-badge": brouillon.badges.splice(i, 1); break;
+    case "ajouter-couleur": brouillon.badges[i].couleurs.push({ valeur: brouillon.badges[i].affichage === "valeur" ? "" : "Oui", couleur: "vert" }); break;
+    case "supprimer-couleur": brouillon.badges[i].couleurs.splice(Number(b.dataset.k), 1); break;
     case "json":
       try { brouillon = M.normaliserConfig(JSON.parse($("json").value)); } catch (err) { message("Texte illisible : " + err.message); return; }
       break;
