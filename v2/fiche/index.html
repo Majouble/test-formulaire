@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.20"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.20"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.20"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.20"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.20"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.20"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.21"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.21"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.21"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.21"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.21"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.21"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -34,6 +34,12 @@
   .message { margin: 8px 12px; padding: 6px 10px; border-radius: 4px; display: none; }
   .message.erreur { display: block; background: #fee; color: var(--rouge); }
   .message.info { display: block; background: var(--bleu-pale); }
+  .chargement { display: flex; align-items: center; gap: 10px; margin: 8px 12px; padding: 8px 12px; border-radius: 4px; background: var(--bleu-pale); font-size: 13px; }
+  .chargement[hidden] { display: none; }
+  .chargement .rond { width: 14px; height: 14px; border: 2px solid var(--bleu); border-right-color: transparent; border-radius: 50%; animation: tourne .8s linear infinite; flex: none; }
+  @keyframes tourne { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .chargement .rond { animation: none; } }
+  @media print { .chargement { display: none !important; } }
 
   /* ---------- la fiche ---------- */
   main { max-width: 210mm; margin: 0 auto; padding: 16px 14px 32px; }
@@ -235,6 +241,7 @@
 <div id="qpop" class="qpop" role="dialog" hidden></div>
 <div id="message" class="message"></div>
 <section id="reglages" hidden></section>
+<div class="chargement" id="chargement" role="status" aria-live="polite"><span class="rond" aria-hidden="true"></span><span id="chargementTexte">Chargement de la fiche…</span></div>
 <main id="fiche"></main>
 <div id="lot"></div>
 
@@ -257,6 +264,9 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": 
 // texte des cellules : « **mot** » (gras à la manière du markdown, fréquent dans les descriptions collées) affiché en gras
 const escGras = s => esc(s).replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, "<strong>$1</strong>");
 const RAFRAICHIR_APRES = 60;
+const TRI = new Intl.Collator("fr").compare;   // bien plus rapide que localeCompare sur des milliers de noms
+// bandeau d'attente : texte de l'étape en cours, masqué quand texte vide
+function attente(texte) { $("chargement").hidden = !texte; if (texte) $("chargementTexte").textContent = texte; }
 const heureParis = s => new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" }).format(new Date(s * 1000)).replace(" ", " à ");   // secondes : au changement d'établissement, les tables plus anciennes sont relues
 
 let config = null, brouillon = null, schema = {}, tablesDoc = [], donnees = {}, chargeLe = 0, lecteur = null, marque = null;
@@ -282,7 +292,7 @@ function message(texte, type = "erreur") { const m = $("message"); m.className =
 async function chargerSchema() {
   try {
     const T = await grist.docApi.fetchTable("_grist_Tables");
-    tablesDoc = T.tableId.filter(t => t && !/^GristHidden|^_grist/.test(t)).sort((a, b) => a.localeCompare(b, "fr"));
+    tablesDoc = T.tableId.filter(t => t && !/^GristHidden|^_grist/.test(t)).sort(TRI);
     schema = await Socle.instantaneSchema(tablesDoc);
   } catch (e) {
     const C = await grist.docApi.fetchTable("Config").catch(() => null);
@@ -290,17 +300,22 @@ async function chargerSchema() {
     const copie = lire(PART.schema) || lire("schema");
     if (!copie || !copie.tables) throw new Error("structure du document illisible avec ce lien : un propriétaire doit appliquer les règles d'accès (onglet Accès), qui en écrivent une copie pour les partenaires");
     schema = copie.tables;
-    tablesDoc = Object.keys(schema).sort((a, b) => a.localeCompare(b, "fr"));
+    tablesDoc = Object.keys(schema).sort(TRI);
   }
 }
+const enVol = new Map();   // lectures en cours, partagées (démarrage et première ligne envoyée par Grist)
 async function chargerDonnees(forcer) {
   const cfg = actuelle(), besoin = M.tablesNecessaires(cfg, schema);
   const vieux = forcer || Date.now() / 1000 - chargeLe > RAFRAICHIR_APRES;
-  // table illisible avec les droits de la personne (lien de partenaire…) : ignorée, ses tuiles restent vides
-  for (const t of besoin) if (vieux || !(t in donnees)) {
-    try { donnees[t] = await grist.docApi.fetchTable(t); illisibles.delete(t); }
-    catch (_) { donnees[t] = null; illisibles.add(t); }
-  }
+  const a = besoin.filter(t => vieux || !(t in donnees));
+  // tables lues en parallèle ; table illisible avec les droits de la personne (lien de partenaire…) : ignorée, ses tuiles restent vides
+  let faites = 0;
+  if (a.length) attente(`Lecture des données : 0 / ${a.length} table${a.length > 1 ? "s" : ""}…`);
+  await Promise.all(a.map(t => {
+    if (!enVol.has(t)) enVol.set(t, grist.docApi.fetchTable(t).then(d => { donnees[t] = d; illisibles.delete(t); }, () => { donnees[t] = null; illisibles.add(t); })
+      .finally(() => enVol.delete(t)));
+    return enVol.get(t).then(() => attente(`Lecture des données : ${++faites} / ${a.length} table${a.length > 1 ? "s" : ""}…`));
+  }));
   if (vieux) chargeLe = Date.now() / 1000;
   lecteur = M.creerLecteur(schema, donnees);
   // repère « nouveau » : heure du dernier point de situation enregistré (table Points_situation du widget Point de situation)
@@ -310,8 +325,11 @@ async function chargerDonnees(forcer) {
 }
 
 /* ---------- choix de l'établissement : ligne sélectionnée dans Grist, ou recherche ---------- */
-let correspondances = new Map();
-function remplirRecherche() {
+let correspondances = new Map(), rechercheAJour = false;
+function remplirRecherche() { rechercheAJour = false; $("liste-etabs").innerHTML = ""; }
+function construireRecherche() {
+  if (rechercheAJour) return;
+  rechercheAJour = true;
   const r = actuelle().referentiel, l = $("liste-etabs");
   correspondances = new Map();
   if (!lecteur || !r.table || !r.titre) { l.innerHTML = ""; return; }
@@ -321,10 +339,13 @@ function remplirRecherche() {
     const lib = [lecteur.texte(r.table, r.titre, e[r.titre]), r.cle ? lecteur.texte(r.table, r.cle, e[r.cle]) : ""].filter(Boolean).join(" — ");
     correspondances.set(lib, e.id);
     return lib;
-  }).sort((a, b) => a.localeCompare(b, "fr"));
+  }).sort(TRI);
   l.innerHTML = opts.map(o => `<option value="${esc(o)}">`).join("");
 }
+$("recherche").addEventListener("focus", construireRecherche);
+$("recherche").addEventListener("input", construireRecherche);
 $("recherche").addEventListener("change", () => {
+  construireRecherche();
   const id = correspondances.get($("recherche").value);
   if (!id) return;
   $("recherche").value = ""; $("recherche").blur();
@@ -425,12 +446,21 @@ $("imprimer").addEventListener("click", () => window.print());
 $("imprimerRestreint").addEventListener("change", e => document.body.classList.toggle("imprimer-restreint", e.target.checked));
 $("actualiser").addEventListener("click", () => rafraichir(true));
 async function rafraichir(forcer) {
+  const t0 = performance.now();
   try {
     await chargerDonnees(forcer);
+    const t1 = performance.now();
+    attente("Préparation des fiches…");
+    await new Promise(r => setTimeout(r, 0));   // laisse le bandeau s'afficher avant le calcul
     base = M.preparer(actuelle(), lecteur, { marque });
     recalculerSelection(); remplirRecherche(); afficherFiltres(); afficher();
+    const t2 = performance.now();
+    console.info(`[fiche] lecture ${Math.round(t1 - t0)} ms, calcul ${Math.round(t2 - t1)} ms`,
+      Object.fromEntries(Object.entries(donnees).map(([t, d]) => [t, d && d.id ? d.id.length : 0])));
+    $("version").title = `Dernier chargement : lecture des tables ${(Math.round((t1 - t0) / 100) / 10).toLocaleString("fr-FR")} s, calcul ${(Math.round((t2 - t1) / 100) / 10).toLocaleString("fr-FR")} s`;
   }
   catch (e) { console.error(e); message("Lecture impossible : " + (e.message || e)); }
+  finally { attente(""); }
 }
 
 /* =====================================================================
@@ -440,7 +470,8 @@ async function rafraichir(forcer) {
    - sélection : établissements retenus, rangés par nom, parcourus avec ◀ ▶, imprimés en lot (une fiche par page).
    ===================================================================== */
 let etat = etatVide(), dims = [], apresAvances = [], selection = [], minuteurFiltres = null;
-let modelesDoc = [], modelesPage = [], socleConfig = null, modeleDefaut = null;   // modeleDefaut : nom du modèle appliqué à l'ouverture (null : celui de la page)   // modèles de sélection : du document (Config, clé « fiche »), de la page
+let modelesDoc = [], modelesPage = [], socleConfig = null;   // modèles de sélection : du document (Config, clé « fiche »), de la page
+let modeleDefaut = null;   // nom du modèle appliqué à l'ouverture (null : celui de la page)
 function etatVide() { return { rapides: {}, avances: [], combinaison: "cascade", formule: "", periode: { mode: "", du: "", au: "", jours: 7 } }; }
 function normaliserEtat(e) {
   const o = { ...etatVide(), ...(e && typeof e === "object" ? e : {}) };
@@ -459,7 +490,7 @@ function recalculerSelection() {
   for (const id of Object.keys(etat.rapides)) if (!dims.some(d => d.id === id)) delete etat.rapides[id];   // filtre retiré des réglages
   apresAvances = lecteur.lignes(r.table).filter(e => M.passeAvances(e, etat, FC, lecteur, base));
   selection = apresAvances.filter(e => M.passeRapides(e, dims, etat.rapides))
-    .map(e => ({ id: e.id, titre: M.titreEtab(e, lecteur, r) })).sort((a, b) => a.titre.localeCompare(b.titre, "fr"));
+    .map(e => ({ id: e.id, titre: M.titreEtab(e, lecteur, r) })).sort((a, b) => TRI(a.titre, b.titre));
   // pas de fiche hors de la sélection : l'établissement affiché en fait partie, sinon le premier retenu
   if (!selection.some(x => x.id === etabId)) { etabId = selection.length ? selection[0].id : null; ouvertes.clear(); }
 }
@@ -1061,10 +1092,10 @@ async function demarrer(options) {
   demarre = true;
   $("version").textContent = window.Socle ? `socle ${Socle.VERSION}` : "";
   try {
-    await chargerSchema();
-    try { tableLiee = grist.selectedTable && grist.selectedTable.getTableId ? await grist.selectedTable.getTableId() : null; } catch (_) { tableLiee = null; }
+    attente("Lecture de la structure du document…");
     optionsDePage = options || {}; pagePartenaires = !!optionsDePage.partenaires;
-    await lirePartenaires();
+    await Promise.all([chargerSchema(), lirePartenaires(),
+      (async () => { try { tableLiee = grist.selectedTable && grist.selectedTable.getTableId ? await grist.selectedTable.getTableId() : null; } catch (_) { tableLiee = null; } })()]);
     // partenaire ouvert par son lien : sa ligne ; propriétaire : la page, puis le choix d'une fiche de partenaire
     source = pagePartenaires && !proprietaire && partenaires.length ? partenaires[0].id : null;
     chargerSource(); afficherSource();
@@ -1077,14 +1108,15 @@ async function demarrer(options) {
     }
     $("miseEnPage").value = actuelle().impression; appliquerMiseEnPage();
     await rafraichir(true);
-  } catch (e) { console.error(e); message("Démarrage impossible : " + (e.message || e)); }
+  } catch (e) { console.error(e); attente(""); message("Démarrage impossible : " + (e.message || e)); }
 }
 grist.ready({ requiredAccess: "full", onEditOptions: ouvrirReglages });
 grist.onOptions(opts => demarrer(opts));
 if (grist.onRecord) grist.onRecord(rec => {
   if (!rec || rec.id == null) return;
   if (tableLiee && tableLiee !== actuelle().referentiel.table) return;   // widget relié à une autre table : on garde la recherche
-  if (!lecteur || Date.now() / 1000 - chargeLe > RAFRAICHIR_APRES) { etabId = rec.id; rafraichir(false); }
+  if (!lecteur) { etabId = rec.id; return; }   // démarrage en cours : la fiche s'ouvrira sur cette ligne
+  if (Date.now() / 1000 - chargeLe > RAFRAICHIR_APRES) { etabId = rec.id; rafraichir(false); }
   else if (rec.id !== etabId) allerA(rec.id, true);
 });
 setTimeout(() => demarrer(null), 1500);   // si aucune option n'est envoyée

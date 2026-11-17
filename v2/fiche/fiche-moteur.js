@@ -90,6 +90,7 @@
   /* ---------- lecture des valeurs ----------
      schema : { table: [{ colId, label, type, visibleCol }] } (Socle.instantaneSchema) ;
      tables : { table: colonnes à la façon de fetchTable ({ id: [], Col: [] }) } */
+  const TRI = new Intl.Collator("fr").compare;
   function creerLecteur(schema, tables) {
     const cacheLignes = {}, cacheParId = {};
     const colonne = (t, c) => (schema[t] || []).find(x => x.colId === c) || null;
@@ -290,7 +291,7 @@
       baseParts = s.mode === "somme" ? nombre(s.colonne) : lignes.length;
     }
     ventilation = ventilation.map(v => ({ ...v, texte: nombreFr(v.n), part: baseParts > 0 ? Math.round(v.n / baseParts * 100) : 0 }))
-      .sort((x, y) => y.n - x.n || x.valeur.localeCompare(y.valeur, "fr"));
+      .sort((x, y) => y.n - x.n || TRI(x.valeur, y.valeur));
     const total = t.ventilationColonnes.reduce((x, c) => x + nombre(c), 0);
     const principal = ventilation.length && ventilation[0].n > 0 ? `${ventilation[0].valeur} (${ventilation[0].part} %)` : "";
 
@@ -420,7 +421,7 @@
   function compterValeurs(dimension, etabs) {
     const n = new Map();
     etabs.forEach(e => dimension.valeurs(e).forEach(v => n.set(v, (n.get(v) || 0) + 1)));
-    return [...n].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), "fr")).map(([valeur, nombre]) => ({ valeur, nombre }));
+    return [...n].sort((a, b) => b[1] - a[1] || TRI(String(a[0]), String(b[0]))).map(([valeur, nombre]) => ({ valeur, nombre }));
   }
   function passeRapides(etab, dims, rapides, sauf) {
     for (const d of dims) {
@@ -498,7 +499,7 @@
     return lecteur.lignes(r.table)
       .filter(e => passeRapides(e, dims, rapides) && (!FC || passeAvances(e, etat || {}, FC, lecteur, base)))
       .map(e => ({ id: e.id, titre: titreEtab(e, lecteur, r) }))
-      .sort((a, b) => a.titre.localeCompare(b.titre, "fr"));
+      .sort((a, b) => TRI(a.titre, b.titre));
   }
   // tables dont les colonnes peuvent servir aux filtres avancés : référentiel (source vide) et table de chaque tuile
   /* Tables proposées aux filtres de sélection : le référentiel, puis chaque table rattachée aux établissements
