@@ -20,7 +20,7 @@
    ou colonne texte comparée à la clé du référentiel (l'UAI, par exemple) ; lien vide = la table est le référentiel.
 
    Configuration (options du widget, clé « fiche ») :
-     referentiel : { table, titre, details: [colonnes], cle }
+     referentiel : { table, titre, details: [colonnes], libelles: [colonnes affichées « Libellé : valeur »], cle }
      nouveau     : "point" (lignes saisies après le dernier point de situation) ou "" (aucun repère)
      filtresRapides : [colonnes du référentiel proposées comme filtres rapides] ; filtrerBadges : badges proposés aussi
      impression  : "synthese" (page 1 : toutes les tuiles en synthèse ; pages suivantes : leur détail) ou "complet" (tuiles détaillées)
@@ -44,7 +44,7 @@
     parDossier: "", date: "", saisie: "", depuis: "", synthese: { mode: "nombre", colonne: "", unite: "", legende: "" },
     ventilation: "", ventilationColonnes: [], ventilationAffichage: "liste", detail: [], limite: 15, source: "", restreint: false,
   };
-  const CONFIG_VIDE = { referentiel: { table: "", titre: "", details: [], cle: "" }, nouveau: "point", impression: "synthese", filtresRapides: [], filtrerBadges: false, badges: [], tuiles: [] };
+  const CONFIG_VIDE = { referentiel: { table: "", titre: "", details: [], libelles: [], cle: "" }, nouveau: "point", impression: "synthese", filtresRapides: [], filtrerBadges: false, badges: [], tuiles: [] };
 
   const copie = x => JSON.parse(JSON.stringify(x));
   const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
@@ -56,6 +56,7 @@
     const out = { ...copie(CONFIG_VIDE), ...(c && typeof c === "object" ? copie(c) : {}) };
     out.referentiel = { ...CONFIG_VIDE.referentiel, ...(out.referentiel || {}) };
     if (!Array.isArray(out.referentiel.details)) out.referentiel.details = [];
+    if (!Array.isArray(out.referentiel.libelles)) out.referentiel.libelles = [];
     if (!Array.isArray(out.filtresRapides)) out.filtresRapides = [];
     out.badges = (Array.isArray(out.badges) ? out.badges : []).map(b => ({ libelle: "", table: "", lien: "", colonne: "", affichage: "oui_non", ...b }));
     out.tuiles = (Array.isArray(out.tuiles) ? out.tuiles : []).map(t => ({
@@ -367,7 +368,9 @@
     return {
       id: etab.id,
       titre: titreEtab(etab, lecteur, r),
-      details: r.details.map(col => lecteur.texte(r.table, col, etab[col])).filter(Boolean),
+      // sous le nom : valeur seule, ou « Libellé : valeur » pour les colonnes cochées « avec libellé »
+      details: r.details.map(col => { const v = lecteur.texte(r.table, col, etab[col]);
+        return v && r.libelles.includes(col) ? `${(lecteur.colonne(r.table, col) || {}).label || col} : ${v}` : v; }).filter(Boolean),
       badges, blocs,
     };
   }
