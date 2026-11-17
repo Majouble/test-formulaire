@@ -29,7 +29,8 @@
                    affichage « valeur » : « Libellé : valeur de la colonne » (Label CVL : Niv 3), éteint si la valeur est vide
                    couleurs : [{ valeur, couleur }] — première règle dont la valeur correspond (« Oui », « Non », « Niv 3 »,
                    « vide ») ; sans règle : bleu si allumé, contour gris si éteint
-     tuiles      : [{ titre, bloc, largeur 1-3, table, lien, filtre: { colonne, valeurs, exclure }, parDossier, date,
+     tuiles      : [{ titre, bloc, largeur 1-3, table, lien, filtre: { colonne, valeurs, exclure },
+                      filtresSup: [{ colonne, valeurs, exclure }] (filtres supplémentaires, tous appliqués), parDossier, date,
                       saisie, depuis, synthese: { mode, colonne, unite, legende, ignorer (« a ; b », valeur la plus récente),
                       ignorerMemeJour }, ventilation, ventilationColonnes: [colonnes],
                       ventilationAffichage ("liste" | "barres"), ventilationExclure (« a ; b » : valeurs retirées de la
@@ -44,7 +45,7 @@
     ["somme", "Somme d'une colonne"], ["total", "Total des colonnes comparées (ventilation par colonnes)"], ["valeur", "Valeur la plus récente d'une colonne"],
   ];
   const TUILE_VIDE = {
-    titre: "Nouvelle tuile", bloc: "", largeur: 1, table: "", lien: "", filtre: { colonne: "", valeurs: "", exclure: false },
+    titre: "Nouvelle tuile", bloc: "", largeur: 1, table: "", lien: "", filtre: { colonne: "", valeurs: "", exclure: false }, filtresSup: [],
     parDossier: "", date: "", saisie: "", depuis: "", synthese: { mode: "nombre", colonne: "", unite: "", legende: "", ignorer: "", ignorerMemeJour: true },
     ventilation: "", ventilationExclure: "", ventilationColonnes: [], ventilationAffichage: "liste", detail: [], limite: 15, source: "", restreint: false, masquerSiVide: false,
   };
@@ -67,6 +68,7 @@
     out.tuiles = (Array.isArray(out.tuiles) ? out.tuiles : []).map(t => ({
       ...copie(TUILE_VIDE), ...t,
       filtre: { ...TUILE_VIDE.filtre, ...(t.filtre || {}) },
+      filtresSup: (Array.isArray(t.filtresSup) ? t.filtresSup : []).map(f => ({ ...TUILE_VIDE.filtre, ...(f || {}) })),
       synthese: { ...TUILE_VIDE.synthese, ...(t.synthese || {}) },
       detail: Array.isArray(t.detail) ? t.detail.filter(Boolean) : [],
       ventilationColonnes: Array.isArray(t.ventilationColonnes) ? t.ventilationColonnes.filter(Boolean) : [],
@@ -161,7 +163,7 @@
   // colonnes citées par une tuile, pour signaler celles qui n'existent pas (ou plus)
   function colonnesTuile(t) {
     const legende = [...String(t.synthese.legende || "").matchAll(/\{([^{}]+)\}/g)].map(m => m[1].trim()).filter(x => !["nombre", "jours", "episodes", "total", "principal"].includes(x) && !/^ventilation\b/.test(x));
-    return [t.lien, t.filtre.colonne, t.parDossier, t.date, t.saisie, t.synthese.colonne, t.ventilation, ...t.ventilationColonnes, ...t.detail, ...legende].filter(Boolean);
+    return [t.lien, t.filtre.colonne, ...(t.filtresSup || []).map(f => f.colonne), t.parDossier, t.date, t.saisie, t.synthese.colonne, t.ventilation, ...t.ventilationColonnes, ...t.detail, ...legende].filter(Boolean);
   }
   function verifierConfig(config, schema) {
     const c = normaliserConfig(config), alertes = [];
@@ -225,10 +227,11 @@
     const brut = (l, c) => l[c];
     let lignes = [...ctx.rattacher(ctx.etab, tab, t.lien)];
 
-    // filtre sur une colonne : valeurs « a ; b », gardées ou exclues
-    if (t.filtre.colonne && String(t.filtre.valeurs).trim()) {
-      const vals = new Set(String(t.filtre.valeurs).split(";").map(norm).filter(Boolean));
-      lignes = lignes.filter(l => lecteur.elements(tab, t.filtre.colonne, l[t.filtre.colonne]).some(x => vals.has(norm(x))) !== !!t.filtre.exclure);
+    // filtres sur des colonnes (le premier, puis les supplémentaires, tous appliqués) : valeurs « a ; b », gardées ou exclues
+    for (const f of [t.filtre, ...(t.filtresSup || [])]) {
+      if (!f || !f.colonne || !String(f.valeurs ?? "").trim()) continue;
+      const vals = new Set(String(f.valeurs).split(";").map(norm).filter(Boolean));
+      lignes = lignes.filter(l => lecteur.elements(tab, f.colonne, l[f.colonne]).some(x => vals.has(norm(x))) !== !!f.exclure);
     }
     // période : à partir d'une date (AAAA-MM-JJ) ou des N derniers jours
     let periode = "";
