@@ -310,10 +310,11 @@
     const fixes = [PART.nom, PART.cle, PART.lien, PART.actif].filter(c => meta[PART.table].colonnes[c]).sort();
     if (fixes.length) ajouterEn(PART.table, fixes.join(","), `${PART.table} — nom, clé, lien, actif`,
       [{ aclFormula: P, permissionsText: "-U", memo: `${MEMO} — ${qui} : nom, clé, lien et état en lecture seule` }], ["Partenaire : nom, clé, lien et état en lecture seule."]);
-    // copie des colonnes des tables ouvertes (Grist cache ses métadonnées aux liens) : seule ligne de Config lisible
-    ajouterEn(S.TABLE_CONFIG, "*", `${S.TABLE_CONFIG} — structure des tables pour les partenaires`,
-      [{ aclFormula: `${P} and rec.Cle == "${PART.schema}"`, permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : structure des tables ouvertes (clé ${PART.schema})` }],
-      [`Partenaire : la seule ligne « ${PART.schema} » de Config (colonnes des tables ouvertes), pour que la fiche démarre.`]);
+    // copie des colonnes des tables ouvertes (Grist cache ses métadonnées aux liens) et modèles de sélection de la
+    // fiche : seules lignes de Config lisibles
+    ajouterEn(S.TABLE_CONFIG, "*", `${S.TABLE_CONFIG} — structure des tables et modèles de fiche pour les partenaires`,
+      [{ aclFormula: `${P} and rec.Cle in ["${PART.schema}", "fiche"]`, permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : structure des tables ouvertes et modèles de la fiche (clés ${PART.schema}, fiche)` }],
+      [`Partenaire : les seules lignes « ${PART.schema} » (colonnes des tables ouvertes, pour que la fiche démarre) et « fiche » (modèles de sélection du document) de Config, en lecture.`]);
     for (const t of tablesPartenaires()) {
       const cols = meta[t].colonnes;
       for (const c of [R.LIEN.cle, R.LIEN.lien]) if (cols[c]) ajouterEn(t, c, `${t} — ${c === R.LIEN.cle ? "clé" : "lien"} d'accès des établissements`,
