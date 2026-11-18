@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.28"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.28"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.28"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.28"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.28"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.28"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.29"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.29"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.29"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.29"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.29"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.29"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -554,6 +554,7 @@ function appliquerFiltres(depuisModele) {
 // contenu enregistré : réglages de la fiche (s'ils existent), filtres en cours, modèles propres à la page ou au partenaire
 const contenuSource = () => ({ ...(config ? { fiche: config } : {}), filtres: etat, modeles: modelesPage, ...(modeleDefaut != null ? { modeleDefaut } : {}) });
 async function ecrireSource() {
+  if (affichageSeul()) return;   // lien d'affichage seul : filtres gardés le temps de la visite, rien d'enregistré
   if (source == null) { optionsDePage = { ...contenuSource(), partenaires: pagePartenaires }; return grist.setOptions(optionsDePage); }
   const contenu = contenuSource();
   await grist.docApi.applyUserActions([["UpdateRecord", PART.table, source, { [PART.fiche]: JSON.stringify(contenu) }]]);
@@ -572,8 +573,17 @@ async function lirePartenaires() {
   try {
     const d = await grist.docApi.fetchTable(PART.table), col = k => d[k] || [];
     partenaires = d.id.map((id, i) => { let contenu = {}; try { contenu = JSON.parse(col(PART.fiche)[i] || "{}") || {}; } catch (_) {}
-      return { id, nom: String(col(PART.nom)[i] || `Partenaire ${id}`), contenu }; }).sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
+      return { id, nom: String(col(PART.nom)[i] || `Partenaire ${id}`), contenu, lecture: !!col(PART.lecture)[i] }; }).sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
   } catch (_) { partenaires = []; }
+}
+/* lien de partenaire en affichage seul (case « Lecture_seule » de sa ligne) : il consulte, filtre, applique les modèles et
+   imprime, mais ne règle rien et n'enregistre rien (ni réglages, ni modèles, ni filtres) ; les règles d'accès lui
+   refusent d'ailleurs toute modification de sa ligne */
+const affichageSeul = () => pagePartenaires && !proprietaire && source != null && !!(partenaires.find(p => p.id === source) || {}).lecture;
+function appliquerAffichageSeul() {
+  const seul = affichageSeul();
+  for (const id of ["ouvrirReglages", "enregModele", "defautModele", "supprModele"]) $(id).hidden = seul;
+  if (seul) { $("reglages").hidden = true; $("formModele").hidden = true; }
 }
 // réglages, filtres et modèles de la source choisie ; un partenaire sans réglages part de la fiche de la page
 function chargerSource() {
@@ -591,7 +601,7 @@ function afficherSource() {
   const sel = $("source"), voir = pagePartenaires && proprietaire;
   $("sourceZone").hidden = !voir;
   if (!voir) return;
-  sel.innerHTML = `<option value="">Fiche de la page (modèle de départ)</option>` + partenaires.map(p => `<option value="${p.id}">${esc(p.nom)}</option>`).join("");
+  sel.innerHTML = `<option value="">Fiche de la page (modèle de départ)</option>` + partenaires.map(p => `<option value="${p.id}">${esc(p.nom)}${p.lecture ? " (affichage seul)" : ""}</option>`).join("");
   sel.value = source == null ? "" : String(source);
 }
 
@@ -1111,6 +1121,7 @@ $("reglages").addEventListener("click", async e => {
   await apresModification(true);
 });
 function ouvrirReglages() {
+  if (affichageSeul()) return;
   if (!brouillon) brouillon = M.normaliserConfig(config);
   $("reglages").hidden = false; afficherReglages();
 }
@@ -1159,9 +1170,10 @@ async function demarrer(options) {
       (async () => { try { tableLiee = grist.selectedTable && grist.selectedTable.getTableId ? await grist.selectedTable.getTableId() : null; } catch (_) { tableLiee = null; } })()]);
     // partenaire ouvert par son lien : sa ligne ; propriétaire : la page, puis le choix d'une fiche de partenaire
     source = pagePartenaires && !proprietaire && partenaires.length ? partenaires[0].id : null;
-    chargerSource(); afficherSource();
+    chargerSource(); afficherSource(); appliquerAffichageSeul();
     await lireModelesDoc();
     appliquerModeleDefaut();
+    if (!config && affichageSeul()) { attente(""); message("Cette fiche n'est pas encore réglée : revenez quand le propriétaire l'aura préparée."); return; }
     if (!config) {
       brouillon = await configurationDeDepart();
       message("Fiche pas encore réglée : voici une configuration de départ, à compléter puis enregistrer.", "info");

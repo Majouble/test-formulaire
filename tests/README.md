@@ -8,7 +8,7 @@ Scénarios Playwright qui ouvrent les widgets (`v2/…`) dans Chromium avec un *
 cd tests
 npm install
 npx playwright install chromium     # ou : CHROMIUM=/chemin/vers/chromium
-sh lancer.sh                        # suite actuelle (run63 à run137)
+sh lancer.sh                        # suite actuelle (run63 à run138)
 sh lancer.sh run74 run76            # quelques scénarios
 ```
 
@@ -108,6 +108,7 @@ Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pou
 | `run134` | 2.62 : Fiche établissement, page des partenaires — modèles du document proposés au partenaire, modèle par défaut (page, hérité, choisi par le partenaire) |
 | `run136` | 2.62 : Fiche établissement — lecture des tables par l'API SQL (mêmes fiches qu'avec fetchTable), Points_situation réduite à Horodatage, retour à fetchTable si SQL refusée |
 | `run137` | 2.62 : Fiche établissement — couleur de badge malgré guillemets, blancs et retours à la ligne dans la valeur ; règle sans valeur correspondante signalée (⚠) |
+| `run138` | 2.62 : Fiche établissement — lien de partenaire en affichage seul (Lecture_seule) : ni réglages ni enregistrement, modèles applicables |
 | `run125` | 2.60 : version publiée — scripts appelés avec `?v=<version>`, `version.json` à jour (`outils/versionner.js --verifier`) ; page servie en http plus ancienne que la version publiée : rechargée une fois avec `?v=` |
 | `run124` | 2.57 : Référentiel des sites, onglet « File de vérification » — filtres, acceptation en lot (composante interne, ligne retirée avec report des références, position), valeur retenue (Modifier), siège choisi dans le bandeau, fait à la main, refus, report, campus au nom à préciser (table des campus et colonne Campus des sites créées), regroupement par établissement, bandeau point par point (Précédent / Suivant, sommaire) et carte cadrée sur les objets du point, raccourcis clavier, refus de Grist (message qui nomme le point et l'action), formules de déclenchement |
 | `run123` | 2.55 : Extractions — filtres à comptage et seuil (nombre de jours, somme, maximum), versions par filtre (toutes / dernière de chaque dossier), portées jamais et à chaque fois, opérateur ≥, combinaison par formule, colonnes des valeurs comptées, Excel |
