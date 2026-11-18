@@ -11,7 +11,7 @@
    Brouillon (JSON, enregistré à chaque modification), Publie (JSON lu par le widget de saisie),
    Publie_le, Modifie_le. Les colonnes des questions sont créées dans la table des réponses dès
    l'ajout d'une question ; elles n'apparaissent dans les formulaires qu'à la publication.
-   Format d'un bloc : { id, genre: "question" | "titre" | "info", section: "q" | "vd" | "va",
+   Format d'un bloc : { id, genre: "question" | "titre" | "info", section: "q" | "vd" | "va" | "r",
      colonne, texte, reglages: { libelle, aide, obligatoire, condition: { ref, op, valeurs }, affichage,
      court, min, max, couleur ("choix" | [{ cle, couleur }]), confidentiel, format, tableau: { table, lignes } } }
    ========================================================= */
@@ -21,9 +21,12 @@ const COLS_FORMULAIRES = [
   { id: "Publie", type: "Text" }, { id: "Publie_le", type: "DateTime:Europe/Paris" }, { id: "Modifie_le", type: "DateTime:Europe/Paris" },
 ];
 const TABLES_EXCLUES = /^(Formulaires|Config|Parametres|Utilisateurs|Config_.*|Colonnes_point|Sections_point|Tri_point|Points_situation|GristDoc.*|_grist.*)$/;
-// Parties du formulaire : rôle q (formulaire de signalement, plusieurs parties possibles), vd / va (onglet Visas)
+// Parties du formulaire : rôle q (formulaire de signalement, plusieurs parties possibles), vd / va (onglet Visas),
+// r (éléments réservés aux services, onglet Compléments : une partie au plus, ajoutée à la demande)
 const PARTIES_DEFAUT = [{ id: "q", nom: "Signalement", role: "q" }, { id: "vd", nom: "Visa départemental", role: "vd" }, { id: "va", nom: "Visa académique", role: "va" }];
-const ROLES = { q: "formulaire", vd: "onglet Visas, échelon départemental", va: "onglet Visas, échelon académique" };
+const ROLES = { q: "formulaire", vd: "onglet Visas, échelon départemental", va: "onglet Visas, échelon académique", r: "onglet Compléments, réservé aux services" };
+const PARTIE_RESERVEE = { id: "r", nom: "Éléments réservés", role: "r", echelons: ["dep", "aca"] };
+const ECHELONS_RESERVES = [["dep", "Département, dans son périmètre"], ["aca", "Académie, dans son périmètre"]];
 const TYPES_QUESTIONNAIRE = { etablissement: "Questionnaire établissement" };
 const COMMUNS = ["Etablissement", "Site", "Date_faits", "Qualification", "Description"];
 // Colonnes de service d'un questionnaire établissement (contrôlées dans le panneau « Formulaire »)
@@ -114,7 +117,8 @@ function colonnesDe(tid) {
     let opts = {};
     try { opts = JSON.parse(c.widgetOptions[i] || "{}"); } catch (_) {}
     res[colId] = { colId, libelle: c.label[i] || colId, type: c.type[i], opts, description: (c.description && c.description[i]) || "",
-      formule: !!(c.isFormula && c.isFormula[i] && c.formula[i]), texteFormule: (c.isFormula && c.isFormula[i] && c.formula[i]) || "", pos: c.parentPos ? c.parentPos[i] : i, ref: c.id[i] };
+      formule: !!(c.isFormula && c.isFormula[i] && c.formula[i]), texteFormule: (c.isFormula && c.isFormula[i] && c.formula[i]) || "",
+      formuleInit: (c.isFormula && !c.isFormula[i] && c.formula && c.formula[i]) || "", pos: c.parentPos ? c.parentPos[i] : i, ref: c.id[i] };
     // pièces jointes calculées depuis une colonne d'envoi (formulePiecesJointes) : question ordinaire pour l'administration
     const pj = /^Attachments/.test(c.type[i]) && res[colId].formule && /\(\$(\w+) or ""\)\.split\(\)/.exec(res[colId].texteFormule);
     if (pj) { res[colId].formule = false; res[colId].pjEnvoi = pj[1]; }
@@ -386,7 +390,7 @@ function parties() {
   if (!courant) return [];
   if (!Array.isArray(courant.conf.parties) || !courant.conf.parties.length) courant.conf.parties = copie(PARTIES_DEFAUT);
   const l = courant.conf.parties;
-  return [...l.filter(x => x.role === "q"), ...l.filter(x => x.role === "vd"), ...l.filter(x => x.role === "va")];
+  return [...l.filter(x => x.role === "q"), ...l.filter(x => x.role === "vd"), ...l.filter(x => x.role === "va"), ...l.filter(x => x.role === "r")];
 }
 const partieDe = id => parties().find(x => x.id === id) || parties()[0];
 const communsActifs = () => courant && courant.type === "etablissement" && !!meta.Etablissement;
@@ -547,18 +551,18 @@ function dessinerApercu() {
     const s = p.id, liste = blocs().map((b, i) => ({ b, i })).filter(x => (x.b.section || "q") === s);
     if (p.role !== "q" && !liste.length && modeTest) return;
     const choisiP = choisi === `partie:${s}` && !modeTest;
-    let h = `<div class="feuille${p.role !== "q" ? " visa" : ""}${etapes && p.role === "q" ? " cadre" : ""}${etapes && p === qs[0] ? " premiere" : ""}${choisiP ? " partie-choisie" : ""}" data-section-feuille="${s}">
+    let h = `<div class="feuille${p.role !== "q" ? " visa" : ""}${p.role === "r" ? " reserve" : ""}${etapes && p.role === "q" ? " cadre" : ""}${etapes && p === qs[0] ? " premiere" : ""}${choisiP ? " partie-choisie" : ""}" data-section-feuille="${s}">
       <h2 class="titre-partie"${modeTest ? "" : ` data-partie="${s}" tabindex="0" title="Régler la partie"`}>${esc(p.nom)} <small>${esc(ROLES[p.role])}${p.role === "q" && p.titre ? " · titre affiché" : ""}</small>${modeTest ? "" : ' <span class="crayon" aria-hidden="true">✎</span>'}</h2>`;
     if (etapes && p === qs[0]) h += etapeHtml(1, majApercu() ? "Établissement" : "Quel établissement est concerné ?") + communHtml("Etablissement") + communHtml("Site")
       + etapeHtml(2, "Les faits") + ["Date_faits", "Qualification"].map(communHtml).join("");
     if (p.role === "q" && p.titre && p.nom) h += `<h3 class="titre-section titre-partie-q">${esc(p.nom)}</h3>`;   // titre de partie affiché dans le formulaire
-    if (!liste.length) h += modeTest ? "" : `<div class="vide-section">${p.role === "q" ? "Aucune question dans cette partie." : "Aucune question de visa."}<br><button type="button" class="secondaire petit" data-ajout data-section="${s}" data-index="${blocs().length}">+ Ajouter une question</button></div>`;
+    if (!liste.length) h += modeTest ? "" : `<div class="vide-section">${p.role === "q" ? "Aucune question dans cette partie." : p.role === "r" ? "Aucune question réservée." : "Aucune question de visa."}<br><button type="button" class="secondaire petit" data-ajout data-section="${s}" data-index="${blocs().length}">+ Ajouter une question</button></div>`;
     else liste.forEach(({ b, i }, k) => { h += insertion(s, i) + blocHtml(b); if (k === liste.length - 1) h += insertion(s, i + 1); });
     if (etapes && p === qs[qs.length - 1]) h += etapeHtml(3, "Description et envoi") + communHtml("Description") +
       (majApercu() && saisieEff().commentaire && meta.Commentaire ? `<div class="champ"><label${modeTest ? ' for="test-commentaire"' : ""}>Commentaire de mise à jour<span class="aide">Ce qui s'est passé depuis l'étape précédente</span></label><textarea id="test-commentaire" style="min-height:50px"${modeTest ? "" : ' tabindex="-1" disabled'}></textarea></div>` : "")
       + envoiHtml();
     html.push(h + "</div>");
-    if (p === qs[qs.length - 1] && !modeTest) html.push(`<div class="ajout-partie"><button type="button" class="ajout-lien" id="btn-ajout-partie">+ Ajouter une partie au formulaire</button></div>`);
+    if (p === qs[qs.length - 1] && !modeTest) html.push(`<div class="ajout-partie"><button type="button" class="ajout-lien" id="btn-ajout-partie">+ Ajouter une partie au formulaire</button>${ps.some(x => x.role === "r") ? "" : ` <button type="button" class="ajout-lien" id="btn-ajout-reserve" title="Questions que seuls les services (département, académie, cellule) renseignent ; l'établissement ne les voit jamais">+ Partie réservée aux services</button>`}</div>`);
   });
   const msg = $("msg-global");
   ap.innerHTML = html.join("");
@@ -747,6 +751,7 @@ $("apercu").addEventListener("click", ev => {
   if (ev.target.closest("#btn-desc-auto")) { descTestManuelle = false; majDescriptionTest(); return; }
   if (modeTest) { clicTableauTest(ev); return; }
   if (ev.target.closest("#btn-ajout-partie")) { ajouterPartie(); return; }
+  if (ev.target.closest("#btn-ajout-reserve")) { ajouterPartieReservee(); return; }
   const tp = ev.target.closest("[data-partie]");
   if (tp) { choisir(`partie:${tp.dataset.partie}`); return; }
   const cm = ev.target.closest("[data-commun]");
@@ -1330,7 +1335,7 @@ function lierSites(b) {
   const ras = $("pa-site-ras"); if (ras) ras.addEventListener("change", () => { st.avecRas = ras.checked; maj(); });
   const qb = $("pa-qualif-bas"); if (qb) qb.addEventListener("change", () => { majSaisie(c => { c.qualificationEnBas = qb.checked; }); dessinerApercu(); });
 }
-const optionsParties = sel => parties().map(x => `<option value="${esc(x.id)}"${(sel || "q") === x.id ? " selected" : ""}>${esc(x.nom)}${x.role === "q" ? "" : " (visa)"}</option>`).join("");
+const optionsParties = sel => parties().map(x => `<option value="${esc(x.id)}"${(sel || "q") === x.id ? " selected" : ""}>${esc(x.nom)}${x.role === "q" ? "" : x.role === "r" ? " (réservé)" : " (visa)"}</option>`).join("");
 function ajouterPartie() {
   const nom = prompt("Nom de la nouvelle partie :", "Nouvelle partie"); if (!nom || !nom.trim()) return;
   const l = courant.conf.parties || (courant.conf.parties = copie(PARTIES_DEFAUT));
@@ -1339,7 +1344,31 @@ function ajouterPartie() {
   l.splice(dernQ + 1, 0, p);
   choisi = `partie:${p.id}`; sauver(); dessinerApercu(); dessinerPanneau();
 }
+// Partie réservée aux services : une seule par formulaire, placée après les visas
+function ajouterPartieReservee() {
+  const l = courant.conf.parties || (courant.conf.parties = copie(PARTIES_DEFAUT));
+  if (l.some(x => x.role === "r")) return;
+  l.push(copie(PARTIE_RESERVEE));
+  choisi = "partie:r"; sauver(); dessinerApercu(); dessinerPanneau();
+}
+function panneauPartieReservee(pt) {
+  const p = $("panneau"), n = blocs().filter(b => (b.section || "q") === pt.id).length, ech = Array.isArray(pt.echelons) ? pt.echelons : [];
+  p.innerHTML = `<h2>Partie : ${esc(pt.nom)}</h2><p class="sous">${esc(ROLES.r)} · ${n} bloc${n > 1 ? "s" : ""}</p>
+    <label class="l" for="pp-nom">Nom</label><input type="text" id="pp-nom" value="${esc(pt.nom)}">
+    <p class="note">Questions que seuls les services renseignent, dans l'onglet « Compléments » du widget de saisie. L'établissement ne les voit jamais, ni dans son formulaire ni dans Grist (règles d'accès).
+      Les réponses portent sur la dernière version du dossier et sont reprises dans les versions suivantes, y compris quand l'établissement publie un suivi.</p>
+    <div class="groupe"><div class="t">Qui les renseigne</div>
+      ${ECHELONS_RESERVES.map(([k, l]) => `<label class="interrupteur">${esc(l)} <input type="checkbox" data-echelon="${k}"${ech.includes(k) ? " checked" : ""}></label>`).join("")}
+      <p class="note" style="margin:6px 0 0">Échelon et périmètre des agents : onglet Validation (viseurs). Les propriétaires et les agents mobilisés au planning peuvent toujours les renseigner.</p></div>
+    <div class="pied-panneau">${n ? `<span class="note">Pour supprimer la partie, retirez d'abord ses questions (ou déplacez-les).</span>` : `<button type="button" class="danger" id="pp-suppr">Supprimer la partie</button>`}</div>`;
+  $("pp-nom").addEventListener("input", e => { pt.nom = e.target.value; p.querySelector("h2").textContent = `Partie : ${pt.nom}`; const h = document.querySelector(`[data-partie="${pt.id}"]`); if (h) h.firstChild.textContent = pt.nom + " "; sauver(); });
+  p.querySelectorAll("[data-echelon]").forEach(c => c.addEventListener("change", () => {
+    pt.echelons = ECHELONS_RESERVES.map(([k]) => k).filter(k => p.querySelector(`[data-echelon="${k}"]`).checked); sauver();
+  }));
+  if ($("pp-suppr")) $("pp-suppr").addEventListener("click", () => { courant.conf.parties = courant.conf.parties.filter(x => x !== pt); choisi = null; sauver(); dessinerApercu(); dessinerPanneau(); });
+}
 function panneauPartie(pt) {
+  if (pt.role === "r") return panneauPartieReservee(pt);
   const p = $("panneau"), qs = parties().filter(x => x.role === "q"), k = qs.indexOf(pt);
   const n = blocs().filter(b => (b.section || "q") === pt.id).length;
   p.innerHTML = `<h2>Partie : ${esc(pt.nom)}</h2><p class="sous">${esc(ROLES[pt.role])} · ${n} bloc${n > 1 ? "s" : ""}</p>
@@ -1940,6 +1969,7 @@ async function publier() {
       if (b.genre === "question" && c && b.reglages && b.reglages.libelle && b.reglages.libelle !== c.libelle)
         acts.push(["ModifyColumn", courant.table, c.colId, { untieColIdFromLabel: true }], ["ModifyColumn", courant.table, c.colId, { label: b.reglages.libelle }]);
     }
+    acts.push(...actionsReprise(conf));
     acts.push(["UpdateRecord", TABLE_FORMULAIRES, courant.id, { Publie: json, Brouillon: json, Publie_le: maintenant() }]);
     await actions(acts);
     courant.publie = json; courant.publieLe = maintenant();
@@ -1957,6 +1987,28 @@ async function publier() {
     message((sansPage ? "Formulaire publié. Aucune page de Grist ne l'affiche encore : créez les pages des agents dans Équipe › Pages de saisie."
       : "Formulaire publié : les pages qui l'affichent le prennent en compte dans les 30 secondes (ou au rechargement).") + suite, alerteAcces ? "err" : sansPage ? "" : "ok");
   } catch (e) { message(`Publication refusée : ${e.message || e}`, "err"); }
+}
+// Éléments réservés (partie de rôle « r ») : formule d'initialisation de reprise sur chaque colonne de question réservée,
+// pour que les versions suivantes du dossier gardent la valeur ; retirée d'une colonne qui n'est plus réservée dans aucun
+// formulaire de la table. Une formule écrite à la main (sans la marque du socle) n'est jamais touchée.
+function colonnesReserveesDe(conf) {
+  const ps = Array.isArray(conf && conf.parties) && conf.parties.length ? conf.parties : PARTIES_DEFAUT;
+  const ids = new Set(ps.filter(x => x.role === "r").map(x => x.id));
+  return ((conf && conf.blocs) || []).filter(b => b.genre === "question" && b.colonne && ids.has(b.section || "q")).map(b => b.colonne);
+}
+function actionsReprise(conf) {
+  const S = window.Socle, dossier = courant.type === "etablissement" ? rolesEffectifs().Dossier : null;
+  if (!S.formuleReprise || !dossier || !meta[dossier]) return [];
+  const reservees = new Set(colonnesReserveesDe(conf));
+  for (const f of formulaires) if (f.id !== courant.id && f.table === courant.table) { try { colonnesReserveesDe(JSON.parse(f.publie || "{}")).forEach(c => reservees.add(c)); } catch (_) { /* formulaire illisible */ } }
+  const acts = [];
+  for (const c of Object.values(meta)) {
+    if (!c || c.formule || c.colId === dossier) continue;
+    const marquee = String(c.formuleInit || "").startsWith(S.MARQUE_REPRISE), voulue = S.formuleReprise(courant.table, dossier, c.colId);
+    if (reservees.has(c.colId) && (c.formuleInit === "" || (marquee && c.formuleInit !== voulue))) acts.push(["ModifyColumn", courant.table, c.colId, { formula: voulue }]);
+    else if (!reservees.has(c.colId) && marquee) acts.push(["ModifyColumn", courant.table, c.colId, { formula: "" }]);
+  }
+  return acts;
 }
 async function supprimerFormulaire() {
   if (!confirm(`Supprimer le formulaire « ${courant.nom} » ?\nSes colonnes et les réponses restent dans la table ${courant.table} ; les pages qui l'affichaient reviendront aux questions associées dans le widget.`)) return;

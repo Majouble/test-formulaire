@@ -164,6 +164,7 @@
       { aclFormula: NON_PROPRIETAIRE, permissionsText: "-RU", memo: `${MEMO} — clés et liens des invités réservés aux propriétaires` },
     ], lignes: ["Clé et lien personnel des agents invités : lisibles par les propriétaires seulement (le lien vaut mot de passe)."] });
     reglesValidation(out);
+    reglesReserves(out, saisie);
     reglesEtablissements(out);
     reglesPartenaires(out);
     return out;
@@ -207,6 +208,40 @@
     }
   }
 
+  /* ---------- Éléments réservés aux services (partie de rôle « r », onglet Compléments de la saisie) ----------
+     Modification : propriétaires, agents mobilisés au planning et viseurs des échelons cochés dans la partie, sur leur
+     périmètre ; les autres agents lisent. Les établissements (lien) ne les lisent pas, mais peuvent les écrire : la
+     formule d'initialisation qui les reprend dans chaque nouvelle version doit s'écrire quand l'établissement publie un
+     suivi (comme l'auteur). Les partenaires ne les lisent pas. */
+  function reservesDeTable(table) {
+    const cols = meta[table] ? meta[table].colonnes : {}, colonnes = new Set(), echelons = new Set();
+    for (const f of formulaires.filter(x => x.table === table)) {
+      const parties = Array.isArray(f.conf.parties) ? f.conf.parties.filter(p => p.role === "r") : [];
+      parties.forEach(p => (Array.isArray(p.echelons) ? p.echelons : []).forEach(e => echelons.add(e)));
+      (f.conf.blocs || []).forEach(b => { if (parties.some(p => p.id === (b.section || "q")) && b.colonne && cols[b.colonne]) colonnes.add(b.colonne); });
+    }
+    return { colonnes: [...colonnes].sort(), echelons: [...echelons] };
+  }
+  function reglesReserves(out, saisie) {
+    for (const t of [...new Set(formulaires.map(f => f.table))]) {
+      const r = reservesDeTable(t); if (!r.colonnes.length) continue;
+      const cols = meta[t].colonnes, avecViseurs = !!(meta[general.agents] && meta[general.agents].colonnes.Echelon_visa);
+      const perim = (u, liste, c) => cols[c] ? ` and (not ${u}.${liste} or rec.${c} in ${u}.${liste})` : "";
+      const conds = [];
+      if (avecViseurs && r.echelons.includes("dep")) conds.push(u => `(${u}.Actif and ${u}.Echelon_visa == "Départemental"${perim(u, "Visa_departements", "Departement")})`);
+      if (avecViseurs && r.echelons.includes("aca")) conds.push(u => `(${u}.Actif and ${u}.Echelon_visa == "Académique"${perim(u, "Visa_academies", "Academie")})`);
+      const x = saisie.get(t), qui = r.echelons.map(e => e === "dep" ? "départementaux" : "académiques").join(" et ");
+      out.push({ tableId: t, colIds: r.colonnes.join(","), titre: `${t} — éléments réservés (${r.colonnes.join(", ")})`, regles: [
+        { aclFormula: PROPRIETAIRE, permissionsText: "+U", memo: `${MEMO} — propriétaires : éléments réservés` },
+        ...(x ? [{ aclFormula: condChamps(x.champs), permissionsText: "+U", memo: `${MEMO} — éléments réservés : agents mobilisés au planning` }] : []),
+        ...(conds.length ? [{ aclFormula: agentSi(u => conds.map(c => c(u)).join(" or ")), permissionsText: "+U", memo: `${MEMO} — éléments réservés : viseurs ${qui}, dans leur périmètre` }] : []),
+        { aclFormula: membre(), permissionsText: "-U", memo: `${MEMO} — éléments réservés : lecture pour le reste de l'équipe` },
+      ], lignes: ["Propriétaires et agents mobilisés au planning : modification.",
+        ...(conds.length ? [`Viseurs ${qui} (onglet Validation), sur les établissements de leur périmètre : modification.`] : []),
+        "Autres agents de l'équipe : lecture seule."] });
+    }
+  }
+
   /* ---------- Accès des établissements par lien ---------- */
   const condEtab = g => `user.${g.attribut} and user.LinkKey.${g.attribut}`;
   const COL_ACCES = "Etablissement_acces";   // sous-tables : établissement du signalement parent (les règles ne suivent pas les références)
@@ -217,7 +252,9 @@
     const parties = Array.isArray(f.conf.parties) && f.conf.parties.length ? f.conf.parties : PARTIES, cols = meta[f.table].colonnes, visas = new Set();
     (f.conf.blocs || []).forEach(b => { const p = parties.find(x => x.id === (b.section || "q")); if (p && p.role !== "q" && b.colonne && cols[b.colonne]) visas.add(b.colonne); });
     const rr = S.resoudreRoles("reponses", meta[f.table], { reponses: f.table, referentiel: general.referentiel }, {}, {});
-    return { visas: [...visas].sort(), auteur: rr.Auteur && rr.Auteur.col && !visas.has(rr.Auteur.col) ? rr.Auteur.col : null };
+    const reserves = reservesDeTable(f.table).colonnes;
+    reserves.forEach(c => visas.delete(c));
+    return { visas: [...visas].sort(), reserves, auteur: rr.Auteur && rr.Auteur.col && !visas.has(rr.Auteur.col) && !reserves.includes(rr.Auteur.col) ? rr.Auteur.col : null };
   }
   // Sous-tables (tableaux) d'un formulaire : { table, parent (colonne Ref vers la table des réponses), acces (colonne d'aide présente ?) }
   function sousTables(f) {
@@ -233,10 +270,10 @@
   // Colonnes réservées à la cellule dans une table de signalements : ensembles de visas (circuit de validation actif :
   // mêmes ensembles que les règles des viseurs, une colonne ne pouvant figurer que dans un seul ensemble), statut, auteur
   function colonnesReservees(f) {
-    const { visas, auteur } = colonnesMasquees(f), rv = circuit(f.table);
+    const { visas, reserves, auteur } = colonnesMasquees(f), rv = circuit(f.table);
     const ensembles = rv ? (() => { const v = visasDeTable(f.table), reste = visas.filter(c => !v.vd.includes(c) && !v.va.includes(c));
       return [rv.echelons === "dep_aca" ? v.vd : [], v.va, rv.echelons === "dep_aca" ? reste : [...v.vd.filter(c => visas.includes(c)), ...reste].sort()]; })() : [visas];
-    return { ensembles: ensembles.filter(l => l.length), statut: rv && meta[f.table].colonnes[rv.colonne] ? rv.colonne : null, auteur };
+    return { ensembles: ensembles.filter(l => l.length), reserves, statut: rv && meta[f.table].colonnes[rv.colonne] ? rv.colonne : null, auteur };
   }
   function reglesEtablissements(out) {
     if (!groupes || !groupes.length) return;
@@ -258,10 +295,13 @@
       for (const f of g.formulaires) {
         ajouterEn(f.table, "*", `${f.table} — signalements`, signalements(f.table, f.colEtab),
           [`Établissement ouvert par son lien : ses seuls signalements (lecture, ajout, mise à jour ; pas de suppression).`]);
-        const { ensembles, statut, auteur } = colonnesReservees(f);
+        const { ensembles, reserves, statut, auteur } = colonnesReservees(f);
         for (const l of ensembles) ajouterEn(f.table, l.join(","), `${f.table} — visas (${l.join(", ")})`,
           [{ aclFormula: E, permissionsText: "-RU", memo: `${MEMO} — ${qui} : visas réservés à la cellule` }],
           ["Établissement ouvert par son lien : ni lecture ni modification des visas."]);
+        if (reserves.length) ajouterEn(f.table, reserves.join(","), `${f.table} — éléments réservés (${reserves.join(", ")})`,
+          [{ aclFormula: E, permissionsText: "-R", memo: `${MEMO} — ${qui} : éléments réservés illisibles` }],
+          ["Établissement ouvert par son lien : éléments réservés illisibles (écriture laissée à la formule qui les reprend dans ses suivis)."]);
         if (statut) ajouterEn(f.table, statut, `${f.table} — statut de validation (${statut})`,
           [{ aclFormula: E, permissionsText: "-R", memo: `${MEMO} — ${qui} : statut de validation réservé à la cellule` }],
           ["Établissement ouvert par son lien : statut de validation illisible (il découle des visas)."]);
@@ -330,9 +370,11 @@
       for (const c of [R.LIEN.cle, R.LIEN.lien]) if (cols[c]) ajouterEn(t, c, `${t} — ${c === R.LIEN.cle ? "clé" : "lien"} d'accès des établissements`,
         [{ aclFormula: P, permissionsText: "-RU", memo: `${MEMO} — ${qui} : clés et liens des établissements illisibles` }], ["Partenaire : clés et liens d'accès des établissements illisibles (ils valent mot de passe)."]);
       for (const f of formulaires.filter(x => x.table === t)) {
-        const { ensembles, statut, auteur } = colonnesReservees(f);
+        const { ensembles, reserves, statut, auteur } = colonnesReservees(f);
         for (const l of ensembles) ajouterEn(t, l.join(","), `${t} — visas (${l.join(", ")})`,
           [{ aclFormula: P, permissionsText: "-RU", memo: `${MEMO} — ${qui} : visas réservés à la cellule` }], ["Partenaire : visas illisibles."]);
+        if (reserves.length) ajouterEn(t, reserves.join(","), `${t} — éléments réservés (${reserves.join(", ")})`,
+          [{ aclFormula: P, permissionsText: "-RU", memo: `${MEMO} — ${qui} : éléments réservés aux services` }], ["Partenaire : éléments réservés illisibles."]);
         if (statut) ajouterEn(t, statut, `${t} — statut de validation (${statut})`,
           [{ aclFormula: P, permissionsText: "-RU", memo: `${MEMO} — ${qui} : statut de validation réservé à la cellule` }], ["Partenaire : statut de validation illisible."]);
         if (auteur) ajouterEn(t, auteur, `${t} — auteur (${auteur})`,
