@@ -44,6 +44,16 @@
   // lecture brute de la table Agents (échelon et périmètre ne sont pas lus par Repartition.lireAgents)
   let brut = null;
   async function lireBrut() { try { brut = await grist.docApi.fetchTable(tAgents()); } catch (_) { brut = null; } }
+  // page de la fiche établissement des partenaires (option « partenaires » du widget Fiche) : la même sert aux services
+  let pageFiche = null;
+  async function lirePageFiche() {
+    pageFiche = null;
+    try {
+      const [V, Sx] = await Promise.all([grist.docApi.fetchTable("_grist_Views"), grist.docApi.fetchTable("_grist_Views_section")]);
+      Sx.id.forEach((_, i) => { if (pageFiche) return; const { cv } = R.optionsVue(Sx.options[i]); if (cv && cv.widgetOptions && cv.widgetOptions.partenaires === true) { const k = V.id.indexOf(Sx.parentId[i]); pageFiche = k >= 0 ? String(V.name[k] || "") : "?"; } });
+    } catch (_) { pageFiche = null; }
+  }
+  const tablesFiche = () => { const v = config.valeurs.partenaires; return v && Array.isArray(v.tables) ? v.tables.filter(t => meta[t]) : []; };
   function services() {
     if (!brut || !brut.Service) return [];
     const v = (k, i) => (brut[k] || [])[i];
@@ -71,8 +81,35 @@
     }
     return out;
   }
+  // Colonne d'aide « <colonne>_nom » d'une référence (Departement, Academie) : son nom, que les règles d'accès comparent au
+  // périmètre (les règles ne suivent pas les références). Colonne affichée de la référence, sinon une colonne Nom ou Libelle.
+  function colonneNom(t, c) {
+    const col = meta[t] && meta[t].colonnes[c], cible = col && S.cibleRef(col.type);
+    if (!cible || !meta[cible]) return null;
+    const cs = Object.values(meta[cible].colonnes), vis = cs.find(x => x.ref === col.visibleCol) || cs.find(x => /^(nom|libelle|academie|departement)$/i.test(x.colId));
+    return vis ? { id: `${c}_nom`, formula: `$${c}.${vis.colId}` } : null;
+  }
+  // tables limitées au périmètre d'un service : signalements, référentiels, tables ouvertes aux partenaires
+  function tablesPerimetre() {
+    const v = config.valeurs.partenaires, l = new Set();
+    for (const e of S.espaces(general)) [e.reponses, e.referentiel].forEach(t => meta[t] && l.add(t));
+    (v && Array.isArray(v.tables) ? v.tables : []).forEach(t => meta[t] && l.add(t));
+    return [...l];
+  }
   function preparations() {
     const acts = [], quoi = [];
+    // références de département ou d'académie : colonne d'aide « _nom »
+    const texte = {};   // table → { Departement, Academie } : colonne texte à comparer (après préparation)
+    for (const t of tablesPerimetre()) {
+      texte[t] = {};
+      for (const c of ["Departement", "Academie"]) {
+        const col = meta[t].colonnes[c]; if (!col) continue;
+        if (!/^Ref(List)?:/.test(col.type)) { texte[t][c] = c; continue; }
+        const aide = colonneNom(t, c);
+        if (aide && !meta[t].colonnes[aide.id]) { acts.push(["AddColumn", t, aide.id, { type: "Any", isFormula: true, formula: aide.formula, label: `${c} (nom)`, untieColIdFromLabel: true }]); quoi.push(`${t}.${aide.id}`); }
+        if (aide) texte[t][c] = aide.id;
+      }
+    }
     if (meta[tAgents()] && !colsAgents()[S.SERVICES.colonne]) { acts.push(["AddColumn", tAgents(), S.SERVICES.colonne, { type: "Bool", isFormula: false, label: "Accès de service", untieColIdFromLabel: true }]); quoi.push(`${tAgents()}.${S.SERVICES.colonne}`); }
     for (const e of S.espaces(general)) {
       if (meta[e.reponses] && !meta[e.reponses].colonnes[S.SERVICES.personne] && !acts.some(a => a[1] === e.reponses)) {
@@ -80,10 +117,23 @@
         quoi.push(`${e.reponses}.${S.SERVICES.personne}`);
       }
     }
+    // tables ouvertes aux partenaires rattachées à un établissement (données de la fiche) sans département ou académie :
+    // colonnes formules reprises de l'établissement, pour que les règles les limitent au périmètre d'un service
+    const refs = new Set(S.espaces(general).map(e => e.referentiel));
+    for (const t of tablesPerimetre().filter(x => !S.espaces(general).some(e => e.reponses === x || e.referentiel === x))) {
+      const cs = meta[t].colonnes, lien = Object.values(cs).find(c => refs.has(S.cibleRef(c.type) || "") && /^Ref:/.test(c.type));
+      if (!lien) continue;
+      const cible = S.cibleRef(lien.type), src = texte[cible] || {};
+      for (const c of ["Departement", "Academie"]) if (!cs[c] && src[c]) {
+        acts.push(["AddColumn", t, c, { type: "Any", isFormula: true, formula: `$${lien.colId}.${src[c]}`, label: c, untieColIdFromLabel: true }]);
+        quoi.push(`${t}.${c}`); texte[t][c] = c;
+      }
+    }
+    // tableaux : département et académie (en noms) du signalement parent
     for (const st of sousTables()) {
-      const cs = meta[st.table].colonnes, rc = meta[st.reponses].colonnes;
-      for (const c of ["Departement", "Academie"]) if (!cs[c] && rc[c]) {
-        acts.push(["AddColumn", st.table, c, { type: "Any", isFormula: true, formula: `$${st.parent}.${c}`, label: c, untieColIdFromLabel: true }]);
+      const cs = meta[st.table].colonnes, src = texte[st.reponses] || {};
+      for (const c of ["Departement", "Academie"]) if (!cs[c] && src[c]) {
+        acts.push(["AddColumn", st.table, c, { type: "Any", isFormula: true, formula: `$${st.parent}.${src[c]}`, label: c, untieColIdFromLabel: true }]);
         quoi.push(`${st.table}.${c}`);
       }
     }
@@ -132,7 +182,10 @@
         ${sansPage.length ? `<button class="secondaire" data-sv-act="pages">Créer les pages de saisie manquantes (${sansPage.length})</button>` : ""}
         ${sv.length ? `<button class="secondaire" data-sv-act="csv">Télécharger les liens (CSV)</button>` : ""}
         <span class="statut" id="sv-statut" role="status"></span></div>
-      <p class="aide">Après une création, un nouveau lien ou un changement de réglage, les règles d'accès du socle sont réappliquées si elles sont en place (onglet Accès).</p>`;
+      <p class="aide"><strong>Fiche établissement</strong> : ${pageFiche ? `les services ouvrent la page des partenaires, « ${esc(pageFiche)} » (liste des pages, à gauche de leur page de saisie), et y lisent les tables ouvertes aux partenaires${tablesFiche().length ? ` (${esc(tablesFiche().join(", "))})` : ""}, limitées à leur périmètre comme le reste ; leurs réglages de la fiche ne sont pas enregistrés.`
+        : "aucune page des partenaires : dans le widget Fiche établissement (⚙ Réglages), cochez « Page des partenaires » sur une page hors de « Cellule », puis choisissez les tables ouvertes (onglet Accès, carte « Partenaires »)."}</p>
+      <p class="aide">Les services lisent seulement : leurs signalements et établissements, leur ligne de l'équipe, les réglages, les formulaires, les vigilances et les tables ouvertes aux partenaires, toujours dans leur périmètre ; toute autre table leur est fermée. Clés et liens des établissements et adresse de l'auteur des signalements leur restent illisibles.
+        Après une création, un nouveau lien ou un changement de réglage, les règles d'accès du socle sont réappliquées si elles sont en place (onglet Accès).</p>`;
     lier();
   }
 
@@ -223,7 +276,7 @@
     racine.querySelectorAll("[data-sv-copier]").forEach(b => b.addEventListener("click", async () => { try { await navigator.clipboard.writeText(b.dataset.svCopier); b.textContent = "Copié"; } catch (_) { dire(b.dataset.svCopier); } }));
   }
 
-  async function recharger() { await charger(); await lireBrut(); dessiner(); }
+  async function recharger() { await charger(); await Promise.all([lireBrut(), lirePageFiche()]); dessiner(); }
   async function afficher() {
     racine = $("va-services");
     if (!racine) return;

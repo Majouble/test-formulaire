@@ -39,6 +39,11 @@
   // Accès des services (2.62.0-alpha.35) : agent de service = lien d'invité dont la ligne a Service coché (onglet Validation)
   let avecServices = false;   // colonne Agents.Service présente (et liens d'invités en place)
   const SERV = () => `user.LinkKey.${INVITE} and user.${INVITE}.${S.SERVICES.colonne}`;
+  // Colonne comparée à un périmètre en noms (Visa_departements, Visa_academies) : la colonne elle-même si c'est du texte ;
+  // pour une référence (table des académies…), sa colonne d'aide « <colonne>_nom » (formule $<colonne>.<colonne affichée>,
+  // ajoutée par « Préparer le document », onglet Validation), les règles ne suivant pas les références ; sans elle, la
+  // référence est comparée telle quelle et ne correspond à aucun nom (aucune ligne : fermé plutôt qu'ouvert)
+  const colonneTexte = (cols, c) => !c || !cols[c] ? null : /^Ref(List)?:/.test(cols[c].type) && cols[`${c}_nom`] ? `${c}_nom` : c;
   // Périmètre de visa d'une règle de colonne : liste vide = tout le document, sauf pour un accès de service (jamais tout)
   const perimVisa = (u, liste, c) => !c ? "" : avecServices ? ` and ((not ${u}.${liste} and not ${u}.${S.SERVICES.colonne}) or (${u}.${liste} and rec.${c} in ${u}.${liste}))`
     : ` and (not ${u}.${liste} or rec.${c} in ${u}.${liste})`;
@@ -200,7 +205,7 @@
     for (const t of [...new Set(formulaires.map(f => f.table))]) {
       const r = circuit(t); if (!r) continue;
       const v = visasDeTable(t), cols = meta[t].colonnes;
-      const perim = (u, liste, c) => perimVisa(u, liste, cols[c] ? c : null);
+      const perim = (u, liste, c) => perimVisa(u, liste, colonneTexte(cols, c));
       const dep = u => `${u}.Actif and ${u}.Echelon_visa == "Départemental"${perim(u, "Visa_departements", "Departement")}`;
       const aca = u => `${u}.Actif and ${u}.Echelon_visa == "Académique"${perim(u, "Visa_academies", "Academie")}`;
       const ajouter = (colonnes, build, qui, ligne) => {
@@ -235,7 +240,7 @@
     for (const t of [...new Set(formulaires.map(f => f.table))]) {
       const r = reservesDeTable(t); if (!r.colonnes.length) continue;
       const cols = meta[t].colonnes, avecViseurs = !!(meta[general.agents] && meta[general.agents].colonnes.Echelon_visa);
-      const perim = (u, liste, c) => perimVisa(u, liste, cols[c] ? c : null);
+      const perim = (u, liste, c) => perimVisa(u, liste, colonneTexte(cols, c));
       const conds = [];
       if (avecViseurs && r.echelons.includes("dep")) conds.push(u => `(${u}.Actif and ${u}.Echelon_visa == "Départemental"${perim(u, "Visa_departements", "Departement")})`);
       if (avecViseurs && r.echelons.includes("aca")) conds.push(u => `(${u}.Actif and ${u}.Echelon_visa == "Académique"${perim(u, "Visa_academies", "Academie")})`);
@@ -264,7 +269,7 @@
       if (!r || !meta[t] || out.some(p => p.tableId === t && p.structurel)) continue;
       const cols = meta[t].colonnes, rf = S.resoudreRoles("referentiel", meta[t], { reponses: e.reponses, referentiel: t }, {}, {});
       const col = role => (rf[role] && rf[role].col) || (cols[role] ? role : null);
-      const perim = (u, liste, c) => perimVisa(u, liste, c);
+      const perim = (u, liste, c) => perimVisa(u, liste, colonneTexte(cols, c));
       const avecViseurs = !!(meta[general.agents] && meta[general.agents].colonnes.Echelon_visa), conds = [];
       if (avecViseurs && r.echelons.includes("dep")) conds.push(u => `(${u}.Actif and ${u}.Echelon_visa == "Départemental"${perim(u, "Visa_departements", col("Departement"))})`);
       if (avecViseurs && r.echelons.includes("aca")) conds.push(u => `(${u}.Actif and ${u}.Echelon_visa == "Académique"${perim(u, "Visa_academies", col("Academie"))})`);
@@ -312,7 +317,7 @@
     const perimetre = (t, r) => {
       const cols = meta[t].colonnes, rf = S.resoudreRoles(saisie.has(t) && !saisie.get(t).sousTable ? "reponses" : "referentiel", meta[t], { reponses: t, referentiel: t }, {}, {});
       const col = role => (rf[role] && rf[role].col && cols[rf[role].col] ? rf[role].col : null) || (cols[role] ? role : null);
-      const dep = col("Departement"), aca = col("Academie"), l = [];
+      const dep = colonneTexte(cols, col("Departement")), aca = colonneTexte(cols, col("Academie")), l = [];
       if (dep) l.push(`(${U}.Echelon_visa == "Départemental" and ${U}.Visa_departements and ${r}.${dep} in ${U}.Visa_departements)`);
       if (aca) l.push(`(${U}.Echelon_visa == "Académique" and ${U}.Visa_academies and ${r}.${aca} in ${U}.Visa_academies)`);
       return l.length ? `(${l.join(" or ")})` : null;
@@ -341,11 +346,40 @@
       inserer(t, t, [{ aclFormula: p ? `${SERV()} and not ${p}` : SERV(), permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : ${p ? "établissements hors de son périmètre invisibles" : "référentiel sans colonne Departement ni Academie, fermé"}` }],
         [p ? "Accès de service : établissements de son périmètre seulement (lecture)." : "Accès de service : référentiel fermé (ni colonne Departement ni colonne Academie)."]);
     }
-    // équipe : sa seule ligne ; planning, émargement, partenaires : rien
-    inserer(general.agents, `${general.agents} — équipe`, [{ aclFormula: `${SERV()} and rec.id != ${U}.id`, permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : sa seule ligne de l'équipe` }],
+    // toute autre table : fermée (règle en tête des « autres tables »), sauf celles ouvertes ci-dessous
+    inserer("*", "*", [{ aclFormula: SERV(), permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : tables non ouvertes aux services fermées` }],
+      ["Accès de service : toute table non ouverte ci-dessous lui est fermée (planning, émargement, partenaires, autres données)."]);
+    // équipe : sa seule ligne
+    inserer(general.agents, `${general.agents} — équipe`, [
+      { aclFormula: `${SERV()} and rec.id == ${U}.id`, permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : sa propre ligne de l'équipe` },
+      { aclFormula: SERV(), permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : autres agents invisibles` }],
       ["Accès de service : sa seule ligne (les autres agents, leurs adresses et leurs liens lui sont invisibles)."]);
-    for (const t of [general.creneaux, general.affectations, general.emargements || "Emargements", PART.table].filter(x => x && meta[x]))
-      inserer(t, t, [{ aclFormula: SERV(), permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : table fermée` }], ["Accès de service : table fermée."]);
+    // réglages et formulaires (lus par les widgets), vigilances (données publiques) : lecture
+    for (const t of [S.TABLE_CONFIG, general.formulaires, "Parametres", general.vigilances].filter(x => x && meta[x] && !saisie.has(x) && !referentiels.includes(x)))
+      inserer(t, t, [{ aclFormula: SERV(), permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : lecture (réglages, formulaires, vigilances)` }], ["Accès de service : lecture seule."]);
+    // tables ouvertes aux partenaires (données de la fiche établissement) : lecture dans son périmètre, sinon fermées
+    for (const t of tablesPartenaires().filter(x => !saisie.has(x) && !referentiels.includes(x) && x !== general.vigilances)) {
+      const p = perimetre(t, "rec");
+      inserer(t, t, p ? [{ aclFormula: `${SERV()} and not ${p}`, permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : lignes hors de son périmètre invisibles` },
+        { aclFormula: SERV(), permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : lecture (table ouverte aux partenaires), dans son périmètre` }]
+        : [{ aclFormula: SERV(), permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : table ouverte aux partenaires sans colonne Departement ni Academie, fermée` }],
+        [p ? "Accès de service : lecture seule des lignes de son périmètre (table ouverte aux partenaires, carte « Partenaires »)." : "Accès de service : fermée (table ouverte aux partenaires, sans colonne Departement ni Academie)."]);
+    }
+    // colonnes masquées, comme pour les partenaires : clés et liens des établissements, auteur des signalements (adresses
+    // des agents) ; visas et statut restent lisibles (les services sont dans le circuit) ; l'auteur reste écrit par sa formule
+    const colonne = (t, c, titre, regle, ligne) => {
+      let e = out.find(p => p.tableId === t && p.colIds === c);
+      if (!e) { e = { tableId: t, colIds: c, titre, regles: [], lignes: [] }; out.push(e); }
+      e.regles.push(regle); e.lignes.push(ligne);
+    };
+    for (const t of new Set([...referentiels, ...(groupes || []).map(g => g.table), ...tablesPartenaires()]))
+      if (meta[t]) for (const c of [R.LIEN.cle, R.LIEN.lien]) if (meta[t].colonnes[c]) colonne(t, c, `${t} — ${c === R.LIEN.cle ? "clé" : "lien"} d'accès des établissements`,
+        { aclFormula: SERV(), permissionsText: "-RU", memo: `${MEMO} — ${qui} : clés et liens des établissements illisibles` }, "Accès de service : clé et lien d'accès des établissements illisibles.");
+    for (const f of formulaires) {
+      const { auteur } = colonnesMasquees(f);
+      if (auteur && meta[f.table]) colonne(f.table, auteur, `${f.table} — auteur (${auteur})`,
+        { aclFormula: SERV(), permissionsText: "-R", memo: `${MEMO} — ${qui} : adresse de l'auteur illisible` }, "Accès de service : adresse de l'auteur illisible (écrite par sa formule quand il saisit).");
+    }
   }
 
   /* ---------- Accès des établissements par lien ---------- */
@@ -748,7 +782,7 @@
               Ces tables n'afficheront rien aux partenaires limités : donnez-leur une colonne « ${esc(PART.colAcademie)} » du même type.</p>` : ""; })()}
           ${colonnesManquantes().length ? `<div class="boutons"><button class="secondaire" id="ac-part-colonnes">Ajouter ${colonnesManquantes().length > 1 ? "les colonnes" : "la colonne"} ${colonnesManquantes().map(c => `« ${esc(c)} »`).join(" et ")} (affichage seul, périmètre académique)</button></div>` : ""}`
         : `<div class="boutons"><button class="primaire" id="ac-part-creer">Créer la table ${esc(PART.table)}</button></div>`}
-      <fieldset class="ac-part-tables"><legend>Tables ouvertes en lecture aux partenaires</legend>
+      <fieldset class="ac-part-tables"><legend>Tables ouvertes en lecture aux partenaires (et aux accès de service, dans leur périmètre)</legend>
         ${candidates.map(t => `<label style="display:inline-block;min-width:220px"><input type="checkbox" data-part-table="${esc(t)}"${ouvertes.has(t) ? " checked" : ""}> ${esc(t)}</label>`).join("")}</fieldset>
       <div class="boutons"><button class="primaire" id="ac-part-tables">Enregistrer les tables ouvertes</button><span class="statut" id="ac-part-statut" role="status"></span></div>
       <p class="aide">Toujours fermées aux partenaires : réglages, formulaires, équipe, planning, émargement, pages réservées. Dans les tables ouvertes, les clés et liens d'accès
