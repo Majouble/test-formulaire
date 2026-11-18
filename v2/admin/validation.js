@@ -91,9 +91,8 @@
     if (!config) { racine.innerHTML = `<div class="bandeau alerte">La table Config est absente : lancez d'abord l'installation.</div>`; return; }
     if (!espaces.length) { racine.innerHTML = `<div class="bandeau info">Aucune table de réponses : lancez d'abord l'installation.</div>`; return; }
     racine.innerHTML = `<div class="bandeau info">Chaque signalement suit le circuit : visa départemental, puis visa académique, puis remontée au niveau national. Le niveau national voit tous les dossiers, avec leur statut.</div>
-      ${espaces.map(carteCircuit).join("")}${carteViseurs()}<section class="carte" id="va-services"></section>`;
+      ${espaces.map(carteCircuit).join("")}${carteViseurs()}`;
     lier();
-    if (window.OngletServices) window.OngletServices.afficher();   // carte « Accès des services » (services.js)
   }
 
   function carteCircuit(e, k) {

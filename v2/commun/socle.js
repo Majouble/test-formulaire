@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.62.0-alpha.36 (18/11/2026)";
+  const VERSION = "2.62.0-alpha.37 (18/11/2026)";
 
   /* ---------- version publiée ----------
      GitHub Pages laisse les navigateurs garder chaque fichier 10 minutes. Au chargement, la page lit version.json sans
@@ -458,7 +458,18 @@ return sorted(champs)`;
     lecture: "Lecture_seule",   // case cochée : lien d'affichage seul (ni réglages, ni modèles, ni filtres enregistrés)
     academies: "Academies",     // périmètre (liste d'académies ; vide : toutes) : seules les lignes dont la colonne Academie y figure
     colAcademie: "Academie",    // colonne des tables ouvertes comparée au périmètre (formule $Etablissement.Academie au besoin)
-    schema: "schema_partenaires" };   // copie des colonnes des tables ouvertes (clé de Config, seule ligne de Config lisible des partenaires)
+    schema: "schema_partenaires",     // copie des colonnes des tables ouvertes (clé de Config)
+    // 2.62.0-alpha.37 : un partenaire est aussi un service (DSDEN, rectorat…) : périmètre par échelon (Départemental +
+    // Departements, Académique + Academies, National : tout le document ; liste vide : rien), lien à échéance ; il consulte
+    // la fiche établissement et le tableau de bord, et complète les fiches (données demandées, éléments réservés)
+    echelon: "Echelon", departements: "Departements", expire: "Lien_expire_le", valide: "Lien_valide" };
+  const ECHELONS_PARTENAIRE = ["Départemental", "Académique", "National"];
+  // Réglages des partenaires (clé « partenaires » de Config) : tables ouvertes, durée de validité des liens
+  function reglagesPartenaires(config) {
+    const v = (config && config.valeurs && config.valeurs.partenaires) || {};
+    return { tables: Array.isArray(v.tables) ? v.tables : [], duree: DUREES_INVITE.some(d => d[0] === v.duree) ? v.duree : "30j" };
+  }
+  const nomPartenaireLieu = (echelon, lieu) => `${echelon === "Académique" ? "Rectorat" : "DSDEN"} ${lieu}`;
   // Durées de validité d'un lien d'invité (clé « acces_invites » de Config, réglée dans l'onglet Équipe › Agents)
   const DUREES_INVITE = [["24h", "24 heures", 24], ["72h", "3 jours", 72], ["7j", "7 jours", 168], ["30j", "30 jours", 720], ["illimite", "sans limite", 0]];
   // Auteur d'une ligne (formule d'initialisation) : adresse du compte Grist, sinon « Invité : <nom> » pour le lien d'un agent,
@@ -518,7 +529,9 @@ return sorted(champs)`;
   function formuleAuteurStructurel(g) {
     const l = formuleAuteur(g, null).split("\n");
     l[0] = "# Auteur de la mise à jour (socle v2.62)";
-    l.splice(l.length - 1, 0, `if any(k.startswith("Etab") and v for k, v in lk.items()):`, `  return "Établissement"`);
+    l.splice(l.length - 1, 0, `if lk.get("${PARTENAIRES.attribut}"):`, `  p = ${PARTENAIRES.table}.lookupOne(${PARTENAIRES.cle}=lk["${PARTENAIRES.attribut}"])`,
+      `  return ("Partenaire : " + p.${PARTENAIRES.nom}) if p else "Partenaire"`,
+      `if any(k.startswith("Etab") and v for k, v in lk.items()):`, `  return "Établissement"`);
     return l.join("\n");
   }
   const ANCIENNE_FORMULE_LIEN_INVITE = `SELF_HYPERLINK(page=$${INVITE.page} or None, LinkKey_${INVITE.attribut}=$${INVITE.cle}) if $${INVITE.cle} else ""`;
@@ -539,7 +552,6 @@ return sorted(champs)`;
       { id: INVITE.valide, type: "Bool", isFormula: true, formula: `bool($${INVITE.cle}) and (not $${INVITE.expire} or $${INVITE.expire} > NOW())` },
       // viseurs (onglet Validation) : échelon et périmètre de visa ; périmètre vide = tous les départements ou académies
       ...COLONNES_VISEURS,
-      { id: SERVICES.colonne, type: "Bool" },
     ];
   }
 
@@ -556,17 +568,6 @@ return sorted(champs)`;
     { id: "Echelon_visa", type: "Choice", widgetOptions: json({ choices: ECHELONS_VISA }) },
     { id: "Visa_departements", type: "ChoiceList" }, { id: "Visa_academies", type: "ChoiceList" },
   ];
-  /* Accès des services (2.62.0-alpha.35, onglet Validation) : un « agent de service » par DSDEN ou par rectorat, ligne de
-     la table Agents avec Service coché, un échelon et un périmètre de visa (jamais vide), et un lien d'invité partagé par
-     l'équipe du service. Les règles d'accès limitent ses lectures aux lignes de son périmètre ; il saisit des signalements
-     pour les établissements de son périmètre si le réglage le permet (clé « acces_services » de Config : { duree, saisie }).
-     Le nom de la personne qui saisit derrière ce lien commun est demandé à l'ouverture et inscrit dans Personne_service. */
-  const SERVICES = { colonne: "Service", personne: "Personne_service", duree: "30j" };
-  function reglagesServices(config) {
-    const v = (config && config.valeurs && config.valeurs.acces_services) || {};
-    return { duree: DUREES_INVITE.some(d => d[0] === v.duree) ? v.duree : SERVICES.duree, saisie: v.saisie !== false };
-  }
-  const nomService = (echelon, lieu) => `${echelon === "Académique" ? "Rectorat" : "DSDEN"} ${lieu}`;
   const STATUTS_VALIDATION = [
     { nom: "À viser (département)", fond: "#FEECC2", texte: "#716043", echelon: "Départemental" },
     { nom: "À viser (académie)", fond: "#E8EDFF", texte: "#000091", echelon: "Académique" },
@@ -1217,7 +1218,7 @@ return sorted(champs)`;
   window.Socle = {
     reglagesPointParDefaut,
     espaces, espaceDeTable, AUTRE_CHAMP_DEFAUT, VERSION, TABLE_CONFIG, TABLE_ADMIN, TABLE_CELLULE, STYLE_LIEN, formuleLienInvite, ANCIENNE_FORMULE_LIEN_INVITE, DEFAUTS_GENERAL, NATURES, ROLES,
-    SERVICES, reglagesServices, nomService,
+    ECHELONS_PARTENAIRE, reglagesPartenaires, nomPartenaireLieu,
     MARQUE_REPRISE, formuleReprise, STRUCTUREL, DROITS_ETAB_STRUCTUREL, reglagesStructurel, formuleAuteurStructurel,
     colonnesEmargements, lireEmargements, STATUTS_ACTION, PRIORITES_ACTION, ACTIONS_DEFAUT, reglagesActions, optionsStatuts, colonnesActions, lireActions,
     PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
