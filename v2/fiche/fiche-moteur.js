@@ -53,6 +53,10 @@
 
   const copie = x => JSON.parse(JSON.stringify(x));
   const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  /* comparaison d'une valeur saisie dans les réglages (couleur de badge, filtre, valeurs à ignorer ou exclues) avec
+     celle d'une cellule : sans accents ni majuscules, sans blancs (retours à la ligne, espaces insécables, doubles
+     espaces — un champ texte retire les retours à la ligne d'une valeur collée) ni guillemets autour ou dedans */
+  const cleVal = s => norm(s).replace(/[\s"'«»“”‘’]+/g, "");
   const cibleRef = t => (/^Ref(?:List)?:(.+)$/.exec(String(t || "")) || [])[1] || null;
   const nombreFr = n => Number(n).toLocaleString("fr-FR", { maximumFractionDigits: 2 });
 
@@ -230,8 +234,8 @@
     // filtres sur des colonnes (le premier, puis les supplémentaires, tous appliqués) : valeurs « a ; b », gardées ou exclues
     for (const f of [t.filtre, ...(t.filtresSup || [])]) {
       if (!f || !f.colonne || !String(f.valeurs ?? "").trim()) continue;
-      const vals = new Set(String(f.valeurs).split(";").map(norm).filter(Boolean));
-      lignes = lignes.filter(l => lecteur.elements(tab, f.colonne, l[f.colonne]).some(x => vals.has(norm(x))) !== !!f.exclure);
+      const vals = new Set(String(f.valeurs).split(";").map(cleVal).filter(Boolean));
+      lignes = lignes.filter(l => lecteur.elements(tab, f.colonne, l[f.colonne]).some(x => vals.has(cleVal(x))) !== !!f.exclure);
     }
     // période : à partir d'une date (AAAA-MM-JJ) ou des N derniers jours
     let periode = "";
@@ -267,12 +271,12 @@
     const premiere = lignes[0] || null;
     // valeur la plus récente : en sautant les valeurs ignorées (« Retour à la normale ; RAS »), cherchée parmi les lignes
     // du jour le plus récent (réglage par défaut) pour ne pas ressortir un état ancien ; à défaut, la plus récente
-    const ignorees = new Set(String(t.synthese.ignorer || "").split(";").map(norm).filter(Boolean));
+    const ignorees = new Set(String(t.synthese.ignorer || "").split(";").map(cleVal).filter(Boolean));
     let ligneValeur = premiere;
     if (t.synthese.mode === "valeur" && ignorees.size && premiere && t.synthese.colonne) {
       const jour0 = t.date ? jourISO(premiere[t.date], typeDe(t.date)) : "";
       const candidates = t.synthese.ignorerMemeJour !== false && jour0 ? lignes.filter(l => jourISO(l[t.date], typeDe(t.date)) === jour0) : lignes;
-      ligneValeur = candidates.find(l => !ignorees.has(norm(lecteur.texte(tab, t.synthese.colonne, l[t.synthese.colonne])))) || premiere;
+      ligneValeur = candidates.find(l => !ignorees.has(cleVal(lecteur.texte(tab, t.synthese.colonne, l[t.synthese.colonne])))) || premiere;
     }
     const valeurDe = col => { const l = col === t.synthese.colonne ? ligneValeur : premiere; return l ? lecteur.texte(tab, col, l[col]) : ""; };
 
@@ -286,11 +290,11 @@
       ventilation = t.ventilationColonnes.map(c => ({ valeur: (lecteur.colonne(tab, c) || {}).label || c, n: nombre(c) }));
       baseParts = ventilation.reduce((x, v) => x + v.n, 0);
     } else if (t.ventilation) {
-      const comptes = new Map(), exclues = new Set(String(t.ventilationExclure || "").split(";").map(norm).filter(Boolean));
+      const comptes = new Map(), exclues = new Set(String(t.ventilationExclure || "").split(";").map(cleVal).filter(Boolean));
       for (const l of lignes) {
         const vals = lecteur.elements(tab, t.ventilation, l[t.ventilation]);
         // valeur nulle d'une colonne numérique (0 blessé…) : rien à décompter (sinon « 1 0 »)
-        for (const v of vals.length ? vals : ["(vide)"]) if (!exclues.has(norm(v)) && !/^0+([.,]0+)?$/.test(String(v).trim())) comptes.set(v, (comptes.get(v) || 0) + (s.mode === "somme" ? Number(l[s.colonne]) || 0 : 1));
+        for (const v of vals.length ? vals : ["(vide)"]) if (!exclues.has(cleVal(v)) && !/^0+([.,]0+)?$/.test(String(v).trim())) comptes.set(v, (comptes.get(v) || 0) + (s.mode === "somme" ? Number(l[s.colonne]) || 0 : 1));
       }
       ventilation = [...comptes].map(([valeur, n]) => ({ valeur, n }));
       baseParts = s.mode === "somme" ? nombre(s.colonne) : lignes.length;
@@ -381,7 +385,7 @@
       r = { actif, valeurs: [actif ? "Oui" : "Non"], valeur: "" };
     }
     // couleur : première règle dont la valeur est l'une des valeurs du badge (« vide » : badge éteint)
-    const regle = (b.couleurs || []).find(c => { const v = norm(c.valeur); return v && (v === "vide" ? !r.actif : r.valeurs.some(x => norm(x) === v)); });
+    const regle = (b.couleurs || []).find(c => { const v = cleVal(c.valeur); return v && (v === "vide" ? !r.actif : r.valeurs.some(x => cleVal(x) === v)); });
     return { ...r, couleur: regle ? regle.couleur : "" };
   }
 
@@ -537,7 +541,7 @@
     return out;
   }
 
-  const api = { CONFIG_VIDE, TUILE_VIDE, MODES, normaliserConfig, tablesNecessaires, verifierConfig, creerLecteur, preparer, construireFiche,
+  const api = { CONFIG_VIDE, TUILE_VIDE, MODES, cleVal, normaliserConfig, tablesNecessaires, verifierConfig, creerLecteur, preparer, construireFiche,
     dimensionsRapides, compterValeurs, passeRapides, passeAvances, bornesPeriode, selectionner, sourcesFiltres, titreEtab, jourISO, texteJour, estDate };
   if (typeof window !== "undefined") window.FicheMoteur = api;
   if (typeof module !== "undefined") module.exports = api;
