@@ -8,7 +8,7 @@ Scénarios Playwright qui ouvrent les widgets (`v2/…`) dans Chromium avec un *
 cd tests
 npm install
 npx playwright install chromium     # ou : CHROMIUM=/chemin/vers/chromium
-sh lancer.sh                        # suite actuelle (run63 à run140)
+sh lancer.sh                        # suite actuelle (run63 à run141)
 sh lancer.sh run74 run76            # quelques scénarios
 ```
 
@@ -72,6 +72,7 @@ Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pou
 | `run84` | Formulaire par site, cas du terrain : colonne du site en double, sans colonne hors référentiel, champ de recherche des sites ; contrôle du paramétrage dans l'administration |
 | `run83` | Widget « Référentiel des sites » : établissement, carte, candidats IGN / OpenStreetMap / adresse (réponses simulées), ajout, placement, mots-clés, désactivation |
 | `run82` | Admin : tableau des sites sans colonne vers le référentiel des sites, bouton « Relier au référentiel des sites » |
+| `run141` | 2.62.0-alpha.33 : éléments réservés aux services — partie « r » ajoutée et réglée dans l'onglet Formulaires, formule de reprise posée à la publication, règles d'accès (agents mobilisés, viseurs de l'échelon, établissement en lecture fermée), onglet « Compléments » de la saisie selon l'échelon et le périmètre du viseur, absent pour l'établissement |
 | `run81` | Référentiel : import du classeur du référentiel ESR (donnees/referentiel_esr_essai.xlsx, fictif, refait par donnees/fabriquer_referentiel_esr.py ; `CLASSEUR=…` pour essayer un vrai classeur), puis recherche et sites d'une composante dans le formulaire par site |
 
 ## Scénarios plus anciens

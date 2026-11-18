@@ -5,13 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Signalements</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.32"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.32"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.32"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.32"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.33"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.33"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.33"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.33"></script>
 <style>
   :root {
-    --bleu: #000091; --bleu-clair: #e3e3fd; --fond-suivi: #f5f5fe; --fond-visa: #fef7ec; --brun: #8a4b00;
+    --bleu: #000091; --bleu-clair: #e3e3fd; --fond-suivi: #f5f5fe; --fond-visa: #fef7ec; --brun: #8a4b00; --fond-res: #eef8f4; --vert-res: #0b6b4f;
     --encre: #161616; --gris: #666; --trait: #ddd;
     --fond: #fff; --fond-champ: #f6f6f6;
     --ok: #18753c; --erreur: #ce0500; --vigil: #b34000; --vigil-bg: #fff4e5;
@@ -64,6 +64,9 @@
   #panneau-historique { background: var(--fond-suivi); border-left: 4px solid var(--bleu); padding: 18px 18px 8px; border-radius: 0 6px 6px 0; }
   #panneau-visas { background: var(--fond-visa); border-left: 4px solid var(--brun); padding: 18px 18px 8px; border-radius: 0 6px 6px 0; }
   #panneau-visas :is(input[type=text], input[type=number], input[type=date], input[type=datetime-local], select, textarea) { background: var(--x-ffffff); }
+  #panneau-complements { background: var(--fond-res); border-left: 4px solid var(--vert-res); padding: 18px 18px 8px; border-radius: 0 6px 6px 0; }
+  #panneau-complements :is(input[type=text], input[type=number], input[type=date], input[type=datetime-local], select, textarea) { background: var(--x-ffffff); }
+  #panneau-complements h2 { color: var(--vert-res); }
   .visa-bloc + .visa-bloc { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--x-ecd9bd); }
   .bloc-verdict .choix-groupe { gap: 10px; }
   .bloc-verdict .choix span { padding: 16px 10px; font-size: 1.02rem; }
@@ -511,7 +514,7 @@
   /* Thème clair / sombre (commun/theme.js) : couleurs des règles, valeurs sombres déduites des claires */
   :root { --x-e8edff: #e8edff; --x-fef7ec: #fef7ec; --x-e8f5ec: #e8f5ec; --x-716043: #716043; --x-d68a00: #d68a00; --x-000091: #000091; --x-0f5a2c: #0f5a2c; --x-1212ff: #1212ff; --x-161616: #161616; --x-18753c: #18753c; --x-333333: #333333; --x-3a1c00: #3a1c00; --x-3a3a3a: #3a3a3a; --x-444444: #444444; --x-4a148c: #4a148c; --x-555555: #555555; --x-5a5a5a: #5a5a5a; --x-666666: #666666; --x-6a1b9a: #6a1b9a; --x-6a6a6a: #6a6a6a; --x-6b3100: #6b3100; --x-7f2d00: #7f2d00; --x-8a4b00: #8a4b00; --x-b0b0b0: #b0b0b0; --x-b34000: #b34000; --x-bbbbbb: #bbbbbb; --x-cccccc: #cccccc; --x-cfcff5: #cfcff5; --x-d8f0e0: #d8f0e0; --x-dddddd: #dddddd; --x-e3e3fd: #e3e3fd; --x-e5e5e5: #e5e5e5; --x-ecd9bd: #ecd9bd; --x-eeeeee: #eeeeee; --x-f0f0f0: #f0f0f0; --x-f1faf4: #f1faf4; --x-f3e5f5: #f3e5f5; --x-f3f3f3: #f3f3f3; --x-f3f3f6: #f3f3f6; --x-f6f6f6: #f6f6f6; --x-f8f8ff: #f8f8ff; --x-fafafa: #fafafa; --x-fff3a8: #fff3a8; --x-fff3cd: #fff3cd; --x-fff4e5: #fff4e5; --x-fff7f7: #fff7f7; --x-ffff00: #ffff00; --x-ffffff: #ffffff; }
   :root[data-theme="dark"] { --x-e8edff: #1b1b35; --x-fef7ec: #281f11; --x-e8f5ec: #152218; --x-716043: #f5c783; --x-d68a00: #d68a00; --x-000091: #8585f6; --x-0f5a2c: #b4edca; --x-1212ff: #303080; --x-161616: #cecece; --x-18753c: #27a658; --x-333333: #d1d1d1; --x-3a1c00: #fadcc0; --x-3a3a3a: #cdcdcd; --x-444444: #c8c8c8; --x-4a148c: #bd9ae9; --x-555555: #bebebe; --x-5a5a5a: #bcbcbc; --x-666666: #a5a5a5; --x-6a1b9a: #c593e4; --x-6a6a6a: #b3b3b3; --x-6b3100: #f8cca8; --x-7f2d00: #f7bd9d; --x-8a4b00: #f7cb98; --x-b0b0b0: #424242; --x-b34000: #fc8a4a; --x-bbbbbb: #3c3c3c; --x-cccccc: #333333; --x-cfcff5: #1b1b32; --x-d8f0e0: #1e2d23; --x-dddddd: #353535; --x-e3e3fd: #21213f; --x-e5e5e5: #252525; --x-ecd9bd: #3a3123; --x-eeeeee: #2c2c2c; --x-f0f0f0: #2a2a2a; --x-f1faf4: #16221a; --x-f3e5f5: #261a27; --x-f3f3f3: #1e1e1e; --x-f3f3f6: #1b1b1f; --x-f6f6f6: #161616; --x-f8f8ff: #0e0e24; --x-fafafa: #242424; --x-fff3a8: #443e1a; --x-fff3cd: #352d14; --x-fff4e5: #2c2011; --x-fff7f7: #240e0e; --x-ffff00: #878733; --x-ffffff: #1e1e1e; }
-  :root[data-theme="dark"] { --bleu: #8585f6; --bleu-clair: #21213f; --fond-suivi: #1b1b35; --fond-visa: #281f11; --brun: #f7cb98; --encre: #cecece; --gris: #a5a5a5; --trait: #353535; --fond: #1e1e1e; --fond-champ: #161616; --ok: #27a658; --erreur: #ff5655; --vigil: #fc8a4a; --vigil-bg: #2c2011; }
+  :root[data-theme="dark"] { --bleu: #8585f6; --bleu-clair: #21213f; --fond-suivi: #1b1b35; --fond-visa: #281f11; --brun: #f7cb98; --fond-res: #13221c; --vert-res: #4cc79a; --encre: #cecece; --gris: #a5a5a5; --trait: #353535; --fond: #1e1e1e; --fond-champ: #161616; --ok: #27a658; --erreur: #ff5655; --vigil: #fc8a4a; --vigil-bg: #2c2011; }
   :root[data-theme="dark"] /* ===== Parcours : accueil, :root[data-theme="dark"] saisie, :root[data-theme="dark"] bandeau de mode ===== */
   :root { --maj: #f6b18b; --maj-clair: #2a1a10; --maj-encre: #f8c3a6; }
 </style>
@@ -716,6 +719,7 @@
     <button type="button" role="tab" id="onglet-signalement" aria-controls="panneau-signalement" aria-selected="true">Signalement</button>
     <button type="button" role="tab" id="onglet-historique" aria-controls="panneau-historique" aria-selected="false">Historique <span class="compteur" id="nb-suivis">0</span></button>
     <button type="button" role="tab" id="onglet-visas" aria-controls="panneau-visas" aria-selected="false" hidden>Visas</button>
+    <button type="button" role="tab" id="onglet-complements" aria-controls="panneau-complements" aria-selected="false" hidden>Compléments</button>
   </nav>
 
   <!-- ===== Signalement initial ===== -->
@@ -906,6 +910,19 @@
       <div class="actions">
         <button type="submit" class="primaire">Enregistrer le visa académique</button>
         <span class="statut" id="statut-aca" role="status"></span>
+      </div>
+    </form>
+  </section>
+
+  <!-- ===== Compléments : éléments réservés aux services (partie de rôle « r » du formulaire) ===== -->
+  <section id="panneau-complements" role="tabpanel" aria-labelledby="onglet-complements" hidden>
+    <form id="form-reserve" novalidate autocomplete="off">
+      <h2>Éléments réservés</h2>
+      <p class="note" id="note-reserve"></p>
+      <div id="champs-res"></div>
+      <div class="actions">
+        <button type="submit" class="primaire">Enregistrer les éléments réservés</button>
+        <span class="statut" id="statut-res" role="status"></span>
       </div>
     </form>
   </section>
@@ -1287,7 +1304,7 @@ let selectionAttendue = null; // ligne créée par le widget, à ouvrir dès qu'
 let modifie = false, modifieVisa = false;
 let choix = [], couleurs = {}, qualifMultiple = false;
 let metaSig = {}, metaDate = null, metaFaits = null;
-let defsQuestions = [], defsDep = [], defsAca = [], champsVersion = [];
+let defsQuestions = [], defsDep = [], defsAca = [], defsRes = [], champsVersion = [];
 
 // Colonne associée dans le panneau de Grist ; à défaut, pour un formulaire de l'administration, la colonne de même nom
 let colsParDefaut = {};
@@ -1791,7 +1808,8 @@ function defDepuisBloc(b) {
   def.depuisFormulaire = true;
   return def;
 }
-// Parties du formulaire : { id, nom, role: q | vd | va, titre (affiché en tête de partie) }
+// Parties du formulaire : { id, nom, role: q | vd | va | r, titre (affiché en tête de partie) } ; r : éléments réservés
+// aux services (onglet Compléments), avec echelons: ["dep", "aca"] (viseurs qui les renseignent)
 const PARTIES_DEFAUT = [{ id: "q", nom: "Signalement", role: "q" }, { id: "vd", nom: "Visa départemental", role: "vd" }, { id: "va", nom: "Visa académique", role: "va" }];
 const partiesDe = conf => (conf && Array.isArray(conf.parties) && conf.parties.length ? conf.parties : PARTIES_DEFAUT);
 const NOMS_VISA = {};
@@ -1804,7 +1822,11 @@ function appliquerNomsParties() {
     h.textContent = p && p.nom ? p.nom : NOMS_VISA[role].titre;
     btn.textContent = p && p.nom ? `Enregistrer : ${p.nom}` : NOMS_VISA[role].bouton;
   }
+  const pr = partieReservee(), f = $("form-reserve");
+  f.querySelector("h2").textContent = pr && pr.nom ? pr.nom : "Éléments réservés";
+  f.querySelector('button[type="submit"]').textContent = pr && pr.nom ? `Enregistrer : ${pr.nom}` : "Enregistrer les éléments réservés";
 }
+const partieReservee = () => formulaireActif ? partiesDe(formulaireActif.conf).find(x => x.role === "r") || null : null;
 // Questions d'une section (q, vd, va) selon le formulaire publié ; null = pas de formulaire
 function defsDepuisFormulaire(section, cleMapping, alertes) {
   if (!formulaireActif) return null;
@@ -2093,6 +2115,7 @@ async function chargerConfigurationEtapes() {
   defsDep = defsDepuisFormulaire("vd", "Questions_dep", alertes) || defsDe("Questions_dep");
   if (formulaireParSite()) $("bloc-site").hidden = true;   // les sites se saisissent dans le tableau des sites
   defsAca = defsDepuisFormulaire("va", "Questions_aca", alertes) || defsDe("Questions_aca");
+  defsRes = defsDepuisFormulaire("r", null, alertes) || [];
   // Champs versionnés : ce dont l'historique retrace l'évolution d'une version à l'autre.
   champsVersion = [];
   if (col("Description") && metaSig[col("Description")]) champsVersion.push({ ...metaSig[col("Description")], obligatoire: true, aide: "" });
@@ -2108,6 +2131,7 @@ async function chargerConfigurationEtapes() {
   appliquerConditions("q", defsQuestions);
   rendreChamps($("champs-dep"), "vd", defsDep, () => { modifieVisa = true; });
   rendreChamps($("champs-aca"), "va", defsAca, () => { modifieVisa = true; });
+  rendreChamps($("champs-res"), "r", defsRes, () => { modifieVisa = true; });
   activerVerdictRapide("vd", defsDep, "statut-dep-rapide");
   activerVerdictRapide("va", defsAca, "statut-aca-rapide");
 
@@ -2117,8 +2141,8 @@ async function chargerConfigurationEtapes() {
   appliquerOptions(optionsParametres);
   appliquerBornes();
   // Conditions qui désignent une colonne introuvable : la question ne pourrait jamais s'afficher
-  for (const d of [...defsQuestions, ...defsDep, ...defsAca]) {
-    if (d.condition && !resoudreColonne(d.condition.ref, [...defsQuestions, ...defsDep, ...defsAca]))
+  for (const d of [...defsQuestions, ...defsDep, ...defsAca, ...defsRes]) {
+    if (d.condition && !resoudreColonne(d.condition.ref, [...defsQuestions, ...defsDep, ...defsAca, ...defsRes]))
       alertes.push(`La question « ${d.libelle} » dépend de « ${d.condition.ref} », qui ne correspond à aucune colonne (identifiant ou libellé) : elle ne s'affichera jamais.`);
   }
   $("alerte").textContent = alertes.join(" ");
@@ -3447,7 +3471,7 @@ async function etablissementPourCreation() {
    Onglets, modes et en-tête
    ========================================================= */
 function afficherOnglet(nom) {
-  ["signalement", "historique", "visas"].forEach(n => {
+  ["signalement", "historique", "visas", "complements"].forEach(n => {
     $(`onglet-${n}`).setAttribute("aria-selected", String(n === nom));
     $(`onglet-${n}`).tabIndex = n === nom ? 0 : -1;   // seul l'onglet actif est dans l'ordre de tabulation
     $(`panneau-${n}`).hidden = n !== nom;
@@ -3466,7 +3490,7 @@ $("onglets").addEventListener("keydown", ev => {
   afficherOnglet(cible.id.replace("onglet-", ""));
   cible.focus();
 });
-["signalement", "historique", "visas"].forEach(n => $(`onglet-${n}`).addEventListener("click", () => afficherOnglet(n)));
+["signalement", "historique", "visas", "complements"].forEach(n => $(`onglet-${n}`).addEventListener("click", () => afficherOnglet(n)));
 
 async function passerEnCreation() {
   dossierId = null; versions = []; initiale = null; derniere = null;
@@ -6828,8 +6852,53 @@ async function remplirVisas() {
       (secondes(d) != null ? ` (${derniere === initiale ? "signalement initial" : "suivi"} du ${dateFr(d, metaDate)})` : "") +
       `. Tout nouveau suivi devra être visé à nouveau.`;
   }
+  await remplirReserves();
   modifieVisa = false;
 }
+
+/* =========================================================
+   Compléments : éléments réservés aux services (partie de rôle « r » du formulaire, 2.62.0-alpha.33).
+   Ils portent sur la dernière version, comme les visas ; la formule d'initialisation de leurs colonnes (posée à la
+   publication du formulaire) les reprend dans chaque nouvelle version du dossier, y compris celles de l'établissement,
+   qui ne les lit pas (règles d'accès).
+   ========================================================= */
+// Le viseur de la page renseigne-t-il les éléments réservés de ce dossier ? Son échelon doit être coché dans la partie,
+// et l'établissement dans son périmètre. Sans profil de viseur (propriétaire, agent de la cellule) : les règles d'accès décident.
+function peutCompleter() {
+  if (!monPerimetreVisa) return true;
+  const pr = partieReservee(), ech = monPerimetreVisa.echelon === "Départemental" ? "dep" : "aca";
+  return !!pr && (pr.echelons || []).includes(ech) && peutViser(ech);
+}
+async function remplirReserves() {
+  const visibles = defsRes.filter(d => {
+    const ok = !!derniere && d.colId in derniere && lisible(derniere[d.colId]);
+    const bloc = document.querySelector(`[data-champ="r-${d.colId}"]`);
+    if (bloc) { bloc.hidden = !ok; bloc.dataset.masqueAcces = ok ? "0" : "1"; }
+    return ok;
+  });
+  const montrer = !modeEtab && visibles.length > 0 && peutCompleter();
+  $("onglet-complements").hidden = !montrer;
+  if (!montrer) { if (!$("panneau-complements").hidden) afficherOnglet("signalement"); return; }
+  await remplirChamps("r", visibles, d => derniere[d.colId]);
+  const d = val(derniere, "Date");
+  $("note-reserve").textContent = "Renseignés par les services, jamais visibles de l'établissement. Ils portent sur la version la plus récente du signalement" +
+    (secondes(d) != null ? ` (${derniere === initiale ? "signalement initial" : "suivi"} du ${dateFr(d, metaDate)})` : "") + " et sont repris dans les suivis suivants.";
+}
+async function enregistrerReserve() {
+  if (!derniere) return;
+  const manquants = [], valeurs = lireChamps("r", defsRes, manquants);
+  if (manquants.length) { statut("statut-res", `Renseignez ${manquants.join(", ")}.`, "err"); return; }
+  const fields = seulementModifies(defsRes, valeurs, derniere);
+  if (!Object.keys(fields).length) { statut("statut-res", "Aucune modification à enregistrer."); return; }
+  try {
+    await grist.getTable().update({ id: derniere.id, fields });
+    modifieVisa = false;
+    statut("statut-res", "Éléments réservés enregistrés.", "ok");
+  } catch (e) {
+    statut("statut-res", `Échec : ${e.message || e}. Vérifiez que ces éléments relèvent bien de votre échelon et de votre périmètre.`, "err");
+  }
+}
+$("form-reserve").addEventListener("submit", ev => { ev.preventDefault(); enFile(enregistrerReserve); });
 
 // Le premier champ « Choix » du visa (typiquement Favorable / À revoir / Défavorable) est traité
 // comme un verdict : cliquer dessus l'enregistre aussitôt, sans passer par le bouton « Enregistrer »,

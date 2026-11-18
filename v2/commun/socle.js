@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.62.0-alpha.32 (18/11/2026)";
+  const VERSION = "2.62.0-alpha.33 (18/11/2026)";
 
   /* ---------- version publiée ----------
      GitHub Pages laisse les navigateurs garder chaque fichier 10 minutes. Au chargement, la page lit version.json sans
@@ -489,6 +489,17 @@ return sorted(champs)`;
     if (!c || c.isFormula) return false;
     const f = String(c.formula || "").trim();
     return f === "" || f === "user.Email" || (/^# Auteur \(socle/.test(f) && !f.startsWith(MARQUE_AUTEUR)) || (/user\.LinkKey/.test(f) && /Invité/.test(f) && !f.startsWith("#"));
+  }
+  // Éléments réservés aux services (partie de rôle « r » d'un formulaire, 2.62.0-alpha.33) : formule d'initialisation qui reprend, dans
+  // chaque nouvelle version d'un dossier, la valeur de la version précédente. Calculée par Grist à la création de la ligne,
+  // elle s'applique aussi quand l'établissement, qui ne lit pas ces colonnes, publie un suivi.
+  const MARQUE_REPRISE = "# Reprise des éléments réservés (socle v2.62)";
+  function formuleReprise(table, colDossier, col) {
+    return [MARQUE_REPRISE,
+      `if not $${colDossier}:`,
+      `  return None`,
+      `prec = [v for v in ${table}.lookupRecords(${colDossier}=$${colDossier}) if v.id < $id]`,
+      `return getattr(max(prec, key=lambda v: v.id), "${col}") if prec else None`].join("\n");
   }
   const ANCIENNE_FORMULE_LIEN_INVITE = `SELF_HYPERLINK(page=$${INVITE.page} or None, LinkKey_${INVITE.attribut}=$${INVITE.cle}) if $${INVITE.cle} else ""`;
   const formuleLienInvite = () => `(SELF_HYPERLINK(page=$${INVITE.page} or None, LinkKey_${INVITE.attribut}=$${INVITE.cle})${STYLE_LIEN}) if $${INVITE.cle} else ""`;
@@ -1173,6 +1184,7 @@ return sorted(champs)`;
   window.Socle = {
     reglagesPointParDefaut,
     espaces, espaceDeTable, AUTRE_CHAMP_DEFAUT, VERSION, TABLE_CONFIG, TABLE_ADMIN, TABLE_CELLULE, STYLE_LIEN, formuleLienInvite, ANCIENNE_FORMULE_LIEN_INVITE, DEFAUTS_GENERAL, NATURES, ROLES,
+    MARQUE_REPRISE, formuleReprise,
     colonnesEmargements, lireEmargements, STATUTS_ACTION, PRIORITES_ACTION, ACTIONS_DEFAUT, reglagesActions, optionsStatuts, colonnesActions, lireActions,
     PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
     norm, cibleRef, lireMeta, lireConfig, activerCacheLecture, viderCacheLecture, oublierStructure, surEcriture, general, actionConfig, ecrireConfig,
