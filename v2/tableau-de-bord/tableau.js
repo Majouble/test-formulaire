@@ -2259,8 +2259,11 @@ function chartXml(spec) {
   else if (spec.type === "line") plot = `<c:lineChart><c:grouping val="standard"/><c:varyColors val="0"/>${spec.series.map((s, k) => serXml(s, k, "line")).join("")}<c:marker val="1"/><c:axId val="5001"/><c:axId val="5002"/></c:lineChart>${axes(false)}`;
   else {
     const grouping = spec.mode === "stack" ? "stacked" : spec.mode === "pct" ? "stacked" : "clustered";   // « 100 % » : valeurs déjà ramenées à 100
+    // barres empilées : Word refuse d'ouvrir le document si une étiquette y est placée « au bout » (outEnd), ce qui
+    // arrivait aux tableaux croisés empilés réduits à une seule série ; seules ctr, inEnd et inBase y sont admises
+    const series = wordSeries(spec).map((s, k) => serXml(s, k, "bar")).join("");
     plot = `<c:barChart><c:barDir val="${spec.type === "barh" ? "bar" : "col"}"/><c:grouping val="${grouping}"/><c:varyColors val="0"/>
-      ${wordSeries(spec).map((s, k) => serXml(s, k, "bar")).join("")}<c:gapWidth val="${spec.series.length > 1 && grouping === "clustered" ? 80 : 60}"/>${grouping === "stacked" ? '<c:overlap val="100"/>' : ""}
+      ${grouping === "stacked" ? series.replace(/<c:dLblPos val="outEnd"\/>/g, '<c:dLblPos val="ctr"/>') : series}<c:gapWidth val="${spec.series.length > 1 && grouping === "clustered" ? 80 : 60}"/>${grouping === "stacked" ? '<c:overlap val="100"/>' : ""}
       <c:axId val="5001"/><c:axId val="5002"/></c:barChart>${axes(spec.type === "barh")}`;
   }
   const legend = spec.type === "pie" || spec.series.length > 1 ? `<c:legend><c:legendPos val="b"/><c:overlay val="0"/></c:legend>` : "";
