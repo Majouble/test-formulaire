@@ -36,6 +36,12 @@
   let invitesExpirent = false;   // colonne Agents.Lien_valide présente : lien d'invité limité dans le temps
   const agentSi = build => avecInvites ? `(${build(`user.${ATTRIBUT}`)}) or (user.LinkKey.${INVITE}${invitesExpirent ? ` and user.${INVITE}.${S.INVITE.valide}` : ""} and ${build(`user.${INVITE}`)})` : build(`user.${ATTRIBUT}`);
   const membre = () => agentSi(u => `${u}.Actif`);
+  // Accès des services (2.62.0-alpha.35) : agent de service = lien d'invité dont la ligne a Service coché (onglet Validation)
+  let avecServices = false;   // colonne Agents.Service présente (et liens d'invités en place)
+  const SERV = () => `user.LinkKey.${INVITE} and user.${INVITE}.${S.SERVICES.colonne}`;
+  // Périmètre de visa d'une règle de colonne : liste vide = tout le document, sauf pour un accès de service (jamais tout)
+  const perimVisa = (u, liste, c) => !c ? "" : avecServices ? ` and ((not ${u}.${liste} and not ${u}.${S.SERVICES.colonne}) or (${u}.${liste} and rec.${c} in ${u}.${liste}))`
+    : ` and (not ${u}.${liste} or rec.${c} in ${u}.${liste})`;
   // Partenaires (consultation des fiches établissement par lien)
   const PART = S.PARTENAIRES;
   const condPart = `user.${PART.attribut} and user.LinkKey.${PART.attribut} and user.${PART.attribut}.${PART.actif}`;
@@ -59,6 +65,7 @@
     acl = await lireAcl();
     avecInvites = !!(meta[general.agents] && meta[general.agents].colonnes[S.INVITE.cle]);
     invitesExpirent = !!(avecInvites && meta[general.agents].colonnes[S.INVITE.valide]);
+    avecServices = !!(avecInvites && meta[general.agents].colonnes[S.SERVICES.colonne] && meta[general.agents].colonnes.Echelon_visa);
   }
   // null si les règles ne sont pas lisibles (non propriétaire)
   async function lireAcl() {
@@ -168,6 +175,7 @@
     reglesStructurel(out);
     reglesEtablissements(out);
     reglesPartenaires(out);
+    reglesServices(out, saisie, referentiels);
     return out;
   }
 
@@ -192,7 +200,7 @@
     for (const t of [...new Set(formulaires.map(f => f.table))]) {
       const r = circuit(t); if (!r) continue;
       const v = visasDeTable(t), cols = meta[t].colonnes;
-      const perim = (u, liste, c) => cols[c] ? ` and (not ${u}.${liste} or rec.${c} in ${u}.${liste})` : "";
+      const perim = (u, liste, c) => perimVisa(u, liste, cols[c] ? c : null);
       const dep = u => `${u}.Actif and ${u}.Echelon_visa == "Départemental"${perim(u, "Visa_departements", "Departement")}`;
       const aca = u => `${u}.Actif and ${u}.Echelon_visa == "Académique"${perim(u, "Visa_academies", "Academie")}`;
       const ajouter = (colonnes, build, qui, ligne) => {
@@ -227,7 +235,7 @@
     for (const t of [...new Set(formulaires.map(f => f.table))]) {
       const r = reservesDeTable(t); if (!r.colonnes.length) continue;
       const cols = meta[t].colonnes, avecViseurs = !!(meta[general.agents] && meta[general.agents].colonnes.Echelon_visa);
-      const perim = (u, liste, c) => cols[c] ? ` and (not ${u}.${liste} or rec.${c} in ${u}.${liste})` : "";
+      const perim = (u, liste, c) => perimVisa(u, liste, cols[c] ? c : null);
       const conds = [];
       if (avecViseurs && r.echelons.includes("dep")) conds.push(u => `(${u}.Actif and ${u}.Echelon_visa == "Départemental"${perim(u, "Visa_departements", "Departement")})`);
       if (avecViseurs && r.echelons.includes("aca")) conds.push(u => `(${u}.Actif and ${u}.Echelon_visa == "Académique"${perim(u, "Visa_academies", "Academie")})`);
@@ -256,7 +264,7 @@
       if (!r || !meta[t] || out.some(p => p.tableId === t && p.structurel)) continue;
       const cols = meta[t].colonnes, rf = S.resoudreRoles("referentiel", meta[t], { reponses: e.reponses, referentiel: t }, {}, {});
       const col = role => (rf[role] && rf[role].col) || (cols[role] ? role : null);
-      const perim = (u, liste, c) => c ? ` and (not ${u}.${liste} or rec.${c} in ${u}.${liste})` : "";
+      const perim = (u, liste, c) => perimVisa(u, liste, c);
       const avecViseurs = !!(meta[general.agents] && meta[general.agents].colonnes.Echelon_visa), conds = [];
       if (avecViseurs && r.echelons.includes("dep")) conds.push(u => `(${u}.Actif and ${u}.Echelon_visa == "Départemental"${perim(u, "Visa_departements", col("Departement"))})`);
       if (avecViseurs && r.echelons.includes("aca")) conds.push(u => `(${u}.Actif and ${u}.Echelon_visa == "Académique"${perim(u, "Visa_academies", col("Academie"))})`);
@@ -288,6 +296,56 @@
           titre: droit === "maj" ? `${t} — date et auteur des données demandées (${maj.join(", ")})` : `${t} — données demandées aux services, établissement : ${ETAB[droit]} (${[...liste].sort().join(", ")})` });
       }
     }
+  }
+
+  /* ---------- Accès des services (carte de l'onglet Validation, 2.62.0-alpha.35) ----------
+     Un agent de service (lien partagé par une DSDEN ou un rectorat) ne lit, dans les tables de signalements, leurs
+     tableaux et les référentiels, que les lignes de son périmètre de visa (un périmètre vide ne lui donne rien) ; une table
+     sans colonne Departement ou Academie pour le filtrer lui est fermée. Il saisit des signalements pour les établissements
+     de son périmètre si le réglage le permet (clé « acces_services »). Il ne lit dans la table des agents que sa propre
+     ligne, et rien du planning, de l'émargement ni des partenaires. Ses compléments et ses visas suivent les règles des
+     viseurs (périmètre jamais vide pour un service). */
+  function reglesServices(out, saisie, referentiels) {
+    if (!avecServices) return;
+    const U = `user.${INVITE}`, saisieOK = S.reglagesServices(config).saisie;
+    // condition « ligne du périmètre » sur une table : null si la table n'a ni département ni académie
+    const perimetre = (t, r) => {
+      const cols = meta[t].colonnes, rf = S.resoudreRoles(saisie.has(t) && !saisie.get(t).sousTable ? "reponses" : "referentiel", meta[t], { reponses: t, referentiel: t }, {}, {});
+      const col = role => (rf[role] && rf[role].col && cols[rf[role].col] ? rf[role].col : null) || (cols[role] ? role : null);
+      const dep = col("Departement"), aca = col("Academie"), l = [];
+      if (dep) l.push(`(${U}.Echelon_visa == "Départemental" and ${U}.Visa_departements and ${r}.${dep} in ${U}.Visa_departements)`);
+      if (aca) l.push(`(${U}.Echelon_visa == "Académique" and ${U}.Visa_academies and ${r}.${aca} in ${U}.Visa_academies)`);
+      return l.length ? `(${l.join(" or ")})` : null;
+    };
+    // règles insérées juste après celles des propriétaires, en tête de l'ensemble « toute la table »
+    const inserer = (t, titre, regles, lignes) => {
+      let e = out.find(p => p.tableId === t && p.colIds === "*");
+      if (!e) { e = { tableId: t, colIds: "*", titre, regles: [{ aclFormula: PROPRIETAIRE, permissionsText: "+CRUD", memo: `${MEMO} — propriétaires : tous les droits` }], lignes: [] }; out.push(e); }
+      const k = e.regles.findIndex(r => r.aclFormula === PROPRIETAIRE);
+      e.regles.splice(k + 1, 0, ...regles);
+      e.lignes.push(...lignes);
+    };
+    const qui = "accès de service (lien partagé d'une DSDEN ou d'un rectorat)";
+    for (const [t, x] of saisie) {
+      const p = perimetre(t, "rec");
+      if (!p) { inserer(t, t, [{ aclFormula: SERV(), permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : table sans colonne Departement ni Academie, fermée` }],
+        ["Accès de service : table fermée (ni colonne Departement ni colonne Academie pour la limiter à son périmètre ; « Préparer le document », onglet Validation)."]); continue; }
+      const crud = x.sousTable ? "+CRUD" : "+CRU-D";
+      inserer(t, t, [
+        { aclFormula: `${SERV()} and not ${p}`, permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : lignes hors de son périmètre invisibles` },
+        ...(saisieOK ? [{ aclFormula: `${SERV()} and ${U}.Actif${invitesExpirent ? ` and ${U}.${S.INVITE.valide}` : ""} and ${perimetre(t, "newRec")}`, permissionsText: crud, memo: `${MEMO} — ${qui} : saisie pour les établissements de son périmètre` }] : []),
+      ], [`Accès de service : lignes des établissements de son périmètre seulement${saisieOK ? `, ${x.sousTable ? "lecture, ajout, modification et suppression" : "lecture, ajout et modification"}` : ", lecture"}.`]);
+    }
+    for (const t of referentiels) {
+      const p = perimetre(t, "rec");
+      inserer(t, t, [{ aclFormula: p ? `${SERV()} and not ${p}` : SERV(), permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : ${p ? "établissements hors de son périmètre invisibles" : "référentiel sans colonne Departement ni Academie, fermé"}` }],
+        [p ? "Accès de service : établissements de son périmètre seulement (lecture)." : "Accès de service : référentiel fermé (ni colonne Departement ni colonne Academie)."]);
+    }
+    // équipe : sa seule ligne ; planning, émargement, partenaires : rien
+    inserer(general.agents, `${general.agents} — équipe`, [{ aclFormula: `${SERV()} and rec.id != ${U}.id`, permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : sa seule ligne de l'équipe` }],
+      ["Accès de service : sa seule ligne (les autres agents, leurs adresses et leurs liens lui sont invisibles)."]);
+    for (const t of [general.creneaux, general.affectations, general.emargements || "Emargements", PART.table].filter(x => x && meta[x]))
+      inserer(t, t, [{ aclFormula: SERV(), permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : table fermée` }], ["Accès de service : table fermée."]);
   }
 
   /* ---------- Accès des établissements par lien ---------- */
@@ -356,6 +414,9 @@
         if (auteur) ajouterEn(f.table, auteur, `${f.table} — auteur (${auteur})`,
           [{ aclFormula: E, permissionsText: "-R", memo: `${MEMO} — ${qui} : adresse de l'auteur illisible` }],
           ["Établissement ouvert par son lien : adresse de l'auteur illisible."]);
+        if (meta[f.table].colonnes[S.SERVICES.personne]) ajouterEn(f.table, S.SERVICES.personne, `${f.table} — personne d'un accès de service (${S.SERVICES.personne})`,
+          [{ aclFormula: E, permissionsText: "-R", memo: `${MEMO} — ${qui} : nom de la personne d'un accès de service illisible` }],
+          ["Établissement ouvert par son lien : nom de la personne d'un accès de service illisible."]);
         for (const st of sousTables(f)) ajouterEn(st.table, "*", `${st.table} — lignes des tableaux du formulaire`, signalements(st.table, COL_ACCES, true),
           [`Établissement ouvert par son lien : les lignes de ses signalements, suppression comprise (colonne ${COL_ACCES}${st.acces ? "" : ", ajoutée à l'application"}).`]).sousTable = { ...st, formule: `$${st.parent}.${f.colEtab}`, type: `Ref:${g.table}` };
         // tables visées par les questions (listes de choix) : lecture
@@ -427,6 +488,8 @@
           [{ aclFormula: P, permissionsText: "-RU", memo: `${MEMO} — ${qui} : statut de validation réservé à la cellule` }], ["Partenaire : statut de validation illisible."]);
         if (auteur) ajouterEn(t, auteur, `${t} — auteur (${auteur})`,
           [{ aclFormula: P, permissionsText: "-RU", memo: `${MEMO} — ${qui} : adresse de l'auteur illisible` }], ["Partenaire : adresse de l'auteur illisible."]);
+        if (meta[t].colonnes[S.SERVICES.personne]) ajouterEn(t, S.SERVICES.personne, `${t} — personne d'un accès de service (${S.SERVICES.personne})`,
+          [{ aclFormula: P, permissionsText: "-RU", memo: `${MEMO} — ${qui} : nom de la personne d'un accès de service illisible` }], ["Partenaire : nom de la personne d'un accès de service illisible."]);
       }
       if (!avecPerimetre) ajouterEn(t, "*", `${t} — lecture pour les partenaires`, [{ aclFormula: P, permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : lecture seule (table ouverte aux partenaires)` }],
         ["Partenaire ouvert par son lien : lecture seule de la table (ouverte dans la carte « Partenaires »)."]);
