@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.26"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.26"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.26"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.26"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.26"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.26"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.27"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.27"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.27"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.27"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.27"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.27"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -58,6 +58,7 @@
   .couleurs-badge { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
   .couleurs-badge .regle { display: inline-flex; gap: 4px; align-items: center; border: 1px solid var(--bord); border-radius: 4px; padding: 2px 4px; }
   .couleurs-badge input, .couleurs-badge select { width: auto; } .couleurs-badge input { width: 110px; }
+  .couleurs-badge .sans-effet { color: #b34000; font-size: 11px; }
   .filtres-sup { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
   .filtres-sup .regle { display: inline-flex; gap: 4px; align-items: center; border: 1px solid var(--bord); border-radius: 4px; padding: 2px 4px; }
   .filtres-sup select { width: auto; max-width: 220px; } .filtres-sup input { width: 200px; }
@@ -987,6 +988,9 @@ function htmlCarteTuile(t, i, n) {
   </div></details>`;
 }
 function htmlBadge(b, i, liste) {
+  // valeurs de la colonne (mode « valeur ») : une règle de couleur qui n'en vise aucune est signalée
+  const cles = b.affichage === "valeur" && b.colonne ? new Set(valeursColonne(b.table || brouillon.referentiel.table, b.colonne).map(([v]) => M.cleVal(v))) : null;
+  const sansEffet = v => !!cles && cles.size > 0 && String(v || "").trim() !== "" && M.cleVal(v) !== "vide" && !cles.has(M.cleVal(v));
   const tab = b.table || brouillon.referentiel.table, p = `badges.${i}`;
   return `<div class="ligne-badge">
     ${champ("Libellé", `<input type="text" data-champ="${p}.libelle" value="${esc(b.libelle)}" placeholder="Bâti dégradé · liste des 200">`)}
@@ -999,7 +1003,7 @@ function htmlBadge(b, i, liste) {
       <button class="petit" data-action="descendre-badge" data-i="${i}" ${i === liste.length - 1 ? "disabled" : ""} aria-label="Descendre le badge ${esc(b.libelle || i + 1)}">↓</button>
       <button class="petit" data-action="supprimer-badge" data-i="${i}">Supprimer</button></span>
     <div class="couleurs-badge"><span class="aide">Couleurs :</span>
-      ${b.couleurs.map((c, k) => `<span class="regle">si <input type="text" list="${b.affichage === "valeur" ? `valeurs-badge-${i}` : "valeurs-oui-non"}" data-champ="${p}.couleurs.${k}.valeur" value="${esc(c.valeur)}" placeholder="${b.affichage === "valeur" ? "Niv 3, vide…" : "Oui, Non"}" aria-label="Valeur de la règle de couleur ${k + 1}">
+      ${b.couleurs.map((c, k) => `<span class="regle">si <input type="text" list="${b.affichage === "valeur" ? `valeurs-badge-${i}` : "valeurs-oui-non"}" data-champ="${p}.couleurs.${k}.valeur" value="${esc(c.valeur)}" placeholder="${b.affichage === "valeur" ? "Niv 3, vide…" : "Oui, Non"}" aria-label="Valeur de la règle de couleur ${k + 1}">${sansEffet(c.valeur) ? `<span class="sans-effet" title="Aucune cellule de la colonne n'a cette valeur : la règle ne s'appliquera pas">⚠ aucune valeur</span>` : ""}
         → <select data-champ="${p}.couleurs.${k}.couleur" aria-label="Couleur de la règle ${k + 1}">${COULEURS.map(([v, l]) => opt(v, l, c.couleur)).join("")}</select>
         <button class="petit" data-action="supprimer-couleur" data-i="${i}" data-k="${k}" aria-label="Retirer la règle de couleur ${k + 1}">✕</button></span>`).join("")}
       <button class="petit" data-action="ajouter-couleur" data-i="${i}">+ couleur</button>
