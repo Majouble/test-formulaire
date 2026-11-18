@@ -8,7 +8,7 @@ Scénarios Playwright qui ouvrent les widgets (`v2/…`) dans Chromium avec un *
 cd tests
 npm install
 npx playwright install chromium     # ou : CHROMIUM=/chemin/vers/chromium
-sh lancer.sh                        # suite actuelle (run63 à run142)
+sh lancer.sh                        # suite actuelle (run63 à run143)
 sh lancer.sh run74 run76            # quelques scénarios
 ```
 
@@ -74,6 +74,7 @@ Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pou
 | `run82` | Admin : tableau des sites sans colonne vers le référentiel des sites, bouton « Relier au référentiel des sites » |
 | `run141` | 2.62.0-alpha.33 : éléments réservés aux services — partie « r » ajoutée et réglée dans l'onglet Formulaires, formule de reprise posée à la publication, règles d'accès (agents mobilisés, viseurs de l'échelon, établissement en lecture fermée), onglet « Compléments » de la saisie selon l'échelon et le périmètre du viseur, absent pour l'établissement |
 | `run142` | 2.62.0-alpha.34 : données structurelles demandées aux services — carte de l'onglet Référentiel (colonnes, colonne ajoutée, droits de l'établissement, échelons, colonnes de mise à jour en formules d'initialisation), règles d'accès, bloc « Données de l'établissement » de l'onglet Compléments (champs à compléter, enregistrement dans le référentiel), absent pour un viseur d'un échelon non coché |
+| `run143` | 2.62.0-alpha.35 : accès des services — carte de l'onglet Validation (préparation du document, création par lot depuis le référentiel avec pages de saisie, CSV, réglages), règles d'accès (lignes du périmètre, saisie, sa seule ligne de l'équipe, planning fermé), bandeau « Accès partagé » de la saisie (nom exigé, inscrit dans Personne_service) |
 | `run81` | Référentiel : import du classeur du référentiel ESR (donnees/referentiel_esr_essai.xlsx, fictif, refait par donnees/fabriquer_referentiel_esr.py ; `CLASSEUR=…` pour essayer un vrai classeur), puis recherche et sites d'une composante dans le formulaire par site |
 
 ## Scénarios plus anciens

@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.62.0-alpha.34 (18/11/2026)";
+  const VERSION = "2.62.0-alpha.35 (18/11/2026)";
 
   /* ---------- version publiée ----------
      GitHub Pages laisse les navigateurs garder chaque fichier 10 minutes. Au chargement, la page lit version.json sans
@@ -539,6 +539,7 @@ return sorted(champs)`;
       { id: INVITE.valide, type: "Bool", isFormula: true, formula: `bool($${INVITE.cle}) and (not $${INVITE.expire} or $${INVITE.expire} > NOW())` },
       // viseurs (onglet Validation) : échelon et périmètre de visa ; périmètre vide = tous les départements ou académies
       ...COLONNES_VISEURS,
+      { id: SERVICES.colonne, type: "Bool" },
     ];
   }
 
@@ -555,6 +556,17 @@ return sorted(champs)`;
     { id: "Echelon_visa", type: "Choice", widgetOptions: json({ choices: ECHELONS_VISA }) },
     { id: "Visa_departements", type: "ChoiceList" }, { id: "Visa_academies", type: "ChoiceList" },
   ];
+  /* Accès des services (2.62.0-alpha.35, onglet Validation) : un « agent de service » par DSDEN ou par rectorat, ligne de
+     la table Agents avec Service coché, un échelon et un périmètre de visa (jamais vide), et un lien d'invité partagé par
+     l'équipe du service. Les règles d'accès limitent ses lectures aux lignes de son périmètre ; il saisit des signalements
+     pour les établissements de son périmètre si le réglage le permet (clé « acces_services » de Config : { duree, saisie }).
+     Le nom de la personne qui saisit derrière ce lien commun est demandé à l'ouverture et inscrit dans Personne_service. */
+  const SERVICES = { colonne: "Service", personne: "Personne_service", duree: "30j" };
+  function reglagesServices(config) {
+    const v = (config && config.valeurs && config.valeurs.acces_services) || {};
+    return { duree: DUREES_INVITE.some(d => d[0] === v.duree) ? v.duree : SERVICES.duree, saisie: v.saisie !== false };
+  }
+  const nomService = (echelon, lieu) => `${echelon === "Académique" ? "Rectorat" : "DSDEN"} ${lieu}`;
   const STATUTS_VALIDATION = [
     { nom: "À viser (département)", fond: "#FEECC2", texte: "#716043", echelon: "Départemental" },
     { nom: "À viser (académie)", fond: "#E8EDFF", texte: "#000091", echelon: "Académique" },
@@ -1204,6 +1216,7 @@ return sorted(champs)`;
   window.Socle = {
     reglagesPointParDefaut,
     espaces, espaceDeTable, AUTRE_CHAMP_DEFAUT, VERSION, TABLE_CONFIG, TABLE_ADMIN, TABLE_CELLULE, STYLE_LIEN, formuleLienInvite, ANCIENNE_FORMULE_LIEN_INVITE, DEFAUTS_GENERAL, NATURES, ROLES,
+    SERVICES, reglagesServices, nomService,
     MARQUE_REPRISE, formuleReprise, STRUCTUREL, DROITS_ETAB_STRUCTUREL, reglagesStructurel, formuleAuteurStructurel,
     colonnesEmargements, lireEmargements, STATUTS_ACTION, PRIORITES_ACTION, ACTIONS_DEFAUT, reglagesActions, optionsStatuts, colonnesActions, lireActions,
     PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,

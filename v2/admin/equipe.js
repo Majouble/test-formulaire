@@ -115,7 +115,7 @@
       if (groupe && groupe(a) !== dernier) { dernier = groupe(a); const n = ls.filter(x => groupe(x) === dernier).length;
         titre = `<tr class="eq-groupe"><td colspan="${nbCol}">${esc(dernier)} <span class="aide">(${n})</span></td></tr>`; }
       return `${titre}<tr data-id="${a.id}" class="eq-ligne${a.actif ? "" : " inactif"}" tabindex="0">
-        <td><strong>${esc(a.nom) || "<em>sans nom</em>"}</strong>${a.actif ? "" : ` <span class="pastille">inactif</span>`} ${etatSaisie(a)}${a.cle ? ` <span class="pastille reco" title="Accès par lien personnel, sans compte Grist">invité</span> ${etatLien(a)}
+        <td><strong>${esc(a.nom) || "<em>sans nom</em>"}</strong>${a.actif ? "" : ` <span class="pastille">inactif</span>`} ${etatSaisie(a)}${a.cle ? ` ${a.service ? `<span class="pastille reco" title="Lien partagé par un service (DSDEN, rectorat) : onglet Validation, carte « Accès des services »">accès de service</span>` : `<span class="pastille reco" title="Accès par lien personnel, sans compte Grist">invité</span>`} ${etatLien(a)}
           <button class="lien-btn" data-renouveler="${a.id}" title="Nouvelle clé : l'ancien lien cesse de fonctionner">Nouveau lien</button>` : ""}</td>
         ${avecEquipe() ? `<td class="eq-modif"><input type="text" data-equipe="${a.id}" value="${esc(a.equipe)}" list="eq-equipes" placeholder="—" aria-label="Équipe de ${esc(a.nom)}" autocomplete="off"></td>` : ""}
         ${avecFonction() ? `<td class="eq-modif"><select data-fonction="${a.id}" aria-label="Fonction habituelle de ${esc(a.nom)}"><option value="">—</option>${fns.map(f => `<option${f === a.fonction ? " selected" : ""}>${esc(f)}</option>`).join("")}</select></td>` : ""}
@@ -227,7 +227,8 @@
   const avecExpiration = () => !colonnesManquantes.includes(S.INVITE.expire);
   const dureeInvite = () => ((config && config.valeurs.acces_invites) || {}).duree || "24h";
   const libelleDuree = d => (S.DUREES_INVITE.find(x => x[0] === d) || S.DUREES_INVITE[0])[1];
-  const finValidite = () => { const h = (S.DUREES_INVITE.find(x => x[0] === dureeInvite()) || S.DUREES_INVITE[0])[2]; return h ? maintenant() + h * 3600 : null; };
+  // échéance d'un nouveau lien : durée des liens de service (onglet Validation) pour un accès de service, sinon celle des invités
+  const finValidite = a => { const d = a && a.service ? S.reglagesServices(config).duree : dureeInvite(), h = (S.DUREES_INVITE.find(x => x[0] === d) || S.DUREES_INVITE[0])[2]; return h ? maintenant() + h * 3600 : null; };
   const dateCourte = t => new Date(t * 1000).toLocaleString("fr-FR", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const expire = a => !!(a.lienExpire && a.lienExpire <= maintenant());
   const etatLien = a => !a.cle ? "" : expire(a) ? `<span class="pastille manque" title="Le lien ne donne plus accès : créez un nouveau lien">lien expiré</span>`
@@ -331,7 +332,7 @@
     if (avecFonction() && a.fonction !== undefined) c.Fonction = a.fonction || "";
     if (!colonnesManquantes.includes(S.INVITE.cle) && a.invite !== undefined) {
       c[S.INVITE.cle] = a.invite ? (a.cle || nouvelleCle()) : "";
-      if (avecExpiration() && (!a.invite || !a.cle || a.renouveler)) c[S.INVITE.expire] = a.invite ? finValidite() : null;
+      if (avecExpiration() && (!a.invite || !a.cle || a.renouveler)) c[S.INVITE.expire] = a.invite ? finValidite(agents.find(x => x.id === a.id)) : null;
       if (a.invite && a.id) { const p = pageDeAgent(a); if (p) c[S.INVITE.page] = p; }
     }
     return c;
@@ -339,9 +340,9 @@
   // Nouveau lien (nouvelle clé et nouvelle échéance) pour un ou plusieurs invités ; liens affichés pour être copiés
   async function renouveler(ids) {
     if (!ids.length) return;
-    const fin = avecExpiration() ? finValidite() : undefined;
+    const finDe = id => avecExpiration() ? finValidite(agents.find(x => x.id === id)) : undefined, fin = finDe(ids[0]);
     try {
-      await grist.docApi.applyUserActions(ids.map(id => ["UpdateRecord", table(), id, { [S.INVITE.cle]: nouvelleCle(), ...(fin !== undefined ? { [S.INVITE.expire]: fin } : {}) }]));
+      await grist.docApi.applyUserActions(ids.map(id => ["UpdateRecord", table(), id, { [S.INVITE.cle]: nouvelleCle(), ...(finDe(id) !== undefined ? { [S.INVITE.expire]: finDe(id) } : {}) }]));
       await charger(); dessiner();
       const liste = agents.filter(a => ids.includes(a.id));
       $("eq-renouveles").innerHTML = `<div class="eq-reprise"><strong>Nouveaux liens</strong> (les anciens ne fonctionnent plus) :
