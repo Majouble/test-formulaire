@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.29"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.29"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.29"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.29"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.29"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.29"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.30"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.30"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.30"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.30"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.30"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.30"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -573,7 +573,8 @@ async function lirePartenaires() {
   try {
     const d = await grist.docApi.fetchTable(PART.table), col = k => d[k] || [];
     partenaires = d.id.map((id, i) => { let contenu = {}; try { contenu = JSON.parse(col(PART.fiche)[i] || "{}") || {}; } catch (_) {}
-      return { id, nom: String(col(PART.nom)[i] || `Partenaire ${id}`), contenu, lecture: !!col(PART.lecture)[i] }; }).sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
+      return { id, nom: String(col(PART.nom)[i] || `Partenaire ${id}`), contenu, lecture: !!col(PART.lecture)[i],
+        academies: Array.isArray(col(PART.academies)[i]) ? col(PART.academies)[i].slice(1) : [] }; }).sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
   } catch (_) { partenaires = []; }
 }
 /* lien de partenaire en affichage seul (case « Lecture_seule » de sa ligne) : il consulte, filtre, applique les modèles et
@@ -601,7 +602,7 @@ function afficherSource() {
   const sel = $("source"), voir = pagePartenaires && proprietaire;
   $("sourceZone").hidden = !voir;
   if (!voir) return;
-  sel.innerHTML = `<option value="">Fiche de la page (modèle de départ)</option>` + partenaires.map(p => `<option value="${p.id}">${esc(p.nom)}${p.lecture ? " (affichage seul)" : ""}</option>`).join("");
+  sel.innerHTML = `<option value="">Fiche de la page (modèle de départ)</option>` + partenaires.map(p => `<option value="${p.id}">${esc(p.nom)}${p.academies && p.academies.length ? ` — ${esc(p.academies.join(", "))}` : ""}${p.lecture ? " (affichage seul)" : ""}</option>`).join("");
   sel.value = source == null ? "" : String(source);
 }
 

@@ -313,9 +313,13 @@
     ], ["Propriétaires : tous les droits (ajout des partenaires, clés, liens, coupure de l'accès).",
       avecLecture ? `Partenaire ouvert par son lien : sa seule ligne ; il n'y modifie que ses réglages de fiche (colonne Fiche), sauf si « ${PART.lecture} » est cochée (lien d'affichage seul).`
         : "Partenaire ouvert par son lien : sa seule ligne ; il n'y modifie que ses réglages de fiche (colonne Fiche).", "Agents et autres personnes : aucun accès."]);
-    const fixes = [PART.nom, PART.cle, PART.lien, PART.actif, PART.lecture].filter(c => meta[PART.table].colonnes[c]).sort();
-    if (fixes.length) ajouterEn(PART.table, fixes.join(","), `${PART.table} — nom, clé, lien, actif, lecture seule`,
-      [{ aclFormula: P, permissionsText: "-U", memo: `${MEMO} — ${qui} : nom, clé, lien, état et mode en lecture seule` }], ["Partenaire : nom, clé, lien, état et mode (lecture seule) non modifiables."]);
+    const fixes = [PART.nom, PART.cle, PART.lien, PART.actif, PART.lecture, PART.academies].filter(c => meta[PART.table].colonnes[c]).sort();
+    if (fixes.length) ajouterEn(PART.table, fixes.join(","), `${PART.table} — nom, clé, lien, actif, lecture seule, périmètre`,
+      [{ aclFormula: P, permissionsText: "-U", memo: `${MEMO} — ${qui} : nom, clé, lien, état, mode et périmètre en lecture seule` }], ["Partenaire : nom, clé, lien, état, mode (lecture seule) et périmètre non modifiables."]);
+    // périmètre académique (colonne Academies, liste ; vide : toutes les académies) : lignes des tables ouvertes dont la
+    // colonne Academie figure dans la liste ; table ouverte sans colonne Academie : réservée aux partenaires sans périmètre
+    // (les règles d'accès ne suivent pas les références : ajouter au besoin une colonne formule $Etablissement.Academie)
+    const avecPerimetre = !!meta[PART.table].colonnes[PART.academies], perimetre = `user.${PART.attribut}.${PART.academies}`;
     // copie des colonnes des tables ouvertes (Grist cache ses métadonnées aux liens) et modèles de sélection de la
     // fiche : seules lignes de Config lisibles
     ajouterEn(S.TABLE_CONFIG, "*", `${S.TABLE_CONFIG} — structure des tables et modèles de fiche pour les partenaires`,
@@ -334,8 +338,16 @@
         if (auteur) ajouterEn(t, auteur, `${t} — auteur (${auteur})`,
           [{ aclFormula: P, permissionsText: "-RU", memo: `${MEMO} — ${qui} : adresse de l'auteur illisible` }], ["Partenaire : adresse de l'auteur illisible."]);
       }
-      ajouterEn(t, "*", `${t} — lecture pour les partenaires`, [{ aclFormula: P, permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : lecture seule (table ouverte aux partenaires)` }],
+      if (!avecPerimetre) ajouterEn(t, "*", `${t} — lecture pour les partenaires`, [{ aclFormula: P, permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : lecture seule (table ouverte aux partenaires)` }],
         ["Partenaire ouvert par son lien : lecture seule de la table (ouverte dans la carte « Partenaires »)."]);
+      else if (cols[PART.colAcademie]) ajouterEn(t, "*", `${t} — lecture pour les partenaires, dans leur périmètre`, [
+        { aclFormula: `${P} and (not ${perimetre} or rec.${PART.colAcademie} in ${perimetre})`, permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : lecture seule, académies de son périmètre (vide : toutes)` },
+        { aclFormula: P, permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : hors de son périmètre académique` }],
+        [`Partenaire ouvert par son lien : lecture seule des lignes dont la colonne ${PART.colAcademie} figure dans son périmètre (colonne ${PART.academies} de sa ligne ; vide : toutes).`]);
+      else ajouterEn(t, "*", `${t} — lecture pour les partenaires sans périmètre`, [
+        { aclFormula: `${P} and not ${perimetre}`, permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : lecture seule (sans périmètre académique)` },
+        { aclFormula: P, permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : table sans colonne ${PART.colAcademie}, fermée aux partenaires limités à un périmètre` }],
+        [`Partenaire sans périmètre : lecture seule. Partenaire limité à des académies : table fermée (pas de colonne ${PART.colAcademie} pour filtrer ses lignes).`]);
     }
   }
 
@@ -568,7 +580,12 @@
           effacer sa clé (une nouvelle est tirée à l'ajout d'une ligne) invalide un lien transmis à d'autres ; cocher « ${esc(PART.lecture)} » en fait un lien
           d'<strong>affichage seul</strong> (consultation, filtres, modèles proposés, impression, sans réglages ni enregistrement), décochée le partenaire règle sa fiche.</p>
           ${lienAJour ? "" : `<div class="boutons"><button class="secondaire" id="ac-part-liens">Faire pointer les liens vers « ${esc(page.nom)} »</button></div>`}
-          ${meta[PART.table].colonnes[PART.lecture] ? "" : `<div class="boutons"><button class="secondaire" id="ac-part-lecture">Ajouter la colonne « ${esc(PART.lecture)} » (liens d'affichage seul)</button></div>`}`
+          <p class="aide">Colonne « ${esc(PART.academies)} » : le <strong>périmètre académique</strong> du partenaire (une ou plusieurs académies ; vide : toutes). Il ne lit alors, dans les tables ouvertes,
+          que les lignes dont la colonne « ${esc(PART.colAcademie)} » en fait partie ; une table ouverte sans cette colonne lui est fermée.</p>
+          ${(() => { const sans = tablesPartenaires().filter(t => meta[t] && !meta[t].colonnes[PART.colAcademie]);
+            return meta[PART.table].colonnes[PART.academies] && sans.length ? `<p class="avert">Sans colonne « ${esc(PART.colAcademie)} », fermées aux partenaires limités à un périmètre : ${sans.map(esc).join(", ")}.
+              Ajoutez-y une colonne formule « ${esc(PART.colAcademie)} » (par exemple <code>$Etablissement.Academie</code>), puis appliquez les règles.</p>` : ""; })()}
+          ${colonnesManquantes().length ? `<div class="boutons"><button class="secondaire" id="ac-part-colonnes">Ajouter ${colonnesManquantes().length > 1 ? "les colonnes" : "la colonne"} ${colonnesManquantes().map(c => `« ${esc(c)} »`).join(" et ")} (affichage seul, périmètre académique)</button></div>` : ""}`
         : `<div class="boutons"><button class="primaire" id="ac-part-creer">Créer la table ${esc(PART.table)}</button></div>`}
       <fieldset class="ac-part-tables"><legend>Tables ouvertes en lecture aux partenaires</legend>
         ${candidates.map(t => `<label style="display:inline-block;min-width:220px"><input type="checkbox" data-part-table="${esc(t)}"${ouvertes.has(t) ? " checked" : ""}> ${esc(t)}</label>`).join("")}</fieldset>
@@ -576,6 +593,15 @@
       <p class="aide">Toujours fermées aux partenaires : réglages, formulaires, équipe, planning, émargement, pages réservées. Dans les tables ouvertes, les clés et liens d'accès
         des établissements, les visas, le statut de validation et l'auteur des signalements restent illisibles. Tout ce qu'un partenaire peut lire, il peut l'exporter :
         n'ouvrez que le nécessaire. Après un changement, appliquez les règles (carte suivante).</p></section>`;
+  }
+  const colonnesManquantes = () => avecPartenaires() ? [PART.lecture, PART.academies].filter(c => !meta[PART.table].colonnes[c]) : [];
+  // choix proposés pour le périmètre : valeurs de la colonne Academie de la première table ouverte qui en a une
+  async function academiesConnues() {
+    for (const t of [...tablesPartenaires(), ...Object.keys(meta)]) {
+      if (!meta[t] || !meta[t].colonnes[PART.colAcademie] || t === PART.table) continue;
+      try { const d = await grist.docApi.fetchTable(t); return [...new Set((d[PART.colAcademie] || []).filter(v => typeof v === "string" && v.trim()))].sort((a, b) => a.localeCompare(b, "fr")); } catch (_) {}
+    }
+    return [];
   }
   const direPart = (t, err) => { const e = $("ac-part-statut"); if (e) { e.textContent = t; e.className = `statut${err ? " err" : " ok"}`; } };
   async function creerTablePartenaires() {
@@ -586,7 +612,8 @@
         { id: PART.actif, type: "Bool", isFormula: false, formula: "True" },
         { id: PART.lien, type: "Text", isFormula: true, formula: formuleLienPartenaire(pagePartenaires()) },
         { id: PART.fiche, type: "Text", isFormula: false },
-        { id: PART.lecture, type: "Bool", isFormula: false }]]]);
+        { id: PART.lecture, type: "Bool", isFormula: false },
+        { id: PART.academies, type: "ChoiceList", isFormula: false, widgetOptions: JSON.stringify({ choices: await academiesConnues() }) }]]]);
       await charger(); pagesDoc = await lirePagesDoc(); dessiner();
       direPart(`Table ${PART.table} créée : ajoutez-y les partenaires (données brutes de Grist), puis appliquez les règles.`);
     } catch (e) { direPart(`Refusé par Grist (${e.message || e}).`, true); }
@@ -618,11 +645,14 @@
   function lier() {
     if ($("ac-part-creer")) $("ac-part-creer").addEventListener("click", creerTablePartenaires);
     if ($("ac-part-liens")) $("ac-part-liens").addEventListener("click", lierLiensPartenaires);
-    if ($("ac-part-lecture")) $("ac-part-lecture").addEventListener("click", async () => {
+    if ($("ac-part-colonnes")) $("ac-part-colonnes").addEventListener("click", async () => {
       try {
-        await grist.docApi.applyUserActions([["AddColumn", PART.table, PART.lecture, { type: "Bool", isFormula: false }]]);
+        const manquent = colonnesManquantes(), choix = manquent.includes(PART.academies) ? await academiesConnues() : [];
+        await grist.docApi.applyUserActions(manquent.map(c => ["AddColumn", PART.table, c, c === PART.lecture ? { type: "Bool", isFormula: false }
+          : { type: "ChoiceList", isFormula: false, widgetOptions: JSON.stringify({ choices: choix }) }]));
         await charger(); pagesDoc = await lirePagesDoc(); dessiner();
-        direPart(`Colonne ${PART.lecture} ajoutée (décochée : rien ne change). Cochez-la pour les liens d'affichage seul, puis appliquez les règles et cliquez sur « Enregistrer les tables ouvertes ».`);
+        direPart(`Ajouté : ${manquent.join(", ")} (vides : rien ne change). Cochez « ${PART.lecture} » pour un lien d'affichage seul, choisissez les académies d'un partenaire pour limiter son périmètre,
+          puis appliquez les règles et cliquez sur « Enregistrer les tables ouvertes ».`);
       } catch (e) { direPart(`Refusé par Grist (${e.message || e}).`, true); }
     });
     if ($("ac-part-tables")) $("ac-part-tables").addEventListener("click", enregistrerTablesPartenaires);
