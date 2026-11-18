@@ -5,10 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Signalements</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.33"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.33"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.33"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.33"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.34"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.34"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.34"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.34"></script>
+<script src="../commun/fiche-etab.js?v=2.62.0-alpha.34"></script>
 <style>
   :root {
     --bleu: #000091; --bleu-clair: #e3e3fd; --fond-suivi: #f5f5fe; --fond-visa: #fef7ec; --brun: #8a4b00; --fond-res: #eef8f4; --vert-res: #0b6b4f;
@@ -67,6 +68,14 @@
   #panneau-complements { background: var(--fond-res); border-left: 4px solid var(--vert-res); padding: 18px 18px 8px; border-radius: 0 6px 6px 0; }
   #panneau-complements :is(input[type=text], input[type=number], input[type=date], input[type=datetime-local], select, textarea) { background: var(--x-ffffff); }
   #panneau-complements h2 { color: var(--vert-res); }
+  #bloc-structurel { background: var(--fond-suivi); border-left: 4px solid var(--bleu); padding: 14px 16px 6px; border-radius: 0 6px 6px 0; margin: 0 0 18px; }
+  #bloc-structurel h2 { color: var(--bleu); }
+  #bloc-structurel .fe-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 16px; margin: 8px 0 10px; }
+  #bloc-structurel .fe-champ { display: grid; gap: 4px; align-content: start; }
+  #bloc-structurel .fe-champ label { font-weight: 600; font-size: .9rem; }
+  #bloc-structurel .fe-champ :is(input:not([type=checkbox]), select, textarea) { width: 100%; background: var(--x-ffffff); }
+  #bloc-structurel .fe-champ.a-completer :is(input, select, textarea) { border: 2px solid var(--vigil); }
+  .pastille-a-completer { background: var(--vigil-bg); color: var(--vigil); }
   .visa-bloc + .visa-bloc { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--x-ecd9bd); }
   .bloc-verdict .choix-groupe { gap: 10px; }
   .bloc-verdict .choix span { padding: 16px 10px; font-size: 1.02rem; }
@@ -916,6 +925,13 @@
 
   <!-- ===== Compléments : éléments réservés aux services (partie de rôle « r » du formulaire) ===== -->
   <section id="panneau-complements" role="tabpanel" aria-labelledby="onglet-complements" hidden>
+    <!-- Données structurelles demandées aux services (colonnes du référentiel, carte de l'administration › Référentiel) -->
+    <div id="bloc-structurel" hidden>
+      <h2>Données de l'établissement <span class="pastille pastille-a-completer" id="nb-structurel" hidden></span></h2>
+      <p class="note" id="note-structurel"></p>
+      <div id="champs-structurel"></div>
+      <p class="statut" id="statut-structurel" role="status"></p>
+    </div>
     <form id="form-reserve" novalidate autocomplete="off">
       <h2>Éléments réservés</h2>
       <p class="note" id="note-reserve"></p>
@@ -6852,7 +6868,7 @@ async function remplirVisas() {
       (secondes(d) != null ? ` (${derniere === initiale ? "signalement initial" : "suivi"} du ${dateFr(d, metaDate)})` : "") +
       `. Tout nouveau suivi devra être visé à nouveau.`;
   }
-  await remplirReserves();
+  await remplirComplements();
   modifieVisa = false;
 }
 
@@ -6862,12 +6878,21 @@ async function remplirVisas() {
    publication du formulaire) les reprend dans chaque nouvelle version du dossier, y compris celles de l'établissement,
    qui ne les lit pas (règles d'accès).
    ========================================================= */
-// Le viseur de la page renseigne-t-il les éléments réservés de ce dossier ? Son échelon doit être coché dans la partie,
-// et l'établissement dans son périmètre. Sans profil de viseur (propriétaire, agent de la cellule) : les règles d'accès décident.
-function peutCompleter() {
+// Le viseur de la page renseigne-t-il ces compléments pour ce dossier ? Son échelon doit figurer parmi ceux du réglage
+// (partie réservée du formulaire, données demandées du référentiel), et l'établissement dans son périmètre.
+// Sans profil de viseur (propriétaire, agent de la cellule) : les règles d'accès décident.
+function peutCompleter(echelons) {
   if (!monPerimetreVisa) return true;
-  const pr = partieReservee(), ech = monPerimetreVisa.echelon === "Départemental" ? "dep" : "aca";
-  return !!pr && (pr.echelons || []).includes(ech) && peutViser(ech);
+  const ech = monPerimetreVisa.echelon === "Départemental" ? "dep" : "aca";
+  return (echelons || []).includes(ech) && peutViser(ech);
+}
+// Onglet « Compléments » : données de l'établissement (référentiel) et éléments réservés (dossier), chacun s'il y a lieu
+async function remplirComplements() {
+  const [res, struct] = modeEtab || !derniere ? [false, false] : await Promise.all([remplirReserves(), remplirStructurel()]);
+  $("form-reserve").hidden = !res;
+  $("bloc-structurel").hidden = !struct;
+  $("onglet-complements").hidden = !(res || struct);
+  if ($("onglet-complements").hidden && !$("panneau-complements").hidden) afficherOnglet("signalement");
 }
 async function remplirReserves() {
   const visibles = defsRes.filter(d => {
@@ -6876,13 +6901,61 @@ async function remplirReserves() {
     if (bloc) { bloc.hidden = !ok; bloc.dataset.masqueAcces = ok ? "0" : "1"; }
     return ok;
   });
-  const montrer = !modeEtab && visibles.length > 0 && peutCompleter();
-  $("onglet-complements").hidden = !montrer;
-  if (!montrer) { if (!$("panneau-complements").hidden) afficherOnglet("signalement"); return; }
+  const pr = partieReservee();
+  if (!visibles.length || !pr || !peutCompleter(pr.echelons)) return false;
   await remplirChamps("r", visibles, d => derniere[d.colId]);
   const d = val(derniere, "Date");
   $("note-reserve").textContent = "Renseignés par les services, jamais visibles de l'établissement. Ils portent sur la version la plus récente du signalement" +
     (secondes(d) != null ? ` (${derniere === initiale ? "signalement initial" : "suivi"} du ${dateFr(d, metaDate)})` : "") + " et sont repris dans les suivis suivants.";
+  return true;
+}
+
+/* Données de l'établissement (2.62.0-alpha.34) : colonnes du référentiel demandées aux services (clé « structurel » de
+   Config, carte de l'administration › Référentiel), modifiées sur place par le composant commun FicheEtab (chaque champ
+   s'enregistre dès qu'il change). Le référentiel est lu une fois, puis gardé ; Grist date et signe chaque modification
+   (colonnes Socle.STRUCTUREL, formules d'initialisation). */
+let ficheStructurel = null;   // { table, fe } : lecture du référentiel par FicheEtab, réutilisée d'un dossier à l'autre
+async function remplirStructurel() {
+  const S = window.Socle, r = S.reglagesStructurel(socleConfig, ETAB.table), etabId = refId(val(initiale, "Etablissement"));
+  if (!r || !window.FicheEtab || !etabId || !peutCompleter(r.echelons)) return false;
+  const voulues = Object.keys(r.colonnes);
+  if (!ficheStructurel || ficheStructurel.table !== ETAB.table || voulues.some(c => !ficheStructurel.fe.cols.some(x => x.colId === c))) {
+    const meta = await S.lireMeta(), tm = meta[ETAB.table];
+    if (!tm) return false;
+    const fe = await window.FicheEtab.charger(meta, ETAB.table, { exclure: Object.keys(tm.colonnes).filter(c => !voulues.includes(c)), ordre: "table", sansAjout: true });
+    if (!fe) return false;
+    ficheStructurel = { table: ETAB.table, fe };
+    $("champs-structurel").dataset.etab = "";
+  }
+  const fe = ficheStructurel.fe, zone = $("champs-structurel");
+  if (!fe.cols.length || fe.pos.get(etabId) === undefined) return false;
+  // même établissement, champs déjà affichés : rien n'est redessiné (une saisie en cours n'est pas perdue)
+  if (zone.dataset.etab === String(etabId) && zone.dataset.fe === String(fe.cols.length) && zone.firstElementChild) { majCompteStructurel(etabId); return true; }
+  zone.innerHTML = window.FicheEtab.html(fe, etabId, "st-");
+  zone.dataset.etab = String(etabId); zone.dataset.fe = String(fe.cols.length);
+  window.FicheEtab.lier(zone, fe, etabId, { prefixe: "st-",
+    dire: (t, err) => statut("statut-structurel", t, err ? "err" : "ok"), apresModif: () => majCompteStructurel(etabId) });
+  majCompteStructurel(etabId);
+  const i = fe.pos.get(etabId), le = (fe.t[S.STRUCTUREL.le] || [])[i], par = (fe.t[S.STRUCTUREL.par] || [])[i];
+  $("note-structurel").textContent = "Données du référentiel, valables pour toutes les situations ; chaque champ s'enregistre dès qu'il est modifié." +
+    (secondes(le) != null ? ` Dernière mise à jour le ${dateFr(le, { type: "DateTime:Europe/Paris" })}${par ? ` par ${par}` : ""}.` : "");
+  $("statut-structurel").textContent = "";
+  return true;
+}
+// Champs vides : signalés à compléter, et comptés dans l'en-tête du bloc
+function majCompteStructurel(etabId) {
+  const fe = ficheStructurel && ficheStructurel.fe, i = fe ? fe.pos.get(etabId) : undefined;
+  if (i === undefined) return;
+  const vide = v => v == null || v === "" || (Array.isArray(v) && v.length <= 1);
+  let n = 0;
+  for (const c of fe.cols) {
+    const manque = !c.isFormula && vide((fe.t[c.colId] || [])[i]);
+    if (manque) n++;
+    const el = $(`st-${c.colId}`), bloc = el && el.closest(".fe-champ");
+    if (bloc) bloc.classList.toggle("a-completer", manque);
+  }
+  $("nb-structurel").hidden = !n;
+  $("nb-structurel").textContent = `${n} à compléter`;
 }
 async function enregistrerReserve() {
   if (!derniere) return;
