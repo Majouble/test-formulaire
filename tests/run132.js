@@ -55,7 +55,7 @@ function docComplet() {   // comme run112 : document des sites + équipe et plan
   // règles proposées pour les partenaires
   const regles = await page.$$eval('#acces .ac-table', l => l.map(d => ({ titre: d.querySelector('strong').textContent,
     f: [...d.querySelectorAll('.ac-formules tr')].map(tr => tr.textContent.replace(/\s+/g, ' ').trim()) })).filter(x => x.f.some(f => /Partenaire/.test(f)) || /artenaire/.test(x.titre)));
-  regles.forEach(r => console.log('RÈGLE', r.titre, '::', r.f.filter(f => /Partenaire|OWNER/.test(f)).join(' ; ')));
+  regles.forEach(r => console.log('RÈGLE', r.titre, '::', (process.env.TOUT ? r.f : r.f.filter(f => /Partenaire|OWNER/.test(f))).join(' ; ')));
   console.log('ATTRIBUT :', (await page.$eval('#acces', e => e.innerText.match(/Attribut « Partenaire »[^.]*\./) || ['absent']))[0]);
   const pages = await page.$eval('#acces', e => (e.innerText.match(/Page des partenaires[^\n]*/) || [''])[0]);
   console.log('PAGE :', pages);

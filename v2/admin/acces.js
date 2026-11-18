@@ -585,6 +585,14 @@
           ${(() => { const sans = tablesPartenaires().filter(t => meta[t] && !meta[t].colonnes[PART.colAcademie]);
             return meta[PART.table].colonnes[PART.academies] && sans.length ? `<p class="avert">Sans colonne « ${esc(PART.colAcademie)} », fermées aux partenaires limités à un périmètre : ${sans.map(esc).join(", ")}.
               Ajoutez-y une colonne formule « ${esc(PART.colAcademie)} » (par exemple <code>$Etablissement.Academie</code>), puis appliquez les règles.</p>` : ""; })()}
+          ${(() => { const col = meta[PART.table].colonnes[PART.academies], cible = cibleAcademie();
+            if (!col) return "";
+            if (cible && !/^RefList:/.test(col.type)) return `<p class="avert">La colonne « ${esc(PART.colAcademie)} » des tables ouvertes est une référence vers ${esc(cible)} : le périmètre
+              doit en être une liste (références vers ${esc(cible)}), sinon le partenaire ne voit aucune ligne.</p>
+              <div class="boutons"><button class="secondaire" id="ac-part-convertir">Convertir « ${esc(PART.academies)} » en liste de références vers ${esc(cible)}</button></div>`;
+            const mal = academiesIncompatibles();
+            return mal.length ? `<p class="avert">Colonne « ${esc(PART.colAcademie)} » d'un autre type que le périmètre (${esc(col.type)}), qui ne s'y compare pas : ${mal.map(esc).join(", ")}.
+              Ces tables n'afficheront rien aux partenaires limités : donnez-leur une colonne « ${esc(PART.colAcademie)} » du même type.</p>` : ""; })()}
           ${colonnesManquantes().length ? `<div class="boutons"><button class="secondaire" id="ac-part-colonnes">Ajouter ${colonnesManquantes().length > 1 ? "les colonnes" : "la colonne"} ${colonnesManquantes().map(c => `« ${esc(c)} »`).join(" et ")} (affichage seul, périmètre académique)</button></div>` : ""}`
         : `<div class="boutons"><button class="primaire" id="ac-part-creer">Créer la table ${esc(PART.table)}</button></div>`}
       <fieldset class="ac-part-tables"><legend>Tables ouvertes en lecture aux partenaires</legend>
@@ -593,6 +601,61 @@
       <p class="aide">Toujours fermées aux partenaires : réglages, formulaires, équipe, planning, émargement, pages réservées. Dans les tables ouvertes, les clés et liens d'accès
         des établissements, les visas, le statut de validation et l'auteur des signalements restent illisibles. Tout ce qu'un partenaire peut lire, il peut l'exporter :
         n'ouvrez que le nécessaire. Après un changement, appliquez les règles (carte suivante).</p></section>`;
+  }
+  /* Périmètre : la colonne Academie des tables ouvertes est du texte, ou une référence vers une table des académies.
+     Les règles comparent la valeur brute (rec.Academie in user.Partenaire.Academies) : face à des références, le
+     périmètre doit être une liste de références vers la même table (mêmes numéros de ligne). */
+  function cibleAcademie() {
+    const n = {};
+    for (const t of tablesPartenaires()) { const c = meta[t] && meta[t].colonnes[PART.colAcademie]; if (c && /^Ref:/.test(c.type)) n[c.type.slice(4)] = (n[c.type.slice(4)] || 0) + 1; }
+    return Object.keys(n).sort((a, b) => n[b] - n[a])[0] || null;
+  }
+  function academiesIncompatibles() {
+    const col = meta[PART.table].colonnes[PART.academies]; if (!col) return [];
+    const liste = /^RefList:/.test(col.type) ? `Ref:${col.type.slice(8)}` : null;
+    return tablesPartenaires().filter(t => meta[t] && meta[t].colonnes[PART.colAcademie]).filter(t => {
+      const ty = meta[t].colonnes[PART.colAcademie].type;
+      return liste ? ty !== liste : /^(Ref|RefList|Any)/.test(ty);
+    });
+  }
+  // colonne affichée des références d'académie (le nom plutôt que le numéro de ligne), reprise pour le périmètre
+  async function affichageAcademies() {
+    const cible = cibleAcademie(); if (!cible) return null;
+    const [T, C] = await Promise.all([grist.docApi.fetchTable("_grist_Tables"), grist.docApi.fetchTable("_grist_Tables_column")]);
+    const i = C.id.findIndex((_, k) => C.colId[k] === PART.colAcademie && C.type[k] === `Ref:${cible}` && C.visibleCol[k]);
+    const j = C.id.findIndex((_, k) => C.parentId[k] === T.id[T.tableId.indexOf(PART.table)] && C.colId[k] === PART.academies);
+    if (i < 0) return { cible, colRef: j >= 0 ? C.id[j] : null, vis: 0, visId: null };
+    const vis = C.visibleCol[i];
+    return { cible, colRef: j >= 0 ? C.id[j] : null, vis, visId: C.colId[C.id.indexOf(vis)] };
+  }
+  async function afficherNomsAcademies() {
+    const a = await affichageAcademies();
+    if (a && a.colRef && a.vis) await grist.docApi.applyUserActions([["SetDisplayFormula", PART.table, null, a.colRef, `$${PART.academies}.${a.visId}`],
+      ["ModifyColumn", PART.table, PART.academies, { visibleCol: a.vis }]]);
+  }
+  async function specAcademies() {
+    const cible = cibleAcademie();
+    return cible ? { type: `RefList:${cible}`, isFormula: false } : { type: "ChoiceList", isFormula: false, widgetOptions: JSON.stringify({ choices: await academiesConnues() }) };
+  }
+  // périmètre déjà saisi en texte, colonne Academie en références : conversion, les noms retrouvés dans la table cible
+  async function convertirAcademies() {
+    try {
+      const a = await affichageAcademies(); if (!a) return;
+      const [P, X] = await Promise.all([grist.docApi.fetchTable(PART.table), grist.docApi.fetchTable(a.cible)]);
+      const cleN = v => String(v ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+      const parNom = new Map(X.id.map((id, k) => [cleN(a.visId ? X[a.visId][k] : id), id])), perdus = [];
+      const valeurs = P.id.map((id, k) => {
+        const l = Array.isArray(P[PART.academies][k]) ? P[PART.academies][k].slice(1) : [];
+        const ids = l.map(v => { const r = parNom.get(cleN(v)); if (!r) perdus.push(v); return r; }).filter(Boolean);
+        return [id, ids];
+      });
+      await grist.docApi.applyUserActions([["ModifyColumn", PART.table, PART.academies, { type: `RefList:${a.cible}`, widgetOptions: "" }]]);
+      const maj = valeurs.map(([id, ids]) => ["UpdateRecord", PART.table, id, { [PART.academies]: ids.length ? ["L", ...ids] : null }]);
+      if (maj.length) await grist.docApi.applyUserActions(maj);
+      await charger(); await afficherNomsAcademies(); await charger(); pagesDoc = await lirePagesDoc(); dessiner();
+      direPart(`« ${PART.academies} » est maintenant une liste de références vers ${a.cible}` + (perdus.length ? ` ; non retrouvées, à ressaisir : ${[...new Set(perdus)].join(", ")}` : "")
+        + ". Appliquez maintenant les règles.", perdus.length > 0);
+    } catch (e) { direPart(`Refusé par Grist (${e.message || e}).`, true); }
   }
   const colonnesManquantes = () => avecPartenaires() ? [PART.lecture, PART.academies].filter(c => !meta[PART.table].colonnes[c]) : [];
   // choix proposés pour le périmètre : valeurs de la colonne Academie de la première table ouverte qui en a une
@@ -613,8 +676,8 @@
         { id: PART.lien, type: "Text", isFormula: true, formula: formuleLienPartenaire(pagePartenaires()) },
         { id: PART.fiche, type: "Text", isFormula: false },
         { id: PART.lecture, type: "Bool", isFormula: false },
-        { id: PART.academies, type: "ChoiceList", isFormula: false, widgetOptions: JSON.stringify({ choices: await academiesConnues() }) }]]]);
-      await charger(); pagesDoc = await lirePagesDoc(); dessiner();
+        { id: PART.academies, ...(await specAcademies()) }]]]);
+      await charger(); try { await afficherNomsAcademies(); await charger(); } catch (_) {} pagesDoc = await lirePagesDoc(); dessiner();
       direPart(`Table ${PART.table} créée : ajoutez-y les partenaires (données brutes de Grist), puis appliquez les règles.`);
     } catch (e) { direPart(`Refusé par Grist (${e.message || e}).`, true); }
   }
@@ -645,12 +708,12 @@
   function lier() {
     if ($("ac-part-creer")) $("ac-part-creer").addEventListener("click", creerTablePartenaires);
     if ($("ac-part-liens")) $("ac-part-liens").addEventListener("click", lierLiensPartenaires);
+    if ($("ac-part-convertir")) $("ac-part-convertir").addEventListener("click", convertirAcademies);
     if ($("ac-part-colonnes")) $("ac-part-colonnes").addEventListener("click", async () => {
       try {
-        const manquent = colonnesManquantes(), choix = manquent.includes(PART.academies) ? await academiesConnues() : [];
-        await grist.docApi.applyUserActions(manquent.map(c => ["AddColumn", PART.table, c, c === PART.lecture ? { type: "Bool", isFormula: false }
-          : { type: "ChoiceList", isFormula: false, widgetOptions: JSON.stringify({ choices: choix }) }]));
-        await charger(); pagesDoc = await lirePagesDoc(); dessiner();
+        const manquent = colonnesManquantes(), spec = manquent.includes(PART.academies) ? await specAcademies() : null;
+        await grist.docApi.applyUserActions(manquent.map(c => ["AddColumn", PART.table, c, c === PART.lecture ? { type: "Bool", isFormula: false } : spec]));
+        await charger(); if (manquent.includes(PART.academies)) { try { await afficherNomsAcademies(); await charger(); } catch (_) {} } pagesDoc = await lirePagesDoc(); dessiner();
         direPart(`Ajouté : ${manquent.join(", ")} (vides : rien ne change). Cochez « ${PART.lecture} » pour un lien d'affichage seul, choisissez les académies d'un partenaire pour limiter son périmètre,
           puis appliquez les règles et cliquez sur « Enregistrer les tables ouvertes ».`);
       } catch (e) { direPart(`Refusé par Grist (${e.message || e}).`, true); }
