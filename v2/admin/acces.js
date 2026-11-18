@@ -301,15 +301,21 @@
       if (!e) { e = { tableId: t, colIds, titre, regles: [], lignes: [] }; out.push(e); }
       e.regles.push(...regles); e.lignes.push(...lignes);
     };
+    // colonne Lecture_seule cochée : lien d'affichage seul, la ligne n'est pas modifiable par le partenaire
+    const avecLecture = !!meta[PART.table].colonnes[PART.lecture], sienne = `${P} and rec.id == user.${PART.attribut}.id`;
     ajouterEn(PART.table, "*", `${PART.table} — partenaires`, [
       { aclFormula: PROPRIETAIRE, permissionsText: "+CRUD", memo: `${MEMO} — propriétaires : partenaires` },
-      { aclFormula: `${P} and rec.id == user.${PART.attribut}.id`, permissionsText: "+RU-CD", memo: `${MEMO} — ${qui} : sa ligne, ses réglages de fiche` },
+      ...(avecLecture ? [
+        { aclFormula: `${sienne} and not rec.${PART.lecture}`, permissionsText: "+RU-CD", memo: `${MEMO} — ${qui} : sa ligne, ses réglages de fiche` },
+        { aclFormula: sienne, permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} (lien d'affichage seul) : sa ligne en lecture` }]
+      : [{ aclFormula: sienne, permissionsText: "+RU-CD", memo: `${MEMO} — ${qui} : sa ligne, ses réglages de fiche` }]),
       { aclFormula: NON_PROPRIETAIRE, permissionsText: "-CRUD", memo: `${MEMO} — partenaires : réservé aux propriétaires` },
     ], ["Propriétaires : tous les droits (ajout des partenaires, clés, liens, coupure de l'accès).",
-      "Partenaire ouvert par son lien : sa seule ligne ; il n'y modifie que ses réglages de fiche (colonne Fiche).", "Agents et autres personnes : aucun accès."]);
-    const fixes = [PART.nom, PART.cle, PART.lien, PART.actif].filter(c => meta[PART.table].colonnes[c]).sort();
-    if (fixes.length) ajouterEn(PART.table, fixes.join(","), `${PART.table} — nom, clé, lien, actif`,
-      [{ aclFormula: P, permissionsText: "-U", memo: `${MEMO} — ${qui} : nom, clé, lien et état en lecture seule` }], ["Partenaire : nom, clé, lien et état en lecture seule."]);
+      avecLecture ? `Partenaire ouvert par son lien : sa seule ligne ; il n'y modifie que ses réglages de fiche (colonne Fiche), sauf si « ${PART.lecture} » est cochée (lien d'affichage seul).`
+        : "Partenaire ouvert par son lien : sa seule ligne ; il n'y modifie que ses réglages de fiche (colonne Fiche).", "Agents et autres personnes : aucun accès."]);
+    const fixes = [PART.nom, PART.cle, PART.lien, PART.actif, PART.lecture].filter(c => meta[PART.table].colonnes[c]).sort();
+    if (fixes.length) ajouterEn(PART.table, fixes.join(","), `${PART.table} — nom, clé, lien, actif, lecture seule`,
+      [{ aclFormula: P, permissionsText: "-U", memo: `${MEMO} — ${qui} : nom, clé, lien, état et mode en lecture seule` }], ["Partenaire : nom, clé, lien, état et mode (lecture seule) non modifiables."]);
     // copie des colonnes des tables ouvertes (Grist cache ses métadonnées aux liens) et modèles de sélection de la
     // fiche : seules lignes de Config lisibles
     ajouterEn(S.TABLE_CONFIG, "*", `${S.TABLE_CONFIG} — structure des tables et modèles de fiche pour les partenaires`,
@@ -559,8 +565,10 @@
       ${page ? `<p>Page des partenaires : <strong>${esc(page.nom)}</strong>${page.sousCellule ? ` <span class="avert">rangée sous « Cellule » : les partenaires ne la verraient pas, rangez les pages ci-dessus</span>` : ""}.</p>`
         : `<p class="avert">Aucune page des partenaires : dans le widget Fiche établissement (⚙ Réglages), cochez « Page des partenaires » et enregistrez, puis revenez ici.</p>`}
       ${avecPartenaires() ? `<p class="aide">Un partenaire par ligne de la table ${esc(PART.table)} : son nom ; la clé et le lien se remplissent seuls ; décocher « ${esc(PART.actif)} » coupe son accès ;
-          effacer sa clé (une nouvelle est tirée à l'ajout d'une ligne) invalide un lien transmis à d'autres.</p>
-          ${lienAJour ? "" : `<div class="boutons"><button class="secondaire" id="ac-part-liens">Faire pointer les liens vers « ${esc(page.nom)} »</button></div>`}`
+          effacer sa clé (une nouvelle est tirée à l'ajout d'une ligne) invalide un lien transmis à d'autres ; cocher « ${esc(PART.lecture)} » en fait un lien
+          d'<strong>affichage seul</strong> (consultation, filtres, modèles proposés, impression, sans réglages ni enregistrement), décochée le partenaire règle sa fiche.</p>
+          ${lienAJour ? "" : `<div class="boutons"><button class="secondaire" id="ac-part-liens">Faire pointer les liens vers « ${esc(page.nom)} »</button></div>`}
+          ${meta[PART.table].colonnes[PART.lecture] ? "" : `<div class="boutons"><button class="secondaire" id="ac-part-lecture">Ajouter la colonne « ${esc(PART.lecture)} » (liens d'affichage seul)</button></div>`}`
         : `<div class="boutons"><button class="primaire" id="ac-part-creer">Créer la table ${esc(PART.table)}</button></div>`}
       <fieldset class="ac-part-tables"><legend>Tables ouvertes en lecture aux partenaires</legend>
         ${candidates.map(t => `<label style="display:inline-block;min-width:220px"><input type="checkbox" data-part-table="${esc(t)}"${ouvertes.has(t) ? " checked" : ""}> ${esc(t)}</label>`).join("")}</fieldset>
@@ -577,7 +585,8 @@
         { id: PART.cle, type: "Text", isFormula: false, formula: "UUID()" },
         { id: PART.actif, type: "Bool", isFormula: false, formula: "True" },
         { id: PART.lien, type: "Text", isFormula: true, formula: formuleLienPartenaire(pagePartenaires()) },
-        { id: PART.fiche, type: "Text", isFormula: false }]]]);
+        { id: PART.fiche, type: "Text", isFormula: false },
+        { id: PART.lecture, type: "Bool", isFormula: false }]]]);
       await charger(); pagesDoc = await lirePagesDoc(); dessiner();
       direPart(`Table ${PART.table} créée : ajoutez-y les partenaires (données brutes de Grist), puis appliquez les règles.`);
     } catch (e) { direPart(`Refusé par Grist (${e.message || e}).`, true); }
@@ -609,6 +618,13 @@
   function lier() {
     if ($("ac-part-creer")) $("ac-part-creer").addEventListener("click", creerTablePartenaires);
     if ($("ac-part-liens")) $("ac-part-liens").addEventListener("click", lierLiensPartenaires);
+    if ($("ac-part-lecture")) $("ac-part-lecture").addEventListener("click", async () => {
+      try {
+        await grist.docApi.applyUserActions([["AddColumn", PART.table, PART.lecture, { type: "Bool", isFormula: false }]]);
+        await charger(); pagesDoc = await lirePagesDoc(); dessiner();
+        direPart(`Colonne ${PART.lecture} ajoutée (décochée : rien ne change). Cochez-la pour les liens d'affichage seul, puis appliquez les règles et cliquez sur « Enregistrer les tables ouvertes ».`);
+      } catch (e) { direPart(`Refusé par Grist (${e.message || e}).`, true); }
+    });
     if ($("ac-part-tables")) $("ac-part-tables").addEventListener("click", enregistrerTablesPartenaires);
     if ($("ac-pages")) $("ac-pages").addEventListener("click", rangerPages);
     if ($("ac-vers-equipe")) $("ac-vers-equipe").addEventListener("click", ev => { ev.preventDefault(); const b = document.querySelector('nav button[data-onglet="onglet-equipe"]'); if (b) b.click(); window.OngletEquipeGroupe.afficher("agents"); });

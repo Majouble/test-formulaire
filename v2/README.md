@@ -89,7 +89,7 @@ Les widgets sont des pages statiques (HTML et JavaScript, sans serveur propre) a
 | `Actions` | Suivi des actions de la cellule | Onglet Actions |
 | `Vigilances`, `Vigilances_journal` | Veille météo, écrites par le relais n8n | Onglet Veille |
 | `Administration`, `Cellule` | Tables vides qui portent les pages réservées (règles d'accès) | Installation |
-| `Partenaires` | Partenaires ouverts par lien (nom, clé, lien, actif) ; colonne `Fiche` : leurs réglages, filtres et modèles de la fiche établissement (JSON) | Onglet Accès, carte « Partenaires » |
+| `Partenaires` | Partenaires ouverts par lien (nom, clé, lien, actif) ; colonne `Fiche` : leurs réglages, filtres et modèles de la fiche établissement (JSON) ; colonne `Lecture_seule` (case) : lien d'affichage seul, sans réglages ni enregistrement | Onglet Accès, carte « Partenaires » |
 
 ### Clés de Config
 
