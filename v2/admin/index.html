@@ -5,19 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Administration des signalements</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.33"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.33"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.33"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.33"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.34"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.34"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.34"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.34"></script>
 <script>window.Socle.activerCacheLecture();
   // ce qui est fait directement dans Grist (page supprimée, colonne ajoutée…) n'est pas signalé au widget : la structure
   // du document est relue quand on revient dans l'administration ou qu'on change d'onglet
   window.addEventListener("focus", () => window.Socle.oublierStructure());
   document.addEventListener("visibilitychange", () => { if (!document.hidden) window.Socle.oublierStructure(); });</script>
-<script src="../commun/geo.js?v=2.62.0-alpha.33"></script>
-<script src="../commun/point-moteur.js?v=2.62.0-alpha.33"></script>
-<link rel="stylesheet" href="formulaires.css?v=2.62.0-alpha.33">
-<link rel="stylesheet" href="../tableau-de-bord/tableau.css?v=2.62.0-alpha.33">
+<script src="../commun/geo.js?v=2.62.0-alpha.34"></script>
+<script src="../commun/point-moteur.js?v=2.62.0-alpha.34"></script>
+<link rel="stylesheet" href="formulaires.css?v=2.62.0-alpha.34">
+<link rel="stylesheet" href="../tableau-de-bord/tableau.css?v=2.62.0-alpha.34">
 <style>
   :root {
     --fond: #f6f6f6; --carte: #fff; --texte: #1e1e1e; --doux: #666; --trait: #ddd;
@@ -260,6 +260,20 @@
   #veille .vg-etapes { margin: 6px 0 8px; padding-left: 20px; font-size: 13px; }
   #veille .va-n { text-align: right; }
   #veille .sous-onglets { margin-bottom: 12px; }
+  /* carte « Données demandées aux services » de l'onglet Référentiel (2.62.0-alpha.34) */
+  #ref-structurel h3 { font-size: 14px; margin: 10px 0 4px; }
+  #ref-structurel .st-ref + .st-ref { border-top: 1px solid var(--trait); margin-top: 14px; padding-top: 10px; }
+  #ref-structurel .st-defile { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+  #ref-structurel .st-table select { width: auto; }
+  #ref-structurel .st-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  #ref-structurel .st-table th, #ref-structurel .st-table td { padding: 4px 8px; border-bottom: 1px solid var(--trait); text-align: left; }
+  #ref-structurel .st-table .va-n { text-align: right; }
+  #ref-structurel .st-table code { font-size: 11px; color: var(--doux); }
+  #ref-structurel .st-annuaire td { color: var(--doux); }
+  #ref-structurel .va-case { display: flex; gap: 6px; align-items: center; margin: 4px 0; font-weight: normal; }
+  #ref-structurel .va-titre { display: block; font-weight: 600; margin: 10px 0 3px; }
+  #ref-structurel .champ small { display: block; color: var(--doux); }
+  #ref-structurel .st-ajout { margin: 10px 0; }
   /* carte Effectifs de l'onglet Référentiel (2.42) */
   #ref-effectifs .ef-champ + .ef-champ { border-top: 1px solid var(--trait); margin-top: 14px; padding-top: 14px; }
   #ref-effectifs h3 { font-size: 14px; margin: 6px 0 4px; }
@@ -698,6 +712,7 @@
   <section class="carte" id="ref-esr"></section>
   <section class="carte" id="ref-sites"></section>
   <section class="carte" id="ref-effectifs"></section>
+  <section class="carte" id="ref-structurel"></section>
 </main>
 <main id="onglet-equipe" hidden>
   <div id="eq-synthese-zone"></div>
@@ -755,32 +770,33 @@
 <main id="point-situation" hidden></main>
 <main id="onglet-tdb" hidden></main>
 <main id="qualite" hidden></main>
-<script src="repartition.js?v=2.62.0-alpha.33"></script>
-<script src="installation.js?v=2.62.0-alpha.33"></script>
-<script src="configuration.js?v=2.62.0-alpha.33"></script>
-<script src="secours.js?v=2.62.0-alpha.33"></script>
-<script src="point-situation.js?v=2.62.0-alpha.33"></script>
-<script src="../tableau-de-bord/tableau.js?v=2.62.0-alpha.33"></script>
-<script src="tableau-de-bord.js?v=2.62.0-alpha.33"></script>
-<script src="formulaires.js?v=2.62.0-alpha.33"></script>
-<script src="referentiel.js?v=2.62.0-alpha.33"></script>
-<script src="equipe.js?v=2.62.0-alpha.33"></script>
-<script src="planning.js?v=2.62.0-alpha.33"></script>
-<script src="pages-agents.js?v=2.62.0-alpha.33"></script>
-<script src="acces.js?v=2.62.0-alpha.33"></script>
-<script src="actions.js?v=2.62.0-alpha.33"></script>
-<script src="liens.js?v=2.62.0-alpha.33"></script>
-<script src="campagnes.js?v=2.62.0-alpha.33"></script>
-<script src="validation.js?v=2.62.0-alpha.33"></script>
-<script src="veille.js?v=2.62.0-alpha.33"></script>
-<script src="../commun/qualite-moteur.js?v=2.62.0-alpha.33"></script>
-<script src="../commun/qualite-edition.js?v=2.62.0-alpha.33"></script>
-<script src="qualite.js?v=2.62.0-alpha.33"></script>
-<script src="../commun/fiche-etab.js?v=2.62.0-alpha.33"></script>
-<script src="../commun/references.js?v=2.62.0-alpha.33"></script>
-<script src="referentiel-esr.js?v=2.62.0-alpha.33"></script>
-<script src="sites.js?v=2.62.0-alpha.33"></script>
-<script src="effectifs.js?v=2.62.0-alpha.33"></script>
+<script src="repartition.js?v=2.62.0-alpha.34"></script>
+<script src="installation.js?v=2.62.0-alpha.34"></script>
+<script src="configuration.js?v=2.62.0-alpha.34"></script>
+<script src="secours.js?v=2.62.0-alpha.34"></script>
+<script src="point-situation.js?v=2.62.0-alpha.34"></script>
+<script src="../tableau-de-bord/tableau.js?v=2.62.0-alpha.34"></script>
+<script src="tableau-de-bord.js?v=2.62.0-alpha.34"></script>
+<script src="formulaires.js?v=2.62.0-alpha.34"></script>
+<script src="referentiel.js?v=2.62.0-alpha.34"></script>
+<script src="equipe.js?v=2.62.0-alpha.34"></script>
+<script src="planning.js?v=2.62.0-alpha.34"></script>
+<script src="pages-agents.js?v=2.62.0-alpha.34"></script>
+<script src="acces.js?v=2.62.0-alpha.34"></script>
+<script src="actions.js?v=2.62.0-alpha.34"></script>
+<script src="liens.js?v=2.62.0-alpha.34"></script>
+<script src="campagnes.js?v=2.62.0-alpha.34"></script>
+<script src="validation.js?v=2.62.0-alpha.34"></script>
+<script src="veille.js?v=2.62.0-alpha.34"></script>
+<script src="../commun/qualite-moteur.js?v=2.62.0-alpha.34"></script>
+<script src="../commun/qualite-edition.js?v=2.62.0-alpha.34"></script>
+<script src="qualite.js?v=2.62.0-alpha.34"></script>
+<script src="../commun/fiche-etab.js?v=2.62.0-alpha.34"></script>
+<script src="../commun/references.js?v=2.62.0-alpha.34"></script>
+<script src="referentiel-esr.js?v=2.62.0-alpha.34"></script>
+<script src="sites.js?v=2.62.0-alpha.34"></script>
+<script src="effectifs.js?v=2.62.0-alpha.34"></script>
+<script src="structurel.js?v=2.62.0-alpha.34"></script>
 <script>if (window.SocleTheme) window.SocleTheme.bouton(document.getElementById("theme-bouton"));</script>
 <script>
   // Onglets
@@ -788,7 +804,7 @@
     window.Socle.oublierStructure();
     document.querySelectorAll("nav button[data-onglet]").forEach(x => x.setAttribute("aria-selected", String(x === b)));
     document.querySelectorAll("main").forEach(m => { m.hidden = m.id !== b.dataset.onglet; });
-    if (b.dataset.onglet === "referentiel") { window.OngletReferentiel.afficher(); if (window.OngletReferentielESR) window.OngletReferentielESR.afficher(); if (window.OngletSitesESR) window.OngletSitesESR.afficher(); if (window.OngletEffectifs) window.OngletEffectifs.afficher(); }
+    if (b.dataset.onglet === "referentiel") { window.OngletReferentiel.afficher(); if (window.OngletReferentielESR) window.OngletReferentielESR.afficher(); if (window.OngletSitesESR) window.OngletSitesESR.afficher(); if (window.OngletEffectifs) window.OngletEffectifs.afficher(); if (window.OngletStructurel) window.OngletStructurel.afficher(); }
     if (b.dataset.onglet === "onglet-equipe") window.OngletEquipeGroupe.afficher();
     if (b.dataset.onglet === "acces") window.OngletAcces.afficher();
     if (b.dataset.onglet === "liens") { window.OngletLiens.afficher(); if (window.OngletCampagnes) window.OngletCampagnes.afficher(); }

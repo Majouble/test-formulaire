@@ -165,6 +165,7 @@
     ], lignes: ["Clé et lien personnel des agents invités : lisibles par les propriétaires seulement (le lien vaut mot de passe)."] });
     reglesValidation(out);
     reglesReserves(out, saisie);
+    reglesStructurel(out);
     reglesEtablissements(out);
     reglesPartenaires(out);
     return out;
@@ -239,6 +240,53 @@
       ], lignes: ["Propriétaires et agents mobilisés au planning : modification.",
         ...(conds.length ? [`Viseurs ${qui} (onglet Validation), sur les établissements de leur périmètre : modification.`] : []),
         "Autres agents de l'équipe : lecture seule."] });
+    }
+  }
+
+  /* ---------- Données structurelles demandées aux services (carte de l'onglet Référentiel, clé « structurel ») ----------
+     Colonnes du référentiel demandées, regroupées selon ce qu'en fait l'établissement (une colonne ne pouvant figurer que
+     dans un seul ensemble de règles) : modification par les propriétaires, les agents mobilisés au planning et les viseurs
+     des échelons cochés, dans leur périmètre ; lecture pour le reste de l'équipe. Établissement (lien) : rien (masquée),
+     lecture, ou modification de sa seule ligne. Les deux colonnes de mise à jour (formules d'initialisation) suivent les
+     droits de modification ; l'établissement ne les lit pas, mais les écrit quand il corrige une donnée (Grist applique
+     les règles à la formule, comme pour l'auteur). */
+  function reglesStructurel(out) {
+    for (const e of S.espaces(general)) {
+      const t = e.referentiel, r = S.reglagesStructurel(config, t);
+      if (!r || !meta[t] || out.some(p => p.tableId === t && p.structurel)) continue;
+      const cols = meta[t].colonnes, rf = S.resoudreRoles("referentiel", meta[t], { reponses: e.reponses, referentiel: t }, {}, {});
+      const col = role => (rf[role] && rf[role].col) || (cols[role] ? role : null);
+      const perim = (u, liste, c) => c ? ` and (not ${u}.${liste} or rec.${c} in ${u}.${liste})` : "";
+      const avecViseurs = !!(meta[general.agents] && meta[general.agents].colonnes.Echelon_visa), conds = [];
+      if (avecViseurs && r.echelons.includes("dep")) conds.push(u => `(${u}.Actif and ${u}.Echelon_visa == "Départemental"${perim(u, "Visa_departements", col("Departement"))})`);
+      if (avecViseurs && r.echelons.includes("aca")) conds.push(u => `(${u}.Actif and ${u}.Echelon_visa == "Académique"${perim(u, "Visa_academies", col("Academie"))})`);
+      const qui = r.echelons.map(x => x === "dep" ? "départementaux" : "académiques").join(" et ");
+      const parDroit = { masquee: [], lecture: [], modification: [] };
+      Object.entries(r.colonnes).forEach(([c, d]) => { if (cols[c] && !cols[c].isFormula && parDroit[d]) parDroit[d].push(c); });
+      const maj = [S.STRUCTUREL.le, S.STRUCTUREL.par].filter(c => cols[c]);
+      const ETAB = { masquee: "ni lecture ni modification", lecture: "lecture de sa ligne", modification: "lecture et modification de sa ligne" };
+      for (const [droit, liste] of [["masquee", parDroit.masquee], ["lecture", parDroit.lecture], ["modification", parDroit.modification], ["maj", maj]]) {
+        if (!liste.length) continue;
+        const regles = [
+          { aclFormula: PROPRIETAIRE, permissionsText: "+U", memo: `${MEMO} — propriétaires : données demandées aux services` },
+          { aclFormula: agentSi(u => `${u}.Actif and ${u}.Champs_acces`), permissionsText: "+U", memo: `${MEMO} — données demandées aux services : agents mobilisés au planning` },
+          ...(conds.length ? [{ aclFormula: agentSi(u => conds.map(c => c(u)).join(" or ")), permissionsText: "+U", memo: `${MEMO} — données demandées aux services : viseurs ${qui}, dans leur périmètre` }] : []),
+          { aclFormula: membre(), permissionsText: "-U", memo: `${MEMO} — données demandées aux services : lecture pour le reste de l'équipe` },
+        ];
+        const lignes = ["Propriétaires et agents mobilisés au planning : modification.",
+          ...(conds.length ? [`Viseurs ${qui} (onglet Validation), sur les établissements de leur périmètre : modification.`] : []), "Autres agents de l'équipe : lecture seule."];
+        for (const g of (groupes || []).filter(x => x.table === t)) {
+          const E = condEtab(g), sienne = `${E} and rec.id == user.${g.attribut}.id`, quiE = `établissement (lien ${g.attribut}_)`;
+          if (droit === "masquee") regles.push({ aclFormula: E, permissionsText: "-RU", memo: `${MEMO} — ${quiE} : données demandées aux services masquées` });
+          else if (droit === "modification") regles.push({ aclFormula: sienne, permissionsText: "+U", memo: `${MEMO} — ${quiE} : données demandées aux services, modification de sa ligne` });
+          else if (droit === "maj") regles.push(parDroit.modification.length ? { aclFormula: sienne, permissionsText: "+U-R", memo: `${MEMO} — ${quiE} : date et auteur des mises à jour illisibles (écrits par la formule)` }
+            : { aclFormula: E, permissionsText: "-RU", memo: `${MEMO} — ${quiE} : date et auteur des mises à jour illisibles` });
+        }
+        if ((groupes || []).some(x => x.table === t)) lignes.push(droit === "maj" ? "Établissement ouvert par son lien : date et auteur des mises à jour illisibles."
+          : `Établissement ouvert par son lien : ${ETAB[droit]}.`);
+        out.push({ tableId: t, colIds: [...liste].sort().join(","), structurel: true, regles, lignes,
+          titre: droit === "maj" ? `${t} — date et auteur des données demandées (${maj.join(", ")})` : `${t} — données demandées aux services, établissement : ${ETAB[droit]} (${[...liste].sort().join(", ")})` });
+      }
     }
   }
 

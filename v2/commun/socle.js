@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.62.0-alpha.33 (18/11/2026)";
+  const VERSION = "2.62.0-alpha.34 (18/11/2026)";
 
   /* ---------- version publiée ----------
      GitHub Pages laisse les navigateurs garder chaque fichier 10 minutes. Au chargement, la page lit version.json sans
@@ -500,6 +500,26 @@ return sorted(champs)`;
       `  return None`,
       `prec = [v for v in ${table}.lookupRecords(${colDossier}=$${colDossier}) if v.id < $id]`,
       `return getattr(max(prec, key=lambda v: v.id), "${col}") if prec else None`].join("\n");
+  }
+  // Données structurelles demandées aux services (2.62.0-alpha.34, carte de l'onglet Référentiel, clé « structurel » de
+  // Config) : colonnes du référentiel que les départements et les académies complètent depuis l'onglet Compléments de la
+  // saisie. Réglage d'un référentiel : { colonnes: { <colonne>: "masquee" | "lecture" | "modification" (ce qu'en fait
+  // l'établissement) }, echelons: ["dep", "aca"] }. Deux colonnes du référentiel datent et signent chaque modification
+  // (formules d'initialisation recalculées quand une colonne demandée change).
+  const STRUCTUREL = { le: "Donnees_maj_le", par: "Donnees_maj_par" };
+  const DROITS_ETAB_STRUCTUREL = [["masquee", "Masquée"], ["lecture", "Lecture"], ["modification", "Modification"]];
+  function reglagesStructurel(config, table) {
+    const t = config && config.valeurs && config.valeurs.structurel && config.valeurs.structurel.tables;
+    const r = t && t[table];
+    if (!r || !r.colonnes || !Object.keys(r.colonnes).length) return null;
+    return { colonnes: { ...r.colonnes }, echelons: Array.isArray(r.echelons) ? r.echelons : ["dep", "aca"] };
+  }
+  // Auteur d'une modification du référentiel : comme l'auteur d'un signalement, « Établissement » pour un lien d'établissement
+  function formuleAuteurStructurel(g) {
+    const l = formuleAuteur(g, null).split("\n");
+    l[0] = "# Auteur de la mise à jour (socle v2.62)";
+    l.splice(l.length - 1, 0, `if any(k.startswith("Etab") and v for k, v in lk.items()):`, `  return "Établissement"`);
+    return l.join("\n");
   }
   const ANCIENNE_FORMULE_LIEN_INVITE = `SELF_HYPERLINK(page=$${INVITE.page} or None, LinkKey_${INVITE.attribut}=$${INVITE.cle}) if $${INVITE.cle} else ""`;
   const formuleLienInvite = () => `(SELF_HYPERLINK(page=$${INVITE.page} or None, LinkKey_${INVITE.attribut}=$${INVITE.cle})${STYLE_LIEN}) if $${INVITE.cle} else ""`;
@@ -1184,7 +1204,7 @@ return sorted(champs)`;
   window.Socle = {
     reglagesPointParDefaut,
     espaces, espaceDeTable, AUTRE_CHAMP_DEFAUT, VERSION, TABLE_CONFIG, TABLE_ADMIN, TABLE_CELLULE, STYLE_LIEN, formuleLienInvite, ANCIENNE_FORMULE_LIEN_INVITE, DEFAUTS_GENERAL, NATURES, ROLES,
-    MARQUE_REPRISE, formuleReprise,
+    MARQUE_REPRISE, formuleReprise, STRUCTUREL, DROITS_ETAB_STRUCTUREL, reglagesStructurel, formuleAuteurStructurel,
     colonnesEmargements, lireEmargements, STATUTS_ACTION, PRIORITES_ACTION, ACTIONS_DEFAUT, reglagesActions, optionsStatuts, colonnesActions, lireActions,
     PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
     norm, cibleRef, lireMeta, lireConfig, activerCacheLecture, viderCacheLecture, oublierStructure, surEcriture, general, actionConfig, ecrireConfig,
