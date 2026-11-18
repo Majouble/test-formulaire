@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.31"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.31"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.31"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.31"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.31"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.31"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.32"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.32"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.32"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.32"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.32"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.32"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -614,10 +614,33 @@ function afficherSource() {
    applique, sans pouvoir les modifier ; ses propres modèles vont dans sa ligne de la table Partenaires.
    Modèle par défaut : appliqué à l'ouverture (nom enregistré avec la page, ou dans la ligne du partenaire ; un
    partenaire qui n'en a pas choisi prend celui de la page). */
+const horsDoc = l => (Array.isArray(l) ? l : []).filter(m => !modelesDoc.some(d => d.nom === m.nom));   // un même nom : celui du document
 const modeles = () => source != null
-  ? [...modelesDoc.map(m => ({ ...m, origine: "document" })), ...(Array.isArray(optionsDePage.modeles) ? optionsDePage.modeles : []).map(m => ({ ...m, origine: "commun" })), ...modelesPage.map(m => ({ ...m, origine: "partenaire" }))]
-  : [...modelesDoc.map(m => ({ ...m, origine: "document" })), ...modelesPage.map(m => ({ ...m, origine: pagePartenaires ? "commun" : "page" }))];
-const nomDefaut = () => modeleDefaut != null ? modeleDefaut : source != null && typeof optionsDePage.modeleDefaut === "string" ? optionsDePage.modeleDefaut : "";
+  ? [...modelesDoc.map(m => ({ ...m, origine: "document" })), ...horsDoc(optionsDePage.modeles).map(m => ({ ...m, origine: "commun" })), ...modelesPage.map(m => ({ ...m, origine: "partenaire" }))]
+  : [...modelesDoc.map(m => ({ ...m, origine: "document" })), ...(pagePartenaires ? horsDoc(modelesPage) : modelesPage).map(m => ({ ...m, origine: pagePartenaires ? "commun" : "page" }))];
+// propriétaire sur la page des partenaires : modèles communs et modèle par défaut des options de la page recopiés
+// dans Config, où les partenaires les lisent même si Grist n'a pas gardé les options
+async function rangerModelesPartenaires() {
+  if (source != null || !pagePartenaires || !socleConfig || socleConfig.lectureSeule) return;
+  const manquants = horsDoc(optionsDePage.modeles), defaut = typeof optionsDePage.modeleDefaut === "string" ? optionsDePage.modeleDefaut : "";
+  if (!manquants.length && (defautPartenairesDoc() != null || !defaut)) return;
+  try {
+    const v = (socleConfig.valeurs && socleConfig.valeurs.fiche) || {};
+    await Socle.ecrireConfig("fiche", { ...v, modeles: [...modelesDoc, ...manquants].sort((a, b) => a.nom.localeCompare(b.nom, "fr")),
+      ...(defautPartenairesDoc() == null && defaut ? { defautPartenaires: defaut } : {}) });
+    await lireModelesDoc();
+  } catch (_) {}
+}
+/* Page des partenaires : modèles et modèle par défaut préparés par le propriétaire rangés dans Config (ligne « fiche »,
+   lisible des partenaires, enregistrée aussitôt) plutôt que dans les options de la page, que Grist garde en brouillon
+   tant qu'on ne clique pas sur son icône verte (les partenaires ne voyaient alors rien) */
+const defautPartenairesDoc = () => { const v = socleConfig && socleConfig.valeurs && socleConfig.valeurs.fiche; return v && typeof v.defautPartenaires === "string" ? v.defautPartenaires : null; };
+function nomDefaut() {
+  const dePage = defautPartenairesDoc() ?? (typeof optionsDePage.modeleDefaut === "string" ? optionsDePage.modeleDefaut : "");
+  if (source != null) return modeleDefaut != null ? modeleDefaut : dePage;
+  if (pagePartenaires) return dePage;
+  return modeleDefaut || "";
+}
 function majBoutonsModele() {
   const m = modeles()[$("modele").value], b = $("defautModele"), d = !!m && m.nom === nomDefaut();
   $("supprModele").disabled = !m; b.disabled = !m;
@@ -680,7 +703,7 @@ $("validerModele").addEventListener("click", async () => {
   const m = { nom, filtres: JSON.parse(JSON.stringify(etat)) };
   const dejaPage = modelesPage.some(x => x.nom === nom);
   let doc = false;
-  if (socleConfig && !socleConfig.lectureSeule && !pagePartenaires && !dejaPage && source == null) { try { await ecrireModelesDoc(remplacer(modelesDoc, m)); doc = true; } catch (_) { doc = false; } }
+  if (socleConfig && !socleConfig.lectureSeule && !dejaPage && source == null) { try { await ecrireModelesDoc(remplacer(modelesDoc, m)); doc = true; } catch (_) { doc = false; } }
   if (!doc) { modelesPage = remplacer(modelesPage, m); try { await ecrireSource(); } catch (err) { message("Enregistrement impossible : " + (err.message || err)); return; } }
   $("formModele").hidden = true;
   const origine = doc ? "document" : source != null ? "partenaire" : pagePartenaires ? "commun" : "page";
@@ -693,8 +716,13 @@ $("defautModele").addEventListener("click", async () => {
   const m = modeles()[$("modele").value];
   if (!m) return;
   const retirer = m.nom === nomDefaut(), avant = modeleDefaut;
-  modeleDefaut = retirer ? "" : m.nom;
-  try { await ecrireSource(); } catch (err) { modeleDefaut = avant; message("Enregistrement impossible : " + (err.message || err)); return; }
+  if (source == null && pagePartenaires && socleConfig && !socleConfig.lectureSeule) {
+    try { const v = (socleConfig.valeurs && socleConfig.valeurs.fiche) || {}; await Socle.ecrireConfig("fiche", { ...v, defautPartenaires: retirer ? "" : m.nom }); await lireModelesDoc(); }
+    catch (err) { message("Enregistrement impossible : " + (err.message || err)); return; }
+  } else {
+    modeleDefaut = retirer ? "" : m.nom;
+    try { await ecrireSource(); } catch (err) { modeleDefaut = avant; message("Enregistrement impossible : " + (err.message || err)); return; }
+  }
   afficherModeles($("modele").value);
   message(retirer ? "Plus de modèle par défaut : la fiche s'ouvrira sur les derniers filtres utilisés."
     : `La fiche s'ouvrira désormais sur le modèle « ${m.nom} »` + (source == null && pagePartenaires ? " (pour les partenaires qui n'en ont pas choisi d'autre)." : "."), "info");
@@ -1172,7 +1200,7 @@ async function demarrer(options) {
     // partenaire ouvert par son lien : sa ligne ; propriétaire : la page, puis le choix d'une fiche de partenaire
     source = pagePartenaires && !proprietaire && partenaires.length ? partenaires[0].id : null;
     chargerSource(); afficherSource(); appliquerAffichageSeul();
-    await lireModelesDoc();
+    await lireModelesDoc(); await rangerModelesPartenaires();
     appliquerModeleDefaut();
     if (!config && affichageSeul()) { attente(""); message("Cette fiche n'est pas encore réglée : revenez quand le propriétaire l'aura préparée."); return; }
     if (!config) {
