@@ -19,6 +19,17 @@ function docServices() {
   ajouterColonne(doc, 'Agents', 'Echelon_visa', 'Choice', 'Échelon de visa', [], { choices: ['Départemental', 'Académique'] });
   ajouterColonne(doc, 'Agents', 'Visa_departements', 'ChoiceList', 'Départements visés', []);
   ajouterColonne(doc, 'Agents', 'Visa_academies', 'ChoiceList', 'Académies visées', []);
+  // tables de la fiche établissement : Faits (ouverte aux partenaires, avec Academie en référence vers Academies),
+  // Notes (non ouverte) ; page des partenaires (widget Fiche, option « partenaires »)
+  const table = (tid, cols, rows) => { const T = doc._grist_Tables, C = doc._grist_Tables_column, ref = T.id.length + 1; T.id.push(ref); T.tableId.push(tid);
+    cols.forEach(([colId, type, label, formula, vis]) => { C.id.push(C.id.length + 1); C.parentId.push(ref); C.colId.push(colId); C.type.push(type); C.label.push(label || colId);
+      C.isFormula.push(!!formula); C.formula.push(formula || ''); C.widgetOptions.push(''); C.visibleCol.push(vis || 0); C.parentPos.push(C.id.length); });
+    doc.__data[tid] = { id: rows.map((_, i) => i + 1), ...Object.fromEntries(cols.map(([c], k) => [c, rows.map(r => r[k])])) }; return ref; };
+  table('Academies', [['Nom', 'Text']], [['Versailles'], ['Créteil']]);
+  const C = doc._grist_Tables_column, nomAca = C.id[C.colId.lastIndexOf('Nom')];
+  table('Faits', [['Etablissement', 'Ref:Etablissements'], ['Academie', 'Ref:Academies', 'Académie', '', nomAca], ['Fait', 'Text']], [[1, 1, 'Intrusion'], [3, 2, 'Blocage']]);
+  table('Notes', [['Texte', 'Text']], [['note interne']]);
+  const Cf = doc.__data.Config; Cf.id.push(Cf.id.length + 1); Cf.Cle.push('partenaires'); Cf.Valeur.push(JSON.stringify({ tables: ['Faits'] })); Cf.Modifie_le.push(0);
   return doc;
 }
 const texte = async (page, sel) => (await page.$eval(sel, e => e.innerText)).replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim();
@@ -57,6 +68,10 @@ const api = doc => `window.__DOC__=${JSON.stringify(doc)};`;
   await page.click('nav button[data-onglet=acces]'); await page.waitForTimeout(1800);
   const acces = (await texte(page, '#acces')).split('\n').filter(l => /Accès de service/.test(l));
   console.log('ACCÈS :\n  ' + [...new Set(acces)].join('\n  '));
+  const lignesAcces = (await texte(page, '#acces')).split('\n');
+  lignesAcces.forEach((l, k) => { if (/^(Faits|Notes|Config|Agents) —|^Toutes les autres tables/.test(l)) console.log('TABLE :', lignesAcces.slice(k, k + 7).filter(x => /^(Faits|Notes|Config|Agents|Toutes)|Accès de service/.test(x)).join(' / ')); });
+  console.log('FAITS (formule) :', ((await page.$eval('#acces', e => e.textContent)).match(/user\.LinkKey\.Invite and user\.Invite\.Service and not \(\(user\.Invite\.Echelon_visa == "Départemental"[^-]*?rec\.Academie_nom in user\.Invite\.Visa_academies\)\)/) || ['absente'])[0]);
+  console.log('COLONNES MASQUÉES :', [...new Set(lignesAcces.filter(l => /Accès de service : (clé et lien|adresse de l'auteur)/.test(l)))].join(' | '));
   const brut = await page.$eval('#acces', e => e.textContent);
   console.log('FORMULES (services) :\n  ' + [...new Set((brut.match(/[^\n]*user\.Invite\.Service[^\n]*/g) || []).map(l => l.trim()))].slice(0, 6).join('\n  '));
   const formules = await page.evaluate(() => window.__DOC__);
