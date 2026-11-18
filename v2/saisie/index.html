@@ -5,11 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Signalements</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.36"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.36"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.36"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.36"></script>
-<script src="../commun/fiche-etab.js?v=2.62.0-alpha.36"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.37"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.37"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.37"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.37"></script>
+<script src="../commun/fiche-etab.js?v=2.62.0-alpha.37"></script>
 <style>
   :root {
     --bleu: #000091; --bleu-clair: #e3e3fd; --fond-suivi: #f5f5fe; --fond-visa: #fef7ec; --brun: #8a4b00; --fond-res: #eef8f4; --vert-res: #0b6b4f;
@@ -76,6 +76,8 @@
   #bloc-structurel .fe-champ :is(input:not([type=checkbox]), select, textarea) { width: 100%; background: var(--x-ffffff); }
   #bloc-structurel .fe-champ.a-completer :is(input, select, textarea) { border: 2px solid var(--vigil); }
   .pastille-a-completer { background: var(--vigil-bg); color: var(--vigil); }
+  /* page des partenaires : ni création ni mise à jour de signalement */
+  .mode-partenaire #form-signalement .actions, .mode-partenaire #porte-nouveau { display: none !important; }
   .visa-bloc + .visa-bloc { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--x-ecd9bd); }
   .bloc-verdict .choix-groupe { gap: 10px; }
   .bloc-verdict .choix span { padding: 16px 10px; font-size: 1.02rem; }
@@ -447,10 +449,6 @@
   /* circuit de validation et campagnes (2.41) */
   .bandeau-visa, .bandeau-campagne { border-radius: 8px; padding: 12px 16px; margin: 0 0 16px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
   .bandeau-visa { background: var(--x-e8edff); color: var(--x-000091); }
-  .bandeau-service { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; padding: 8px 12px; border-radius: 6px; margin: 0 0 10px;
-    background: var(--fond-res); border: 1px solid var(--vert-res); font-size: .9rem; }
-  .bandeau-service input { max-width: 16em; }
-  .bandeau-service.nomme input, .bandeau-service.nomme button[type=submit], .bandeau-service.nomme label { display: none; }
   .bandeau-campagne { background: var(--x-fef7ec); color: var(--x-716043); border-left: 4px solid var(--x-d68a00); }
   .bandeau-campagne.ok { background: var(--x-e8f5ec); color: var(--x-18753c); border-left-color: var(--x-18753c); }
   .bandeau-visa .grand, .bandeau-campagne .grand { font-weight: 700; }
@@ -641,15 +639,6 @@
       <span class="statut" id="cfg-statut" role="status"></span>
     </div>
   </section>
-
-  <!-- accès de service (lien partagé d'une DSDEN ou d'un rectorat) : nom de la personne qui saisit -->
-  <form class="bandeau-service" id="bandeau-service" hidden>
-    <span id="service-nom"></span>
-    <label for="service-personne">Votre nom</label>
-    <input type="text" id="service-personne" autocomplete="name" placeholder="Prénom Nom" required>
-    <button type="submit" class="secondaire">Valider</button>
-    <span class="statut" id="statut-service" role="status"></span>
-  </form>
 
   <!-- ===== Accueil : nouveau signalement ou liste des signalements ===== -->
   <section id="accueil" aria-labelledby="titre-accueil">
@@ -1348,6 +1337,7 @@ let perimetreBrut = null, libellePage = "", voirToutPerimetre = false;
 /* Planning (Équipe › Planning de l'administration) : pendant un créneau où l'agent de la page est affecté, le périmètre
    du créneau s'applique (vide = tous les établissements). Hors créneau : périmètre des options de la page (vide pour
    les pages créées depuis l'équipe, donc tous les établissements). Relu chaque minute. */
+let modePartenaire = false;   // page des partenaires (option « partenaires ») : consultation et compléments, sans saisie
 let agentPage = null, perimetreFiche = null, creneauPage = null;   // creneauPage : { creneau, affectation, horsChamp }
 // Champ de ce formulaire (EN, ESR) : un agent mobilisé sur l'autre champ pendant le créneau en est averti
 const champWidget = () => { try { return (window.Socle.CHAMPS.find(c => c.version === S().version) || {}).id || ""; } catch (_) { return ""; } };
@@ -1785,6 +1775,8 @@ async function choisirFormulaire() {
   try { libellePage = grist.getOption ? (await grist.getOption("libelle")) || "" : ""; } catch (_) { libellePage = ""; }
   try { agentPage = grist.getOption ? await grist.getOption("agent") : null; } catch (_) { agentPage = null; }
   try { pageEtab = grist.getOption ? (await grist.getOption("etablissements")) || null : null; } catch (_) { pageEtab = null; }
+  try { modePartenaire = grist.getOption ? (await grist.getOption("partenaires")) === true : false; } catch (_) { modePartenaire = false; }
+  appliquerModePartenaire();
   majAlertePageEtab();
   if (agentPage != null && typeof agentPage !== "number") agentPage = Number(agentPage) || null;
   perimetreFiche = perimetreBrut;
@@ -6168,8 +6160,6 @@ async function reprendreSurJours(etabId, valeurs, jours, origine) {
     }
   }
   const ids = r => (Array.isArray(r) ? r : [r]).map(x => x && typeof x === "object" ? x.id : x).filter(x => typeof x === "number");
-  const service = champsService();
-  [...creer, ...completer].forEach(x => Object.assign(x.fields, service));
   let nouveaux = [];
   if (creer.length) {
     nouveaux = ids(await etape("Création des signalements des jours suivants", tableId || "réponses", () => table.create(creer.map(x => ({ fields: x.fields })))));
@@ -6610,7 +6600,6 @@ async function enregistrerSignalement(correction = false) {
       if (col("Date") && !dateParGrist()) fields[col("Date")] = Date.now() / 1000;
       if (col("Nature")) fields[col("Nature")] = NATURE.suivi;
       if (col("Commentaire")) fields[col("Commentaire")] = com;
-      Object.assign(fields, champsService());
       const id = idDe(await etape("Création de la nouvelle version", tableId || "réponses", () => table.create({ fields })));
       if (id) idsCreesIci.add(id);
       const serie = id && jours.length ? await reprendreSurJours(refId(val(initiale, "Etablissement")), valeurs, jours, faitsNouveaux) : null;
@@ -6626,7 +6615,6 @@ async function enregistrerSignalement(correction = false) {
       const fields = { ...valeurs, [col("Etablissement")]: etabId };
       if (col("Date") && !dateParGrist()) fields[col("Date")] = Date.now() / 1000;
       if (col("Nature")) fields[col("Nature")] = NATURE.initial;
-      Object.assign(fields, champsService());
       const id = idDe(await etape("Création du signalement", tableId || "réponses", () => table.create({ fields })));
       if (id) idsCreesIci.add(id);
       if (id && col("Dossier")) await etape("Rattachement du signalement à son propre dossier", tableId || "réponses",
@@ -6724,7 +6712,6 @@ async function chargerProfil() {
    et un périmètre de visa (départements, académies ; vide = tous) ; il prime sur l'ancienne table Utilisateurs.
    reglageValidation : circuit de la table (null s'il n'est pas actif) ; la colonne de statut est une formule de Grist. */
 let monPerimetreVisa = null, reglageValidation = null, fileVisa = false;
-let monService = null;   // accès de service (Agents.Service) : { nom } ; la personne qui saisit est gardée par poste
 async function chargerProfilViseur() {
   monPerimetreVisa = null;
   try { reglageValidation = window.Socle.reglagesValidation(socleConfig, tableId); } catch (_) { reglageValidation = null; }
@@ -6737,42 +6724,7 @@ async function chargerProfilViseur() {
     monNiveau = niveau;
     monProfil = { source: "agent", nom: String((t.Nom || [])[i] || "") };
     monPerimetreVisa = { echelon: ech, departements: window.Socle.listeChoix((t.Visa_departements || [])[i]), academies: window.Socle.listeChoix((t.Visa_academies || [])[i]) };
-    monService = t.Service && t.Service[i] === true ? { nom: monProfil.nom } : null;
   } catch (_) { /* table Agents illisible : ancien fonctionnement */ }
-  afficherBandeauService();
-}
-
-/* =========================================================
-   Accès de service (2.62.0-alpha.35) : lien commun d'une DSDEN ou d'un rectorat. Le nom de la personne qui saisit est
-   demandé à l'ouverture, gardé sur ce poste, et inscrit dans la colonne Personne_service de chaque signalement créé.
-   ========================================================= */
-const cleService = () => `prisme-service-personne-${agentPage}`;
-function personneService() { try { return (localStorage.getItem(cleService()) || "").trim(); } catch (_) { return ""; } }
-function afficherBandeauService() {
-  const b = $("bandeau-service");
-  b.hidden = !monService;
-  if (!monService) return;
-  const p = personneService();
-  b.classList.toggle("nomme", !!p);
-  $("service-nom").innerHTML = `Accès partagé <strong>${esc(monService.nom)}</strong>` + (p ? ` — saisi par <strong>${esc(p)}</strong> <button type="button" class="lien-btn" id="service-changer">changer</button>` : " : indiquez qui saisit.");
-  if ($("service-changer")) $("service-changer").addEventListener("click", () => { b.classList.remove("nomme"); $("service-personne").value = p; $("service-personne").focus(); });
-}
-$("bandeau-service").addEventListener("submit", ev => {
-  ev.preventDefault();
-  const v = $("service-personne").value.trim();
-  if (!v) { statut("statut-service", "Indiquez votre nom.", "err"); return; }
-  try { localStorage.setItem(cleService(), v); } catch (_) { /* stockage indisponible : nom gardé le temps de la page */ }
-  personneServiceMemoire = v;
-  statut("statut-service", "");
-  afficherBandeauService();
-});
-let personneServiceMemoire = "";
-// Champs d'un signalement créé derrière un accès de service ; refus si personne n'est nommé
-function champsService() {
-  if (!monService) return {};
-  const p = personneService() || personneServiceMemoire;
-  if (!p) { $("bandeau-service").classList.remove("nomme"); $("service-personne").focus(); throw new Error("Indiquez votre nom (en haut de la page) : il accompagne chaque signalement saisi par un accès partagé"); }
-  return metaSig[window.Socle.SERVICES.personne] ? { [window.Socle.SERVICES.personne]: p } : {};
 }
 // Département et académie de l'établissement d'une ligne (référentiel, à défaut colonnes recopiées de la table des réponses)
 function lieuDe(l) {
@@ -6939,6 +6891,21 @@ function peutCompleter(echelons) {
   const ech = monPerimetreVisa.echelon === "Départemental" ? "dep" : "aca";
   return (echelons || []).includes(ech) && peutViser(ech);
 }
+/* Page des partenaires (2.62.0-alpha.37, option « partenaires » posée par l'administration › Accès) : un partenaire
+   (DSDEN, rectorat… ouvert par son lien) consulte les signalements de son périmètre et complète les fiches (onglet
+   Compléments) ; il ne crée ni ne met à jour de signalement : entrée « Nouveau signalement » et boutons du formulaire
+   retirés, champs du signalement en lecture seule (les règles d'accès le lui interdisent de toute façon). */
+function appliquerModePartenaire() {
+  document.body.classList.toggle("mode-partenaire", modePartenaire);
+  if (!modePartenaire) return;
+  $("porte-nouveau").hidden = true;
+  $("porte-retrouver-texte").textContent = "Consulter un signalement et compléter sa fiche (onglet Compléments).";
+}
+let dossierComplete = null;   // dossier déjà ouvert sur l'onglet Compléments (page des partenaires)
+function signalementEnLecture() {
+  if (!modePartenaire) return;
+  $("form-signalement").querySelectorAll("input, select, textarea, button").forEach(e => { if (!e.closest("details > summary")) e.disabled = true; });
+}
 // Onglet « Compléments » : données de l'établissement (référentiel) et éléments réservés (dossier), chacun s'il y a lieu
 async function remplirComplements() {
   const [res, struct] = modeEtab || !derniere ? [false, false] : await Promise.all([remplirReserves(), remplirStructurel()]);
@@ -6946,6 +6913,9 @@ async function remplirComplements() {
   $("bloc-structurel").hidden = !struct;
   $("onglet-complements").hidden = !(res || struct);
   if ($("onglet-complements").hidden && !$("panneau-complements").hidden) afficherOnglet("signalement");
+  signalementEnLecture();
+  // page des partenaires : un dossier s'ouvre sur ses compléments
+  if (modePartenaire && !$("onglet-complements").hidden && dossierComplete !== dossierId) { dossierComplete = dossierId; afficherOnglet("complements"); }
 }
 async function remplirReserves() {
   const visibles = defsRes.filter(d => {
@@ -7496,6 +7466,7 @@ function abandonAccepte() {
   return true;
 }
 function allerNouveau() {
+  if (modePartenaire) return;   // page des partenaires : pas de nouveau signalement
   if (!abandonAccepte()) return;
   enFile(async () => {
     cacherConfirmation();
@@ -7535,7 +7506,7 @@ function afficherCartes() {
   if (!indexRecherche) construireIndexRecherche();
   $("titre-liste").textContent = modeEtab ? "Vos signalements" : "Signalements";
   $("porte-nouveau-texte").textContent = modeEtab ? "Un événement à signaler dans votre établissement." : "Un événement à signaler dans un établissement.";
-  $("porte-retrouver-texte").textContent = modeEtab ? "Consulter ou actualiser vos signalements." : "Consulter ou actualiser un signalement existant.";
+  $("porte-retrouver-texte").textContent = modePartenaire ? "Consulter un signalement et compléter sa fiche (onglet Compléments)." : modeEtab ? "Consulter ou actualiser vos signalements." : "Consulter ou actualiser un signalement existant.";
   majBandeauVisa(); majBandeauCampagne(); majBandeauVeille();
   const q = $("recherche-signalements").value.trim(), mots = sansAccent(q).split(/\s+/).filter(Boolean);
   const base0 = fileVisa ? indexRecherche.filter(x => aViserParMoi(x.l)) : indexRecherche;

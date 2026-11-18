@@ -36,21 +36,37 @@
   let invitesExpirent = false;   // colonne Agents.Lien_valide présente : lien d'invité limité dans le temps
   const agentSi = build => avecInvites ? `(${build(`user.${ATTRIBUT}`)}) or (user.LinkKey.${INVITE}${invitesExpirent ? ` and user.${INVITE}.${S.INVITE.valide}` : ""} and ${build(`user.${INVITE}`)})` : build(`user.${ATTRIBUT}`);
   const membre = () => agentSi(u => `${u}.Actif`);
-  // Accès des services (2.62.0-alpha.35) : agent de service = lien d'invité dont la ligne a Service coché (onglet Validation)
-  let avecServices = false;   // colonne Agents.Service présente (et liens d'invités en place)
-  const SERV = () => `user.LinkKey.${INVITE} and user.${INVITE}.${S.SERVICES.colonne}`;
   // Colonne comparée à un périmètre en noms (Visa_departements, Visa_academies) : la colonne elle-même si c'est du texte ;
   // pour une référence (table des académies…), sa colonne d'aide « <colonne>_nom » (formule $<colonne>.<colonne affichée>,
   // ajoutée par « Préparer le document », onglet Validation), les règles ne suivant pas les références ; sans elle, la
   // référence est comparée telle quelle et ne correspond à aucun nom (aucune ligne : fermé plutôt qu'ouvert)
   const colonneTexte = (cols, c) => !c || !cols[c] ? null : /^Ref(List)?:/.test(cols[c].type) && cols[`${c}_nom`] ? `${c}_nom` : c;
-  // Périmètre de visa d'une règle de colonne : liste vide = tout le document, sauf pour un accès de service (jamais tout)
-  const perimVisa = (u, liste, c) => !c ? "" : avecServices ? ` and ((not ${u}.${liste} and not ${u}.${S.SERVICES.colonne}) or (${u}.${liste} and rec.${c} in ${u}.${liste}))`
-    : ` and (not ${u}.${liste} or rec.${c} in ${u}.${liste})`;
+  // Périmètre de visa d'une règle de colonne : liste vide = tout le document
+  const perimVisa = (u, liste, c) => !c ? "" : ` and (not ${u}.${liste} or rec.${c} in ${u}.${liste})`;
   // Partenaires (consultation des fiches établissement par lien)
   const PART = S.PARTENAIRES;
-  const condPart = `user.${PART.attribut} and user.LinkKey.${PART.attribut} and user.${PART.attribut}.${PART.actif}`;
   const avecPartenaires = () => !!(meta && meta[PART.table]);
+  const condPart = () => `user.${PART.attribut} and user.LinkKey.${PART.attribut} and user.${PART.attribut}.${PART.actif}` +
+    (avecPartenaires() && meta[PART.table].colonnes[PART.valide] ? ` and user.${PART.attribut}.${PART.valide}` : "");
+  /* Partenaires « services » (2.62.0-alpha.37, colonne Echelon de la table Partenaires) : périmètre par échelon,
+     lecture des signalements, tableaux et référentiels de leur périmètre, des réglages et des tables ouvertes ;
+     modification des données demandées et des éléments réservés de leur périmètre. Sans colonne Echelon : ancien
+     fonctionnement (consultation des tables ouvertes, périmètre académique, liste vide : toutes). */
+  const modeEchelon = () => avecPartenaires() && !!meta[PART.table].colonnes[PART.echelon];
+  // Lignes du périmètre d'un partenaire (r : "rec" ou "newRec") ; echelons : ceux qui comptent (« dep », « aca », « nat »)
+  function perimPart(t, r, echelons = ["dep", "aca", "nat"]) {
+    const U = `user.${PART.attribut}`, cols = meta[t] ? meta[t].colonnes : {}, l = [];
+    const rf = S.resoudreRoles("referentiel", meta[t] || { colonnes: {} }, { reponses: t, referentiel: t }, {}, {});
+    const col = role => (rf[role] && rf[role].col && cols[rf[role].col] ? rf[role].col : null) || (cols[role] ? role : null);
+    const dep = colonneTexte(cols, col("Departement"));
+    // académies : liste de références (après conversion, carte Partenaires) face à une référence, sinon des noms
+    const listeAca = meta[PART.table].colonnes[PART.academies], aRef = col("Academie");
+    const aca = listeAca && /^RefList:/.test(listeAca.type) ? (aRef && cols[aRef].type === `Ref:${listeAca.type.slice(8)}` ? aRef : null) : colonneTexte(cols, aRef);
+    if (echelons.includes("nat")) l.push(`${U}.${PART.echelon} == "National"`);
+    if (echelons.includes("dep") && dep) l.push(`(${U}.${PART.echelon} == "Départemental" and ${U}.${PART.departements} and ${r}.${dep} in ${U}.${PART.departements})`);
+    if (echelons.includes("aca") && aca) l.push(`(${U}.${PART.echelon} == "Académique" and ${U}.${PART.academies} and ${r}.${aca} in ${U}.${PART.academies})`);
+    return l.length ? `(${l.join(" or ")})` : "False";
+  }
   // jamais ouvertes aux partenaires : réglages, formulaires, équipe, planning, émargement, pages réservées, partenaires
   const tablesFermees = () => new Set([S.TABLE_CONFIG, S.TABLE_ADMIN, S.TABLE_CELLULE, PART.table, general.formulaires, general.agents,
     general.creneaux, general.affectations, general.emargements || "Emargements"].filter(Boolean));
@@ -70,7 +86,6 @@
     acl = await lireAcl();
     avecInvites = !!(meta[general.agents] && meta[general.agents].colonnes[S.INVITE.cle]);
     invitesExpirent = !!(avecInvites && meta[general.agents].colonnes[S.INVITE.valide]);
-    avecServices = !!(avecInvites && meta[general.agents].colonnes[S.SERVICES.colonne] && meta[general.agents].colonnes.Echelon_visa);
   }
   // null si les règles ne sont pas lisibles (non propriétaire)
   async function lireAcl() {
@@ -180,7 +195,6 @@
     reglesStructurel(out);
     reglesEtablissements(out);
     reglesPartenaires(out);
-    reglesServices(out, saisie, referentiels);
     return out;
   }
 
@@ -288,6 +302,13 @@
         ];
         const lignes = ["Propriétaires et agents mobilisés au planning : modification.",
           ...(conds.length ? [`Viseurs ${qui} (onglet Validation), sur les établissements de leur périmètre : modification.`] : []), "Autres agents de l'équipe : lecture seule."];
+        if (modeEchelon()) {
+          const P = condPart(), pp = `${P} and ${perimPart(t, "rec", [...r.echelons, "nat"])}`;
+          if (droit === "maj") regles.push({ aclFormula: pp, permissionsText: "+U-R", memo: `${MEMO} — partenaire : date et auteur des mises à jour illisibles (écrits par la formule)` },
+            { aclFormula: P, permissionsText: "-RU", memo: `${MEMO} — partenaire : date et auteur des mises à jour illisibles` });
+          else regles.push({ aclFormula: pp, permissionsText: "+U", memo: `${MEMO} — partenaire : données demandées, établissements de son périmètre` });
+          lignes.push(droit === "maj" ? "Partenaire : date et auteur des mises à jour illisibles." : "Partenaires de l'échelon (et nationaux), sur les établissements de leur périmètre : modification.");
+        }
         for (const g of (groupes || []).filter(x => x.table === t)) {
           const E = condEtab(g), sienne = `${E} and rec.id == user.${g.attribut}.id`, quiE = `établissement (lien ${g.attribut}_)`;
           if (droit === "masquee") regles.push({ aclFormula: E, permissionsText: "-RU", memo: `${MEMO} — ${quiE} : données demandées aux services masquées` });
@@ -300,85 +321,6 @@
         out.push({ tableId: t, colIds: [...liste].sort().join(","), structurel: true, regles, lignes,
           titre: droit === "maj" ? `${t} — date et auteur des données demandées (${maj.join(", ")})` : `${t} — données demandées aux services, établissement : ${ETAB[droit]} (${[...liste].sort().join(", ")})` });
       }
-    }
-  }
-
-  /* ---------- Accès des services (carte de l'onglet Validation, 2.62.0-alpha.35) ----------
-     Un agent de service (lien partagé par une DSDEN ou un rectorat) ne lit, dans les tables de signalements, leurs
-     tableaux et les référentiels, que les lignes de son périmètre de visa (un périmètre vide ne lui donne rien) ; une table
-     sans colonne Departement ou Academie pour le filtrer lui est fermée. Il saisit des signalements pour les établissements
-     de son périmètre si le réglage le permet (clé « acces_services »). Il ne lit dans la table des agents que sa propre
-     ligne, et rien du planning, de l'émargement ni des partenaires. Ses compléments et ses visas suivent les règles des
-     viseurs (périmètre jamais vide pour un service). */
-  function reglesServices(out, saisie, referentiels) {
-    if (!avecServices) return;
-    const U = `user.${INVITE}`, saisieOK = S.reglagesServices(config).saisie;
-    // condition « ligne du périmètre » sur une table : null si la table n'a ni département ni académie
-    const perimetre = (t, r) => {
-      const cols = meta[t].colonnes, rf = S.resoudreRoles(saisie.has(t) && !saisie.get(t).sousTable ? "reponses" : "referentiel", meta[t], { reponses: t, referentiel: t }, {}, {});
-      const col = role => (rf[role] && rf[role].col && cols[rf[role].col] ? rf[role].col : null) || (cols[role] ? role : null);
-      const dep = colonneTexte(cols, col("Departement")), aca = colonneTexte(cols, col("Academie")), l = [];
-      if (dep) l.push(`(${U}.Echelon_visa == "Départemental" and ${U}.Visa_departements and ${r}.${dep} in ${U}.Visa_departements)`);
-      if (aca) l.push(`(${U}.Echelon_visa == "Académique" and ${U}.Visa_academies and ${r}.${aca} in ${U}.Visa_academies)`);
-      return l.length ? `(${l.join(" or ")})` : null;
-    };
-    // règles insérées juste après celles des propriétaires, en tête de l'ensemble « toute la table »
-    const inserer = (t, titre, regles, lignes) => {
-      let e = out.find(p => p.tableId === t && p.colIds === "*");
-      if (!e) { e = { tableId: t, colIds: "*", titre, regles: [{ aclFormula: PROPRIETAIRE, permissionsText: "+CRUD", memo: `${MEMO} — propriétaires : tous les droits` }], lignes: [] }; out.push(e); }
-      const k = e.regles.findIndex(r => r.aclFormula === PROPRIETAIRE);
-      e.regles.splice(k + 1, 0, ...regles);
-      e.lignes.push(...lignes);
-    };
-    const qui = "accès de service (lien partagé d'une DSDEN ou d'un rectorat)";
-    for (const [t, x] of saisie) {
-      const p = perimetre(t, "rec");
-      if (!p) { inserer(t, t, [{ aclFormula: SERV(), permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : table sans colonne Departement ni Academie, fermée` }],
-        ["Accès de service : table fermée (ni colonne Departement ni colonne Academie pour la limiter à son périmètre ; « Préparer le document », onglet Validation)."]); continue; }
-      const crud = x.sousTable ? "+CRUD" : "+CRU-D";
-      inserer(t, t, [
-        { aclFormula: `${SERV()} and not ${p}`, permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : lignes hors de son périmètre invisibles` },
-        ...(saisieOK ? [{ aclFormula: `${SERV()} and ${U}.Actif${invitesExpirent ? ` and ${U}.${S.INVITE.valide}` : ""} and ${perimetre(t, "newRec")}`, permissionsText: crud, memo: `${MEMO} — ${qui} : saisie pour les établissements de son périmètre` }] : []),
-      ], [`Accès de service : lignes des établissements de son périmètre seulement${saisieOK ? `, ${x.sousTable ? "lecture, ajout, modification et suppression" : "lecture, ajout et modification"}` : ", lecture"}.`]);
-    }
-    for (const t of referentiels) {
-      const p = perimetre(t, "rec");
-      inserer(t, t, [{ aclFormula: p ? `${SERV()} and not ${p}` : SERV(), permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : ${p ? "établissements hors de son périmètre invisibles" : "référentiel sans colonne Departement ni Academie, fermé"}` }],
-        [p ? "Accès de service : établissements de son périmètre seulement (lecture)." : "Accès de service : référentiel fermé (ni colonne Departement ni colonne Academie)."]);
-    }
-    // toute autre table : fermée (règle en tête des « autres tables »), sauf celles ouvertes ci-dessous
-    inserer("*", "*", [{ aclFormula: SERV(), permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : tables non ouvertes aux services fermées` }],
-      ["Accès de service : toute table non ouverte ci-dessous lui est fermée (planning, émargement, partenaires, autres données)."]);
-    // équipe : sa seule ligne
-    inserer(general.agents, `${general.agents} — équipe`, [
-      { aclFormula: `${SERV()} and rec.id == ${U}.id`, permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : sa propre ligne de l'équipe` },
-      { aclFormula: SERV(), permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : autres agents invisibles` }],
-      ["Accès de service : sa seule ligne (les autres agents, leurs adresses et leurs liens lui sont invisibles)."]);
-    // réglages et formulaires (lus par les widgets), vigilances (données publiques) : lecture
-    for (const t of [S.TABLE_CONFIG, general.formulaires, "Parametres", general.vigilances].filter(x => x && meta[x] && !saisie.has(x) && !referentiels.includes(x)))
-      inserer(t, t, [{ aclFormula: SERV(), permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : lecture (réglages, formulaires, vigilances)` }], ["Accès de service : lecture seule."]);
-    // tables ouvertes aux partenaires (données de la fiche établissement) : lecture dans son périmètre, sinon fermées
-    for (const t of tablesPartenaires().filter(x => !saisie.has(x) && !referentiels.includes(x) && x !== general.vigilances)) {
-      const p = perimetre(t, "rec");
-      inserer(t, t, p ? [{ aclFormula: `${SERV()} and not ${p}`, permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : lignes hors de son périmètre invisibles` },
-        { aclFormula: SERV(), permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : lecture (table ouverte aux partenaires), dans son périmètre` }]
-        : [{ aclFormula: SERV(), permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : table ouverte aux partenaires sans colonne Departement ni Academie, fermée` }],
-        [p ? "Accès de service : lecture seule des lignes de son périmètre (table ouverte aux partenaires, carte « Partenaires »)." : "Accès de service : fermée (table ouverte aux partenaires, sans colonne Departement ni Academie)."]);
-    }
-    // colonnes masquées, comme pour les partenaires : clés et liens des établissements, auteur des signalements (adresses
-    // des agents) ; visas et statut restent lisibles (les services sont dans le circuit) ; l'auteur reste écrit par sa formule
-    const colonne = (t, c, titre, regle, ligne) => {
-      let e = out.find(p => p.tableId === t && p.colIds === c);
-      if (!e) { e = { tableId: t, colIds: c, titre, regles: [], lignes: [] }; out.push(e); }
-      e.regles.push(regle); e.lignes.push(ligne);
-    };
-    for (const t of new Set([...referentiels, ...(groupes || []).map(g => g.table), ...tablesPartenaires()]))
-      if (meta[t]) for (const c of [R.LIEN.cle, R.LIEN.lien]) if (meta[t].colonnes[c]) colonne(t, c, `${t} — ${c === R.LIEN.cle ? "clé" : "lien"} d'accès des établissements`,
-        { aclFormula: SERV(), permissionsText: "-RU", memo: `${MEMO} — ${qui} : clés et liens des établissements illisibles` }, "Accès de service : clé et lien d'accès des établissements illisibles.");
-    for (const f of formulaires) {
-      const { auteur } = colonnesMasquees(f);
-      if (auteur && meta[f.table]) colonne(f.table, auteur, `${f.table} — auteur (${auteur})`,
-        { aclFormula: SERV(), permissionsText: "-R", memo: `${MEMO} — ${qui} : adresse de l'auteur illisible` }, "Accès de service : adresse de l'auteur illisible (écrite par sa formule quand il saisit).");
     }
   }
 
@@ -448,9 +390,6 @@
         if (auteur) ajouterEn(f.table, auteur, `${f.table} — auteur (${auteur})`,
           [{ aclFormula: E, permissionsText: "-R", memo: `${MEMO} — ${qui} : adresse de l'auteur illisible` }],
           ["Établissement ouvert par son lien : adresse de l'auteur illisible."]);
-        if (meta[f.table].colonnes[S.SERVICES.personne]) ajouterEn(f.table, S.SERVICES.personne, `${f.table} — personne d'un accès de service (${S.SERVICES.personne})`,
-          [{ aclFormula: E, permissionsText: "-R", memo: `${MEMO} — ${qui} : nom de la personne d'un accès de service illisible` }],
-          ["Établissement ouvert par son lien : nom de la personne d'un accès de service illisible."]);
         for (const st of sousTables(f)) ajouterEn(st.table, "*", `${st.table} — lignes des tableaux du formulaire`, signalements(st.table, COL_ACCES, true),
           [`Établissement ouvert par son lien : les lignes de ses signalements, suppression comprise (colonne ${COL_ACCES}${st.acces ? "" : ", ajoutée à l'application"}).`]).sousTable = { ...st, formule: `$${st.parent}.${f.colEtab}`, type: `Ref:${g.table}` };
         // tables visées par les questions (listes de choix) : lecture
@@ -478,7 +417,7 @@
      rangées sous « Cellule » ne lui apparaissent pas. */
   function reglesPartenaires(out) {
     if (!avecPartenaires()) return;
-    const P = condPart, qui = `partenaire (lien ${PART.attribut}_)`;
+    const P = condPart(), qui = `partenaire (lien ${PART.attribut}_)`;
     const ajouterEn = (t, colIds, titre, regles, lignes) => {
       let e = out.find(p => p.tableId === t && p.colIds === colIds);
       if (!e) { e = { tableId: t, colIds, titre, regles: [], lignes: [] }; out.push(e); }
@@ -496,7 +435,7 @@
     ], ["Propriétaires : tous les droits (ajout des partenaires, clés, liens, coupure de l'accès).",
       avecLecture ? `Partenaire ouvert par son lien : sa seule ligne ; il n'y modifie que ses réglages de fiche (colonne Fiche), sauf si « ${PART.lecture} » est cochée (lien d'affichage seul).`
         : "Partenaire ouvert par son lien : sa seule ligne ; il n'y modifie que ses réglages de fiche (colonne Fiche).", "Agents et autres personnes : aucun accès."]);
-    const fixes = [PART.nom, PART.cle, PART.lien, PART.actif, PART.lecture, PART.academies].filter(c => meta[PART.table].colonnes[c]).sort();
+    const fixes = [PART.nom, PART.cle, PART.lien, PART.actif, PART.lecture, PART.academies, PART.echelon, PART.departements, PART.expire, PART.valide].filter(c => meta[PART.table].colonnes[c]).sort();
     if (fixes.length) ajouterEn(PART.table, fixes.join(","), `${PART.table} — nom, clé, lien, actif, lecture seule, périmètre`,
       [{ aclFormula: P, permissionsText: "-U", memo: `${MEMO} — ${qui} : nom, clé, lien, état, mode et périmètre en lecture seule` }], ["Partenaire : nom, clé, lien, état, mode (lecture seule) et périmètre non modifiables."]);
     // périmètre académique (colonne Academies, liste ; vide : toutes les académies) : lignes des tables ouvertes dont la
@@ -505,6 +444,7 @@
     const avecPerimetre = !!meta[PART.table].colonnes[PART.academies], perimetre = `user.${PART.attribut}.${PART.academies}`;
     // copie des colonnes des tables ouvertes (Grist cache ses métadonnées aux liens) et modèles de sélection de la
     // fiche : seules lignes de Config lisibles
+    if (modeEchelon()) return reglesPartenairesServices(out, P, qui, ajouterEn);
     ajouterEn(S.TABLE_CONFIG, "*", `${S.TABLE_CONFIG} — structure des tables et modèles de fiche pour les partenaires`,
       [{ aclFormula: `${P} and rec.Cle in ["${PART.schema}", "fiche"]`, permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : structure des tables ouvertes et modèles de la fiche (clés ${PART.schema}, fiche)` }],
       [`Partenaire : les seules lignes « ${PART.schema} » (colonnes des tables ouvertes, pour que la fiche démarre) et « fiche » (modèles de sélection du document) de Config, en lecture.`]);
@@ -522,8 +462,6 @@
           [{ aclFormula: P, permissionsText: "-RU", memo: `${MEMO} — ${qui} : statut de validation réservé à la cellule` }], ["Partenaire : statut de validation illisible."]);
         if (auteur) ajouterEn(t, auteur, `${t} — auteur (${auteur})`,
           [{ aclFormula: P, permissionsText: "-RU", memo: `${MEMO} — ${qui} : adresse de l'auteur illisible` }], ["Partenaire : adresse de l'auteur illisible."]);
-        if (meta[t].colonnes[S.SERVICES.personne]) ajouterEn(t, S.SERVICES.personne, `${t} — personne d'un accès de service (${S.SERVICES.personne})`,
-          [{ aclFormula: P, permissionsText: "-RU", memo: `${MEMO} — ${qui} : nom de la personne d'un accès de service illisible` }], ["Partenaire : nom de la personne d'un accès de service illisible."]);
       }
       if (!avecPerimetre) ajouterEn(t, "*", `${t} — lecture pour les partenaires`, [{ aclFormula: P, permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : lecture seule (table ouverte aux partenaires)` }],
         ["Partenaire ouvert par son lien : lecture seule de la table (ouverte dans la carte « Partenaires »)."]);
@@ -535,6 +473,39 @@
         { aclFormula: `${P} and not ${perimetre}`, permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : lecture seule (sans périmètre académique)` },
         { aclFormula: P, permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : table sans colonne ${PART.colAcademie}, fermée aux partenaires limités à un périmètre` }],
         [`Partenaire sans périmètre : lecture seule. Partenaire limité à des académies : table fermée (pas de colonne ${PART.colAcademie} pour filtrer ses lignes).`]);
+    }
+  }
+
+  /* Partenaires « services » : réglages et formulaires (widgets), tables de signalements, tableaux, référentiels et tables
+     ouvertes, toujours limités au périmètre ; colonnes illisibles : clés et liens des établissements, visas, statut,
+     auteur ; éléments réservés lisibles et modifiables (échelons de la partie), données demandées : reglesStructurel. */
+  function reglesPartenairesServices(out, P, qui, ajouterEn) {
+    const { saisie, referentiels } = tablesGerees();
+    for (const t of [S.TABLE_CONFIG, general.formulaires, "Parametres", general.vigilances, "Config_tableau_de_bord"].filter(x => x && meta[x] && !saisie.has(x) && !referentiels.includes(x)))
+      ajouterEn(t, "*", `${t} — lecture pour les partenaires`, [{ aclFormula: P, permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : lecture (réglages, formulaires, vigilances)` }],
+        ["Partenaire ouvert par son lien : lecture (réglages et formulaires, nécessaires aux widgets ; vigilances)."]);
+    const lues = [...new Set([...saisie.keys(), ...referentiels, ...tablesPartenaires()])].filter(t => meta[t] && !tablesFermees().has(t));
+    for (const t of lues) {
+      const cols = meta[t].colonnes;
+      ajouterEn(t, "*", `${t} — lecture pour les partenaires, dans leur périmètre`, [
+        { aclFormula: `${P} and ${perimPart(t, "rec")}`, permissionsText: "+R-CUD", memo: `${MEMO} — ${qui} : lecture, lignes de son périmètre` },
+        { aclFormula: P, permissionsText: "-CRUD", memo: `${MEMO} — ${qui} : lignes hors de son périmètre invisibles` }],
+        [`Partenaire ouvert par son lien : lecture seule des lignes de son périmètre (échelon : département, académie, ou national).${colonneTexte(cols, "Departement") || colonneTexte(cols, "Academie") ? "" : " Ni colonne Departement ni colonne Academie : seuls les partenaires nationaux la lisent."}`]);
+      for (const c of [R.LIEN.cle, R.LIEN.lien]) if (cols[c]) ajouterEn(t, c, `${t} — ${c === R.LIEN.cle ? "clé" : "lien"} d'accès des établissements`,
+        [{ aclFormula: P, permissionsText: "-RU", memo: `${MEMO} — ${qui} : clés et liens des établissements illisibles` }], ["Partenaire : clés et liens d'accès des établissements illisibles (ils valent mot de passe)."]);
+      for (const f of formulaires.filter(x => x.table === t)) {
+        const { ensembles, reserves, statut, auteur } = colonnesReservees(f), ech = reservesDeTable(t).echelons;
+        for (const l of ensembles) ajouterEn(t, l.join(","), `${t} — visas (${l.join(", ")})`,
+          [{ aclFormula: P, permissionsText: "-RU", memo: `${MEMO} — ${qui} : visas réservés à la cellule` }], ["Partenaire : visas illisibles."]);
+        if (reserves.length) ajouterEn(t, reserves.join(","), `${t} — éléments réservés (${reserves.join(", ")})`, [
+          { aclFormula: `${P} and ${perimPart(t, "rec", [...ech, "nat"])}`, permissionsText: "+U", memo: `${MEMO} — ${qui} : éléments réservés, établissements de son périmètre` },
+          { aclFormula: P, permissionsText: "-U", memo: `${MEMO} — ${qui} : éléments réservés en lecture` }],
+          [`Partenaire : éléments réservés lisibles, modifiables sur les établissements de son périmètre (${ech.map(e => e === "dep" ? "échelon départemental" : "échelon académique").concat("national").join(", ")}).`]);
+        if (statut) ajouterEn(t, statut, `${t} — statut de validation (${statut})`,
+          [{ aclFormula: P, permissionsText: "-RU", memo: `${MEMO} — ${qui} : statut de validation réservé à la cellule` }], ["Partenaire : statut de validation illisible."]);
+        if (auteur) ajouterEn(t, auteur, `${t} — auteur (${auteur})`,
+          [{ aclFormula: P, permissionsText: "-RU", memo: `${MEMO} — ${qui} : adresse de l'auteur illisible` }], ["Partenaire : adresse de l'auteur illisible."]);
+      }
     }
   }
 
@@ -628,10 +599,12 @@
       ${carteQui()}
       ${cartePages()}
       ${cartePartenaires()}
+      ${avecPartenaires() ? `<section class="carte" id="ac-partenaires"></section>` : ""}
       ${carteRegles(propose, remplacees, ok, sansFormule)}
       ${carteActuelles(remplacees)}
       ${carteAFaire()}`;
     lier();
+    if (window.OngletPartenaires && $("ac-partenaires")) window.OngletPartenaires.afficher();   // carte « Partenaires : DSDEN, rectorats… » (partenaires.js)
   }
 
   // Droits de chacun : affichés dans Équipe › Agents (pastilles « saisie EN », « lecture seule »…) ; ici, un rappel
@@ -782,7 +755,7 @@
               Ces tables n'afficheront rien aux partenaires limités : donnez-leur une colonne « ${esc(PART.colAcademie)} » du même type.</p>` : ""; })()}
           ${colonnesManquantes().length ? `<div class="boutons"><button class="secondaire" id="ac-part-colonnes">Ajouter ${colonnesManquantes().length > 1 ? "les colonnes" : "la colonne"} ${colonnesManquantes().map(c => `« ${esc(c)} »`).join(" et ")} (affichage seul, périmètre académique)</button></div>` : ""}`
         : `<div class="boutons"><button class="primaire" id="ac-part-creer">Créer la table ${esc(PART.table)}</button></div>`}
-      <fieldset class="ac-part-tables"><legend>Tables ouvertes en lecture aux partenaires (et aux accès de service, dans leur périmètre)</legend>
+      <fieldset class="ac-part-tables"><legend>Tables ouvertes en lecture aux partenaires${modeEchelon() ? " (en plus des signalements, tableaux et référentiels, toujours dans leur périmètre)" : ""}</legend>
         ${candidates.map(t => `<label style="display:inline-block;min-width:220px"><input type="checkbox" data-part-table="${esc(t)}"${ouvertes.has(t) ? " checked" : ""}> ${esc(t)}</label>`).join("")}</fieldset>
       <div class="boutons"><button class="primaire" id="ac-part-tables">Enregistrer les tables ouvertes</button><span class="statut" id="ac-part-statut" role="status"></span></div>
       <p class="aide">Toujours fermées aux partenaires : réglages, formulaires, équipe, planning, émargement, pages réservées. Dans les tables ouvertes, les clés et liens d'accès
@@ -877,7 +850,9 @@
   // copie des colonnes des tables ouvertes et de la table Partenaires, lue par la fiche ouverte par un lien
   async function majSchemaPartenaires() {
     if (!avecPartenaires()) return;
-    const tables = [...tablesPartenaires(), PART.table].filter(t => meta[t]);
+    // partenaires « services » : aussi les signalements, tableaux et référentiels qu'ils lisent (saisie, tableau de bord)
+    const lues = modeEchelon() ? (({ saisie, referentiels }) => [...saisie.keys(), ...referentiels])(tablesGerees()) : [];
+    const tables = [...new Set([...tablesPartenaires(), ...lues, PART.table])].filter(t => meta[t]);
     const v = { tables: await S.instantaneSchema(tables), maj: new Date().toISOString() };
     const avant = config && config.valeurs && config.valeurs[PART.schema];
     if (!avant || JSON.stringify(avant.tables) !== JSON.stringify(v.tables)) await S.ecrireConfig(PART.schema, v);

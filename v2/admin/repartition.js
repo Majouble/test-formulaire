@@ -119,7 +119,6 @@
       cle: String(col("Cle_acces", i) || "").trim(), pageSaisie: col("Page_saisie", i) || null,   // invité : accès par lien
       lienAcces: typeof col("Lien_acces", i) === "string" ? col("Lien_acces", i) : "", invitesPossibles: !!t.Cle_acces,
       lienExpire: col("Lien_expire_le", i) || null, lienValide: t.Lien_valide ? col("Lien_valide", i) === true : null,
-      service: col("Service", i) === true,   // agent de service (DSDEN, rectorat) : lien partagé, onglet Validation
     })).sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
   }
 
