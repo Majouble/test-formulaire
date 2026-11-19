@@ -67,7 +67,7 @@
     if (!Array.isArray(out.referentiel.details)) out.referentiel.details = [];
     if (!Array.isArray(out.referentiel.libelles)) out.referentiel.libelles = [];
     if (!Array.isArray(out.filtresRapides)) out.filtresRapides = [];
-    out.filtresTables = (Array.isArray(out.filtresTables) ? out.filtresTables : []).map(f => ({ ...FILTRE_TABLE_VIDE, ...(f || {}) }));
+    delete out.filtresTables;   // « filtres par table » des 2.62.0-alpha.38 et 39, retirés
     out.badges = (Array.isArray(out.badges) ? out.badges : []).map(b => ({ libelle: "", table: "", lien: "", colonne: "", affichage: "oui_non", ...b,
       couleurs: (Array.isArray(b.couleurs) ? b.couleurs : []).map(x => ({ valeur: "", couleur: "vert", ...x })) }));
     out.tuiles = (Array.isArray(out.tuiles) ? out.tuiles : []).map(t => ({
@@ -428,10 +428,11 @@
      ===================================================================== */
   const VIDE = "(vide)";
   /* colonnes : filtres ajoutés à la volée dans la barre (« Table.Colonne ») : un établissement y répond par les valeurs
-     de cette colonne dans ses lignes de la table (rattachées comme pour les tuiles) ; sans ligne : « (vide) » */
-  function dimensionsRapides(config, lecteur, base, colonnes) {
+     de cette colonne dans ses lignes de la table (rattachées comme pour les tuiles), limitées à la période de la
+     sélection (colonne de date de la table) ; sans ligne : « (vide) » */
+  function dimensionsRapides(config, lecteur, base, colonnes, periode) {
     const c = normaliserConfig(config), r = c.referentiel, out = [];
-    const sources = (colonnes || []).length ? sourcesFiltres(config, lecteur.schema) : [];
+    const sources = (colonnes || []).length ? sourcesFiltres(config, lecteur.schema) : [], bornes = bornesPeriode(periode, base && base.maintenant);
     (colonnes || []).forEach(cle => {
       const k = String(cle).indexOf("."), t = String(cle).slice(0, k), col = String(cle).slice(k + 1);
       const info = k > 0 && lecteur.colonne(t, col); if (!info) return;
@@ -439,7 +440,7 @@
       if (t === r.table) { out.push({ id: "tab:" + cle, ajoute: true, libelle, valeurs: e => { const v = lecteur.elements(t, col, e[col]); return v.length ? v : [VIDE]; } }); return; }
       const src = sources.find(s => s.table === t); if (!src || !src.lien) return;
       out.push({ id: "tab:" + cle, ajoute: true, libelle, valeurs: e => {
-        const v = new Set(); for (const l of base.rattacher(e, t, src.lien)) for (const x of lecteur.elements(t, col, l[col])) v.add(x);
+        const v = new Set(); for (const l of lignesDansPeriode(base.rattacher(e, t, src.lien), src, lecteur, bornes)) for (const x of lecteur.elements(t, col, l[col])) v.add(x);
         return v.size ? [...v] : [VIDE];
       } });
     });
@@ -528,7 +529,7 @@
   }
   // établissements retenus, rangés par nom
   function selectionner(config, lecteur, etat, FC, base) {
-    const r = base.config.referentiel, dims = dimensionsRapides(config, lecteur, base, etat && etat.colonnes), rapides = (etat && etat.rapides) || {};
+    const r = base.config.referentiel, dims = dimensionsRapides(config, lecteur, base, etat && etat.colonnes, etat && etat.periode), rapides = (etat && etat.rapides) || {};
     return lecteur.lignes(r.table)
       .filter(e => passeRapides(e, dims, rapides) && (!FC || passeAvances(e, etat || {}, FC, lecteur, base)))
       .map(e => ({ id: e.id, titre: titreEtab(e, lecteur, r) }))
@@ -556,55 +557,7 @@
     return out;
   }
 
-  /* ---------- filtres par table ----------
-     Appliqués à la lecture des données : toutes les tuiles, badges, filtres de sélection (et le référentiel lui-même)
-     ne voient que les lignes retenues. filtresTables : [{ table, colonne, condition, valeurs, jours, lien }] ;
-     condition : "valeurs" (est l'une de), "exclure" (n'est aucune de), "dernierJour" (jour le plus récent de la table),
-     "dernierJourEtab" (jour le plus récent de chaque établissement, d'après la colonne de lien), "derniersJours" (les
-     N derniers jours, aujourd'hui compris). Appliqués dans l'ordre, chacun sur le résultat du précédent. */
-  const CONDITIONS_TABLE = { valeurs: "est l'une de", exclure: "n'est aucune de", dernierJour: "dernier jour de la table",
-    dernierJourEtab: "dernier jour de chaque établissement", derniersJours: "les N derniers jours" };
-  const FILTRE_TABLE_VIDE = { table: "", colonne: "", condition: "valeurs", valeurs: "", jours: 7, lien: "" };
-  const conditionDate = c => c === "dernierJour" || c === "dernierJourEtab" || c === "derniersJours";
-  function filtrerTables(filtres, tables, schema, config, maintenant) {
-    const liste = (filtres || []).filter(f => f && f.table && f.colonne && tables[f.table] && tables[f.table].id);
-    if (!liste.length) return tables;
-    const out = { ...tables }, liens = {};
-    const lienDe = t => {
-      if (!(t in liens)) { const c = normaliserConfig(config); liens[t] = t === c.referentiel.table ? "id" : ((sourcesFiltres(config, schema).find(s => s.table === t) || {}).lien || ""); }
-      return liens[t];
-    };
-    const aujourdhui = jourISO(maintenant || Date.now() / 1000, "DateTime");
-    for (const f of liste) {
-      const d = out[f.table], col = (schema[f.table] || []).find(x => x.colId === f.colonne), type = col ? col.type : "";
-      const vals = d[f.colonne] || [];
-      let garder;
-      if (conditionDate(f.condition)) {
-        const jours = vals.map(v => jourISO(v, type));
-        if (f.condition === "derniersJours") {
-          const n = Math.max(1, Number(f.jours) || 1), seuil = new Date(Date.parse(aujourdhui + "T00:00:00Z") - (n - 1) * 86400000).toISOString().slice(0, 10);
-          garder = jours.map(j => !!j && j >= seuil && j <= aujourdhui);
-        } else if (f.condition === "dernierJour") {
-          const max = jours.reduce((m, j) => j && j > m ? j : m, "");
-          garder = jours.map(j => !!j && j === max);
-        } else {
-          const l = f.lien || lienDe(f.table), cle = i => l === "id" ? String(d.id[i]) : JSON.stringify((d[l] || [])[i] ?? null), max = new Map();
-          jours.forEach((j, i) => { if (j && j > (max.get(cle(i)) || "")) max.set(cle(i), j); });
-          garder = jours.map((j, i) => !!j && j === max.get(cle(i)));
-        }
-      } else {
-        const cles = new Set(String(f.valeurs || "").split(";").map(cleVal).filter(Boolean));
-        if (!cles.size) continue;
-        const exclure = f.condition === "exclure", lect = creerLecteur(schema, out);   // valeurs affichées (références, listes)
-        garder = vals.map(v => { const el = lect.elements(f.table, f.colonne, v); return (el.length ? el : [""]).some(x => cles.has(cleVal(x))) !== exclure; });
-      }
-      const idx = garder.map((g, i) => g ? i : -1).filter(i => i >= 0);
-      out[f.table] = Object.fromEntries(Object.entries(d).map(([k, arr]) => [k, Array.isArray(arr) ? idx.map(i => arr[i]) : arr]));
-    }
-    return out;
-  }
-
-  const api = { CONDITIONS_TABLE, FILTRE_TABLE_VIDE, filtrerTables, CONFIG_VIDE, TUILE_VIDE, MODES, cleVal, normaliserConfig, tablesNecessaires, verifierConfig, creerLecteur, preparer, construireFiche,
+  const api = { CONFIG_VIDE, TUILE_VIDE, MODES, cleVal, normaliserConfig, tablesNecessaires, verifierConfig, creerLecteur, preparer, construireFiche,
     dimensionsRapides, compterValeurs, passeRapides, passeAvances, bornesPeriode, selectionner, sourcesFiltres, titreEtab, jourISO, texteJour, estDate };
   if (typeof window !== "undefined") window.FicheMoteur = api;
   if (typeof module !== "undefined") module.exports = api;

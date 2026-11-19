@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.39"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.39"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.39"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.39"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.39"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.39"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.40"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.40"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.40"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.40"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.40"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.40"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -59,8 +59,6 @@
   .couleurs-badge .regle { display: inline-flex; gap: 4px; align-items: center; border: 1px solid var(--bord); border-radius: 4px; padding: 2px 4px; }
   .couleurs-badge input, .couleurs-badge select { width: auto; } .couleurs-badge input { width: 110px; }
   .couleurs-badge .sans-effet { color: #b34000; font-size: 11px; }
-  .filtre-table { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 10px; padding: 4px 6px; border: 1px solid var(--bord); border-radius: 4px; font-size: 12px; }
-  .filtre-table select { width: auto; max-width: 260px; } .filtre-table input[type=text] { width: 220px; }
   .filtres-sup { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
   .filtres-sup .regle { display: inline-flex; gap: 4px; align-items: center; border: 1px solid var(--bord); border-radius: 4px; padding: 2px 4px; }
   .filtres-sup select { width: auto; max-width: 220px; } .filtres-sup input { width: 200px; }
@@ -370,8 +368,7 @@ async function chargerDonnees(forcer) {
     return enVol.get(t).then(() => attente(`Lecture des données : ${++faites} / ${a.length} table${a.length > 1 ? "s" : ""}…`));
   }));
   if (vieux) chargeLe = Date.now() / 1000;
-  // filtres par table (réglages) appliqués avant toute lecture : tuiles, badges, sélection
-  lecteur = M.creerLecteur(schema, M.filtrerTables(cfg.filtresTables, donnees, schema, cfg));
+  lecteur = M.creerLecteur(schema, donnees);
   // repère « nouveau » : heure du dernier point de situation enregistré (table Points_situation du widget Point de situation)
   const ps = donnees.Points_situation;
   marque = ps && ps.Horodatage ? Math.max(...ps.Horodatage.filter(x => typeof x === "number"), -Infinity) : null;
@@ -542,7 +539,7 @@ const filtresActifs = () => Object.keys(etat.rapides).length + etat.avances.filt
 function recalculerSelection() {
   const r = actuelle().referentiel;
   if (!lecteur || !base || !r.table) { dims = []; apresAvances = []; selection = []; return; }
-  dims = M.dimensionsRapides(actuelle(), lecteur, base, etat.colonnes);
+  dims = M.dimensionsRapides(actuelle(), lecteur, base, etat.colonnes, etat.periode);   // puces ajoutées : lignes de la période
   for (const id of Object.keys(etat.rapides)) if (!dims.some(d => d.id === id)) delete etat.rapides[id];   // filtre retiré des réglages
   apresAvances = lecteur.lignes(r.table).filter(e => M.passeAvances(e, etat, FC, lecteur, base));
   selection = apresAvances.filter(e => M.passeRapides(e, dims, etat.rapides))
@@ -1118,17 +1115,6 @@ function afficherReglages() {
     ${champ("Filtres rapides proposés", `<div class="cases">${colonnes(r.table).map(c => `<label><input type="checkbox" data-liste="filtresRapides" value="${esc(c.colId)}"${b.filtresRapides.includes(c.colId) ? " checked" : ""}> ${esc(c.label || c.colId)}</label>`).join("")}</div>
       <label><input type="checkbox" data-champ="filtrerBadges"${b.filtrerBadges ? " checked" : ""}> proposer aussi les badges (oui / non)</label>`, "Puces en haut de la fiche, pour choisir les établissements parcourus et imprimés.", true)}
   </div></details>
-  <details data-cle="filtres-tables"><summary>Filtres par table (${b.filtresTables.length})</summary>
-    <p class="aide" style="margin:6px 10px">Ne garder que certaines lignes d'une table, pour toute la fiche : tuiles, badges, filtres de sélection et impression
-      (par exemple : seulement le dernier jour des faits). Appliqués dans l'ordre ; « dernier jour de chaque établissement » garde, pour chacun, son jour le plus récent.</p>
-    ${b.filtresTables.map((f, k) => { const p = `filtresTables.${k}`, date = ["dernierJour", "dernierJourEtab", "derniersJours"].includes(f.condition);
-      return `<div class="filtre-table regle">${selTable(`${p}.table`, f.table)}
-        ${f.table ? selColonne(`${p}.colonne`, f.table, f.colonne, "— colonne —", c => !date || M.estDate(c.type)) : ""}
-        <select data-champ="${p}.condition" data-recharge="1" aria-label="Condition du filtre ${k + 1}">${Object.entries(M.CONDITIONS_TABLE).map(([v, l]) => opt(v, l, f.condition)).join("")}</select>
-        ${f.condition === "derniersJours" ? `<input type="number" min="1" data-type="nombre" data-champ="${p}.jours" value="${esc(f.jours)}" style="width:70px" aria-label="Nombre de jours"> jours`
-          : date ? "" : `<input type="text" data-champ="${p}.valeurs" value="${esc(f.valeurs)}" placeholder="a ; b" aria-label="Valeurs du filtre ${k + 1}">`}
-        <button class="petit" data-action="supprimer-filtre-table" data-k="${k}" aria-label="Retirer le filtre ${k + 1}">✕</button></div>`; }).join("")}
-    <div style="padding:6px 10px"><button class="petit" data-action="ajouter-filtre-table">Ajouter un filtre de table</button></div></details>
   <details data-cle="badges"><summary>Badges (${b.badges.length})</summary>
     <p class="aide" style="margin:6px 10px">Affichés en tête : oui / non (présence de l'établissement dans la table, ou colonne cochée), ou valeur d'une colonne (« Label CVL : Niv 3 »).
       Couleurs : la première règle dont la valeur correspond s'applique (« Oui », « Non », une valeur de la colonne, « vide ») ; sans règle, bleu si allumé, contour gris sinon.</p>
@@ -1180,9 +1166,6 @@ $("reglages").addEventListener("click", async e => {
     case "descendre-badge": { const B = brouillon.badges; [B[i + 1], B[i]] = [B[i], B[i + 1]]; break; }
     case "ajouter-couleur": brouillon.badges[i].couleurs.push({ valeur: brouillon.badges[i].affichage === "valeur" ? "" : "Oui", couleur: "vert" }); break;
     case "supprimer-couleur": brouillon.badges[i].couleurs.splice(Number(b.dataset.k), 1); break;
-    case "ajouter-filtre-table": { const t = brouillon.tuiles.find(x => x.table && x.date) || {};   // proposé : la table datée d'une tuile, sur le dernier jour
-      brouillon.filtresTables.push({ ...M.FILTRE_TABLE_VIDE, table: t.table || "", colonne: t.date || "", condition: t.date ? "dernierJour" : "valeurs" }); break; }
-    case "supprimer-filtre-table": brouillon.filtresTables.splice(Number(b.dataset.k), 1); break;
     case "ajouter-filtre": (T[i].filtresSup = T[i].filtresSup || []).push({ colonne: "", valeurs: "", exclure: true }); break;
     case "supprimer-filtre": T[i].filtresSup.splice(Number(b.dataset.k), 1); break;
     case "json":

@@ -1,5 +1,5 @@
-// 2.62.0-alpha.39 : Fiche établissement — « + Filtre » dans la barre : filtre ajouté à la volée sur une colonne de
-// n'importe quelle table liée aux établissements (valeurs des lignes de l'établissement ; sans ligne : « (vide) »),
+// 2.62.0-alpha.39/40 : Fiche établissement — « + Filtre » dans la barre : filtre ajouté à la volée sur une colonne de
+// n'importe quelle table liée aux établissements (valeurs des lignes de l'établissement dans la période ; sans ligne : « (vide) »),
 // gardé dans les filtres (et les modèles), conservé par « Effacer les filtres », retiré par « Retirer ».
 const __C = require('./chemins');
 const { chromium } = require('playwright'); const fs = require('fs');
@@ -24,6 +24,13 @@ const { docFiche, CONFIG } = require('./run127');
   console.log(`SEULEMENT « ${premier} » :`, await p.textContent('#compteSelection'), '| puce :', await p.$eval('[data-qf="tab:Reponses.Qualification"]', x => x.textContent.trim()));
   await p.waitForTimeout(800);
   console.log('ENREGISTRÉ :', JSON.stringify(await p.evaluate(() => window.__O && { colonnes: window.__O.filtres.colonnes, rapides: window.__O.filtres.rapides })));
+  // période de la sélection : seules les lignes du 12/11 comptent (la ligne « RAS » de l'autre établissement)
+  await p.click('body'); await p.click('[data-qf="tab:Reponses.Qualification"]'); await p.waitForTimeout(200); await p.click('[data-q="tout"]'); await p.waitForTimeout(300); await p.click('body');
+  await p.click('#btnAvances'); await p.waitForTimeout(200);
+  await p.selectOption('#periodeMode', 'dates'); await p.waitForTimeout(300);
+  await p.fill('#periodeDu', '2026-11-12'); await p.dispatchEvent('#periodeDu', 'change'); await p.fill('#periodeAu', '2026-11-12'); await p.dispatchEvent('#periodeAu', 'change'); await p.waitForTimeout(500);
+  await p.click('[data-qf="tab:Reponses.Qualification"]'); await p.waitForTimeout(300);
+  console.log('PÉRIODE DU 12/11, VALEURS :', await p.$$eval('#qpop .qopt', l => l.map(x => x.textContent.trim().replace(/\s+/g, ' ')).join(' | ')), '|', await p.textContent('#compteSelection'));
   await p.click('body'); await p.click('#effacerFiltres'); await p.waitForTimeout(400);
   console.log('APRÈS « EFFACER » :', await p.textContent('#compteSelection'), '| puce gardée :', !!(await p.$('[data-qf="tab:Reponses.Qualification"]')));
   await p.click('[data-qf="tab:Reponses.Qualification"]'); await p.waitForTimeout(200); await p.click('[data-q="retirer"]'); await p.waitForTimeout(400);
