@@ -7,12 +7,12 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.38"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.38"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.38"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.38"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.38"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.38"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.39"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.39"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.39"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.39"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.39"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.39"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -111,6 +111,8 @@
   .barre-filtres { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 12px; border-bottom: 1px solid var(--bord); background: var(--fond); }
   .barre-filtres .sous { font-size: 12px; color: var(--gris); }
   .barre-filtres .spacer { flex: 1; }
+  .qchip.ajout { border-style: dashed; color: var(--bleu); }
+  #qpop label.aide { display: block; margin: 4px 0; } #qpop label.aide select { width: 100%; }
   .qchip { border-radius: 999px; border-color: var(--bord); color: var(--texte); background: var(--page); padding: 3px 10px; font-size: 12px; }
   .qchip.on { border-color: var(--bleu); background: var(--bleu-pale); color: var(--bleu); }
   button.lien { border: none; padding: 2px 0; text-decoration: underline; background: none; }
@@ -352,7 +354,9 @@ async function lireTable(t, seules) {
 }
 const enVol = new Map();   // lectures en cours, partagées (démarrage et première ligne envoyée par Grist)
 async function chargerDonnees(forcer) {
-  const cfg = actuelle(), besoin = M.tablesNecessaires(cfg, schema);
+  // tables des réglages, plus celles des filtres de la barre et de la sélection avancée
+  const duFiltre = [...(etat.colonnes || []).map(x => x.slice(0, x.indexOf("."))), ...(etat.avances || []).map(f => String(f.source || ""))].filter(t => t && schema[t]);
+  const cfg = actuelle(), besoin = [...new Set([...M.tablesNecessaires(cfg, schema), ...duFiltre])];
   const vieux = forcer || Date.now() / 1000 - chargeLe > RAFRAICHIR_APRES;
   const a = besoin.filter(t => vieux || !(t in donnees));
   // tables lues en parallèle ; table illisible avec les droits de la personne (lien de partenaire…) : ignorée, ses tuiles restent vides
@@ -523,13 +527,14 @@ async function rafraichir(forcer) {
 let etat = etatVide(), dims = [], apresAvances = [], selection = [], minuteurFiltres = null;
 let modelesDoc = [], modelesPage = [], socleConfig = null;   // modèles de sélection : du document (Config, clé « fiche »), de la page
 let modeleDefaut = null;   // nom du modèle appliqué à l'ouverture (null : celui de la page)
-function etatVide() { return { rapides: {}, avances: [], combinaison: "cascade", formule: "", periode: { mode: "", du: "", au: "", jours: 7 } }; }
+function etatVide() { return { rapides: {}, avances: [], combinaison: "cascade", formule: "", periode: { mode: "", du: "", au: "", jours: 7 }, colonnes: [] }; }
 function normaliserEtat(e) {
   const o = { ...etatVide(), ...(e && typeof e === "object" ? e : {}) };
   if (!o.rapides || typeof o.rapides !== "object") o.rapides = {};
   o.periode = { ...etatVide().periode, ...(o.periode && typeof o.periode === "object" ? o.periode : {}) };
   o.avances = (Array.isArray(o.avances) ? o.avances : []).map(f => ({ ...FC.reprendre(f), source: f.source == null ? "" : String(f.source) }));
   if (!FC.COMBINAISONS.some(x => x[0] === o.combinaison)) o.combinaison = "cascade";
+  o.colonnes = (Array.isArray(o.colonnes) ? o.colonnes : []).filter(x => typeof x === "string" && x.includes("."));   // filtres ajoutés dans la barre
   return o;
 }
 const periodeActive = () => !!(base && M.bornesPeriode(etat.periode, base.maintenant));
@@ -537,7 +542,7 @@ const filtresActifs = () => Object.keys(etat.rapides).length + etat.avances.filt
 function recalculerSelection() {
   const r = actuelle().referentiel;
   if (!lecteur || !base || !r.table) { dims = []; apresAvances = []; selection = []; return; }
-  dims = M.dimensionsRapides(actuelle(), lecteur, base);
+  dims = M.dimensionsRapides(actuelle(), lecteur, base, etat.colonnes);
   for (const id of Object.keys(etat.rapides)) if (!dims.some(d => d.id === id)) delete etat.rapides[id];   // filtre retiré des réglages
   apresAvances = lecteur.lignes(r.table).filter(e => M.passeAvances(e, etat, FC, lecteur, base));
   selection = apresAvances.filter(e => M.passeRapides(e, dims, etat.rapides))
@@ -751,7 +756,8 @@ function libellePuce(d) {
   return v[0] + (v.length > 1 ? ` +${v.length - 1}` : "");
 }
 function afficherFiltres() {
-  $("puces").innerHTML = dims.map(d => `<button class="qchip${etat.rapides[d.id] ? " on" : ""}" data-qf="${esc(d.id)}" aria-haspopup="dialog">${esc(d.libelle)} : <b>${esc(libellePuce(d))}</b> ▾</button>`).join(" ");
+  $("puces").innerHTML = dims.map(d => `<button class="qchip${etat.rapides[d.id] ? " on" : ""}" data-qf="${esc(d.id)}" aria-haspopup="dialog">${esc(d.libelle)} : <b>${esc(libellePuce(d))}</b> ▾</button>`).join(" ")
+    + ` <button class="qchip ajout" id="ajouterPuce" aria-haspopup="dialog" title="Filtrer sur une colonne de n'importe quelle table liée aux établissements">+ Filtre</button>`;
   const nAv = etat.avances.filter(FC.actif).length, btn = $("btnAvances");
   const parts = [nAv ? `${nAv} filtre${nAv > 1 ? "s" : ""}` : "", periodeActive() ? "période" : ""].filter(Boolean);
   btn.textContent = parts.length ? `Sélection (${parts.join(", ")})` : "Sélection d'établissements…";
@@ -784,7 +790,7 @@ function deplacer(sens) {
 }
 $("precedent").addEventListener("click", () => deplacer(-1));
 $("suivant").addEventListener("click", () => deplacer(1));
-$("effacerFiltres").addEventListener("click", () => { etat = etatVide(); fermerPuce(); appliquerFiltres(); });
+$("effacerFiltres").addEventListener("click", () => { etat = { ...etatVide(), colonnes: etat.colonnes }; fermerPuce(); appliquerFiltres(); });   // les filtres ajoutés restent, sans valeur
 
 // ---------- filtres rapides : liste à cocher (comme le tableau de bord) ----------
 function ouvrirPuce(id, ancre) {
@@ -796,7 +802,7 @@ function ouvrirPuce(id, ancre) {
   pop._toutes = valeurs.map(v => v.valeur); pop.dataset.dim = id;
   pop.innerHTML = `<b>${esc(d.libelle)}</b>
     <input type="text" id="qsearch" placeholder="Rechercher…" aria-label="Rechercher une valeur">
-    <div class="qrow"><button class="petit" data-q="tout">Tout</button><button class="petit" data-q="aucune">Aucune</button><button class="petit" data-q="fermer">Fermer</button></div>
+    <div class="qrow"><button class="petit" data-q="tout">Tout</button><button class="petit" data-q="aucune">Aucune</button><button class="petit" data-q="fermer">Fermer</button>${d.ajoute ? '<button class="petit" data-q="retirer" title="Retirer ce filtre de la barre">Retirer</button>' : ""}</div>
     <div>${valeurs.map(v => `<label class="qopt" data-txt="${esc(v.valeur.toLowerCase())}"><input type="checkbox" value="${esc(v.valeur)}"${!retenues || retenues.has(v.valeur) ? " checked" : ""}>
       <span>${esc(v.valeur)}</span><span class="c">${v.nombre}</span></label>`).join("") || '<span class="aide">Aucune valeur</span>'}</div>`;
   const r = ancre.getBoundingClientRect();
@@ -810,7 +816,33 @@ function retenir(id, valeurs, toutes) {
   if (valeurs.length === toutes.length) delete etat.rapides[id]; else etat.rapides[id] = valeurs;
   appliquerFiltres();
 }
+// « + Filtre » : choix d'une table liée aux établissements, puis d'une colonne
+function ouvrirAjoutPuce(ancre) {
+  const pop = $("qpop"), sources = M.sourcesFiltres(actuelle(), schema);
+  pop.dataset.dim = "+"; pop._toutes = [];
+  const cols = t => colonnes(t).filter(c => !etat.colonnes.includes(`${t}.${c.colId}`));
+  const optionsCol = t => cols(t).map(c => `<option value="${esc(c.colId)}">${esc(c.label && c.label !== c.colId ? `${c.label} (${c.colId})` : c.colId)}</option>`).join("");
+  pop.innerHTML = `<b>Ajouter un filtre</b>
+    <label class="aide">Table <select id="ajoutTable">${sources.map(s => `<option value="${esc(s.table)}">${esc(s.source === "" ? `${s.table} (établissement)` : s.table)}</option>`).join("")}</select></label>
+    <label class="aide">Colonne <select id="ajoutColonne">${optionsCol(sources[0] ? sources[0].table : "")}</select></label>
+    <div class="qrow"><button class="petit principal" data-q="ajouter">Ajouter</button><button class="petit" data-q="fermer">Fermer</button></div>`;
+  pop._optionsCol = optionsCol;
+  const r = ancre.getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 330)) + "px"; pop.style.top = (r.bottom + 6) + "px";
+  pop.hidden = false; $("ajoutTable").focus();
+}
+async function ajouterPuce() {
+  const t = $("ajoutTable").value, c = $("ajoutColonne").value; if (!t || !c) return;
+  const cle = `${t}.${c}`;
+  if (!etat.colonnes.includes(cle)) etat.colonnes.push(cle);
+  fermerPuce();
+  if (!(t in donnees)) await rafraichir(false);   // table pas encore lue
+  appliquerFiltres();
+  const b = document.querySelector(`#puces [data-qf="${CSS.escape("tab:" + cle)}"]`);
+  if (b) ouvrirPuce("tab:" + cle, b);
+}
 $("puces").addEventListener("click", e => {
+  if (e.target.closest("#ajouterPuce")) { e.stopPropagation(); if (!$("qpop").hidden && $("qpop").dataset.dim === "+") fermerPuce(); else ouvrirAjoutPuce(e.target.closest("#ajouterPuce")); return; }
   const b = e.target.closest("[data-qf]"); if (!b) return;
   e.stopPropagation();
   if (!$("qpop").hidden && $("qpop").dataset.dim === b.dataset.qf) fermerPuce(); else ouvrirPuce(b.dataset.qf, b);
@@ -819,12 +851,18 @@ $("qpop").addEventListener("click", e => {
   e.stopPropagation();
   const pop = $("qpop"), q = e.target.dataset && e.target.dataset.q;
   if (q === "fermer") fermerPuce();
+  else if (q === "ajouter") ajouterPuce();
+  else if (q === "retirer") {
+    const id = pop.dataset.dim; etat.colonnes = etat.colonnes.filter(x => "tab:" + x !== id); delete etat.rapides[id];
+    fermerPuce(); appliquerFiltres();
+  }
   else if (q === "tout" || q === "aucune") {
     pop.querySelectorAll("input[type=checkbox]").forEach(i => { i.checked = q === "tout"; });
     retenir(pop.dataset.dim, q === "tout" ? pop._toutes : [], pop._toutes);
   }
 });
 $("qpop").addEventListener("change", e => {
+  if (e.target.id === "ajoutTable") { $("ajoutColonne").innerHTML = $("qpop")._optionsCol(e.target.value); return; }
   if (e.target.type !== "checkbox") return;
   const pop = $("qpop");
   retenir(pop.dataset.dim, [...pop.querySelectorAll("input[type=checkbox]:checked")].map(i => i.value), pop._toutes);
