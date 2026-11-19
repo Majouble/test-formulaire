@@ -427,8 +427,22 @@
        référentiel (source vide) ; condition, portée ou comptage, puis combinaison ET / OU / formule.
      ===================================================================== */
   const VIDE = "(vide)";
-  function dimensionsRapides(config, lecteur, base) {
+  /* colonnes : filtres ajoutés à la volée dans la barre (« Table.Colonne ») : un établissement y répond par les valeurs
+     de cette colonne dans ses lignes de la table (rattachées comme pour les tuiles) ; sans ligne : « (vide) » */
+  function dimensionsRapides(config, lecteur, base, colonnes) {
     const c = normaliserConfig(config), r = c.referentiel, out = [];
+    const sources = (colonnes || []).length ? sourcesFiltres(config, lecteur.schema) : [];
+    (colonnes || []).forEach(cle => {
+      const k = String(cle).indexOf("."), t = String(cle).slice(0, k), col = String(cle).slice(k + 1);
+      const info = k > 0 && lecteur.colonne(t, col); if (!info) return;
+      const libelle = `${info.label || col} (${t === r.table ? "établissement" : t})`;
+      if (t === r.table) { out.push({ id: "tab:" + cle, ajoute: true, libelle, valeurs: e => { const v = lecteur.elements(t, col, e[col]); return v.length ? v : [VIDE]; } }); return; }
+      const src = sources.find(s => s.table === t); if (!src || !src.lien) return;
+      out.push({ id: "tab:" + cle, ajoute: true, libelle, valeurs: e => {
+        const v = new Set(); for (const l of base.rattacher(e, t, src.lien)) for (const x of lecteur.elements(t, col, l[col])) v.add(x);
+        return v.size ? [...v] : [VIDE];
+      } });
+    });
     c.filtresRapides.forEach(col => {
       const info = lecteur.colonne(r.table, col);
       if (info) out.push({ id: "col:" + col, libelle: info.label || col, valeurs: e => { const v = lecteur.elements(r.table, col, e[col]); return v.length ? v : [VIDE]; } });
@@ -514,7 +528,7 @@
   }
   // établissements retenus, rangés par nom
   function selectionner(config, lecteur, etat, FC, base) {
-    const r = base.config.referentiel, dims = dimensionsRapides(config, lecteur, base), rapides = (etat && etat.rapides) || {};
+    const r = base.config.referentiel, dims = dimensionsRapides(config, lecteur, base, etat && etat.colonnes), rapides = (etat && etat.rapides) || {};
     return lecteur.lignes(r.table)
       .filter(e => passeRapides(e, dims, rapides) && (!FC || passeAvances(e, etat || {}, FC, lecteur, base)))
       .map(e => ({ id: e.id, titre: titreEtab(e, lecteur, r) }))
