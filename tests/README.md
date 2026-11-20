@@ -8,7 +8,7 @@ Scénarios Playwright qui ouvrent les widgets (`v2/…`) dans Chromium avec un *
 cd tests
 npm install
 npx playwright install chromium     # ou : CHROMIUM=/chemin/vers/chromium
-sh lancer.sh                        # suite actuelle (run63 à run145)
+sh lancer.sh                        # suite actuelle (run63 à run146)
 sh lancer.sh run74 run76            # quelques scénarios
 ```
 
@@ -115,6 +115,7 @@ Les scénarios de l'atlas (run63 à run69, run73, run102) exportent un zip ; pou
 | `run139` | 2.62 : partenaires — périmètre académique quand la colonne Academie est une référence : Academies en liste de références (création, conversion d'un périmètre en texte) |
 | `run140` | 2.62 : Fiche établissement, page des partenaires — modèles communs et modèle par défaut du propriétaire rangés dans Config, vus du partenaire sans les options de la page |
 | `run145` | 2.62.0-alpha.39 : Fiche établissement — « + Filtre » dans la barre : filtre à la volée sur une colonne de n'importe quelle table liée, enregistré, gardé par « Effacer », retiré |
+| `run146` | 2.62.0-alpha.41 : demandes de compléments aux partenaires — bouton « Demander des compléments… » des Extractions (filtre de qualification) et de la Fiche établissement (sélection, propriétaire), fenêtre commune, clé « demandes » ; carte « Demandes de compléments » de l'administration (avancement par académie / département, à compléter, CSV) ; règle d'accès (ligne « demandes » de Config illisible des établissements) ; page des compléments des partenaires (demande à l'accueil, donnée complétée sur place, compte, éléments réservés du dernier signalement, demande close masquée) |
 | `run125` | 2.60 : version publiée — scripts appelés avec `?v=<version>`, `version.json` à jour (`outils/versionner.js --verifier`) ; page servie en http plus ancienne que la version publiée : rechargée une fois avec `?v=` |
 | `run124` | 2.57 : Référentiel des sites, onglet « File de vérification » — filtres, acceptation en lot (composante interne, ligne retirée avec report des références, position), valeur retenue (Modifier), siège choisi dans le bandeau, fait à la main, refus, report, campus au nom à préciser (table des campus et colonne Campus des sites créées), regroupement par établissement, bandeau point par point (Précédent / Suivant, sommaire) et carte cadrée sur les objets du point, raccourcis clavier, refus de Grist (message qui nomme le point et l'action), formules de déclenchement |
 | `run123` | 2.55 : Extractions — filtres à comptage et seuil (nombre de jours, somme, maximum), versions par filtre (toutes / dernière de chaque dossier), portées jamais et à chaque fois, opérateur ≥, combinaison par formule, colonnes des valeurs comptées, Excel |

@@ -406,9 +406,13 @@
     }
     groupes.forEach(g => lecture.delete(g.table));
     const tous = groupes.map(condEtab), cond = tous.length > 1 ? tous.map(c => `(${c})`).join(" or ") : tous[0];
-    for (const t of lecture) if (meta[t]) ajouterEn(t, "*", `${t} — lecture pour les établissements`,
-      [{ aclFormula: cond, permissionsText: "+R-CUD", memo: `${MEMO} — établissements (lien) : lecture, pour le formulaire` }],
-      ["Établissement ouvert par son lien : lecture (réglages, formulaires, listes de choix)."]);
+    // demandes de compléments (2.62.0-alpha.41, clé « demandes » de Config) : listes d'établissements et consignes adressées
+    // aux partenaires, jamais lisibles d'un établissement
+    for (const t of lecture) if (meta[t]) ajouterEn(t, "*", `${t} — lecture pour les établissements`, [
+      ...(t === S.TABLE_CONFIG ? [{ aclFormula: `(${cond}) and rec.Cle == "demandes"`, permissionsText: "-CRUD", memo: `${MEMO} — établissements (lien) : demandes de compléments illisibles` }] : []),
+      { aclFormula: cond, permissionsText: "+R-CUD", memo: `${MEMO} — établissements (lien) : lecture, pour le formulaire` }],
+      t === S.TABLE_CONFIG ? ["Établissement ouvert par son lien : lecture des réglages, sauf les demandes de compléments adressées aux partenaires (ligne « demandes »)."]
+        : ["Établissement ouvert par son lien : lecture (réglages, formulaires, listes de choix)."]);
   }
   /* ---------- Partenaires : consultation des fiches établissement par lien ----------
      Sa ligne de la table Partenaires (lecture ; modification de ses seuls réglages de fiche) ; lecture seule des tables
