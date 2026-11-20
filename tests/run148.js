@@ -1,4 +1,4 @@
-// 2.62.0-alpha.43 à .48 : durées de qualification — sources calculées « Épisodes de qualification » et « Durées par
+// 2.62.0-alpha.43 à .49 : durées de qualification — sources calculées « Épisodes de qualification » et « Durées par
 // établissement » (jours avec un signalement seulement, qualification la plus grave du jour, RAS exclu), frise (Gantt),
 // typologie par classe de durée, filtre commun appliqué avant le calcul, ajout des blocs dans l'atelier, export Word (image)
 const __C = require('./chemins');
@@ -117,6 +117,21 @@ if (require.main === module) (async () => {
     '| note :', await page.$$eval('[data-card="0"] .chart .hint', l => l.map(t => t.textContent).join(' ')), '| tableau :', (await lignesTableau(0)).slice(-1)[0]);
   await ouvrir({ name: 'Tableau de bord', filters: [], blocks: [{ ...BLOCS[0], frise: { fenetre: 'derniers', n: 3 } }] });
   console.log('FRISE, 3 DERNIERS JOURS :', await barresDe());
+
+  // 3 sexies. frise de plus de 25 lignes dans Word : découpée en graphiques successifs, tous les noms demandés (2.62.0-alpha.49)
+  { const doc = docDurees(), R = doc.__data.Reponses, jj = d => Date.UTC(2026, 10, d) / 1000;
+    for (let e = 5; e <= 34; e++) for (const d of [16, 17, 18]) { const id = R.id.length + 1; R.id.push(id); R.Date_faits.push(jj(d)); R.Cree_le.push(jj(d) + 3600); R.Nature.push('x'); R.Qualification.push('Perturbation');
+      R.Description.push(''); R.Etablissement.push(e); R.Dossier.push(id); R.Derniere_version.push(true); R.Nom_etablissement.push('Université n° ' + e); R.Commune.push('V' + e); R.Academie.push('Paris'); R.Type_etablissement.push('Université'); }
+    publier(doc, { name: 'T', filters: [], blocks: [{ ...BLOCS[0], view: 'chart', top: 0 }] });
+    await page.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: API(doc) }));
+    await page.goto('file://' + __C.racine + '/v2/tableau-de-bord/index.html'); await page.waitForTimeout(1800);
+    const [dl2] = await Promise.all([page.waitForEvent('download'), page.click('#exportWord')]);
+    const f2 = path.join(__C.sorties, 'run148-34.docx'); await dl2.saveAs(f2);
+    const liste = execSync(`unzip -l "${f2}"`).toString(), docXml = execSync(`unzip -p "${f2}" word/document.xml`).toString();
+    const c1 = execSync(`unzip -p "${f2}" word/charts/chart1.xml`).toString(), c2 = execSync(`unzip -p "${f2}" word/charts/chart2.xml`).toString();
+    const nb = x => (x.match(/<c:cat>.*?<\/c:cat>/s)[0].match(/<c:pt /g) || []).length;
+    console.log('WORD, 34 LIGNES :', (liste.match(/charts\/chart\d+\.xml/g) || []).length, 'graphiques |', nb(c1), '+', nb(c2), 'lignes | tous les noms :', /tickLblSkip val="1"/.test(c1),
+      '| mention :', (docXml.match(/\(suite : [^)]+\)/) || [''])[0], '| légendes :', (docXml.match(/■ /g) || []).length / 3); }
 
   // 3 quinquies. sigle du référentiel comme nom affiché, et colonne du référentiel reprise (2.62.0-alpha.48)
   await ouvrir({ name: 'Tableau de bord', filters: [], episodes: { nom: 'ref:Sigle', colonnes: ['ref:Type'] }, blocks: [BLOCS[0]] });

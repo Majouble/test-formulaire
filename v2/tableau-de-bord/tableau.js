@@ -1529,6 +1529,18 @@ function friseSpec(b, d) {
   return { legende: F.valeurs.map(q => ({ nom: F.nom(q), couleur: F.couleur(q) })), type: "barh", mode: "stack", frise: true, cats: F.lignes.map((l, j) => ({ key: l.rk, label: `${plain(l.libelle)} · ${l.valeur}${rangs[j].length && rangs[j][rangs[j].length - 1].enCours ? " ▸" : ""}` })),
     series, notes: [], min: SERIE_EXCEL(F.min), max: SERIE_EXCEL(F.max + 1), saut: F.saut(dw), enCours: F.enCours };
 }
+// Frise découpée en graphiques de n lignes, avec le même axe des dates : Word et LibreOffice masquent un nom sur deux
+// quand les lignes sont trop serrées ; 25 lignes à 0,7 cm tiennent sur une page avec tous leurs noms
+const FRISE_WORD = 25;
+function decouperFrise(spec, n) {
+  const out = [];
+  for (let i = 0; i < spec.cats.length; i += n) {
+    const coupe = a => a ? a.slice(i, i + n) : a;
+    const series = spec.series.map(s => ({ ...s, values: coupe(s.values), couleurs: coupe(s.couleurs) })).filter((s, k, all) => all.slice(k - (k % 2), k - (k % 2) + 2).some(x => x.values.some(v => v !== null)));
+    out.push({ ...spec, cats: spec.cats.slice(i, i + n), series });
+  }
+  return out;
+}
 function chartXmlFrise(spec) {
   const n = spec.cats.length, catF = `Feuil1!$A$2:$A$${n + 1}`, cats = spec.cats.map(c => c.label);
   const ser = spec.series.map((s, k) => {
@@ -1540,8 +1552,9 @@ function chartXmlFrise(spec) {
   }).join("");
   const plot = `<c:barChart><c:barDir val="bar"/><c:grouping val="stacked"/><c:varyColors val="0"/>${ser}<c:gapWidth val="40"/><c:overlap val="100"/><c:axId val="5001"/><c:axId val="5002"/></c:barChart>
     <c:catAx><c:axId val="5001"/><c:scaling><c:orientation val="maxMin"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:numFmt formatCode="General" sourceLinked="0"/>
-      <c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:spPr>${lnSp("C3C2B7")}</c:spPr><c:crossAx val="5002"/><c:crosses val="autoZero"/>
-      <c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx>
+      <c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:spPr>${lnSp("C3C2B7")}</c:spPr>
+      <c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="800"/></a:pPr><a:endParaRPr lang="fr-FR"/></a:p></c:txPr><c:crossAx val="5002"/><c:crosses val="autoZero"/>
+      <c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:tickLblSkip val="1"/><c:tickMarkSkip val="1"/><c:noMultiLvlLbl val="0"/></c:catAx>
     <c:valAx><c:axId val="5002"/><c:scaling><c:orientation val="minMax"/><c:max val="${spec.max}"/><c:min val="${spec.min}"/></c:scaling><c:delete val="0"/><c:axPos val="t"/>
       <c:majorGridlines><c:spPr>${lnSp("E1E0D9")}</c:spPr></c:majorGridlines><c:numFmt formatCode="dd/mm" sourceLinked="0"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/>
       <c:tickLblPos val="nextTo"/><c:spPr><a:ln><a:noFill/></a:ln></c:spPr><c:crossAx val="5001"/><c:crosses val="max"/><c:crossBetween val="between"/><c:majorUnit val="${spec.saut}"/></c:valAx>`;
@@ -2673,7 +2686,8 @@ function wLegende(items, enCours) {
 }
 function wChart(rid, id, spec) {
   const cx = spec.type === "pie" ? 4200000 : 6120000;
-  const cy = spec.type === "barh" ? Math.min(8800000, 700000 + spec.cats.length * (spec.mode === "group" && spec.series.length > 1 ? 90000 * spec.series.length + 90000 : 260000))
+  // frise : un nom par ligne (tous écrits, voir tickLblSkip), 0,6 cm par ligne, au plus une page avec son titre
+  const cy = spec.frise ? Math.min(8200000, 700000 + spec.cats.length * 260000) : spec.type === "barh" ? Math.min(8800000, 700000 + spec.cats.length * (spec.mode === "group" && spec.series.length > 1 ? 90000 * spec.series.length + 90000 : 260000))
     : spec.type === "pie" ? 3300000 : 3300000;
   return `<w:p><w:pPr><w:spacing w:after="120"/>${spec.type === "pie" ? '<w:jc w:val="center"/>' : ""}</w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>
     <wp:docPr id="${id}" name="Graphique ${id}"/><wp:cNvGraphicFramePr/>
@@ -2762,9 +2776,14 @@ async function exportWord(onlyIndex = null) {
         const d = crossData(b, base), spec = b.chart === "gantt" ? friseSpec(b, d) : chartSpec(b, d, d.rowKeys.slice(0, topOf(b)));
         if (spec.error) body.push(wP(spec.error, { size: 20 }));
         else {
-          const n = charts.length + 1, rid = "rIdChart" + n;
-          charts.push({ n, rid, xml: spec.frise ? chartXmlFrise(spec) : chartXml(spec), xlsx: new Uint8Array(await chartWorkbook(spec).arrayBuffer()) });
-          body.push(wChart(rid, 100 + n, spec));
+          // frise : graphiques de FRISE_WORD lignes au plus (même axe), pour que Word écrive le nom de chaque ligne
+          const morceaux = spec.frise ? decouperFrise(spec, FRISE_WORD) : [spec];
+          for (const [m, sp] of morceaux.entries()) {
+            const n = charts.length + 1, rid = "rIdChart" + n;
+            if (m) body.push(wP(`${plain(b.title || "Frise")} (suite : lignes ${m * FRISE_WORD + 1} à ${m * FRISE_WORD + sp.cats.length} sur ${spec.cats.length})`, { size: 18, before: 120, keep: true }));
+            charts.push({ n, rid, xml: sp.frise ? chartXmlFrise(sp) : chartXml(sp), xlsx: new Uint8Array(await chartWorkbook(sp).arrayBuffer()) });
+            body.push(wChart(rid, 100 + n, sp));
+          }
           if (spec.frise) body.push(wLegende(spec.legende, spec.enCours));
         }
       } else if ((b.view || "both") !== "table") {
