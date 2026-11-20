@@ -399,6 +399,7 @@ function refColumns(table) {
 }
 function wantedRefs() {
   const s = new Set();
+  if (utiliseReferentiel() && config.blocks.some(b => estVirtuelle(b.source))) { const r = colonnesEpisodes().ref; if (r) s.add(r); }
   config.blocks.forEach(b => { if (!isMainSrc(b) && !estVirtuelle(b.source)) s.add(b.source); if (isCover(b) && b.measure.ref && b.measure.ref.table) s.add(b.measure.ref.table); if (b.rows && b.rows.ref && b.rows.ref.table) s.add(b.rows.ref.table); if (b.chart === "points" && ptsTable(b)) s.add(ptsTable(b)); });
   return [...s];
 }
@@ -565,8 +566,13 @@ function colonnesEpisodes(reg = config.episodes || {}) {
   const prendre = (k, role) => { const v = reg[k], r = roles[role] && roles[role].col; return v && ids.has(v) ? v : r && ids.has(r) ? r : ids.has(role) ? role : ""; };
   const c = { etab: prendre("etab", "Etablissement"), qualif: prendre("qualif", "Qualification"), faits: prendre("faits", "Date_faits"), cree: prendre("cree", "Cree_le") };
   c.ok = !!(window.EpisodesQualification && c.etab && c.qualif && (c.faits || c.cree));
+  c.ref = c.etab ? cibleDe(etatPrincipal().colTypes[c.etab]) : "";      // référentiel visé par la colonne de l'établissement
   return c;
 }
+// Colonnes reprises du référentiel (« ref:<colonne> » dans config.episodes.colonnes et .nom) : lues dans sa table
+const PREFIXE_REF = "ref:";
+const colRef = id => String(id || "").startsWith(PREFIXE_REF) ? id.slice(PREFIXE_REF.length) : "";
+const utiliseReferentiel = () => { const ep = config.episodes || {}; return [...(ep.colonnes || []), ep.nom].some(colRef); };
 // Nom affiché de l'établissement : nom (commune), à défaut l'UAI
 function nomEtab(r, colEtab) {
   const nom = textOf(r.Nom_etablissement), commune = textOf(r.Commune);
@@ -576,8 +582,9 @@ function nomEtab(r, colEtab) {
 // Calcul des deux sources (gardé tant que les lignes, les filtres et les réglages ne changent pas)
 function calculVirtuel() {
   const c = colonnesEpisodes(); if (!c.ok) return null;
-  const cle = JSON.stringify([generation, c, config.filters, config.filtersLogic, quick, config.episodes, jourParis()]);
-  if (cacheVirtuel && cacheVirtuel.cle === cle) return cacheVirtuel;
+  const refData = utiliseReferentiel() && c.ref && refCache.get(c.ref) && refCache.get(c.ref).data || null;   // lu par ensureRefs
+  const cle = JSON.stringify([generation, c, config.filters, config.filtersLogic, quick, config.episodes, jourParis(), refData ? (refData.id || []).length : -1]);
+  if (cacheVirtuel && cacheVirtuel.cle === cle && cacheVirtuel.refData === refData) return cacheVirtuel;
   const E = window.EpisodesQualification;
   const { res, gravite, tous, copie, qLabel } = inSrc(null, () => {
     const gravite = choixGrist(mainTable, c.qualif).filter(q => !E.estRAS(q));
@@ -587,12 +594,22 @@ function calculVirtuel() {
       qualifs: r => keysOf(c.qualif, r[c.qualif]).filter(k => k !== EMPTY),
       ordre: r => { const d = c.cree && toJsDate(r[c.cree]); return d ? d.getTime() : 0; },
       gravite, bornes: (config.episodes || {}).bornes });
-    const copie = colonnesReprises(c).filter(id => columnIds.has(id)).map(id => ({ id, label: labelOf(id), type: typeOf(id) || "Text" }));
+    const refCols = c.ref ? refColumns(c.ref) : [];
+    const copie = colonnesReprises(c).map(id => {
+      if (!colRef(id)) return columnIds.has(id) ? { id, label: labelOf(id), type: typeOf(id) || "Text", lire: r => r[id] } : null;
+      const rc = refCols.find(x => x.id === colRef(id)); if (!rc) return null;
+      return { id: "Ref_" + rc.id, label: `${rc.label} (référentiel)`, type: rc.type, lire: r => valeurRef(r, rc.id) };
+    }).filter(Boolean);
     return { res, gravite, tous: choixGrist(mainTable, c.qualif), copie, qLabel: labelOf(c.qualif) };
   });
   const vues = [...new Set(res.episodes.map(e => e.qualification))];
   const qualifs = [...gravite, ...vues.filter(q => !gravite.includes(q)).sort((a, b) => a.localeCompare(b, "fr"))];
-  const etab = x => { const o = { Etablissement: nomEtab(x.ligne, c.etab) }; copie.forEach(k => o[k.id] = x.ligne[k.id]); return o; };
+  // valeur d'une colonne du référentiel pour la ligne de l'établissement visée par une version
+  const index = refData ? new Map((refData.id || []).map((id, i) => [id, i])) : null;
+  function valeurRef(r, col) { const i = index ? index.get(r[c.etab]) : undefined; return i === undefined || !refData[col] ? null : refData[col][i]; }   // référentiel pas encore lu : vide
+  // nom affiché : colonne choisie (« Nom affiché de l'établissement »), à défaut nom (commune)
+  const nom = (config.episodes || {}).nom, lireNom = !nom ? null : colRef(nom) ? r => valeurRef(r, colRef(nom)) : r => r[nom];
+  const etab = x => { const v = lireNom && textOf(lireNom(x.ligne)); const o = { Etablissement: v || nomEtab(x.ligne, c.etab) }; copie.forEach(k => o[k.id] = k.lire(x.ligne)); return o; };
   const ctx = (cols, recs) => ({ records: recs.map((r, k) => ({ id: k + 1, ...r })), columns: cols, colTypes: Object.fromEntries(cols.map(x => [x.id, x.type])),
     colLabels: Object.fromEntries(cols.map(x => [x.id, x.label])), kindCache: new Map(), columnIds: new Set(cols.map(x => x.id)) });
   const commun = [{ id: "Etablissement", label: "Établissement", type: "Text" }, ...copie];
@@ -609,7 +626,7 @@ function calculVirtuel() {
     { id: "Nb_episodes", label: "Nombre d'épisodes", type: "Int" }, { id: "Qualification_max", label: `${qLabel} la plus grave`, type: "Choice" },
     { id: "Dernier_etat", label: "Dernier état", type: "Choice" }, { id: "En_cours", label: "En cours (pas de RAS depuis)", type: "Bool" },
     ...colsJours.map(({ id, label, type }) => ({ id, label, type }))];
-  cacheVirtuel = { cle, colQualif: c.qualif,
+  cacheVirtuel = { cle, refData, colQualif: c.qualif,
     choix: { Qualification: qualifs, Qualification_max: qualifs, Dernier_etat: [...new Set([...tous, ...qualifs])], Classe_duree: res.classes },
     [SRC_EPISODES]: ctx(colsEp, res.episodes.map(e => ({ ...etab(e), Qualification: e.qualification, Debut: secondesDuJour(e.debut), Fin: secondesDuJour(e.fin),
       Duree: e.duree, Classe_duree: e.classe, En_cours: e.enCours, Episode: e.rang,
@@ -896,20 +913,25 @@ function couleursEditor(b, i) {
 function reglagesDurees() {
   const reg = config.episodes || {}, auto = colonnesEpisodes(), detecte = colonnesEpisodes({});   // detecte : sans le réglage
   const choix = (k, titre, filtre) => `<label>${titre} <select data-ep="${k}">${colOptions(reg[k] || "", { allowEmpty: true, emptyLabel: detecte[k] ? `${labelOf(detecte[k])} (automatique)` : "non reconnue — choisir…", filter: filtre })}</select></label>`;
+  const repSig = columns.filter(c => !COLONNES_COPIEES.includes(c.id) && ![auto.etab, auto.qualif, auto.faits, auto.cree].includes(c.id) && !COLONNES_CALCULEES.test(c.id));
+  const refCols = auto.ref ? refColumns(auto.ref).filter(c => !/^(id|manualSort)$/.test(c.id)) : [];
+  const puce = (id, label) => `<label class="chip" style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" data-epcol="${esc(id)}" ${(reg.colonnes || []).includes(id) ? "checked" : ""}> ${esc(plain(label))}</label>`;
   const bornes = (reg.bornes || window.EpisodesQualification && window.EpisodesQualification.BORNES_DEFAUT || []).join(", ");
   return `<h2>Durées de qualification</h2>
       <div class="desc">Sources « ${esc(VIRTUELLES[SRC_EPISODES])} » et « ${esc(VIRTUELLES[SRC_DUREES])} », calculées à partir des signalements de la table du widget : seuls les jours avec un signalement comptent, chaque jour prend la qualification la plus grave de ses versions (ordre des choix dans Grist), « RAS » ne compte pas.</div>
       <div class="row" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0 12px">
         ${choix("etab", "Établissement", c => !isDate(c.id))}${choix("qualif", "Qualification", c => !isDate(c.id) && !isNumCol(c.id))}
         ${choix("faits", "Date des faits", c => isDate(c.id))}${choix("cree", "Date de saisie", c => isDate(c.id))}
+        <label title="Nom de l'établissement dans les lignes, la frise et le détail ; à défaut (valeur vide), nom (commune)">Nom affiché <select data-ep="nom">${opt([["", "nom (commune) — automatique"],
+          ...repSig.map(c => [c.id, c.label]), ...refCols.map(c => [PREFIXE_REF + c.id, `${c.label} (référentiel)`])], reg.nom || "")}</select></label>
         <label title="Bornes des classes de durée, en jours : « 1, 3, 7, 14 » donne 1 jour, 2 à 3 jours, 4 à 7 jours, 8 à 14 jours, 15 jours et plus">Classes de durée <input type="text" data-ep="bornes" value="${esc(bornes)}" style="width:110px"></label>
         <span class="hint">${auto.ok ? "Colonnes reconnues : sources disponibles pour les blocs." : "Choisissez au moins l'établissement, la qualification et une date."}</span>
       </div>
       <details data-detailbox="__ep-colonnes" ${detailOpen.has("__ep-colonnes") ? "open" : ""} style="margin-bottom:12px"><summary><span class="sub">Colonnes reprises de la table du widget</span>
-        <span class="hint">${(reg.colonnes || []).length ? `${reg.colonnes.length} colonne(s) choisie(s) en plus de celles de l'établissement` : "celles de l'établissement (UAI, nom, commune, département, académie…)"}</span></summary>
-        <div class="chips" style="margin-top:6px">${columns.filter(c => !COLONNES_COPIEES.includes(c.id) && ![auto.etab, auto.qualif, auto.faits, auto.cree].includes(c.id) && !COLONNES_CALCULEES.test(c.id))
-          .map(c => `<label class="chip" style="display:inline-flex;gap:4px;align-items:center"><input type="checkbox" data-epcol="${esc(c.id)}" ${(reg.colonnes || []).includes(c.id) ? "checked" : ""}> ${esc(plain(c.label))}</label>`).join("")}</div>
-        <p class="hint">Chaque épisode et chaque établissement reçoivent la valeur de la version la plus récente de l'établissement : à réserver aux colonnes qui décrivent l'établissement (type, circonscription, secteur…). Elles deviennent proposées en lignes, en colonnes, dans les conditions et le détail.</p></details>`;
+        <span class="hint">${(reg.colonnes || []).length ? `${reg.colonnes.length} colonne(s) choisie(s) en plus de celles de l'établissement` : "celles de l'établissement (UAI, nom, commune, département, académie…) ; d'autres au choix, du référentiel aussi"}</span></summary>
+        <div class="chips" style="margin-top:6px"><span class="sub">Table des signalements :</span>${repSig.map(c => puce(c.id, c.label)).join("")}</div>
+        ${refCols.length ? `<div class="chips" style="margin-top:6px"><span class="sub">Référentiel « ${esc(auto.ref)} » :</span>${refCols.map(c => puce(PREFIXE_REF + c.id, c.label)).join("")}</div>` : ""}
+        <p class="hint">Chaque épisode et chaque établissement reçoivent la valeur de la version la plus récente de l'établissement (colonnes des signalements) ou celle de sa ligne du référentiel (suffixe « (référentiel) ») : à réserver aux colonnes qui décrivent l'établissement (sigle, type, circonscription, secteur…). Elles deviennent proposées en lignes, en colonnes, dans les conditions et le détail.</p></details>`;
 }
 // Ordre personnalisé des colonnes d'un tableau croisé : flèches pour avancer ou reculer chaque colonne
 function ordreColonnesEditeur(b, i) {
@@ -1936,7 +1958,8 @@ RACINE.addEventListener("change", e => {
   if (t.dataset && t.dataset.epcol !== undefined) {                   // colonne reprise dans les sources calculées
     const ep = { ...(config.episodes || {}) }, l = new Set(ep.colonnes || []);
     t.checked ? l.add(t.dataset.epcol) : l.delete(t.dataset.epcol);
-    if (l.size) ep.colonnes = columns.map(c => c.id).filter(id => l.has(id)); else delete ep.colonnes;
+    const ordre = [...columns.map(c => c.id), ...refColumns(colonnesEpisodes().ref).map(c => PREFIXE_REF + c.id)];
+    if (l.size) ep.colonnes = ordre.filter(id => l.has(id)); else delete ep.colonnes;
     if (Object.keys(ep).length) config.episodes = ep; else delete config.episodes;
     commit(); return;
   }
