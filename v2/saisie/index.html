@@ -5,11 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Signalements</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.40"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.40"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.40"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.40"></script>
-<script src="../commun/fiche-etab.js?v=2.62.0-alpha.40"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.41"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.41"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.41"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.41"></script>
+<script src="../commun/fiche-etab.js?v=2.62.0-alpha.41"></script>
+<script src="../commun/demandes.js?v=2.62.0-alpha.41"></script>
 <style>
   :root {
     --bleu: #000091; --bleu-clair: #e3e3fd; --fond-suivi: #f5f5fe; --fond-visa: #fef7ec; --brun: #8a4b00; --fond-res: #eef8f4; --vert-res: #0b6b4f;
@@ -76,6 +77,25 @@
   #bloc-structurel .fe-champ :is(input:not([type=checkbox]), select, textarea) { width: 100%; background: var(--x-ffffff); }
   #bloc-structurel .fe-champ.a-completer :is(input, select, textarea) { border: 2px solid var(--vigil); }
   .pastille-a-completer { background: var(--vigil-bg); color: var(--vigil); }
+  /* demandes de compléments, page des partenaires (2.62.0-alpha.41) */
+  #demandes-accueil { margin: 0 0 20px; }
+  #demandes-accueil > h2 { margin: 0 0 8px; }
+  .demande { border: 1px solid var(--bord, #ddd); border-left: 4px solid var(--vigil); border-radius: 0 8px 8px 0; padding: 12px 14px; margin: 0 0 12px; }
+  .demande-tete { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+  .demande-tete h3 { margin: 0; font-size: 1.05rem; }
+  .demande .consigne { margin: 6px 0; white-space: pre-line; }
+  .demande-etabs { list-style: none; margin: 8px 0 0; padding: 0; }
+  .demande-etabs > li { border-top: 1px solid var(--bord, #e5e5e5); padding: 6px 0; }
+  .demande-ligne { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; }
+  .demande-ligne button.demande-etab { background: none; border: 0; padding: 0; color: var(--bleu); font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
+  .demande-ligne .note { margin: 0; }
+  .demande-ligne .manque { color: var(--vigil); font-size: .9rem; }
+  .demande-ligne .complet { color: var(--vert, #18753c); font-size: .9rem; font-weight: 600; }
+  .demande-edition { padding: 8px 0 4px 14px; }
+  .demande-edition .fe-grille { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 16px; margin: 4px 0 8px; }
+  .demande-edition .fe-champ { display: grid; gap: 4px; align-content: start; }
+  .demande-edition .fe-champ label { font-weight: 600; font-size: .9rem; }
+  .demande-edition .fe-champ :is(input:not([type=checkbox]), select, textarea) { width: 100%; }
   /* page des partenaires : ni création ni mise à jour de signalement */
   .mode-partenaire #form-signalement .actions, .mode-partenaire #porte-nouveau { display: none !important; }
   .visa-bloc + .visa-bloc { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--x-ecd9bd); }
@@ -646,6 +666,10 @@
     <div class="bandeau-veille" id="bandeau-veille" role="status" hidden></div>
     <div class="bandeau-campagne" id="bandeau-campagne" role="status" hidden></div>
     <div class="bandeau-visa" id="bandeau-visa" role="status" hidden></div>
+    <section id="demandes-accueil" aria-labelledby="titre-demandes" hidden>
+      <h2 id="titre-demandes">Demandes de compléments</h2>
+      <div id="demandes-liste"></div>
+    </section>
     <div class="portes">
       <button type="button" class="porte porte-nouveau" id="porte-nouveau">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 7v10M7 12h10"></path></svg>
@@ -6996,6 +7020,97 @@ async function enregistrerReserve() {
 }
 $("form-reserve").addEventListener("submit", ev => { ev.preventDefault(); enFile(enregistrerReserve); });
 
+/* Demandes de compléments (2.62.0-alpha.41, commun/demandes.js) : sur la page des partenaires, l'accueil liste les
+   demandes en cours de la cellule et, pour chacune, les établissements de son périmètre (les autres lui sont
+   invisibles) : à compléter d'abord. Un clic sur l'établissement ouvre ses données demandées, modifiables sur place
+   (FicheEtab, enregistrement à chaque champ) ; « Éléments réservés » ouvre son dernier signalement sur l'onglet
+   Compléments. Relu au plus une fois par minute, et au retour à l'accueil. */
+let demandesLues = 0, demandesEnCours = null, etatDemandes = [];
+function majDemandesPartenaire(forcer) {
+  if (!modePartenaire || !window.Demandes || !window.FicheEtab) { $("demandes-accueil").hidden = true; return null; }
+  if (demandesEnCours) return demandesEnCours;
+  if (!forcer && Date.now() - demandesLues < 60000) return null;
+  demandesEnCours = (async () => {
+    try {
+      const S = window.Socle, cfg = await S.lireConfig();
+      const liste = window.Demandes.liste(cfg).filter(d => !d.close && d.referentiel === ETAB.table);
+      const blocs = [];
+      if (liste.length) {
+        const meta = await S.lireMeta(), tm = meta[ETAB.table];
+        const reserves = liste.some(d => d.reserves) ? await window.Demandes.reservesParEtab(await window.Demandes.tablesReservees(ETAB.table, cfg, meta)) : null;
+        for (const d of liste) {
+          if (!tm) break;
+          const voulues = (d.donnees || []).filter(c => tm.colonnes[c]);
+          const fe = await window.FicheEtab.charger(meta, ETAB.table, { exclure: Object.keys(tm.colonnes).filter(c => !voulues.includes(c)), ordre: "table", sansAjout: true });
+          if (!fe) continue;
+          const av = window.Demandes.avancement(d, fe.t, reserves);
+          if (av.total) blocs.push({ d, fe, av, reserves });
+        }
+      }
+      etatDemandes = blocs;
+      dessinerDemandes();
+    } catch (e) { console.warn("Demandes de compléments illisibles", e); }
+    finally { demandesLues = Date.now(); demandesEnCours = null; }
+  })();
+  return demandesEnCours;
+}
+function dessinerDemandes() {
+  const zone = $("demandes-liste");
+  $("demandes-accueil").hidden = !etatDemandes.length;
+  const ouvert = zone.querySelector(".demande-edition:not([hidden])");
+  const garder = ouvert ? ouvert.dataset.cle : null;
+  zone.innerHTML = etatDemandes.map(({ d, fe, av }, k) => {
+    const tries = [...av.lignes].sort((a, b) => (a.complet - b.complet) || String(fe.t[E.nom] ? fe.t[E.nom][a.i] : "").localeCompare(String(fe.t[E.nom] ? fe.t[E.nom][b.i] : ""), "fr"));
+    const retard = d.echeance && d.echeance < window.Socle.jourParis(Date.now() / 1000);
+    return `<div class="demande" data-k="${k}">
+      <div class="demande-tete"><h3>${esc(d.nom)}</h3><span class="pastille pastille-a-completer" data-dm-compte>${av.total - av.complets} à compléter sur ${av.total}</span>
+        ${d.echeance ? `<span class="note">${retard ? "échéance dépassée : " : "à faire avant le "}${window.Demandes.jourFr(d.echeance)}</span>` : ""}</div>
+      ${d.consigne ? `<p class="consigne">${esc(d.consigne)}</p>` : ""}
+      <ul class="demande-etabs">${tries.slice(0, 300).map(l => `<li data-etab="${l.id}">
+        <div class="demande-ligne"><button type="button" class="demande-etab" aria-expanded="false">${esc(fe.t[E.nom] ? fe.t[E.nom][l.i] : `Établissement n° ${l.id}`)}</button>
+          <span class="note">${esc([E.commune && fe.t[E.commune] ? fe.t[E.commune][l.i] : "", E.uai && fe.t[E.uai] ? fe.t[E.uai][l.i] : ""].filter(Boolean).join(" · "))}</span>
+          <span data-dm-etat>${etatLigneDemande(d, fe, l)}</span></div>
+        <div class="demande-edition" data-cle="${k}-${l.id}" hidden></div></li>`).join("")}</ul>
+      ${tries.length > 300 ? `<p class="note">300 premiers établissements affichés.</p>` : ""}</div>`;
+  }).join("");
+  zone.querySelectorAll(".demande-etab").forEach(b => b.addEventListener("click", () => basculerDemande(b)));
+  if (garder) { const b = zone.querySelector(`.demande-edition[data-cle="${garder}"]`); if (b) basculerDemande(b.closest("li").querySelector(".demande-etab")); }
+}
+function etatLigneDemande(d, fe, l) {
+  if (l.complet) return `<span class="complet">✓ complet</span>`;
+  const libs = l.manque.map(c => (fe.cols.find(x => x.colId === c) || { label: c }).label);
+  if (l.reserveAFaire) libs.push("éléments réservés");
+  return `<span class="manque">à compléter : ${esc(libs.join(", "))}</span>`;
+}
+function basculerDemande(b) {
+  const li = b.closest("li"), div = li.querySelector(".demande-edition"), k = +b.closest(".demande").dataset.k, id = +li.dataset.etab;
+  const { d, fe, reserves } = etatDemandes[k] || {};
+  if (!d) return;
+  const ouvrir = div.hidden;
+  b.setAttribute("aria-expanded", String(ouvrir)); div.hidden = !ouvrir;
+  if (!ouvrir) { div.innerHTML = ""; return; }
+  const px = `dm${k}-${id}-`, r = d.reserves && reserves ? reserves.get(id) : null;
+  const res = !d.reserves ? "" : !r ? `<p class="note">Éléments réservés : aucun signalement pour cet établissement.</p>`
+    : r.table === tableId ? `<p><button type="button" class="secondaire" data-dm-dossier="${r.dossier}">Éléments réservés du dernier signalement (n° ${r.dossier}) →</button>${r.rempli ? ` <span class="note">déjà renseignés</span>` : ""}</p>`
+    : `<p class="note">Éléments réservés : dernier signalement dans « ${esc(r.table)} » (page des compléments de ce formulaire).</p>`;
+  div.innerHTML = (fe.cols.length ? window.FicheEtab.html(fe, id, px) : "") + `<p class="statut" data-dm-statut role="status"></p>` + res;
+  window.FicheEtab.lier(div, fe, id, { prefixe: px, dire: (t, err) => { const st = div.querySelector("[data-dm-statut]"); st.textContent = t; st.className = "statut " + (err ? "err" : "ok"); },
+    apresModif: () => majLigneDemande(k, id) });
+  const bd = div.querySelector("[data-dm-dossier]");
+  if (bd) bd.addEventListener("click", () => ouvrirDepuisListe(+bd.dataset.dmDossier));
+  const premier = div.querySelector("[data-fe]"); if (premier) premier.focus();
+}
+// Après un champ enregistré : état de la ligne et compte de la demande, sans redessiner (la saisie en cours reste)
+function majLigneDemande(k, id) {
+  const x = etatDemandes[k]; if (!x) return;
+  x.av = window.Demandes.avancement(x.d, x.fe.t, x.reserves);
+  const l = x.av.lignes.find(y => y.id === id), bloc = document.querySelector(`#demandes-liste .demande[data-k="${k}"]`);
+  if (!bloc) return;
+  const li = bloc.querySelector(`li[data-etab="${id}"] [data-dm-etat]`);
+  if (li && l) li.innerHTML = etatLigneDemande(x.d, x.fe, l);
+  bloc.querySelector("[data-dm-compte]").textContent = `${x.av.total - x.av.complets} à compléter sur ${x.av.total}`;
+}
+
 // Le premier champ « Choix » du visa (typiquement Favorable / À revoir / Défavorable) est traité
 // comme un verdict : cliquer dessus l'enregistre aussitôt, sans passer par le bouton « Enregistrer »,
 // pour que l'agent du département ou de l'académie puisse valider en un geste. Les autres champs du
@@ -7496,6 +7611,7 @@ $("porte-retrouver").addEventListener("click", () => {
 $("btn-retour-liste").addEventListener("click", () => {
   if (!abandonAccepte()) return;
   montrerVue("accueil");
+  if (modePartenaire) majDemandesPartenaire(true);
   window.scrollTo(0, 0);
 });
 
@@ -7507,7 +7623,7 @@ function afficherCartes() {
   $("titre-liste").textContent = modeEtab ? "Vos signalements" : "Signalements";
   $("porte-nouveau-texte").textContent = modeEtab ? "Un événement à signaler dans votre établissement." : "Un événement à signaler dans un établissement.";
   $("porte-retrouver-texte").textContent = modePartenaire ? "Consulter un signalement et compléter sa fiche (onglet Compléments)." : modeEtab ? "Consulter ou actualiser vos signalements." : "Consulter ou actualiser un signalement existant.";
-  majBandeauVisa(); majBandeauCampagne(); majBandeauVeille();
+  majBandeauVisa(); majBandeauCampagne(); majBandeauVeille(); majDemandesPartenaire(false);
   const q = $("recherche-signalements").value.trim(), mots = sansAccent(q).split(/\s+/).filter(Boolean);
   const base0 = fileVisa ? indexRecherche.filter(x => aViserParMoi(x.l)) : indexRecherche;
   const base = filtreActif() ? base0.filter(x => passeFiltre(x.l)) : base0;

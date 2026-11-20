@@ -7,12 +7,13 @@
      Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.40"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.40"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.40"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.40"></script>
-<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.40"></script>
-<script src="fiche-moteur.js?v=2.62.0-alpha.40"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.41"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.41"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.41"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.41"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.41"></script>
+<script src="../commun/demandes.js?v=2.62.0-alpha.41"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.41"></script>
 <style>
   :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
           --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
@@ -224,6 +225,7 @@
     <button id="imprimer" title="Imprimer la fiche affichée">Imprimer la fiche</button>
     <button id="imprimerSelection" title="Une fiche après l'autre, pour chaque établissement de la sélection">Imprimer la sélection</button>
   </span>
+  <button id="demanderComplements" hidden title="Demander aux partenaires (DSDEN, rectorats…) de compléter les fiches des établissements de la sélection">Demander des compléments…</button>
   <button id="ouvrirReglages">⚙ Réglages</button>
 </header>
 <div class="barre-filtres" id="barreFiltres">
@@ -573,8 +575,8 @@ function sauvegarderFiltres() {
 // propriétaire : seul à pouvoir lire les règles d'accès du document
 async function lirePartenaires() {
   partenaires = []; proprietaire = false;
+  try { await grist.docApi.fetchTable("_grist_ACLRules"); proprietaire = true; } catch (_) {}   // aussi hors page des partenaires : demandes de compléments
   if (!pagePartenaires) return;
-  try { await grist.docApi.fetchTable("_grist_ACLRules"); proprietaire = true; } catch (_) {}
   try {
     const d = await grist.docApi.fetchTable(PART.table), col = k => d[k] || [];
     partenaires = d.id.map((id, i) => { let contenu = {}; try { contenu = JSON.parse(col(PART.fiche)[i] || "{}") || {}; } catch (_) {}
@@ -770,6 +772,9 @@ function afficherPosition() {
   $("position").textContent = !selection.length ? "aucun" : i < 0 ? "hors sélection" : `${i + 1} / ${selection.length}`;
   $("precedent").disabled = $("suivant").disabled = !selection.length;
   $("imprimerSelection").disabled = !selection.length;
+  // demande de compléments (2.62.0-alpha.41) : propriétaires, sur la sélection en cours
+  $("demanderComplements").hidden = !(proprietaire && window.Demandes && actuelle().referentiel.table);
+  $("demanderComplements").disabled = !selection.length;
 }
 function allerA(id, depuisGrist) {
   if (!selection.some(x => x.id === id)) {   // ligne choisie dans Grist hors de la sélection : la fiche ne change pas
@@ -968,6 +973,14 @@ $("avances").addEventListener("click", e => {
 });
 
 // ---------- impression de la sélection : une fiche par page ----------
+$("demanderComplements").addEventListener("click", () => {
+  const nom = $("modele").value ? ` (modèle « ${$("modele").selectedOptions[0].textContent.trim()} »)` : "";
+  const filtres = [...$("puces").querySelectorAll(".qchip.on")].map(b => b.textContent.replace("▾", "").trim()).filter(Boolean);
+  if (etat.avances.filter(FC.actif).length) filtres.push(`${etat.avances.filter(FC.actif).length} filtre(s) de sélection avancée`);
+  window.Demandes.ouvrirCreation({ referentiel: actuelle().referentiel.table, etabs: selection.map(x => x.id),
+    source: (`Fiche établissement${nom}` + (filtres.length ? ` ; ${filtres.join(" ; ")}` : "")).slice(0, 400),
+    dire: (t, err) => message(t, err ? "erreur" : "info") });
+});
 $("imprimerSelection").addEventListener("click", () => {
   if (!selection.length || !lecteur) return;
   if (selection.length > 50 && !confirm(`Imprimer ${selection.length} fiches (une par page) ?`)) return;
