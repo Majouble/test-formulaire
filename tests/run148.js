@@ -1,4 +1,4 @@
-// 2.62.0-alpha.43 : durées de qualification — sources calculées « Épisodes de qualification » et « Durées par
+// 2.62.0-alpha.43 et .44 : durées de qualification — sources calculées « Épisodes de qualification » et « Durées par
 // établissement » (jours avec un signalement seulement, qualification la plus grave du jour, RAS exclu), frise (Gantt),
 // typologie par classe de durée, filtre commun appliqué avant le calcul, ajout des blocs dans l'atelier, export Word (image)
 const __C = require('./chemins');
@@ -91,6 +91,11 @@ const API = doc => `window.__DOC__=${JSON.stringify(doc)};window.__OPTS__={};` +
   await ouvrir({ name: 'Tableau de bord', filters: [{ col: 'Academie', op: 'eq', val: 'Rennes' }], blocks: [{ ...BLOCS[0], sort: 'debut' }, BLOCS[1]] });
   console.log('FILTRE ACADÉMIE = Rennes, FRISE :', await page.$$eval('[data-card="0"] .chart svg rect[data-tip]', l => l.map(r => r.getAttribute('data-tip').replace('\u0001', ' → ')).join(' ; ')));
   console.log('FILTRE ACADÉMIE = Rennes, TYPOLOGIE :', (await lignesTableau(1)).join(' / '));
+
+  // 3 bis. condition de la frise sur les chiffres de l'établissement recopiés sur ses épisodes (2.62.0-alpha.44)
+  await ouvrir({ name: 'Tableau de bord', filters: [], blocks: [{ ...BLOCS[0], conds: [{ col: 'Jours_touches', op: 'ge', val: '3' }] }] });
+  console.log('FRISE, JOURS TOUCHÉS ≥ 3 :', await page.$$eval('[data-card="0"] .chart svg text[text-anchor="end"] title', l => l.map(t => t.textContent).join(' ; ')));
+  console.log('COLONNES DES CONDITIONS :', await page.$$eval('[data-card="0"] [data-f="col"] option', l => l.map(o => o.textContent).filter(t => /établissement\)/.test(t)).join(' ; ')));
 
   // 4. atelier : réglages « Durées de qualification », sources proposées, ajout d'une frise et d'une typologie
   const doc = docDurees(); publier(doc, { name: 'Tableau de bord', filters: [], blocks: [] });
