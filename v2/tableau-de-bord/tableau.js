@@ -1406,6 +1406,11 @@ function friseEditor(b, i) {
   return `<div class="row"><span class="lbl">Période</span>
       <select data-b="${i}" data-k="frise.debut" title="Date de début de chaque barre">${colOptions(f.debut || "", { allowEmpty: true, emptyLabel: `Début : ${auto.debut ? labelOf(auto.debut) + " (automatique)" : "choisir une date…"}`, filter: dates })}</select>
       <select data-b="${i}" data-k="frise.fin" title="Date de fin de chaque barre">${opt([["", `Fin : ${auto.fin ? labelOf(auto.fin) + " (automatique)" : "le jour même (automatique)"}`], ["__aucune", "Fin : le jour même"], ...columns.filter(dates).map(c => [c.id, "Fin : " + c.label])], f.fin || "")}</select></div>
+    <div class="row"><span class="lbl">Dates affichées</span>
+      <select data-b="${i}" data-k="frise.fenetre">${opt([["", "toutes les dates"], ["dates", "du… au…"], ["derniers", "les derniers jours"]], f.fenetre || "")}</select>
+      ${f.fenetre === "dates" ? `<label>du <input type="date" data-b="${i}" data-k="frise.du" value="${esc(f.du || "")}"></label><label>au <input type="date" data-b="${i}" data-k="frise.au" value="${esc(f.au || "")}"></label>` : ""}
+      ${f.fenetre === "derniers" ? `<label><input type="number" min="1" style="width:70px" data-b="${i}" data-k="frise.n" value="${Number(f.n) || 14}"> derniers jours, jusqu'à aujourd'hui</label>` : ""}
+      <span class="hint">Affichage seulement : la mesure, le tableau et les autres blocs gardent toutes les dates.</span></div>
     <p class="hint">Une ligne de frise par valeur de « Lignes », une couleur par valeur de « Colonnes » (couleurs des choix de Grist s'il y en a). La mesure, affichée à droite, sert au tri : avec la source « ${esc(VIRTUELLES[SRC_EPISODES])} », « Somme de Durée » donne les jours touchés.</p>`;
 }
 // Lignes de la frise et leurs périodes, communes à l'écran et à Word
@@ -1420,17 +1425,31 @@ function friseDonnees(b, d) {
     const ck = d.cc ? keysOf(d.cc, r[d.cc], d.cg)[0] : null, enCours = enCoursCol && r.En_cours === true;
     (d.rc ? [...new Set(keysOf(d.rc, r[d.rc], d.rg))] : ["Total"]).forEach(rk => push(rk, { a, z, ck, enCours }));
   });
+  // dates affichées (réglage de la frise) : périodes coupées aux bornes, lignes sans période dans la fenêtre écartées
+  const f = b.frise || {}, auj = numJour(jourParis());
+  const bornes = f.fenetre === "dates" ? [f.du && /^\d{4}-\d{2}-\d{2}$/.test(f.du) ? numJour(f.du) : -Infinity, f.au && /^\d{4}-\d{2}-\d{2}$/.test(f.au) ? numJour(f.au) : Infinity]
+    : f.fenetre === "derniers" ? [auj - Math.max(1, Math.round(Number(f.n) || 14)) + 1, auj] : null;
+  let horsFenetre = 0;
+  if (bornes) {
+    const [du, au] = bornes[0] <= bornes[1] ? bornes : [bornes[1], bornes[0]];
+    barres.forEach((l, k) => {
+      const v = l.filter(s => s.z >= du && s.a <= au).map(s => ({ ...s, a: Math.max(s.a, du), z: Math.min(s.z, au), a0: s.a, z0: s.z, enCours: s.enCours && s.z <= au }));
+      if (v.length) barres.set(k, v); else { barres.delete(k); horsFenetre++; }
+    });
+  }
   let cles = d.rowKeys.filter(k => barres.has(k));
   if (b.sort === "debut") cles.sort((x, y) => Math.min(...barres.get(x).map(s => s.a)) - Math.min(...barres.get(y).map(s => s.a)) || x.localeCompare(y, "fr"));
   const cachees = Math.max(0, cles.length - topOf(b)); cles = cles.slice(0, topOf(b));
-  if (!cles.length) return { erreur: "Frise : aucune ligne n'a de date de début." };
+  if (!cles.length) return { erreur: bornes ? "Frise : aucune période dans les dates affichées." : "Frise : aucune ligne n'a de date de début." };
   const unite = (b.measure.agg === "sum" && /duree|jours/i.test(b.measure.col || "")) ? " j" : "";
   const lignes = cles.map(rk => ({ rk, libelle: keyLabel(d.rc, rk, d.rg), valeur: fmtNum(d.rowVal.get(rk)) + unite, segs: barres.get(rk) }));
-  const segs = lignes.flatMap(l => l.segs), min = Math.min(...segs.map(s => s.a)), max = Math.max(...segs.map(s => s.z));
+  const segs = lignes.flatMap(l => l.segs);
+  let min = Math.min(...segs.map(s => s.a)), max = Math.max(...segs.map(s => s.z));
+  if (bornes) { if (isFinite(bornes[0]) && isFinite(bornes[1])) [min, max] = [Math.min(...bornes), Math.max(...bornes)]; else if (isFinite(bornes[0])) min = bornes[0]; else if (isFinite(bornes[1])) max = bornes[1]; }
   const couleur = k => k === null ? couleurDe(b, null, "__serie", "var(--s1)") : d.colorOf.get(k) || "var(--other)";
   const vues = new Set(segs.map(s => s.ck)), valeurs = d.cc ? d.colKeys.filter(k => vues.has(k)) : [null];
   return { lignes, min, max, couleur, valeurs, nom: k => k === null ? plain(measureText(b.measure)) : plain(keyLabel(d.cc, k, d.cg)),
-    enCours: segs.some(s => s.enCours), cachees, saut: dw => [1, 2, 7, 14, 28, 56, 91, 182, 364].find(x => x * dw >= 44) || 364 };
+    enCours: segs.some(s => s.enCours), cachees, horsFenetre, fenetre: `du ${dateLabel(jourNum(min), "jour")} au ${dateLabel(jourNum(max), "jour")}`, saut: dw => [1, 2, 7, 14, 28, 56, 91, 182, 364].find(x => x * dw >= 44) || 364 };
 }
 function renderFrise(b, d, bi) {
   const F = friseDonnees(b, d); if (F.erreur) return `<p class="hint">${esc(F.erreur)}</p>`;
@@ -1452,8 +1471,9 @@ function renderFrise(b, d, bi) {
     const y = axeH + k * pas + (pas - barH) / 2;
     m += `<text x="${labelW - 8}" y="${y + barH / 2 + 4}" text-anchor="end"><title>${esc(plain(l.libelle))}</title>${svgRich(l.libelle, maxChars)}</text>`;
     l.segs.slice().sort((s, t) => (ordre.get(t.ck) ?? 1e9) - (ordre.get(s.ck) ?? 1e9)).forEach(s => {
-      const x0 = x(s.a) + 0.5, w = Math.max(2, (s.z - s.a + 1) * dw - 1), nj = s.z - s.a + 1, c = F.couleur(s.ck);
-      const quand = s.a === s.z ? `le ${dateLabel(jourNum(s.a), "jour")}` : `du ${dateLabel(jourNum(s.a), "jour")} au ${dateLabel(jourNum(s.z), "jour")}`;
+      const x0 = x(s.a) + 0.5, w = Math.max(2, (s.z - s.a + 1) * dw - 1), c = F.couleur(s.ck);
+      const a0 = s.a0 ?? s.a, z0 = s.z0 ?? s.z, nj = z0 - a0 + 1;         // infobulle : la période entière, même coupée par les dates affichées
+      const quand = a0 === z0 ? `le ${dateLabel(jourNum(a0), "jour")}` : `du ${dateLabel(jourNum(a0), "jour")} au ${dateLabel(jourNum(z0), "jour")}`;
       const tip = tipAttr(`${plain(l.libelle)}${s.ck !== null ? " · " + s.ck : ""}`, `${quand} · ${nj} jour${nj > 1 ? "s" : ""}${s.enCours ? " · en cours" : ""}`) + drillAttr(bi, l.rk, s.ck);
       m += `<rect x="${x0.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${barH}" rx="2" fill="${c}" ${tip}></rect>`;
       if (s.enCours) m += `<path d="M${(x0 + w + 1).toFixed(1)} ${y}l6 ${barH / 2}l-6 ${barH / 2}z" fill="${c}" ${tip}></path>`;
@@ -1461,7 +1481,8 @@ function renderFrise(b, d, bi) {
     m += `<text class="val" x="${W - valW + 14}" y="${y + barH / 2 + 4}">${esc(l.valeur)}</text>`;
   });
   const legende = d.cc ? `<div class="legend">${F.valeurs.map(k => `<span><i style="background:${F.couleur(k)}"></i>${rich(keyLabel(d.cc, k, d.cg))}</span>`).join("")}${F.enCours ? `<span><i style="background:var(--axis)"></i>▸ en cours (pas de RAS depuis)</span>` : ""}</div>` : "";
-  const note = F.cachees ? `<p class="hint">${F.cachees} autre(s) ligne(s) non affichée(s) : augmentez « Lignes affichées ».</p>` : "";
+  const note = (F.cachees ? `<p class="hint">${F.cachees} autre(s) ligne(s) non affichée(s) : augmentez « Lignes affichées ».</p>` : "")
+    + (F.horsFenetre ? `<p class="hint">${F.horsFenetre} ligne(s) sans période dans les dates affichées (${esc(F.fenetre)}).</p>` : "");
   return `<div class="chart">${svgWrap(W, H, m, plain(b.title || "Frise"))}${legende}${note}</div>`;
 }
 // Frise dans Word (graphique modifiable, aussi dans Excel) : barres horizontales empilées. Pour chaque rang d'épisode k,
