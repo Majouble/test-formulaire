@@ -169,6 +169,7 @@ function keysOf(col, v, grain) {
 }
 // Choix d'une colonne Choice / ChoiceList, dans l'ordre réglé dans Grist (table du bloc)
 function choixGrist(table, col) {
+  if (estVirtuelle(table)) { const v = calculVirtuel(); return (v && v.choix[col]) || []; }
   if (!docMeta || !table || !col) return [];
   const { T, C } = docMeta, ref = T.id[T.tableId.indexOf(table)];
   for (let i = 0; i < C.id.length; i++) if (C.parentId[i] === ref && C.colId[i] === col) {
@@ -389,6 +390,7 @@ function refTables() {
   return T.tableId.filter((t, i) => t && t !== mainTable && t !== CFG_TABLE && !t.startsWith("GristHidden") && !(T.summarySourceTable && T.summarySourceTable[i]));
 }
 function refColumns(table) {
+  if (estVirtuelle(table)) { const v = calculVirtuel(); return v ? v[table].columns.slice() : []; }
   if (!docMeta || !table) return [];
   const T = docMeta.T, C = docMeta.C, ref = T.id[T.tableId.indexOf(table)];
   const out = [];
@@ -397,7 +399,7 @@ function refColumns(table) {
 }
 function wantedRefs() {
   const s = new Set();
-  config.blocks.forEach(b => { if (!isMainSrc(b)) s.add(b.source); if (isCover(b) && b.measure.ref && b.measure.ref.table) s.add(b.measure.ref.table); if (b.rows && b.rows.ref && b.rows.ref.table) s.add(b.rows.ref.table); if (b.chart === "points" && ptsTable(b)) s.add(ptsTable(b)); });
+  config.blocks.forEach(b => { if (!isMainSrc(b) && !estVirtuelle(b.source)) s.add(b.source); if (isCover(b) && b.measure.ref && b.measure.ref.table) s.add(b.measure.ref.table); if (b.rows && b.rows.ref && b.rows.ref.table) s.add(b.rows.ref.table); if (b.chart === "points" && ptsTable(b)) s.add(ptsTable(b)); });
   return [...s];
 }
 async function ensureRefs() {
@@ -473,6 +475,7 @@ const stateNow = () => ({ records, columns, colTypes, colLabels, kindCache, colu
 function setState(st) { ({ records, columns, colTypes, colLabels, kindCache, columnIds } = st); }
 const EMPTY_STATE = () => ({ records: [], columns: [], colTypes: {}, colLabels: {}, kindCache: new Map(), columnIds: new Set() });
 function ctxOf(table) {
+  if (estVirtuelle(table)) { const v = calculVirtuel(); return v ? v[table] : null; }
   const c = refCache.get(table); if (!c || !c.data) return null;
   if (!c.ctx) {
     const d = c.data, meta = refColumns(table).filter(x => d[x.id]);
@@ -496,6 +499,8 @@ function inSrc(b, fn) {
 // filtres communs ou rapides qui ne s'appliquent pas à la table du bloc (colonne absente)
 function srcNote(b) {
   if (isMainSrc(b)) return "";
+  if (estVirtuelle(b.source)) return calculVirtuel() ? `<p class="hint edit-only">${esc(VIRTUELLES[b.source])} à partir des signalements retenus par les filtres : seuls les jours avec un signalement comptent, chaque jour prend la qualification la plus grave de ses versions, « RAS » ne compte pas. (Message visible seulement en mode modification.)</p>`
+    : `<p class="hint warn">${esc(VIRTUELLES[b.source])} : colonnes de l'établissement, de la qualification ou de la date introuvables dans la table du widget. Choisissez-les dans les réglages du tableau de bord (« Durées de qualification »).</p>`;
   const c = refCache.get(b.source);
   if (!c || refLoading.has(b.source) && !c.data) return `<p class="hint">Lecture de la table « ${esc(b.source)} »…</p>`;
   if (c.error) return `<p class="hint warn">Table « ${esc(b.source)} » illisible : ${esc(c.error)}</p>`;
@@ -527,6 +532,95 @@ function remapBlockCols(b, oldSrc) {
   if (b.cols) b.cols.col = map(b.cols.col);
   (b.conds || []).forEach(c => c.col = map(c.col));
   if (b.detailCols) b.detailCols = b.detailCols.map(map).filter(c => target.some(t => t.id === c));
+}
+
+// =============================================================================
+// Sources calculées : épisodes de qualification et durées par établissement (calcul : episodes.js)
+// Elles se choisissent comme une table du document. Elles sont calculées en mémoire, à partir des signalements de la
+// table du widget retenus par les filtres communs et rapides (ces filtres ne sont donc pas appliqués une seconde fois).
+// =============================================================================
+const SRC_EPISODES = "__Episodes", SRC_DUREES = "__Durees";
+const VIRTUELLES = { [SRC_EPISODES]: "Épisodes de qualification (calculés)", [SRC_DUREES]: "Durées par établissement (calculées)" };
+const estVirtuelle = t => !!t && Object.prototype.hasOwnProperty.call(VIRTUELLES, t);
+const nomSource = t => estVirtuelle(t) ? VIRTUELLES[t] : "Table " + t;
+const COLONNES_COPIEES = ((window.Socle && window.Socle.COLONNES_ETABLISSEMENT) || []).map(c => c.id).concat(["UAI", "Nom_etablissement", "Commune", "Departement", "Academie", "Latitude", "Longitude"])
+  .filter((id, k, a) => a.indexOf(id) === k);
+const etatPrincipal = () => curSrc === null ? stateNow() : (mainState || EMPTY_STATE());
+let generation = 0, cacheVirtuel = null;         // generation : changée à chaque arrivée des lignes
+const jourParis = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(new Date());
+const secondesDuJour = j => Date.UTC(+j.slice(0, 4), +j.slice(5, 7) - 1, +j.slice(8, 10)) / 1000;   // colonne Date de Grist
+// Colonnes de la table du widget qui servent au calcul : réglage du tableau (config.episodes), sinon rôles du socle
+function colonnesEpisodes(reg = config.episodes || {}) {
+  const ids = new Set(etatPrincipal().columns.map(c => c.id));
+  let roles = {};
+  if (window.Socle && docMeta && mainTable) {
+    const { T, C } = docMeta, ref = T.id[T.tableId.indexOf(mainTable)], colonnes = {};
+    C.id.forEach((_, i) => { if (C.parentId[i] === ref) colonnes[C.colId[i]] = { colId: C.colId[i], label: (C.label && C.label[i]) || C.colId[i], type: C.type[i], isFormula: !!(C.isFormula && C.isFormula[i]) }; });
+    try { roles = window.Socle.resoudreRoles("reponses", { colonnes }, { reponses: mainTable, referentiel: "" }); } catch (_) { roles = {}; }
+  }
+  const prendre = (k, role) => { const v = reg[k], r = roles[role] && roles[role].col; return v && ids.has(v) ? v : r && ids.has(r) ? r : ids.has(role) ? role : ""; };
+  const c = { etab: prendre("etab", "Etablissement"), qualif: prendre("qualif", "Qualification"), faits: prendre("faits", "Date_faits"), cree: prendre("cree", "Cree_le") };
+  c.ok = !!(window.EpisodesQualification && c.etab && c.qualif && (c.faits || c.cree));
+  return c;
+}
+// Nom affiché de l'établissement : nom (commune), à défaut l'UAI
+function nomEtab(r, colEtab) {
+  const nom = textOf(r.Nom_etablissement), commune = textOf(r.Commune);
+  if (nom) return commune && !nom.includes(commune) ? `${nom} (${commune})` : nom;
+  return textOf(r.UAI) || `Établissement ${String(r[colEtab] ?? "?")}`;
+}
+// Calcul des deux sources (gardé tant que les lignes, les filtres et les réglages ne changent pas)
+function calculVirtuel() {
+  const c = colonnesEpisodes(); if (!c.ok) return null;
+  const cle = JSON.stringify([generation, c, config.filters, config.filtersLogic, quick, (config.episodes || {}).bornes, jourParis()]);
+  if (cacheVirtuel && cacheVirtuel.cle === cle) return cacheVirtuel;
+  const E = window.EpisodesQualification;
+  const { res, gravite, tous, copie, qLabel } = inSrc(null, () => {
+    const gravite = choixGrist(mainTable, c.qualif).filter(q => !E.estRAS(q));
+    const res = E.calculer(baseRows(), {
+      etab: r => { const v = r[c.etab]; return v === null || v === undefined || v === "" || v === 0 ? null : typeof v === "object" ? JSON.stringify(v) : String(v); },
+      jour: r => (c.faits && dayOf(c.faits, r[c.faits])) || (c.cree && dayOf(c.cree, r[c.cree])) || null,
+      qualifs: r => keysOf(c.qualif, r[c.qualif]).filter(k => k !== EMPTY),
+      ordre: r => { const d = c.cree && toJsDate(r[c.cree]); return d ? d.getTime() : 0; },
+      gravite, bornes: (config.episodes || {}).bornes });
+    const copie = COLONNES_COPIEES.filter(id => id !== c.etab && columnIds.has(id)).map(id => ({ id, label: labelOf(id), type: typeOf(id) || "Text" }));
+    return { res, gravite, tous: choixGrist(mainTable, c.qualif), copie, qLabel: labelOf(c.qualif) };
+  });
+  const vues = [...new Set(res.episodes.map(e => e.qualification))];
+  const qualifs = [...gravite, ...vues.filter(q => !gravite.includes(q)).sort((a, b) => a.localeCompare(b, "fr"))];
+  const etab = x => { const o = { Etablissement: nomEtab(x.ligne, c.etab) }; copie.forEach(k => o[k.id] = x.ligne[k.id]); return o; };
+  const ctx = (cols, recs) => ({ records: recs.map((r, k) => ({ id: k + 1, ...r })), columns: cols, colTypes: Object.fromEntries(cols.map(x => [x.id, x.type])),
+    colLabels: Object.fromEntries(cols.map(x => [x.id, x.label])), kindCache: new Map(), columnIds: new Set(cols.map(x => x.id)) });
+  const commun = [{ id: "Etablissement", label: "Établissement", type: "Text" }, ...copie];
+  const colsEp = [...commun, { id: "Qualification", label: qLabel, type: "Choice" }, { id: "Debut", label: "Début", type: "Date" }, { id: "Fin", label: "Fin", type: "Date" },
+    { id: "Duree", label: "Durée (jours)", type: "Int" }, { id: "Classe_duree", label: "Classe de durée", type: "Choice" },
+    { id: "En_cours", label: "En cours (pas de RAS depuis)", type: "Bool" }, { id: "Episode", label: "N° de l'épisode", type: "Int" }];
+  const colsJours = qualifs.map((q, k) => ({ id: `Jours_${k + 1}`, label: `Jours : ${q}`, type: "Int", q }));
+  const colsDu = [...commun, { id: "Premier_jour", label: "Premier jour", type: "Date" }, { id: "Dernier_jour", label: "Dernier jour", type: "Date" },
+    { id: "Jours_touches", label: "Jours touchés", type: "Int" }, { id: "Classe_duree", label: "Classe de durée", type: "Choice" },
+    { id: "Nb_episodes", label: "Nombre d'épisodes", type: "Int" }, { id: "Qualification_max", label: `${qLabel} la plus grave`, type: "Choice" },
+    { id: "Dernier_etat", label: "Dernier état", type: "Choice" }, { id: "En_cours", label: "En cours (pas de RAS depuis)", type: "Bool" },
+    ...colsJours.map(({ id, label, type }) => ({ id, label, type }))];
+  cacheVirtuel = { cle, colQualif: c.qualif,
+    choix: { Qualification: qualifs, Qualification_max: qualifs, Dernier_etat: [...new Set([...tous, ...qualifs])], Classe_duree: res.classes },
+    [SRC_EPISODES]: ctx(colsEp, res.episodes.map(e => ({ ...etab(e), Qualification: e.qualification, Debut: secondesDuJour(e.debut), Fin: secondesDuJour(e.fin),
+      Duree: e.duree, Classe_duree: e.classe, En_cours: e.enCours, Episode: e.rang }))),
+    [SRC_DUREES]: ctx(colsDu, res.etablissements.map(e => ({ ...etab(e), Premier_jour: secondesDuJour(e.premier), Dernier_jour: secondesDuJour(e.dernier),
+      Jours_touches: e.jours, Classe_duree: e.classe, Nb_episodes: e.episodes, Qualification_max: e.plusGrave, Dernier_etat: e.dernierEtat, En_cours: e.enCours,
+      ...Object.fromEntries(colsJours.map(x => [x.id, e.joursPar[x.q] || 0])) }))) };
+  return cacheVirtuel;
+}
+// Sources proposées pour un bloc : tables du document, puis sources calculées (si les colonnes sont reconnues)
+const sourcesBlocs = b => [...refTables(), ...Object.keys(VIRTUELLES).filter(t => (b && b.source === t) || colonnesEpisodes().ok)];
+// Couleur d'un choix réglée dans Grist (pour les sources calculées : celle de la colonne Qualification du widget)
+function couleurChoix(table, col, valeur) {
+  if (estVirtuelle(table)) { if (!/^(Qualification|Qualification_max|Dernier_etat)$/.test(col) || !cacheVirtuel) return ""; table = mainTable; col = cacheVirtuel.colQualif; }
+  if (!docMeta || !table || !col) return "";
+  const { T, C } = docMeta, ref = T.id[T.tableId.indexOf(table)];
+  for (let i = 0; i < C.id.length; i++) if (C.parentId[i] === ref && C.colId[i] === col) {
+    try { const o = JSON.parse(C.widgetOptions[i] || "{}").choiceOptions || {}; return (o[valeur] && o[valeur].fillColor) || ""; } catch (e) { return ""; }
+  }
+  return "";
 }
 
 function aggregate(rows, m) {
@@ -731,6 +825,7 @@ function renderGlobal() {
         ${((config.wordTiles || {}).layout || "tiles") === "tiles" ? `<select id="wordTilesPerRow">${opt([["2", "2 par ligne"], ["3", "3 par ligne"], ["4", "4 par ligne"]], String((config.wordTiles || {}).perRow || 3))}</select>` : ""}
         <select id="wordDeltaColor" title="Couleur des évolutions (▲ ▼) en pied de carte dans le document Word">${opt([["color", "évolutions en couleur"], ["black", "évolutions en noir"]], (config.wordTiles || {}).deltaColor || "color")}</select>
       </div>
+      ${reglagesDurees()}
       <h2>Filtres rapides proposés aux lecteurs</h2>
       <div class="desc">Ils apparaissent en haut du tableau de bord, hors mode modification. Chaque lecteur filtre pour lui-même, sans changer le tableau de bord des autres.</div>
       <div class="chips" style="margin:6px 0 4px">${(config.quickFilters || []).map((c, k) => `<span class="chip">${esc(plain(labelOf(c)))}${isDate(c) ? " (période)" : ""} <button class="ghost" data-act="delqf" data-k="${k}" aria-label="Retirer ce filtre rapide">✕</button></span>`).join("") || `<span class="hint">Aucun filtre rapide pour l'instant.</span>`}</div>
@@ -749,6 +844,20 @@ function renderGlobal() {
   $("globalBox").innerHTML = `${vue}<div class="edit-only card">${reglages}</div>`;
 }
 
+// Réglages des sources calculées (épisodes, durées) : colonnes lues dans la table du widget, bornes des classes de durée
+function reglagesDurees() {
+  const reg = config.episodes || {}, auto = colonnesEpisodes(), detecte = colonnesEpisodes({});   // detecte : sans le réglage
+  const choix = (k, titre, filtre) => `<label>${titre} <select data-ep="${k}">${colOptions(reg[k] || "", { allowEmpty: true, emptyLabel: detecte[k] ? `${labelOf(detecte[k])} (automatique)` : "non reconnue — choisir…", filter: filtre })}</select></label>`;
+  const bornes = (reg.bornes || window.EpisodesQualification && window.EpisodesQualification.BORNES_DEFAUT || []).join(", ");
+  return `<h2>Durées de qualification</h2>
+      <div class="desc">Sources « ${esc(VIRTUELLES[SRC_EPISODES])} » et « ${esc(VIRTUELLES[SRC_DUREES])} », calculées à partir des signalements de la table du widget : seuls les jours avec un signalement comptent, chaque jour prend la qualification la plus grave de ses versions (ordre des choix dans Grist), « RAS » ne compte pas.</div>
+      <div class="row" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0 12px">
+        ${choix("etab", "Établissement", c => !isDate(c.id))}${choix("qualif", "Qualification", c => !isDate(c.id) && !isNumCol(c.id))}
+        ${choix("faits", "Date des faits", c => isDate(c.id))}${choix("cree", "Date de saisie", c => isDate(c.id))}
+        <label title="Bornes des classes de durée, en jours : « 1, 3, 7, 14 » donne 1 jour, 2 à 3 jours, 4 à 7 jours, 8 à 14 jours, 15 jours et plus">Classes de durée <input type="text" data-ep="bornes" value="${esc(bornes)}" style="width:110px"></label>
+        <span class="hint">${auto.ok ? "Colonnes reconnues : sources disponibles pour les blocs." : "Choisissez au moins l'établissement, la qualification et une date."}</span>
+      </div>`;
+}
 // Ordre personnalisé des colonnes d'un tableau croisé : flèches pour avancer ou reculer chaque colonne
 function ordreColonnesEditeur(b, i) {
   const vals = valeursColonnes(b), n = vals.length;
@@ -798,17 +907,18 @@ function blockEditor(b, i) {
       ${b.cols && b.cols.col && !isDate(b.cols.col) ? `<select data-b="${i}" data-k="colSort" title="Ordre des colonnes du tableau et des séries du graphique">${opt([["value", "colonnes : par valeur décroissante"], ["label", "colonnes : de A à Z"], ["labeldesc", "colonnes : de Z à A"],
         ...(choixGrist(isMainSrc(b) ? mainTable : b.source, b.cols.col).length ? [["choices", "colonnes : ordre des choix dans Grist"]] : []), ["manual", "colonnes : ordre personnalisé…"]], b.colSort || "value")}</select>` : ""}</div>
     ${b.cols && b.cols.col && !isDate(b.cols.col) && b.colSort === "manual" ? ordreColonnesEditeur(b, i) : ""}
+    ${b.chart === "gantt" ? friseEditor(b, i) : ""}
 `;
   const crossVue = b.type !== "cross" ? "" : `
     <div class="row"><span class="lbl">Affichage</span>
       <select data-b="${i}" data-k="view">${opt([["both", "Graphique et tableau"], ["table", "Tableau seul"], ["chart", "Graphique seul"]], b.view || "both")}</select>
-      <select data-b="${i}" data-k="sort">${opt([["value", "Tri par valeur décroissante"], ["label", "Tri alphabétique ou chronologique"]], b.sort || "value")}</select>
+      <select data-b="${i}" data-k="sort">${opt([["value", "Tri par valeur décroissante"], ["label", "Tri alphabétique ou chronologique"], ...(b.chart === "gantt" ? [["debut", "Frise : par date de début"]] : [])], b.sort || "value")}</select>
       <label title="Nombre de lignes du tableau et du graphique ; 0 = toutes">Lignes affichées <input type="number" min="0" style="width:70px" data-b="${i}" data-k="top" value="${b.top === 0 ? 0 : (b.top || 20)}"> <span class="hint">(0 = toutes)</span></label>
       <label><input type="checkbox" data-b="${i}" data-k="percent" ${b.percent ? "checked" : ""}> Afficher en % du total</label>
     </div>
     <div class="row"><span class="lbl">Graphique</span>
       <select data-b="${i}" data-k="chart">${opt(CHART_TYPES, b.chart || "barh")}</select>
-      ${b.chart === "map" ? mapEditor(b, i) : b.chart === "points" ? pointsEditor(b, i) : `${b.cols && b.cols.col && (b.chart || "barh") !== "pie" ? `<select data-b="${i}" data-k="stack">${opt(STACK_MODES, b.stack || "stack")}</select>` : ""}
+      ${b.chart === "map" ? mapEditor(b, i) : b.chart === "points" ? pointsEditor(b, i) : b.chart === "gantt" ? `<span class="hint">Période : réglage « Période », avec les lignes et les colonnes. Dans Word : image.</span>` : `${b.cols && b.cols.col && (b.chart || "barh") !== "pie" ? `<select data-b="${i}" data-k="stack">${opt(STACK_MODES, b.stack || "stack")}</select>` : ""}
       ${b.cols && b.cols.col && (b.chart || "barh") !== "pie" ? `<select data-b="${i}" data-k="swap" title="Ce qui va en abscisse (ou en barres) et ce qui forme les séries (couleurs, courbes)">${opt([["", "abscisse : lignes du tableau, séries : colonnes"], ["1", "abscisse : colonnes du tableau, séries : lignes"]], b.swap ? "1" : "")}</select>` : ""}
       <select data-b="${i}" data-k="labels" title="Pourcentage d'une barre : part du total du bloc. Avec des séries : part de la barre.">${opt(LABEL_MODES, b.labels || "auto")}</select>
       <label>Dans Word <select data-b="${i}" data-k="wordChart">${opt([["native", "graphique Word modifiable"], ["image", "image"]], b.wordChart || "native")}</select></label>`}
@@ -826,10 +936,10 @@ function blockEditor(b, i) {
   const pct = b.type !== "tile" ? "" : isCover(b) ? `<div class="row"><label><input type="checkbox" data-b="${i}" data-k="shareMain" ${b.shareMain ? "checked" : ""}> Mettre le pourcentage en grand</label></div>` : `<div class="row"><label><input type="checkbox" data-b="${i}" data-k="showShare" ${b.showShare ? "checked" : ""}> Afficher le pourcentage : même mesure avec les conditions du bloc ÷ même mesure sans elles</label>
       ${b.showShare ? `<label><input type="checkbox" data-b="${i}" data-k="shareMain" ${b.shareMain ? "checked" : ""}> Mettre le pourcentage en grand</label>` : ""}</div>`;
   const srcSel = `<div class="row"><span class="lbl">Source</span>
-      <select data-b="${i}" data-k="source" data-prev="${esc(isMainSrc(b) ? "" : b.source)}">${opt([["", `Table du widget${mainTable ? " (" + mainTable + ")" : ""}`], ...refTables().map(t => [t, "Table " + t])], isMainSrc(b) ? "" : b.source)}</select>
+      <select data-b="${i}" data-k="source" data-prev="${esc(isMainSrc(b) ? "" : b.source)}">${opt([["", `Table du widget${mainTable ? " (" + mainTable + ")" : ""}`], ...sourcesBlocs(b).map(t => [t, nomSource(t)])], isMainSrc(b) ? "" : b.source)}</select>
       <span class="hint">Les conditions et colonnes proposées sont celles de cette table. Filtres communs et rapides : appliqués quand la table a une colonne du même nom.</span></div>`;
   const nc = (b.conds || []).filter(c => c.col).length;
-  const resume = [isMainSrc(b) ? "" : "table " + b.source, plain(measureText(b.measure)), nc ? `${nc} condition${nc > 1 ? "s" : ""}` : "sans condition"].filter(Boolean).join(" · ");
+  const resume = [isMainSrc(b) ? "" : nomSource(b.source).replace(/^Table/, "table"), plain(measureText(b.measure)), nc ? `${nc} condition${nc > 1 ? "s" : ""}` : "sans condition"].filter(Boolean).join(" · ");
   const rappel = `    <div class="row"><span class="lbl">Rappel du calcul</span>
       <textarea rows="2" style="flex:1;min-width:240px;font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--axis);border-radius:6px;padding:4px 6px" data-b="${i}" data-k="desc" placeholder="${esc(plain(autoDesc(b)))}" ${b.hideDesc ? "disabled" : ""}>${esc(b.desc || "")}</textarea>
       ${String(b.desc || "").trim() ? `<button class="ghost" data-act="autodesc" data-b="${i}" title="Effacer le texte saisi et revenir au rappel automatique">Texte automatique</button>` : ""}</div>
@@ -868,7 +978,7 @@ function exportTools(i) {
     <button class="ghost" data-act="csv" data-b="${i}" title="Télécharger ce tableau en CSV">CSV</button></span>`;
 }
 
-function baseRows(except) { return records.filter(r => passAll(r, config.filters, config.filtersLogic) && quickPass(r, except)); }
+function baseRows(except) { if (estVirtuelle(curSrc)) return records.slice(); return records.filter(r => passAll(r, config.filters, config.filtersLogic) && quickPass(r, except)); }
 
 // ---- Présentation en carte : « dont … », comparaison (bas gauche) et référence (bas droite), chacune issue d'une autre tuile
 const blockById = id => config.blocks.find(x => x.id === id) || null;
@@ -1042,7 +1152,7 @@ function renderCross(b, i, base) {
 // =============================================================================
 // Graphiques : description commune (écran + Word), puis rendu SVG
 // =============================================================================
-const CHART_TYPES = [["barh", "Barres horizontales"], ["barv", "Colonnes (histogramme)"], ["line", "Courbe"], ["pie", "Anneau (répartition)"], ["map", "Carte (départements ou académies)"], ["points", "Carte des établissements (points)"]];
+const CHART_TYPES = [["barh", "Barres horizontales"], ["barv", "Colonnes (histogramme)"], ["line", "Courbe"], ["pie", "Anneau (répartition)"], ["map", "Carte (départements ou académies)"], ["points", "Carte des établissements (points)"], ["gantt", "Frise des durées (Gantt)"]];
 const STACK_MODES = [["stack", "Séries empilées"], ["group", "Séries côte à côte"], ["pct", "Empilées à 100 %"]];
 const PIE_MAX = 6;
 
@@ -1217,12 +1327,82 @@ function legendHtml(spec) {
 function renderChart(b, d, shownRows, bi) {
   if (b.chart === "map") return renderMap(b, d, bi);
   if (b.chart === "points") return renderPoints(b, d, bi);
+  if (b.chart === "gantt") return renderFrise(b, d, bi);
   const spec = chartSpec(b, d, shownRows); spec.bi = bi;
   if (spec.error) return `<p class="hint">${esc(spec.error)}</p>`;
   const W = Math.max(320, Math.min(900, ($("blocks").clientWidth || 700) - 32));
   const svg = spec.type === "barh" ? svgBarH(spec, W) : spec.type === "barv" ? svgBarV(spec, W) : spec.type === "line" ? svgLine(spec, W) : svgPie(spec, W);
   const notes = spec.notes.map(n => `<p class="hint">${esc(n)}</p>`).join("");
   return `<div class="chart">${svg}${legendHtml(spec)}${notes}</div>`;
+}
+// ---- Frise (Gantt) : une ligne par valeur des lignes du bloc, une barre par période, une couleur par valeur des colonnes.
+// Période d'une ligne de la table : de sa date de début à sa date de fin (sans fin : le jour même). Lignes de la frise dans
+// l'ordre du tableau (valeur de la mesure, ou A à Z), ou par date de début ; « Lignes affichées » s'applique.
+const numJour = j => Math.round(secondesDuJour(j) / 86400), jourNum = n => new Date(n * 864e5).toISOString().slice(0, 10);
+const jjmm = j => `${j.slice(8, 10)}/${j.slice(5, 7)}`;
+function friseCols(b) {
+  const f = b.frise || {}, dates = columns.filter(c => isDate(c.id)).map(c => c.id);
+  const debut = f.debut && columnIds.has(f.debut) ? f.debut : dates.find(id => /^(debut|premier)/i.test(id)) || dates[0] || "";
+  const fin = f.fin === "__aucune" ? "" : f.fin && columnIds.has(f.fin) ? f.fin : dates.find(id => id !== debut && /^(fin|dernier)/i.test(id)) || "";
+  return { debut, fin };
+}
+function friseEditor(b, i) {
+  const f = b.frise || {}, auto = friseCols({ frise: {} }), dates = c => isDate(c.id);
+  return `<div class="row"><span class="lbl">Période</span>
+      <select data-b="${i}" data-k="frise.debut" title="Date de début de chaque barre">${colOptions(f.debut || "", { allowEmpty: true, emptyLabel: `Début : ${auto.debut ? labelOf(auto.debut) + " (automatique)" : "choisir une date…"}`, filter: dates })}</select>
+      <select data-b="${i}" data-k="frise.fin" title="Date de fin de chaque barre">${opt([["", `Fin : ${auto.fin ? labelOf(auto.fin) + " (automatique)" : "le jour même (automatique)"}`], ["__aucune", "Fin : le jour même"], ...columns.filter(dates).map(c => [c.id, "Fin : " + c.label])], f.fin || "")}</select></div>
+    <p class="hint">Une ligne de frise par valeur de « Lignes », une couleur par valeur de « Colonnes » (couleurs des choix de Grist s'il y en a). La mesure, affichée à droite, sert au tri : avec la source « ${esc(VIRTUELLES[SRC_EPISODES])} », « Somme de Durée » donne les jours touchés.</p>`;
+}
+function renderFrise(b, d, bi) {
+  const { debut, fin } = friseCols(b);
+  if (!debut) return `<p class="hint">Frise : la table du bloc n'a pas de colonne de date pour le début des barres.</p>`;
+  const barres = new Map(), push = (k, x) => { let a = barres.get(k); if (!a) barres.set(k, a = []); a.push(x); };
+  const enCoursCol = columnIds.has("En_cours") && isBool("En_cours");
+  d.rows.forEach(r => {
+    const j0 = dayOf(debut, r[debut]); if (!j0) return;
+    const j1 = (fin && dayOf(fin, r[fin])) || j0, a = numJour(j0), z = Math.max(a, numJour(j1));
+    const ck = d.cc ? keysOf(d.cc, r[d.cc], d.cg)[0] : null, enCours = enCoursCol && r.En_cours === true;
+    (d.rc ? [...new Set(keysOf(d.rc, r[d.rc], d.rg))] : ["Total"]).forEach(rk => push(rk, { a, z, ck, enCours }));
+  });
+  let lignes = d.rowKeys.filter(k => barres.has(k));
+  if (b.sort === "debut") lignes.sort((x, y) => Math.min(...barres.get(x).map(s => s.a)) - Math.min(...barres.get(y).map(s => s.a)) || x.localeCompare(y, "fr"));
+  const cachees = Math.max(0, lignes.length - topOf(b)); lignes = lignes.slice(0, topOf(b));
+  if (!lignes.length) return `<p class="hint">Frise : aucune ligne n'a de date de début.</p>`;
+  const segs = lignes.flatMap(k => barres.get(k)), min = Math.min(...segs.map(s => s.a)), max = Math.max(...segs.map(s => s.z)), n = max - min + 1;
+  const table = tableDeBloc(b), couleur = new Map(d.colKeys.map(k => [k, couleurChoix(table, d.cc, k) || d.colorOf.get(k) || "var(--s1)"]));
+  const coul = k => k === null ? "var(--s1)" : couleur.get(k) || "var(--other)";
+  const W = Math.max(360, Math.min(1100, ($("blocks").clientWidth || 700) - 32));
+  const labelW = Math.min(240, Math.round(W * 0.3)), valW = 56, plotW = W - labelW - valW, dw = plotW / n;
+  const axeH = 22, pas = 22, barH = 14, H = axeH + lignes.length * pas + 4;
+  const x = j => labelW + (j - min) * dw;
+  const unite = (b.measure.agg === "sum" && /duree|jours/i.test(b.measure.col || "")) ? " j" : "";
+  let m = "";
+  const saut = [1, 2, 7, 14, 28, 56, 91, 182, 364].find(s => s * dw >= 44) || 364;
+  for (let j = min; j <= max + 1; j++) {
+    if (dw >= 5 || (j - min) % saut === 0) m += `<line x1="${x(j).toFixed(1)}" x2="${x(j).toFixed(1)}" y1="${axeH - 4}" y2="${H}" stroke="var(--grid)" stroke-width="${(j - min) % saut === 0 ? 1 : 0.5}"></line>`;
+    if ((j - min) % saut === 0 && j <= max) m += `<text x="${(x(j) + 3).toFixed(1)}" y="${axeH - 8}">${jjmm(jourNum(j))}</text>`;
+  }
+  const auj = numJour(jourParis());
+  if (auj >= min && auj <= max) m += `<line x1="${x(auj + 0.5).toFixed(1)}" x2="${x(auj + 0.5).toFixed(1)}" y1="${axeH - 4}" y2="${H}" stroke="var(--ink-2)" stroke-dasharray="3 3"><title>Aujourd'hui</title></line>`;
+  const maxChars = Math.max(10, Math.floor((labelW - 12) / 7.3));
+  let enCours = false;
+  lignes.forEach((rk, k) => {
+    const y = axeH + k * pas + (pas - barH) / 2, libelle = keyLabel(d.rc, rk, d.rg);
+    m += `<text x="${labelW - 8}" y="${y + barH / 2 + 4}" text-anchor="end"><title>${esc(plain(libelle))}</title>${svgRich(libelle, maxChars)}</text>`;
+    const ordre = new Map(d.colKeys.map((c, j) => [c, j]));          // la première valeur des colonnes (la plus grave) dessinée en dernier, au-dessus
+    barres.get(rk).slice().sort((s, t) => (ordre.get(t.ck) ?? 1e9) - (ordre.get(s.ck) ?? 1e9)).forEach(s => {
+      const x0 = x(s.a) + 0.5, w = Math.max(2, (s.z - s.a + 1) * dw - 1), nj = s.z - s.a + 1, c = coul(s.ck);
+      const quand = s.a === s.z ? `le ${dateLabel(jourNum(s.a), "jour")}` : `du ${dateLabel(jourNum(s.a), "jour")} au ${dateLabel(jourNum(s.z), "jour")}`;
+      const tip = tipAttr(`${plain(libelle)}${s.ck !== null ? " · " + s.ck : ""}`, `${quand} · ${nj} jour${nj > 1 ? "s" : ""}${s.enCours ? " · en cours" : ""}`) + drillAttr(bi, rk, s.ck);
+      m += `<rect x="${x0.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${barH}" rx="2" fill="${c}" ${tip}></rect>`;
+      if (s.enCours) { enCours = true; m += `<path d="M${(x0 + w + 1).toFixed(1)} ${y}l6 ${barH / 2}l-6 ${barH / 2}z" fill="${c}" ${tip}></path>`; }
+    });
+    m += `<text class="val" x="${W - valW + 14}" y="${y + barH / 2 + 4}">${esc(fmtNum(d.rowVal.get(rk)) + unite)}</text>`;
+  });
+  const vues = new Set(segs.map(s => s.ck));
+  const legende = d.cc ? `<div class="legend">${d.colKeys.filter(k => vues.has(k)).map(k => `<span><i style="background:${coul(k)}"></i>${rich(keyLabel(d.cc, k, d.cg))}</span>`).join("")}${enCours ? `<span><i style="background:var(--axis)"></i>▸ en cours (pas de RAS depuis)</span>` : ""}</div>` : "";
+  const note = cachees ? `<p class="hint">${cachees} autre(s) ligne(s) non affichée(s) : augmentez « Lignes affichées ».</p>` : "";
+  return `<div class="chart">${svgWrap(W, H, m, plain(b.title || "Frise"))}${legende}${note}</div>`;
 }
 // ---- Carte choroplèthe : une couleur par classe de valeur, du clair (peu) au foncé (beaucoup)
 const MAP_CLASSES = [["quantile", "classes d'effectifs égaux (quantiles)"], ["equal", "classes d'amplitude égale"]];
@@ -1619,6 +1799,13 @@ function commit() { saveConfig(); render(); }
 RACINE.addEventListener("change", e => {
   const t = e.target;
   if (t.id === "dashName") { config.name = t.value.trim() || "Tableau de bord"; commit(); return; }
+  if (t.dataset && t.dataset.ep) {                                     // durées de qualification : colonnes, classes
+    const ep = { ...(config.episodes || {}) };
+    if (t.dataset.ep === "bornes") { const n = t.value.split(/[^0-9]+/).map(Number).filter(x => x >= 1); if (n.length) ep.bornes = n; else delete ep.bornes; }
+    else if (t.value) ep[t.dataset.ep] = t.value; else delete ep[t.dataset.ep];
+    if (Object.keys(ep).length) config.episodes = ep; else delete config.episodes;
+    commit(); return;
+  }
   if (t.id === "wordTilesLayout" || t.id === "wordTilesPerRow" || t.id === "wordDeltaColor") {
     config.wordTiles = { layout: $("wordTilesLayout").value, perRow: Number(($("wordTilesPerRow") || {}).value) || (config.wordTiles || {}).perRow || 3, deltaColor: ($("wordDeltaColor") || {}).value || "color" };
     commit(); return;
@@ -1716,9 +1903,10 @@ RACINE.addEventListener("click", e => {
 $("toggleEdit").addEventListener("click", () => { editing = !editing; render(); });
 
 // ---- Atelier : panneau du bloc choisi, fenêtres « Ajouter un bloc » et « Réglages du tableau »
-const ICONES = { tile: "123", table: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 7h12M2 10h12M7 3v10"/></svg>`, barh: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3v10"/><path d="M2 5h9M2 8h12M2 11h6"/></svg>`, barv: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 14h12"/><path d="M4 13V8M8 13V3M12 13V6"/></svg>`, line: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 14h12"/><path d="M2 11l4-4 3 2 5-6"/></svg>`, pie: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5V8l4 3.8"/></svg>`, map: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4l4-1.5 4 1.5 4-1.5v9.5l-4 1.5-4-1.5-4 1.5z"/><path d="M6 2.5v9.5M10 4v9.5"/></svg>`, points: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="6" r="1.6"/><circle cx="11" cy="5" r="2.2"/><circle cx="8" cy="11" r="1.2"/></svg>` };
+const ICONES = { tile: "123", table: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 7h12M2 10h12M7 3v10"/></svg>`, barh: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3v10"/><path d="M2 5h9M2 8h12M2 11h6"/></svg>`, barv: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 14h12"/><path d="M4 13V8M8 13V3M12 13V6"/></svg>`, line: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 14h12"/><path d="M2 11l4-4 3 2 5-6"/></svg>`, pie: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5V8l4 3.8"/></svg>`, map: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4l4-1.5 4 1.5 4-1.5v9.5l-4 1.5-4-1.5-4 1.5z"/><path d="M6 2.5v9.5M10 4v9.5"/></svg>`, points: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="6" r="1.6"/><circle cx="11" cy="5" r="2.2"/><circle cx="8" cy="11" r="1.2"/></svg>`, gantt: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 2v12"/><path d="M4 4h5M7 8h6M5 12h4"/></svg>`, durees: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.5"/></svg>` };
 function genreBloc(b) {
   if (b.type === "tile") return { icone: ICONES.tile, nom: "Chiffre clé" };
+  if (b.chart === "gantt" && (b.view || "both") === "chart") return { icone: ICONES.gantt, nom: "Frise des durées" };
   if ((b.view || "both") === "table") return { icone: ICONES.table, nom: "Tableau" };
   const c = b.chart || "barh";
   return { icone: ICONES[c] || "▦", nom: (CHART_TYPES.find(x => x[0] === c) || [, "Graphique"])[1] + ((b.view || "both") === "both" ? " et tableau" : "") };
@@ -1732,10 +1920,24 @@ const MODELES = [
   { cle: "pie", icone: ICONES.pie, nom: "Anneau", desc: "Répartition en parts (peu de valeurs)." },
   { cle: "map", icone: ICONES.map, nom: "Carte par territoire", desc: "Départements ou académies colorés selon la valeur." },
   { cle: "points", icone: ICONES.points, nom: "Carte des établissements", desc: "Un point par établissement, taille selon la valeur." },
+  { cle: "frise", icone: ICONES.gantt, nom: "Frise des durées (Gantt)", desc: "Une ligne par établissement, une barre par période de qualification." },
+  { cle: "durees", icone: ICONES.durees, nom: "Typologie des durées", desc: "Épisodes de qualification par classe de durée (1 jour, 2 à 3 jours…)." },
 ];
+// Frise et typologie des durées : sur la source calculée des épisodes (colonnes reconnues), sinon sur la table du widget
+function blocDurees(cle, id) {
+  const c = colonnesEpisodes();
+  if (!c.ok) showMsg("warn", "Colonnes de l'établissement, de la qualification ou de la date non reconnues : le bloc lit la table du widget. Choisissez ces colonnes dans les réglages du tableau de bord (« Durées de qualification »), puis la source « Épisodes de qualification ».");
+  const src = c.ok ? { source: SRC_EPISODES } : {};
+  if (cle === "frise") return { id, type: "cross", title: "Durée des qualifications", ...src, measure: c.ok ? { agg: "sum", col: "Duree" } : { agg: "count" },
+    rows: { col: c.ok ? "Etablissement" : c.etab, grain: "jour" }, cols: { col: c.ok ? "Qualification" : c.qualif, grain: "jour" }, colSort: "choices",
+    conds: [], view: "chart", chart: "gantt", sort: "value", top: 20, ...(c.ok ? {} : { frise: { debut: c.faits || c.cree } }) };
+  return { id, type: "cross", title: "Épisodes par classe de durée", ...src, measure: { agg: "count" }, rows: { col: c.ok ? "Qualification" : c.qualif, grain: "jour" },
+    cols: { col: c.ok ? "Classe_duree" : "", grain: "jour" }, colSort: "choices", conds: [], view: "both", chart: "barh", stack: "stack", sort: "value", top: 0 };
+}
 function creerBloc(cle) {
   const id = newId();
-  if (cle === "tile") config.blocks.push({ id, type: "tile", title: "Nouveau chiffre clé", measure: { agg: "count" }, conds: [] });
+  if (cle === "frise" || cle === "durees") config.blocks.push(blocDurees(cle, id));
+  else if (cle === "tile") config.blocks.push({ id, type: "tile", title: "Nouveau chiffre clé", measure: { agg: "count" }, conds: [] });
   else {
     const date = columns.find(c => isDate(c.id)), choix = columns.find(c => /^Choice/.test(c.type)) || columns.find(c => !isDate(c.id) && !isNumCol(c.id)) || columns[0] || {};
     const geo = columns.find(c => /^(departement|academie)$/i.test(c.id)), etab = columns.find(c => /^uai$/i.test(c.id)) || columns.find(c => /^Ref:/.test(c.type));
@@ -2045,7 +2247,7 @@ function blockDesc(b) {
 }
 function autoDesc(b) {
   if (!isMainSrc(b) && curSrc !== b.source) return inSrc(b, () => autoDesc(b));
-  const src = isMainSrc(b) ? "" : `Table ${b.source} · `;
+  const src = isMainSrc(b) ? "" : `${nomSource(b.source)} · `;
   const conds = condsText(b.conds, b.logic);
   const dims = b.type === "cross" ? (b.rows.col ? " par " + rowDim(b.rows.col, b.rows.grain) : "") + (b.cols && b.cols.col ? " et " + labelOf(b.cols.col) : "") : "";
   return src + measureText(b.measure) + dims + (conds ? " · " + conds : "");
@@ -2385,7 +2587,7 @@ async function exportWord(onlyIndex = null) {
       if (!b.hideDesc) body.push(wP(blockDesc(b), { size: 20, keep: true }));
       const t = blockTable(b);
       if (!t || t.empty) { body.push(wP("Aucune donnée pour ces conditions.", { size: 20 })); continue; }
-      if ((b.view || "both") !== "table" && (b.wordChart || "native") === "native" && b.chart !== "map" && b.chart !== "points") {
+      if ((b.view || "both") !== "table" && (b.wordChart || "native") === "native" && b.chart !== "map" && b.chart !== "points" && b.chart !== "gantt") {
         const d = crossData(b, base), spec = chartSpec(b, d, d.rowKeys.slice(0, topOf(b)));
         if (spec.error) body.push(wP(spec.error, { size: 20 }));
         else {
@@ -2766,7 +2968,7 @@ RACINE.addEventListener("keydown", e => {
 }
 // autres tables : relues au retour sur l'onglet et toutes les 2 minutes (hors mode modification)
 function refreshSources() {
-  if (editing || document.hidden || !config.blocks.some(b => !isMainSrc(b))) return;
+  if (editing || document.hidden || !config.blocks.some(b => !isMainSrc(b) && !estVirtuelle(b.source))) return;
   refCache.forEach(c => c.stale = true); ensureRefs();
 }
 setInterval(refreshSources, 120000);
@@ -2815,7 +3017,7 @@ CTX.abonner(async rows => {
   }
 });
 async function recevoir(rows) {
-  records = rows || [];
+  records = rows || []; generation++;
   const meta = await loadMeta();
   diagSource = CTX.mode === "edition" ? "table " + CTX.table : "widget";
   kindCache = new Map();
