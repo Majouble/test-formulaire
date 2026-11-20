@@ -1,4 +1,4 @@
-// 2.62.0-alpha.43 et .44 : durées de qualification — sources calculées « Épisodes de qualification » et « Durées par
+// 2.62.0-alpha.43 à .45 : durées de qualification — sources calculées « Épisodes de qualification » et « Durées par
 // établissement » (jours avec un signalement seulement, qualification la plus grave du jour, RAS exclu), frise (Gantt),
 // typologie par classe de durée, filtre commun appliqué avant le calcul, ajout des blocs dans l'atelier, export Word (image)
 const __C = require('./chemins');
@@ -45,7 +45,8 @@ function publier(doc, cfg) {
 }
 const API = doc => `window.__DOC__=${JSON.stringify(doc)};window.__OPTS__={};` + fs.readFileSync('mock.js') + fs.readFileSync('fakeapi.js') + fs.readFileSync('mock-saisie.js');
 
-(async () => {
+module.exports = { docDurees, publier, API };
+if (require.main === module) (async () => {
   const browser = await chromium.launch({ executablePath: __C.chromium });
   const page = await browser.newPage({ viewport: { width: 1300, height: 1400 }, acceptDownloads: true });
   page.on('pageerror', e => console.log('PAGEERROR', e.message)); page.on('dialog', d => d.accept());
@@ -86,6 +87,15 @@ const API = doc => `window.__DOC__=${JSON.stringify(doc)};window.__OPTS__={};` +
   const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#exportWord')]);
   const f = path.join(__C.sorties, 'run148.docx'); await dl.saveAs(f);
   console.log('WORD :', execSync(`unzip -l "${f}"`).toString().split('\n').filter(l => /media|charts\/chart/.test(l)).map(l => l.trim().split(/\s+/).pop()).join(', '));
+  // 2.62.0-alpha.45 : frise en graphique Word modifiable (barres empilées : écarts invisibles, une série par qualification et par rang)
+  const x = execSync(`unzip -p "${f}" word/charts/chart1.xml`).toString();
+  const noms = [...x.matchAll(/<c:tx><c:strRef><c:f>[^<]+<\/c:f><c:strCache><c:ptCount val="1"\/><c:pt idx="0"><c:v>([^<]+)<\/c:v>/g)].map(m => m[1]);
+  console.log('WORD, FRISE : séries', noms.join(', '), '| invisibles', (x.match(/<a:noFill\/><a:ln><a:noFill\/><\/a:ln><\/c:spPr><c:invertIfNegative/g) || []).length,
+    '| couleurs par barre', [...x.matchAll(/<c:dPt><c:idx val="(\d+)"\/>.*?srgbClr val="([0-9A-F]+)"/g)].map(m => m[1] + ':' + m[2]).join(' '),
+    '| axe', (x.match(/<c:max val="(\d+)"\/><c:min val="(\d+)"\/>/) || []).slice(1).join(' / '), x.includes('formatCode="dd/mm"') ? '(dates)' : '');
+  console.log('WORD, LÉGENDE EN TEXTE :', (execSync(`unzip -p "${f}" word/document.xml`).toString().match(/■[^]*?en cours \(pas de RAS depuis\)/) || [''])[0].replace(/<[^>]+>/g, '').replace(/\s+/g, ' '));
+  console.log('WORD, FRISE : catégories', [...x.matchAll(/<c:cat>.*?<\/c:cat>/gs)][0][0].match(/<c:v>[^<]+/g).map(v => v.slice(5)).join(' ; '));
+  console.log('WORD, CLASSEUR INTÉGRÉ :', execSync(`unzip -l "${f}"`).toString().split('\n').filter(l => /embeddings/.test(l)).map(l => l.trim().split(/\s+/).pop()).join(', '));
 
   // 3. filtre commun sur l'académie (appliqué aux signalements avant le calcul) et tri par date de début
   await ouvrir({ name: 'Tableau de bord', filters: [{ col: 'Academie', op: 'eq', val: 'Rennes' }], blocks: [{ ...BLOCS[0], sort: 'debut' }, BLOCS[1]] });

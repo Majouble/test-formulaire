@@ -615,6 +615,21 @@ function calculVirtuel() {
       ...Object.fromEntries(colsJours.map(x => [x.id, e.joursPar[x.q] || 0])) }))) };
   return cacheVirtuel;
 }
+// Couleur d'une valeur dans un bloc (réglage « Couleurs ») : couleur choisie, sinon couleur du choix dans Grist (si la case
+// est cochée ; d'office pour une frise), sinon la couleur par défaut (palette). « __serie » : graphique à une seule série.
+function couleurDe(b, col, k, defaut) {
+  const c = (b && b.couleurs) || {};
+  if (c.valeurs && c.valeurs[k]) return c.valeurs[k];
+  if ((c.grist ?? (b && b.chart === "gantt")) && col) { const g = couleurChoix(tableDeBloc(b), col, k); if (g) return g; }
+  return defaut;
+}
+// Cartes : dégradé des classes (1 à 5) tiré de la teinte choisie, sinon dégradé bleu du thème
+const melange = (hex, autre, t) => "#" + [0, 2, 4].map(i => Math.round(parseInt(hex.slice(1 + i, 3 + i), 16) * (1 - t) + parseInt(autre.slice(1 + i, 3 + i), 16) * t).toString(16).padStart(2, "0")).join("");
+function classeCouleur(b, n) {
+  const h = b && b.couleurs && b.couleurs.teinte;
+  if (!/^#[0-9a-f]{6}$/i.test(h || "")) return `var(--q${n})`;
+  return [null, melange(h, "#ffffff", 0.75), melange(h, "#ffffff", 0.45), h, melange(h, "#000000", 0.3), melange(h, "#000000", 0.55)][n] || h;
+}
 // Sources proposées pour un bloc : tables du document, puis sources calculées (si les colonnes sont reconnues)
 const sourcesBlocs = b => [...refTables(), ...Object.keys(VIRTUELLES).filter(t => (b && b.source === t) || colonnesEpisodes().ok)];
 // Couleur d'un choix réglée dans Grist (pour les sources calculées : celle de la colonne Qualification du widget)
@@ -849,6 +864,30 @@ function renderGlobal() {
   $("globalBox").innerHTML = `${vue}<div class="edit-only card">${reglages}</div>`;
 }
 
+// Réglage « Couleurs » d'un graphique : une case de couleur par série (ou par part d'un anneau), une teinte pour les cartes
+const versHex = c => { const h = hexOf(c).toLowerCase(); return "#" + (h.length === 3 ? h.replace(/./g, x => x + x) : h); };
+function couleursEditor(b, i) {
+  const c = b.couleurs || {}, carte = b.chart === "map" || b.chart === "points";
+  const effacer = c.valeurs && Object.keys(c.valeurs).length || c.teinte || c.grist !== undefined
+    ? `<button class="ghost" data-act="coulreset" data-b="${i}" title="Revenir aux couleurs automatiques">Couleurs automatiques</button>` : "";
+  if (carte) return `<div class="row"><span class="lbl">Couleurs</span><label>Teinte <input type="color" data-b="${i}" data-k="couleurs.teinte" value="${esc(c.teinte || "#3987e5")}"></label>
+      <span class="hint">Les classes vont du clair (peu) au foncé (beaucoup).</span>${effacer}</div>`;
+  const d = crossData(b);
+  let col = null, entrees = [];
+  if (b.chart === "gantt") { col = d.cc; entrees = d.cc ? d.colKeys.map(k => ({ k, nom: keyLabel(d.cc, k, d.cg), coul: d.colorOf.get(k) })) : []; }
+  else {
+    const spec = chartSpec(b, d, d.rowKeys.slice(0, topOf(b))); if (spec.error) return "";
+    if (spec.type === "pie") { col = d.rc; entrees = spec.cats.map((x, j) => ({ k: x.key, nom: x.label, coul: spec.series[0].colors[j] })); }
+    else { col = spec.swap ? d.rc : d.cc; entrees = spec.series.map(x => ({ k: x.key, nom: x.name, coul: x.color })); }
+  }
+  if (!d.cc && b.chart !== "pie" || !entrees.length) entrees = [{ k: "__serie", nom: "Couleur du graphique", coul: couleurDe(b, null, "__serie", "var(--s1)") }];
+  entrees = entrees.filter(x => x.k !== "__autres").slice(0, 40);
+  const choix = col && d.colKeys.concat(d.rowKeys).some(k => couleurChoix(tableDeBloc(b), col, k));
+  return `<div class="row" style="align-items:flex-start"><span class="lbl">Couleurs</span><div style="flex:1">
+      <div class="chips">${entrees.map(x => `<label class="chip" style="display:inline-flex;gap:4px;align-items:center"><input type="color" data-b="${i}" data-couleur="${esc(x.k)}" value="${versHex(x.coul)}" style="width:28px;height:20px;padding:0;border:0;background:none">
+        ${rich(x.nom)}${c.valeurs && c.valeurs[x.k] ? ` <button class="ghost" data-act="coulsuppr" data-b="${i}" data-v="${esc(x.k)}" title="Couleur automatique pour cette valeur" aria-label="Couleur automatique pour ${esc(plain(x.nom))}">✕</button>` : ""}</label>`).join("")}</div>
+      <p class="hint">${choix ? `<label><input type="checkbox" data-b="${i}" data-k="couleurs.grist" ${(c.grist ?? b.chart === "gantt") ? "checked" : ""}> Reprendre les couleurs des choix de Grist</label> · ` : ""}Une couleur choisie s'applique à l'écran, à l'image et dans Word. ${effacer}</p></div></div>`;
+}
 // Réglages des sources calculées (épisodes, durées) : colonnes lues dans la table du widget, bornes des classes de durée
 function reglagesDurees() {
   const reg = config.episodes || {}, auto = colonnesEpisodes(), detecte = colonnesEpisodes({});   // detecte : sans le réglage
@@ -923,11 +962,13 @@ function blockEditor(b, i) {
     </div>
     <div class="row"><span class="lbl">Graphique</span>
       <select data-b="${i}" data-k="chart">${opt(CHART_TYPES, b.chart || "barh")}</select>
-      ${b.chart === "map" ? mapEditor(b, i) : b.chart === "points" ? pointsEditor(b, i) : b.chart === "gantt" ? `<span class="hint">Période : réglage « Période », avec les lignes et les colonnes. Dans Word : image.</span>` : `${b.cols && b.cols.col && (b.chart || "barh") !== "pie" ? `<select data-b="${i}" data-k="stack">${opt(STACK_MODES, b.stack || "stack")}</select>` : ""}
+      ${b.chart === "map" ? mapEditor(b, i) : b.chart === "points" ? pointsEditor(b, i) : b.chart === "gantt" ? `<label>Dans Word <select data-b="${i}" data-k="wordChart">${opt([["native", "graphique modifiable (Word et Excel)"], ["image", "image"]], b.wordChart || "native")}</select></label>
+      <span class="hint">Période : réglage « Période », avec les lignes et les colonnes.</span>` : `${b.cols && b.cols.col && (b.chart || "barh") !== "pie" ? `<select data-b="${i}" data-k="stack">${opt(STACK_MODES, b.stack || "stack")}</select>` : ""}
       ${b.cols && b.cols.col && (b.chart || "barh") !== "pie" ? `<select data-b="${i}" data-k="swap" title="Ce qui va en abscisse (ou en barres) et ce qui forme les séries (couleurs, courbes)">${opt([["", "abscisse : lignes du tableau, séries : colonnes"], ["1", "abscisse : colonnes du tableau, séries : lignes"]], b.swap ? "1" : "")}</select>` : ""}
       <select data-b="${i}" data-k="labels" title="Pourcentage d'une barre : part du total du bloc. Avec des séries : part de la barre.">${opt(LABEL_MODES, b.labels || "auto")}</select>
       <label>Dans Word <select data-b="${i}" data-k="wordChart">${opt([["native", "graphique Word modifiable"], ["image", "image"]], b.wordChart || "native")}</select></label>`}
-    </div>`;
+    </div>
+    ${(b.view || "both") !== "table" ? couleursEditor(b, i) : ""}`;
   const others = b.type !== "tile" ? [] : config.blocks.filter(x => x !== b && x.type === "tile" && !(x.card && (x.card.sub || x.card.prev || x.card.ref))).map(x => [x.id, plain(x.title || measureText(x.measure))]);
   const cd = cardOf(b), tileSel = (k, val) => `<select data-b="${i}" data-k="card.${k}">${opt([["", "aucune"], ...others], val || "")}</select>`;
   const lblIn = (k, val, ph) => `<input type="text" data-b="${i}" data-k="card.${k}" value="${esc(val || "")}" placeholder="${esc(ph)}" style="min-width:160px">`;
@@ -1094,7 +1135,7 @@ function crossData(b, base) {
     const all = new Map();
     records.forEach(r => keysOf(cc, r[cc], cg).forEach(k => all.set(k, (all.get(k) || 0) + 1)));
     const ordered = [...all.entries()].sort((a, c) => c[1] - a[1] || a[0].localeCompare(c[0], "fr")).map(e => e[0]);
-    ordered.forEach((k, j) => colorOf.set(k, j < MAX_SERIES ? `var(${SERIES[j]})` : "var(--other)"));
+    ordered.forEach((k, j) => colorOf.set(k, couleurDe(b, cc, k, j < MAX_SERIES ? `var(${SERIES[j]})` : "var(--other)")));
   }
   const expTotal = expected ? [...expected.values()].filter(v => !isNaN(v)).reduce((a, v) => a + v, 0) : NaN;
   return { refCfg: b.rows && b.rows.ref || {}, rows, rowKeys, colKeys, rowVal, colVal, val, total, colorOf, rc, cc, rg, cg, refState: L, expected, expTotal, missingKeys, outsideKeys };
@@ -1186,13 +1227,13 @@ function chartSpec(b, d, shownRows) {
     const main = keys.slice(0, PIE_MAX), rest = keys.slice(PIE_MAX);
     const cats = main.map(k => ({ key: k, label: keyLabel(d.rc, k, d.rg) }));
     const values = main.map(k => scale(d.rowVal.get(k)));
-    const colors = main.map((k, j) => `var(${SERIES[j]})`);
+    const colors = main.map((k, j) => couleurDe(b, d.rc, k, `var(${SERIES[j]})`));
     if (rest.length) {
       cats.push({ key: "__autres", label: `Autres (${rest.length})` });
       values.push(scale(rest.reduce((a, k) => a + (d.rowVal.get(k) || 0), 0)));
       colors.push("var(--other)");
     }
-    return withLabels(b, { type, mode: "single", cats, series: [{ key: null, name: plain(measureText(b.measure)), color: "var(--s1)", values, colors }], unit, notes, total: scale(d.total) }, additive, values.reduce((a, v) => a + (v || 0), 0), unit);
+    return withLabels(b, { type, mode: "single", cats, series: [{ key: null, name: plain(measureText(b.measure)), color: couleurDe(b, null, "__serie", "var(--s1)"), values, colors }], unit, notes, total: scale(d.total) }, additive, values.reduce((a, v) => a + (v || 0), 0), unit);
   }
 
   // case sans ligne : 0 pour un compte (nombre de lignes, valeurs distinctes, somme) — la courbe ne s'interrompt pas
@@ -1202,7 +1243,7 @@ function chartSpec(b, d, shownRows) {
   if (d.cc && b.swap) {
     const cats = d.colKeys.map(ck => ({ key: ck, label: keyLabel(d.cc, ck, d.cg) }));
     const named = shownRows.slice(0, MAX_SERIES), others = shownRows.slice(MAX_SERIES);
-    const series = named.map((rk, j) => ({ key: rk, name: plain(keyLabel(d.rc, rk, d.rg)), color: `var(${SERIES[j]})`, values: d.colKeys.map(ck => scale(val0(rk, ck))) }));
+    const series = named.map((rk, j) => ({ key: rk, name: plain(keyLabel(d.rc, rk, d.rg)), color: couleurDe(b, d.rc, rk, `var(${SERIES[j]})`), values: d.colKeys.map(ck => scale(val0(rk, ck))) }));
     if (others.length) {
       if (additive) series.push({ key: "__autres", name: `Autres (${others.length})`, color: "var(--other)", values: d.colKeys.map(ck => scale(others.reduce((a, rk) => a + (val0(rk, ck) || 0), 0))) });
       else notes.push(`${others.length} ligne(s) de plus sont dans le tableau : réduisez « Lignes affichées » ou ajoutez une condition.`);
@@ -1214,7 +1255,7 @@ function chartSpec(b, d, shownRows) {
   const catKeys = shownRows;                                          // plus de plafond : le graphique suit « Lignes affichées »
   const cats = catKeys.map(k => ({ key: k, label: keyLabel(d.rc, k, d.rg) }));
   let series;
-  if (!d.cc) series = [{ key: null, name: plain(measureText(b.measure)), color: "var(--s1)", values: catKeys.map(k => scale(d.rowVal.get(k))) }];
+  if (!d.cc) series = [{ key: null, name: plain(measureText(b.measure)), color: couleurDe(b, null, "__serie", "var(--s1)"), values: catKeys.map(k => scale(d.rowVal.get(k))) }];
   else {
     const named = d.colKeys.filter(k => d.colorOf.get(k) !== "var(--other)");
     const others = d.colKeys.filter(k => d.colorOf.get(k) === "var(--other)");
@@ -1358,9 +1399,10 @@ function friseEditor(b, i) {
       <select data-b="${i}" data-k="frise.fin" title="Date de fin de chaque barre">${opt([["", `Fin : ${auto.fin ? labelOf(auto.fin) + " (automatique)" : "le jour même (automatique)"}`], ["__aucune", "Fin : le jour même"], ...columns.filter(dates).map(c => [c.id, "Fin : " + c.label])], f.fin || "")}</select></div>
     <p class="hint">Une ligne de frise par valeur de « Lignes », une couleur par valeur de « Colonnes » (couleurs des choix de Grist s'il y en a). La mesure, affichée à droite, sert au tri : avec la source « ${esc(VIRTUELLES[SRC_EPISODES])} », « Somme de Durée » donne les jours touchés.</p>`;
 }
-function renderFrise(b, d, bi) {
+// Lignes de la frise et leurs périodes, communes à l'écran et à Word
+function friseDonnees(b, d) {
   const { debut, fin } = friseCols(b);
-  if (!debut) return `<p class="hint">Frise : la table du bloc n'a pas de colonne de date pour le début des barres.</p>`;
+  if (!debut) return { erreur: "Frise : la table du bloc n'a pas de colonne de date pour le début des barres." };
   const barres = new Map(), push = (k, x) => { let a = barres.get(k); if (!a) barres.set(k, a = []); a.push(x); };
   const enCoursCol = columnIds.has("En_cours") && isBool("En_cours");
   d.rows.forEach(r => {
@@ -1369,20 +1411,26 @@ function renderFrise(b, d, bi) {
     const ck = d.cc ? keysOf(d.cc, r[d.cc], d.cg)[0] : null, enCours = enCoursCol && r.En_cours === true;
     (d.rc ? [...new Set(keysOf(d.rc, r[d.rc], d.rg))] : ["Total"]).forEach(rk => push(rk, { a, z, ck, enCours }));
   });
-  let lignes = d.rowKeys.filter(k => barres.has(k));
-  if (b.sort === "debut") lignes.sort((x, y) => Math.min(...barres.get(x).map(s => s.a)) - Math.min(...barres.get(y).map(s => s.a)) || x.localeCompare(y, "fr"));
-  const cachees = Math.max(0, lignes.length - topOf(b)); lignes = lignes.slice(0, topOf(b));
-  if (!lignes.length) return `<p class="hint">Frise : aucune ligne n'a de date de début.</p>`;
-  const segs = lignes.flatMap(k => barres.get(k)), min = Math.min(...segs.map(s => s.a)), max = Math.max(...segs.map(s => s.z)), n = max - min + 1;
-  const table = tableDeBloc(b), couleur = new Map(d.colKeys.map(k => [k, couleurChoix(table, d.cc, k) || d.colorOf.get(k) || "var(--s1)"]));
-  const coul = k => k === null ? "var(--s1)" : couleur.get(k) || "var(--other)";
+  let cles = d.rowKeys.filter(k => barres.has(k));
+  if (b.sort === "debut") cles.sort((x, y) => Math.min(...barres.get(x).map(s => s.a)) - Math.min(...barres.get(y).map(s => s.a)) || x.localeCompare(y, "fr"));
+  const cachees = Math.max(0, cles.length - topOf(b)); cles = cles.slice(0, topOf(b));
+  if (!cles.length) return { erreur: "Frise : aucune ligne n'a de date de début." };
+  const unite = (b.measure.agg === "sum" && /duree|jours/i.test(b.measure.col || "")) ? " j" : "";
+  const lignes = cles.map(rk => ({ rk, libelle: keyLabel(d.rc, rk, d.rg), valeur: fmtNum(d.rowVal.get(rk)) + unite, segs: barres.get(rk) }));
+  const segs = lignes.flatMap(l => l.segs), min = Math.min(...segs.map(s => s.a)), max = Math.max(...segs.map(s => s.z));
+  const couleur = k => k === null ? couleurDe(b, null, "__serie", "var(--s1)") : d.colorOf.get(k) || "var(--other)";
+  const vues = new Set(segs.map(s => s.ck)), valeurs = d.cc ? d.colKeys.filter(k => vues.has(k)) : [null];
+  return { lignes, min, max, couleur, valeurs, nom: k => k === null ? plain(measureText(b.measure)) : plain(keyLabel(d.cc, k, d.cg)),
+    enCours: segs.some(s => s.enCours), cachees, saut: dw => [1, 2, 7, 14, 28, 56, 91, 182, 364].find(x => x * dw >= 44) || 364 };
+}
+function renderFrise(b, d, bi) {
+  const F = friseDonnees(b, d); if (F.erreur) return `<p class="hint">${esc(F.erreur)}</p>`;
+  const { lignes, min, max } = F, n = max - min + 1;
   const W = Math.max(360, Math.min(1100, ($("blocks").clientWidth || 700) - 32));
   const labelW = Math.min(240, Math.round(W * 0.3)), valW = 56, plotW = W - labelW - valW, dw = plotW / n;
   const axeH = 22, pas = 22, barH = 14, H = axeH + lignes.length * pas + 4;
-  const x = j => labelW + (j - min) * dw;
-  const unite = (b.measure.agg === "sum" && /duree|jours/i.test(b.measure.col || "")) ? " j" : "";
+  const x = j => labelW + (j - min) * dw, saut = F.saut(dw);
   let m = "";
-  const saut = [1, 2, 7, 14, 28, 56, 91, 182, 364].find(s => s * dw >= 44) || 364;
   for (let j = min; j <= max + 1; j++) {
     if (dw >= 5 || (j - min) % saut === 0) m += `<line x1="${x(j).toFixed(1)}" x2="${x(j).toFixed(1)}" y1="${axeH - 4}" y2="${H}" stroke="var(--grid)" stroke-width="${(j - min) % saut === 0 ? 1 : 0.5}"></line>`;
     if ((j - min) % saut === 0 && j <= max) m += `<text x="${(x(j) + 3).toFixed(1)}" y="${axeH - 8}">${jjmm(jourNum(j))}</text>`;
@@ -1390,24 +1438,70 @@ function renderFrise(b, d, bi) {
   const auj = numJour(jourParis());
   if (auj >= min && auj <= max) m += `<line x1="${x(auj + 0.5).toFixed(1)}" x2="${x(auj + 0.5).toFixed(1)}" y1="${axeH - 4}" y2="${H}" stroke="var(--ink-2)" stroke-dasharray="3 3"><title>Aujourd'hui</title></line>`;
   const maxChars = Math.max(10, Math.floor((labelW - 12) / 7.3));
-  let enCours = false;
-  lignes.forEach((rk, k) => {
-    const y = axeH + k * pas + (pas - barH) / 2, libelle = keyLabel(d.rc, rk, d.rg);
-    m += `<text x="${labelW - 8}" y="${y + barH / 2 + 4}" text-anchor="end"><title>${esc(plain(libelle))}</title>${svgRich(libelle, maxChars)}</text>`;
-    const ordre = new Map(d.colKeys.map((c, j) => [c, j]));          // la première valeur des colonnes (la plus grave) dessinée en dernier, au-dessus
-    barres.get(rk).slice().sort((s, t) => (ordre.get(t.ck) ?? 1e9) - (ordre.get(s.ck) ?? 1e9)).forEach(s => {
-      const x0 = x(s.a) + 0.5, w = Math.max(2, (s.z - s.a + 1) * dw - 1), nj = s.z - s.a + 1, c = coul(s.ck);
+  const ordre = new Map(d.colKeys.map((c, j) => [c, j]));            // la première valeur des colonnes (la plus grave) dessinée en dernier, au-dessus
+  lignes.forEach((l, k) => {
+    const y = axeH + k * pas + (pas - barH) / 2;
+    m += `<text x="${labelW - 8}" y="${y + barH / 2 + 4}" text-anchor="end"><title>${esc(plain(l.libelle))}</title>${svgRich(l.libelle, maxChars)}</text>`;
+    l.segs.slice().sort((s, t) => (ordre.get(t.ck) ?? 1e9) - (ordre.get(s.ck) ?? 1e9)).forEach(s => {
+      const x0 = x(s.a) + 0.5, w = Math.max(2, (s.z - s.a + 1) * dw - 1), nj = s.z - s.a + 1, c = F.couleur(s.ck);
       const quand = s.a === s.z ? `le ${dateLabel(jourNum(s.a), "jour")}` : `du ${dateLabel(jourNum(s.a), "jour")} au ${dateLabel(jourNum(s.z), "jour")}`;
-      const tip = tipAttr(`${plain(libelle)}${s.ck !== null ? " · " + s.ck : ""}`, `${quand} · ${nj} jour${nj > 1 ? "s" : ""}${s.enCours ? " · en cours" : ""}`) + drillAttr(bi, rk, s.ck);
+      const tip = tipAttr(`${plain(l.libelle)}${s.ck !== null ? " · " + s.ck : ""}`, `${quand} · ${nj} jour${nj > 1 ? "s" : ""}${s.enCours ? " · en cours" : ""}`) + drillAttr(bi, l.rk, s.ck);
       m += `<rect x="${x0.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${barH}" rx="2" fill="${c}" ${tip}></rect>`;
-      if (s.enCours) { enCours = true; m += `<path d="M${(x0 + w + 1).toFixed(1)} ${y}l6 ${barH / 2}l-6 ${barH / 2}z" fill="${c}" ${tip}></path>`; }
+      if (s.enCours) m += `<path d="M${(x0 + w + 1).toFixed(1)} ${y}l6 ${barH / 2}l-6 ${barH / 2}z" fill="${c}" ${tip}></path>`;
     });
-    m += `<text class="val" x="${W - valW + 14}" y="${y + barH / 2 + 4}">${esc(fmtNum(d.rowVal.get(rk)) + unite)}</text>`;
+    m += `<text class="val" x="${W - valW + 14}" y="${y + barH / 2 + 4}">${esc(l.valeur)}</text>`;
   });
-  const vues = new Set(segs.map(s => s.ck));
-  const legende = d.cc ? `<div class="legend">${d.colKeys.filter(k => vues.has(k)).map(k => `<span><i style="background:${coul(k)}"></i>${rich(keyLabel(d.cc, k, d.cg))}</span>`).join("")}${enCours ? `<span><i style="background:var(--axis)"></i>▸ en cours (pas de RAS depuis)</span>` : ""}</div>` : "";
-  const note = cachees ? `<p class="hint">${cachees} autre(s) ligne(s) non affichée(s) : augmentez « Lignes affichées ».</p>` : "";
+  const legende = d.cc ? `<div class="legend">${F.valeurs.map(k => `<span><i style="background:${F.couleur(k)}"></i>${rich(keyLabel(d.cc, k, d.cg))}</span>`).join("")}${F.enCours ? `<span><i style="background:var(--axis)"></i>▸ en cours (pas de RAS depuis)</span>` : ""}</div>` : "";
+  const note = F.cachees ? `<p class="hint">${F.cachees} autre(s) ligne(s) non affichée(s) : augmentez « Lignes affichées ».</p>` : "";
   return `<div class="chart">${svgWrap(W, H, m, plain(b.title || "Frise"))}${legende}${note}</div>`;
+}
+// Frise dans Word (graphique modifiable, aussi dans Excel) : barres horizontales empilées. Pour chaque rang d'épisode k,
+// une série « écart » invisible (début du premier épisode, puis jours sans signalement) et une série « épisode k » dont
+// chaque barre a la couleur de sa valeur (qualification). Axe en dates (numéros de jour d'Excel). La légende est écrite
+// sous le graphique, en texte : Word et LibreOffice ne comptent pas les entrées de légende dans le même ordre.
+// Lignes de la frise : catégories, avec la mesure (« · 6 j ») et ▸ si le dernier épisode est en cours.
+const SERIE_EXCEL = n => n + 25569;                                  // jour (depuis 1970) -> numéro de date d'Excel
+function friseSpec(b, d) {
+  const F = friseDonnees(b, d); if (F.erreur) return { error: F.erreur };
+  const rangs = F.lignes.map(l => {                                   // périodes triées, sans chevauchement
+    const out = [];
+    l.segs.slice().sort((s, t) => s.a - t.a).forEach(s => { const prev = out[out.length - 1], a = prev ? Math.max(s.a, prev.z + 1) : s.a; if (a <= s.z) out.push({ ...s, a }); });
+    return out;
+  });
+  const K = Math.max(...rangs.map(r => r.length)), series = [];
+  for (let k = 0; k < K; k++) {
+    series.push({ name: k ? `écart ${k}` : "début", ecart: true, values: rangs.map(r => !r[k] ? null : k ? r[k].a - (r[k - 1].z + 1) : SERIE_EXCEL(r[k].a)) });
+    series.push({ name: `épisode ${k + 1}`, color: "var(--other)", couleurs: rangs.map(r => r[k] ? F.couleur(r[k].ck) : null), values: rangs.map(r => r[k] ? r[k].z - r[k].a + 1 : null) });
+  }
+  const dw = 440 / (F.max - F.min + 1);
+  return { legende: F.valeurs.map(q => ({ nom: F.nom(q), couleur: F.couleur(q) })), type: "barh", mode: "stack", frise: true, cats: F.lignes.map((l, j) => ({ key: l.rk, label: `${plain(l.libelle)} · ${l.valeur}${rangs[j].length && rangs[j][rangs[j].length - 1].enCours ? " ▸" : ""}` })),
+    series, notes: [], min: SERIE_EXCEL(F.min), max: SERIE_EXCEL(F.max + 1), saut: F.saut(dw), enCours: F.enCours };
+}
+function chartXmlFrise(spec) {
+  const n = spec.cats.length, catF = `Feuil1!$A$2:$A$${n + 1}`, cats = spec.cats.map(c => c.label);
+  const ser = spec.series.map((s, k) => {
+    const L = colLetter(k + 1);
+    return `<c:ser><c:idx val="${k}"/><c:order val="${k}"/><c:tx><c:strRef><c:f>Feuil1!$${L}$1</c:f>${strCache([s.name])}</c:strRef></c:tx>
+      ${s.ecart ? "<c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>" : fill(hexOf(s.color))}<c:invertIfNegative val="0"/>
+      ${(s.couleurs || []).map((c, j) => c ? `<c:dPt><c:idx val="${j}"/><c:invertIfNegative val="0"/><c:bubble3D val="0"/>${fill(hexOf(c))}</c:dPt>` : "").join("")}
+      <c:cat><c:strRef><c:f>${catF}</c:f>${strCache(cats)}</c:strRef></c:cat><c:val><c:numRef><c:f>Feuil1!$${L}$2:$${L}$${n + 1}</c:f>${numCache(s.values)}</c:numRef></c:val></c:ser>`;
+  }).join("");
+  const plot = `<c:barChart><c:barDir val="bar"/><c:grouping val="stacked"/><c:varyColors val="0"/>${ser}<c:gapWidth val="40"/><c:overlap val="100"/><c:axId val="5001"/><c:axId val="5002"/></c:barChart>
+    <c:catAx><c:axId val="5001"/><c:scaling><c:orientation val="maxMin"/></c:scaling><c:delete val="0"/><c:axPos val="l"/><c:numFmt formatCode="General" sourceLinked="0"/>
+      <c:majorTickMark val="none"/><c:minorTickMark val="none"/><c:tickLblPos val="nextTo"/><c:spPr>${lnSp("C3C2B7")}</c:spPr><c:crossAx val="5002"/><c:crosses val="autoZero"/>
+      <c:auto val="1"/><c:lblAlgn val="ctr"/><c:lblOffset val="100"/><c:noMultiLvlLbl val="0"/></c:catAx>
+    <c:valAx><c:axId val="5002"/><c:scaling><c:orientation val="minMax"/><c:max val="${spec.max}"/><c:min val="${spec.min}"/></c:scaling><c:delete val="0"/><c:axPos val="t"/>
+      <c:majorGridlines><c:spPr>${lnSp("E1E0D9")}</c:spPr></c:majorGridlines><c:numFmt formatCode="dd/mm" sourceLinked="0"/><c:majorTickMark val="none"/><c:minorTickMark val="none"/>
+      <c:tickLblPos val="nextTo"/><c:spPr><a:ln><a:noFill/></a:ln></c:spPr><c:crossAx val="5001"/><c:crosses val="max"/><c:crossBetween val="between"/><c:majorUnit val="${spec.saut}"/></c:valAx>`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<c:roundedCorners val="0"/>
+<c:chart><c:autoTitleDeleted val="1"/><c:plotArea><c:layout/>${plot}<c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr></c:plotArea>
+<c:plotVisOnly val="1"/><c:dispBlanksAs val="gap"/></c:chart>
+<c:spPr><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:ln><a:noFill/></a:ln></c:spPr>
+<c:txPr><a:bodyPr/><a:lstStyle/><a:p><a:pPr><a:defRPr sz="900"><a:solidFill><a:srgbClr val="000000"/></a:solidFill><a:latin typeface="Marianne"/><a:cs typeface="Marianne"/></a:defRPr></a:pPr><a:endParaRPr lang="fr-FR"/></a:p></c:txPr>
+<c:externalData r:id="rId1"><c:autoUpdate val="0"/></c:externalData>
+</c:chartSpace>`;
 }
 // ---- Carte choroplèthe : une couleur par classe de valeur, du clair (peu) au foncé (beaucoup)
 const MAP_CLASSES = [["quantile", "classes d'effectifs égaux (quantiles)"], ["equal", "classes d'amplitude égale"]];
@@ -1462,7 +1556,7 @@ function renderMap(b, d, bi) {
   const br = mapBreaks(keys.map(valOf), n, m.classes || "quantile"), ramp = RAMP[br.length] || [];
   const ints = !rate && keys.every(k => { const v = valOf(k); return v === undefined || isNaN(v) || Number.isInteger(v); });
   const classOf = v => (v === undefined || isNaN(v) || v <= 0) ? -1 : br.findIndex(t => v <= t);
-  const colorOf = v => { const c = classOf(v); return c < 0 ? "var(--q0)" : `var(--q${ramp[c] || 5})`; };
+  const colorOf = v => { const c = classOf(v); return c < 0 ? "var(--q0)" : classeCouleur(b, ramp[c] || 5); };
   const fmt = v => rate ? fmtPct(v) : fmtNum(v);
   const W = Math.max(320, Math.min(760, ($("blocks").clientWidth || 700) - 32)), k = W / GEO.w, H = Math.round(GEO.h * k);
   const name = g => level === "dep" ? `${g} · ${DEP_NAMES[g]}` : `Académie ${/^[AEIOUÉ]/.test(g) ? "d'" : "de "}${g}`;
@@ -1488,7 +1582,7 @@ function renderMap(b, d, bi) {
   const svg = svgWrap(W, H, `<g transform="scale(${k.toFixed(5)})">${shapes}${lines}</g>${frames}${labels}`, "Carte " + (level === "dep" ? "par département" : "par académie"));
   // légende : une case par classe, plus « aucun »
   let prev = 0;
-  const items = br.map((t, j) => { const lo = ints ? Math.floor(prev) + 1 : prev, txt = j === 0 && !ints ? `jusqu'à ${fmt(t)}` : lo >= t ? fmt(t) : `${ints ? fmtNum(lo) : fmt(lo)} – ${fmt(t)}`; prev = t; return `<span><i style="background:var(--q${ramp[j]})"></i>${esc(txt)}</span>`; });
+  const items = br.map((t, j) => { const lo = ints ? Math.floor(prev) + 1 : prev, txt = j === 0 && !ints ? `jusqu'à ${fmt(t)}` : lo >= t ? fmt(t) : `${ints ? fmtNum(lo) : fmt(lo)} – ${fmt(t)}`; prev = t; return `<span><i style="background:${classeCouleur(b, ramp[j])}"></i>${esc(txt)}</span>`; });
   items.unshift(`<span><i style="background:var(--q0)"></i>${rate ? "0 ou sans attendu" : "0"}</span>`);
   if (rate) items.unshift(`<span><i style="background:transparent"></i>Taux :</span>`);
   const what = rate ? "Taux : valeur ÷ attendu" : plain(measureText(b.measure));
@@ -1565,7 +1659,8 @@ function renderPoints(b, d, bi) {
   const W = Math.max(320, Math.min(760, ($("blocks").clientWidth || 700) - 32)), k = W / GEO.w, H = Math.round(GEO.h * k);
   const max = Math.max(0, ...pts.map(x => x.v)) || 1;
   const n = 4, br = p.color === "unie" ? [] : mapBreaks(pts.map(x => x.v), n, "quantile"), ramp = { 1: [4], 2: [3, 5], 3: [2, 4, 5], 4: [2, 3, 4, 5] }[br.length] || [];
-  const couleur = v => !br.length ? "var(--s1)" : `var(--q${ramp[Math.max(0, br.findIndex(t => v <= t))] || 5})`;
+  const unie = b.couleurs && b.couleurs.teinte ? classeCouleur(b, 3) : "var(--s1)";
+  const couleur = v => !br.length ? unie : classeCouleur(b, ramp[Math.max(0, br.findIndex(t => v <= t))] || 5);
   const ints = pts.every(x => Number.isInteger(x.v));
   const rayon = v => p.size === "fixed" ? 4 : 2.5 + 11 * Math.sqrt(v / max);
   const parisK = 1;   // l'encart de Paris est déjà agrandi dans le fond
@@ -1580,8 +1675,8 @@ function renderPoints(b, d, bi) {
     <text x="${(f.x * k + 4).toFixed(1)}" y="${(f.y * k + 11).toFixed(1)}" style="font-size:7.5pt">${esc(f.t)}</text>`).join("");
   const svg = svgWrap(W, H, `${fond}${frames}${ronds}`, "Carte des établissements");
   let prev = 0;
-  const items = br.length ? br.map((t, j) => { const lo = ints ? Math.floor(prev) + 1 : prev, txt = lo >= t ? fmtNum(t) : `${fmtNum(lo)} – ${fmtNum(t)}`; prev = t; return `<span><i style="background:var(--q${ramp[j]})"></i>${esc(txt)}</span>`; })
-    : [`<span><i style="background:var(--s1)"></i>${esc(plain(measureText(b.measure)))}</span>`];
+  const items = br.length ? br.map((t, j) => { const lo = ints ? Math.floor(prev) + 1 : prev, txt = lo >= t ? fmtNum(t) : `${fmtNum(lo)} – ${fmtNum(t)}`; prev = t; return `<span><i style="background:${classeCouleur(b, ramp[j])}"></i>${esc(txt)}</span>`; })
+    : [`<span><i style="background:${unie}"></i>${esc(plain(measureText(b.measure)))}</span>`];
   const notes = [`${fmtNum(pts.length)} établissement(s) sur la carte${p.size === "fixed" ? "" : ` ; taille des points selon la valeur (jusqu'à ${fmtNum(max)})`}.`];
   if (sansRef) notes.push(`${fmtNum(sansRef)} ligne(s) introuvable(s) dans « ${P.table} »${P.parRef ? "" : ` (colonne « ${P.key} »)`} : non placée(s).`);
   if (sansCoord) notes.push(`${fmtNum(sansCoord)} établissement(s) sans coordonnées utilisables : non placé(s).`);
@@ -1804,6 +1899,10 @@ function commit() { saveConfig(); render(); }
 RACINE.addEventListener("change", e => {
   const t = e.target;
   if (t.id === "dashName") { config.name = t.value.trim() || "Tableau de bord"; commit(); return; }
+  if (t.dataset && t.dataset.couleur !== undefined) {                 // couleur choisie pour une valeur d'un graphique
+    const b = config.blocks[Number(t.dataset.b)], c = b.couleurs = b.couleurs || {};
+    c.valeurs = { ...(c.valeurs || {}), [t.dataset.couleur]: t.value }; commit(); return;
+  }
   if (t.dataset && t.dataset.ep) {                                     // durées de qualification : colonnes, classes
     const ep = { ...(config.episodes || {}) };
     if (t.dataset.ep === "bornes") { const n = t.value.split(/[^0-9]+/).map(Number).filter(x => x >= 1); if (n.length) ep.bornes = n; else delete ep.bornes; }
@@ -1874,6 +1973,8 @@ RACINE.addEventListener("click", e => {
   const act = t.dataset.act, i = Number(t.dataset.b);
   if (act === "clrdetail") { delete config.blocks[i].detailCols; commit(); return; }
   if (act === "autodesc") { delete config.blocks[i].desc; commit(); return; }
+  if (act === "coulreset") { delete config.blocks[i].couleurs; commit(); return; }
+  if (act === "coulsuppr") { const c = config.blocks[i].couleurs; if (c && c.valeurs) delete c.valeurs[t.dataset.v]; commit(); return; }
   if (act === "colmove") {
     const b = config.blocks[i], j = Number(t.dataset.j), d = Number(t.dataset.d);
     const vals = inSrc(b, () => valeursColonnes(b));
@@ -2505,6 +2606,11 @@ function chartWorkbook(spec0) {
   ], "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 }
 
+// Légende d'une frise, sous le graphique : un carré de couleur et le nom de chaque valeur (texte modifiable)
+function wLegende(items, enCours) {
+  const r = (t, c) => `<w:r><w:rPr>${c ? `<w:color w:val="${c}"/>` : ""}<w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr><w:t xml:space="preserve">${xe(t)}</w:t></w:r>`;
+  return `<w:p><w:pPr><w:spacing w:after="120"/></w:pPr>${items.map(x => r("■ ", hexOf(x.couleur)) + r(x.nom + "    ")).join("")}${enCours ? r("▸ en cours (pas de RAS depuis)") : ""}</w:p>`;
+}
 function wChart(rid, id, spec) {
   const cx = spec.type === "pie" ? 4200000 : 6120000;
   const cy = spec.type === "barh" ? Math.min(8800000, 700000 + spec.cats.length * (spec.mode === "group" && spec.series.length > 1 ? 90000 * spec.series.length + 90000 : 260000))
@@ -2592,13 +2698,14 @@ async function exportWord(onlyIndex = null) {
       if (!b.hideDesc) body.push(wP(blockDesc(b), { size: 20, keep: true }));
       const t = blockTable(b);
       if (!t || t.empty) { body.push(wP("Aucune donnée pour ces conditions.", { size: 20 })); continue; }
-      if ((b.view || "both") !== "table" && (b.wordChart || "native") === "native" && b.chart !== "map" && b.chart !== "points" && b.chart !== "gantt") {
-        const d = crossData(b, base), spec = chartSpec(b, d, d.rowKeys.slice(0, topOf(b)));
+      if ((b.view || "both") !== "table" && (b.wordChart || "native") === "native" && b.chart !== "map" && b.chart !== "points") {
+        const d = crossData(b, base), spec = b.chart === "gantt" ? friseSpec(b, d) : chartSpec(b, d, d.rowKeys.slice(0, topOf(b)));
         if (spec.error) body.push(wP(spec.error, { size: 20 }));
         else {
           const n = charts.length + 1, rid = "rIdChart" + n;
-          charts.push({ n, rid, xml: chartXml(spec), xlsx: new Uint8Array(await chartWorkbook(spec).arrayBuffer()) });
+          charts.push({ n, rid, xml: spec.frise ? chartXmlFrise(spec) : chartXml(spec), xlsx: new Uint8Array(await chartWorkbook(spec).arrayBuffer()) });
           body.push(wChart(rid, 100 + n, spec));
+          if (spec.frise) body.push(wLegende(spec.legende, spec.enCours));
         }
       } else if ((b.view || "both") !== "table") {
         const png = await chartToPng(document.querySelector(`[data-card="${i}"]`));
@@ -2965,7 +3072,7 @@ RACINE.addEventListener("keydown", e => {
   renderCross = (b, i, base) => inSrc(b, () => _rc(b, i, isMainSrc(b) ? base : baseRows()));
   crossData = withBase2(crossData); tileNumbers = withBase2(tileNumbers);
   tileValue = withB(tileValue); blockTable = withB(blockTable); tableHtml = withB(tableHtml); downloadCsv = withB(downloadCsv);
-  blockDesc = withB(blockDesc); blockEditor = withB(blockEditor); chartSpec = withB(chartSpec); renderChart = withB(renderChart);
+  blockDesc = withB(blockDesc); blockEditor = withB(blockEditor); chartSpec = withB(chartSpec); renderChart = withB(renderChart); friseSpec = withB(friseSpec);
   openDrill = withI(openDrill); drillRows = withI(drillRows);
   renderDrill = withDrill(renderDrill); drillCsv = withDrill(drillCsv);
   const _df = drillFilter; drillFilter = () => { inSrc(drillState && config.blocks[drillState.i], () => { const keep = render; render = () => {}; try { _df(); } finally { render = keep; } }); render(); };
