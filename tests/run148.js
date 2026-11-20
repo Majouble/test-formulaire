@@ -1,4 +1,4 @@
-// 2.62.0-alpha.43 à .49 : durées de qualification — sources calculées « Épisodes de qualification » et « Durées par
+// 2.62.0-alpha.43 à .50 : durées de qualification — sources calculées « Épisodes de qualification » et « Durées par
 // établissement » (jours avec un signalement seulement, qualification la plus grave du jour, RAS exclu), frise (Gantt),
 // typologie par classe de durée, filtre commun appliqué avant le calcul, ajout des blocs dans l'atelier, export Word (image)
 const __C = require('./chemins');
@@ -131,7 +131,16 @@ if (require.main === module) (async () => {
     const c1 = execSync(`unzip -p "${f2}" word/charts/chart1.xml`).toString(), c2 = execSync(`unzip -p "${f2}" word/charts/chart2.xml`).toString();
     const nb = x => (x.match(/<c:cat>.*?<\/c:cat>/s)[0].match(/<c:pt /g) || []).length;
     console.log('WORD, 34 LIGNES :', (liste.match(/charts\/chart\d+\.xml/g) || []).length, 'graphiques |', nb(c1), '+', nb(c2), 'lignes | tous les noms :', /tickLblSkip val="1"/.test(c1),
-      '| mention :', (docXml.match(/\(suite : [^)]+\)/) || [''])[0], '| légendes :', (docXml.match(/■ /g) || []).length / 3); }
+      '| mention :', (docXml.match(/\(suite : [^)]+\)/) || [''])[0], '| légendes :', (docXml.match(/■ /g) || []).length / 3);
+    // bouton « Image » (2.62.0-alpha.50) : une image par tranche de 25 lignes, filets, traits des jours, axes et légendes en haut et en bas
+    const svg = await page.$eval('[data-card="0"] .chart svg', x => ({ filets: [...x.querySelectorAll('line')].filter(l => l.getAttribute('x1') === '0').length,
+      jours: [...x.querySelectorAll('line')].filter(l => l.getAttribute('stroke') === 'var(--surface)').length, dates: [...x.querySelectorAll('text:not([text-anchor]):not(.val)')].length }));
+    console.log('ÉCRAN, FRISE DE 34 LIGNES :', svg.filets, 'filets horizontaux |', svg.jours, 'traits de jour sur les barres |', svg.dates, 'dates (axe en haut et en bas)');
+    const noms = [], fichiers = [];
+    page.on('download', async dl => { noms.push(dl.suggestedFilename()); const f = path.join(__C.sorties, `run148-image-${noms.length}.png`); fichiers.push(f); await dl.saveAs(f); });
+    await page.click('[data-card="0"] [data-act="png"]'); await page.waitForTimeout(2500);
+    console.log('IMAGES :', noms.join(' ; '), '| tailles :', fichiers.map(f => { const b = fs.readFileSync(f); return b.readUInt32BE(16) + '×' + b.readUInt32BE(20); }).join(' ; '));
+    page.removeAllListeners('download'); }
 
   // 3 quinquies. sigle du référentiel comme nom affiché, et colonne du référentiel reprise (2.62.0-alpha.48)
   await ouvrir({ name: 'Tableau de bord', filters: [], episodes: { nom: 'ref:Sigle', colonnes: ['ref:Type'] }, blocks: [BLOCS[0]] });
