@@ -587,11 +587,14 @@ function calculVirtuel() {
   if (cacheVirtuel && cacheVirtuel.cle === cle && cacheVirtuel.refData === refData) return cacheVirtuel;
   const E = window.EpisodesQualification;
   const { res, gravite, tous, copie, qLabel } = inSrc(null, () => {
-    const gravite = choixGrist(mainTable, c.qualif).filter(q => !E.estRAS(q));
+    // regroupements (« Blocage partiel », « Tentative de blocage » -> « Blocage ») : appliqués avant le calcul des épisodes ;
+    // un groupe prend le rang de gravité de sa qualification la plus grave
+    const groupe = q => (((config.episodes || {}).groupes || {})[q] || "").trim() || q;
+    const gravite = [...new Set(choixGrist(mainTable, c.qualif).filter(q => !E.estRAS(q)).map(groupe))];
     const res = E.calculer(baseRows(), {
       etab: r => { const v = r[c.etab]; return v === null || v === undefined || v === "" || v === 0 ? null : typeof v === "object" ? JSON.stringify(v) : String(v); },
       jour: r => (c.faits && dayOf(c.faits, r[c.faits])) || (c.cree && dayOf(c.cree, r[c.cree])) || null,
-      qualifs: r => keysOf(c.qualif, r[c.qualif]).filter(k => k !== EMPTY),
+      qualifs: r => keysOf(c.qualif, r[c.qualif]).filter(k => k !== EMPTY).map(q => E.estRAS(q) ? q : groupe(q)),
       ordre: r => { const d = c.cree && toJsDate(r[c.cree]); return d ? d.getTime() : 0; },
       gravite, bornes: (config.episodes || {}).bornes });
     const refCols = c.ref ? refColumns(c.ref) : [];
@@ -600,7 +603,7 @@ function calculVirtuel() {
       const rc = refCols.find(x => x.id === colRef(id)); if (!rc) return null;
       return { id: "Ref_" + rc.id, label: `${rc.label} (référentiel)`, type: rc.type, lire: r => valeurRef(r, rc.id) };
     }).filter(Boolean);
-    return { res, gravite, tous: choixGrist(mainTable, c.qualif), copie, qLabel: labelOf(c.qualif) };
+    return { res, gravite, tous: [...new Set(choixGrist(mainTable, c.qualif).map(q => E.estRAS(q) ? q : groupe(q)))], copie, qLabel: labelOf(c.qualif) };
   });
   const vues = [...new Set(res.episodes.map(e => e.qualification))];
   const qualifs = [...gravite, ...vues.filter(q => !gravite.includes(q)).sort((a, b) => a.localeCompare(b, "fr"))];
@@ -626,7 +629,9 @@ function calculVirtuel() {
     { id: "Nb_episodes", label: "Nombre d'épisodes", type: "Int" }, { id: "Qualification_max", label: `${qLabel} la plus grave`, type: "Choice" },
     { id: "Dernier_etat", label: "Dernier état", type: "Choice" }, { id: "En_cours", label: "En cours (pas de RAS depuis)", type: "Bool" },
     ...colsJours.map(({ id, label, type }) => ({ id, label, type }))];
-  cacheVirtuel = { cle, refData, colQualif: c.qualif,
+  const groupes = (config.episodes || {}).groupes || {}, membres = {};
+  choixGrist(mainTable, c.qualif).forEach(q => { const g = (groupes[q] || "").trim() || q; (membres[g] = membres[g] || []).push(q); });
+  cacheVirtuel = { cle, refData, colQualif: c.qualif, membres,
     choix: { Qualification: qualifs, Qualification_max: qualifs, Dernier_etat: [...new Set([...tous, ...qualifs])], Classe_duree: res.classes },
     [SRC_EPISODES]: ctx(colsEp, res.episodes.map(e => ({ ...etab(e), Qualification: e.qualification, Debut: secondesDuJour(e.debut), Fin: secondesDuJour(e.fin),
       Duree: e.duree, Classe_duree: e.classe, En_cours: e.enCours, Episode: e.rang,
@@ -655,7 +660,12 @@ function classeCouleur(b, n) {
 const sourcesBlocs = b => [...refTables(), ...Object.keys(VIRTUELLES).filter(t => (b && b.source === t) || colonnesEpisodes().ok)];
 // Couleur d'un choix réglée dans Grist (pour les sources calculées : celle de la colonne Qualification du widget)
 function couleurChoix(table, col, valeur) {
-  if (estVirtuelle(table)) { if (!/^(Qualification|Qualification_max|Dernier_etat)$/.test(col) || !cacheVirtuel) return ""; table = mainTable; col = cacheVirtuel.colQualif; }
+  if (estVirtuelle(table)) {
+    if (!/^(Qualification|Qualification_max|Dernier_etat)$/.test(col) || !cacheVirtuel) return "";
+    const m = cacheVirtuel.membres[valeur];                             // groupe : couleur de sa qualification la plus grave
+    for (const q of [valeur, ...(m || [])]) { const c = couleurChoix(mainTable, cacheVirtuel.colQualif, q); if (c) return c; }
+    return "";
+  }
   if (!docMeta || !table || !col) return "";
   const { T, C } = docMeta, ref = T.id[T.tableId.indexOf(table)];
   for (let i = 0; i < C.id.length; i++) if (C.parentId[i] === ref && C.colId[i] === col) {
@@ -885,6 +895,20 @@ function renderGlobal() {
   $("globalBox").innerHTML = `${vue}<div class="edit-only card">${reglages}</div>`;
 }
 
+// Regroupements de qualifications (config.episodes.groupes : qualification -> groupe) : une case par qualification
+function groupesEditeur(auto) {
+  const g = (config.episodes || {}).groupes || {}, E = window.EpisodesQualification;
+  const qs = auto.qualif && E ? choixGrist(mainTable, auto.qualif).filter(q => !E.estRAS(q)) : [];
+  if (!qs.length) return "";
+  const noms = [...new Set(Object.values(g).filter(Boolean))];
+  const n = Object.keys(g).filter(q => qs.includes(q)).length;
+  return `<details data-detailbox="__ep-groupes" ${detailOpen.has("__ep-groupes") ? "open" : ""} style="margin-bottom:12px"><summary><span class="sub">Regroupements de qualifications</span>
+      <span class="hint">${n ? `${n} qualification(s) regroupée(s) : ${esc(noms.join(", "))}` : "aucun : chaque qualification forme sa propre série"}</span></summary>
+      <datalist id="ep-groupes">${noms.map(x => `<option value="${esc(x)}">`).join("")}</datalist>
+      <div style="display:grid;grid-template-columns:max-content max-content;gap:4px 10px;align-items:center;margin-top:6px">
+        ${qs.map(q => `<span>${esc(q)}</span><input type="text" list="ep-groupes" data-epgroupe="${esc(q)}" value="${esc(g[q] || "")}" placeholder="${esc(q)}" style="width:220px">`).join("")}</div>
+      <p class="hint">Donnez le même nom de groupe à plusieurs qualifications (par exemple « Blocage » pour Blocage, Blocage partiel et Tentative de blocage) : elles forment une seule série, et des jours consécutifs de l'une puis de l'autre un seul épisode. Case vide : la qualification garde son nom. Le groupe prend le rang de gravité et la couleur de sa qualification la plus grave. S'applique aux deux sources calculées (frise, typologie, durées).</p></details>`;
+}
 // Réglage « Couleurs » d'un graphique : une case de couleur par série (ou par part d'un anneau), une teinte pour les cartes
 const versHex = c => { const h = hexOf(c).toLowerCase(); return "#" + (h.length === 3 ? h.replace(/./g, x => x + x) : h); };
 function couleursEditor(b, i) {
@@ -927,6 +951,7 @@ function reglagesDurees() {
         <label title="Bornes des classes de durée, en jours : « 1, 3, 7, 14 » donne 1 jour, 2 à 3 jours, 4 à 7 jours, 8 à 14 jours, 15 jours et plus">Classes de durée <input type="text" data-ep="bornes" value="${esc(bornes)}" style="width:110px"></label>
         <span class="hint">${auto.ok ? "Colonnes reconnues : sources disponibles pour les blocs." : "Choisissez au moins l'établissement, la qualification et une date."}</span>
       </div>
+      ${groupesEditeur(auto)}
       <details data-detailbox="__ep-colonnes" ${detailOpen.has("__ep-colonnes") ? "open" : ""} style="margin-bottom:12px"><summary><span class="sub">Colonnes reprises de la table du widget</span>
         <span class="hint">${(reg.colonnes || []).length ? `${reg.colonnes.length} colonne(s) choisie(s) en plus de celles de l'établissement` : "celles de l'établissement (UAI, nom, commune, département, académie…) ; d'autres au choix, du référentiel aussi"}</span></summary>
         <div class="chips" style="margin-top:6px"><span class="sub">Table des signalements :</span>${repSig.map(c => puce(c.id, c.label)).join("")}</div>
@@ -2006,6 +2031,13 @@ RACINE.addEventListener("change", e => {
   if (t.dataset && t.dataset.couleur !== undefined) {                 // couleur choisie pour une valeur d'un graphique
     const b = config.blocks[Number(t.dataset.b)], c = b.couleurs = b.couleurs || {};
     c.valeurs = { ...(c.valeurs || {}), [t.dataset.couleur]: t.value }; commit(); return;
+  }
+  if (t.dataset && t.dataset.epgroupe !== undefined) {               // regroupement d'une qualification
+    const ep = { ...(config.episodes || {}) }, g = { ...(ep.groupes || {}) }, v = t.value.trim();
+    if (v && v !== t.dataset.epgroupe) g[t.dataset.epgroupe] = v; else delete g[t.dataset.epgroupe];
+    if (Object.keys(g).length) ep.groupes = g; else delete ep.groupes;
+    if (Object.keys(ep).length) config.episodes = ep; else delete config.episodes;
+    commit(); return;
   }
   if (t.dataset && t.dataset.epcol !== undefined) {                   // colonne reprise dans les sources calculées
     const ep = { ...(config.episodes || {}) }, l = new Set(ep.colonnes || []);

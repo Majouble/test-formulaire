@@ -1,4 +1,4 @@
-// 2.62.0-alpha.43 à .50 : durées de qualification — sources calculées « Épisodes de qualification » et « Durées par
+// 2.62.0-alpha.43 à .51 : durées de qualification — sources calculées « Épisodes de qualification » et « Durées par
 // établissement » (jours avec un signalement seulement, qualification la plus grave du jour, RAS exclu), frise (Gantt),
 // typologie par classe de durée, filtre commun appliqué avant le calcul, ajout des blocs dans l'atelier, export Word (image)
 const __C = require('./chemins');
@@ -142,6 +142,11 @@ if (require.main === module) (async () => {
     console.log('IMAGES :', noms.join(' ; '), '| tailles :', fichiers.map(f => { const b = fs.readFileSync(f); return b.readUInt32BE(16) + '×' + b.readUInt32BE(20); }).join(' ; '));
     page.removeAllListeners('download'); }
 
+  // 3 septies. regroupements de qualifications (2.62.0-alpha.51) : Fermeture + Fonctionnement dégradé -> « Fermeture ou dégradé »
+  await ouvrir({ name: 'Tableau de bord', filters: [], episodes: { groupes: { Fermeture: 'Fermeture ou dégradé', 'Fonctionnement dégradé': 'Fermeture ou dégradé' } }, blocks: [BLOCS[0], BLOCS[1]] });
+  console.log('GROUPES, FRISE :', await page.$$eval('[data-card="0"] .chart svg rect[data-tip]', l => l.map(r => r.getAttribute('data-tip').split('\u0001').join(' → ') + ' [' + r.getAttribute('fill') + ']').join(' ; ')));
+  console.log('GROUPES, LÉGENDE :', await page.$$eval('[data-card="0"] .legend span', l => l.map(x => x.textContent.trim()).join(' | ')), '| TYPOLOGIE :', (await lignesTableau(1)).join(' / '));
+
   // 3 quinquies. sigle du référentiel comme nom affiché, et colonne du référentiel reprise (2.62.0-alpha.48)
   await ouvrir({ name: 'Tableau de bord', filters: [], episodes: { nom: 'ref:Sigle', colonnes: ['ref:Type'] }, blocks: [BLOCS[0]] });
   await page.waitForTimeout(800);
@@ -184,6 +189,11 @@ if (require.main === module) (async () => {
   await page.click('[data-card="0"] h2'); await page.waitForTimeout(400);
   console.log('LIGNES DE LA FRISE, APRÈS REPRISE :', await page.$$eval('[data-k="rows.col"] option', l => l.map(o => o.textContent).filter(t => /Type|Etablissement|Académie|Academie/i.test(t)).join(' ; ')));
   await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find(x => x.dataset.act === 'st-reglages' || /Réglages du tableau/.test(x.textContent)); if (b) b.click(); }); await page.waitForTimeout(500);
+  await page.click('[data-detailbox="__ep-groupes"] > summary'); await page.waitForTimeout(300);
+  console.log('REGROUPEMENTS, CASES :', await page.$$eval('[data-epgroupe]', l => l.map(x => x.dataset.epgroupe).join(' ; ')));
+  await page.fill('[data-epgroupe="Perturbation"]', 'Fonctionnement dégradé'); await page.press('[data-epgroupe="Perturbation"]', 'Tab'); await page.waitForTimeout(600);
+  console.log('PERTURBATION -> FONCTIONNEMENT DÉGRADÉ, TYPOLOGIE :', await page.$$eval('[data-card="1"] table tbody tr td:first-child', l => l.map(x => x.textContent.trim()).join(' ; ')));
+  await page.fill('[data-epgroupe="Perturbation"]', ''); await page.press('[data-epgroupe="Perturbation"]', 'Tab'); await page.waitForTimeout(600);
   await page.fill('[data-ep="bornes"]', '1, 2, 5'); await page.press('[data-ep="bornes"]', 'Tab'); await page.waitForTimeout(600);
   console.log('CLASSES 1, 2, 5 :', await page.$$eval('[data-card="1"] table thead th', l => l.map(x => x.textContent.trim()).join(' | ')));
   await page.screenshot({ path: path.join(__C.sorties, 'run148-atelier.png'), fullPage: true });
