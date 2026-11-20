@@ -1,4 +1,4 @@
-// 2.62.0-alpha.43 à .45 : durées de qualification — sources calculées « Épisodes de qualification » et « Durées par
+// 2.62.0-alpha.43 à .46 : durées de qualification — sources calculées « Épisodes de qualification » et « Durées par
 // établissement » (jours avec un signalement seulement, qualification la plus grave du jour, RAS exclu), frise (Gantt),
 // typologie par classe de durée, filtre commun appliqué avant le calcul, ajout des blocs dans l'atelier, export Word (image)
 const __C = require('./chemins');
@@ -14,13 +14,13 @@ function docDurees() {
   const i = C.id.findIndex((_, k) => C.parentId[k] === tr && C.colId[k] === 'Qualification');
   C.widgetOptions[i] = JSON.stringify({ choices: ['Fermeture', 'Fonctionnement dégradé', 'Perturbation', 'RAS'],
     choiceOptions: { Fermeture: { fillColor: '#E24B4A' }, 'Fonctionnement dégradé': { fillColor: '#EF9F27' }, Perturbation: { fillColor: '#FAC775' }, RAS: { fillColor: '#97C459' } } });
-  ajCol('Nom_etablissement', 'Any'); ajCol('Commune', 'Any'); ajCol('Academie', 'Any');
+  ajCol('Nom_etablissement', 'Any'); ajCol('Commune', 'Any'); ajCol('Academie', 'Any'); ajCol('Type_etablissement', 'Any');
   const E = { 1: ['Lycée Jean-Moulin', 'Béziers', 'Montpellier'], 2: ['Collège Les Pins', 'Sète', 'Montpellier'], 3: ['École Pasteur', 'Agde', 'Montpellier'], 4: ['Lycée Chateaubriand', 'Rennes', 'Rennes'] };
-  const R = { id: [], Date_faits: [], Cree_le: [], Nature: [], Qualification: [], Description: [], Etablissement: [], Dossier: [], Derniere_version: [], Nom_etablissement: [], Commune: [], Academie: [] };
+  const R = { id: [], Date_faits: [], Cree_le: [], Nature: [], Qualification: [], Description: [], Etablissement: [], Dossier: [], Derniere_version: [], Nom_etablissement: [], Commune: [], Academie: [], Type_etablissement: [] };
   const j = (jour, h) => Date.UTC(2026, 10, jour) / 1000 + (h || 0) * 3600;
   const aj = (etab, jour, h, q) => { const id = R.id.length + 1; R.id.push(id); R.Date_faits.push(j(jour)); R.Cree_le.push(j(jour, h)); R.Nature.push('Nouveau signalement');
     R.Qualification.push(q); R.Description.push('…'); R.Etablissement.push(etab); R.Dossier.push(id); R.Derniere_version.push(true);
-    R.Nom_etablissement.push(E[etab][0]); R.Commune.push(E[etab][1]); R.Academie.push(E[etab][2]); };
+    R.Nom_etablissement.push(E[etab][0]); R.Commune.push(E[etab][1]); R.Academie.push(E[etab][2]); R.Type_etablissement.push(E[etab][0].split(' ')[0]); };
   // 1 : perturbation puis fermeture le 14 (la plus grave compte), fermé le 15 et 16, dégradé 17-18, RAS le 19
   aj(1, 14, 8, 'Perturbation'); aj(1, 14, 15, 'Fermeture'); aj(1, 15, 9, 'Fermeture'); aj(1, 16, 9, 'Fermeture');
   aj(1, 17, 9, 'Fonctionnement dégradé'); aj(1, 18, 9, 'Fonctionnement dégradé'); aj(1, 19, 9, 'RAS');
@@ -105,6 +105,10 @@ if (require.main === module) (async () => {
   // 3 bis. condition de la frise sur les chiffres de l'établissement recopiés sur ses épisodes (2.62.0-alpha.44)
   await ouvrir({ name: 'Tableau de bord', filters: [], blocks: [{ ...BLOCS[0], conds: [{ col: 'Jours_touches', op: 'ge', val: '3' }] }] });
   console.log('FRISE, JOURS TOUCHÉS ≥ 3 :', await page.$$eval('[data-card="0"] .chart svg text[text-anchor="end"] title', l => l.map(t => t.textContent).join(' ; ')));
+  // 3 ter. colonne reprise au choix (2.62.0-alpha.46) : type d'établissement en lignes d'un tableau des durées
+  await ouvrir({ name: 'Tableau de bord', filters: [], episodes: { colonnes: ['Type_etablissement'] }, blocks: [{ id: 'type', type: 'cross', title: 'Jours touchés par type', source: '__Durees', measure: { agg: 'sum', col: 'Jours_touches' }, rows: { col: 'Type_etablissement' }, cols: { col: '' }, conds: [], view: 'table', sort: 'value', top: 0 }] });
+  console.log('COLONNE REPRISE (Type) EN LIGNES :', (await lignesTableau(0)).join(' / '));
+  await ouvrir({ name: 'Tableau de bord', filters: [], blocks: [{ ...BLOCS[0], conds: [{ col: 'Jours_touches', op: 'ge', val: '3' }] }] });
   console.log('COLONNES DES CONDITIONS :', await page.$$eval('[data-card="0"] [data-f="col"] option', l => l.map(o => o.textContent).filter(t => /établissement\)/.test(t)).join(' ; ')));
 
   // 4. atelier : réglages « Durées de qualification », sources proposées, ajout d'une frise et d'une typologie
@@ -126,6 +130,14 @@ if (require.main === module) (async () => {
   console.log('PÉRIODE DE LA FRISE :', await page.$$eval('[data-k="frise.debut"], [data-k="frise.fin"]', l => l.map(x => x.options[x.selectedIndex].textContent).join(' ; ')));
   await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find(x => x.dataset.act === 'st-reglages' || /Réglages du tableau/.test(x.textContent)); if (b) b.click(); }); await page.waitForTimeout(500);
   console.log('RÉGLAGES « DURÉES DE QUALIFICATION » :', await page.$$eval('[data-ep]', l => l.map(x => `${x.dataset.ep}=${x.tagName === 'SELECT' ? x.options[x.selectedIndex].textContent : x.value}`).join(' ; ')));
+  await page.click('[data-detailbox="__ep-colonnes"] > summary'); await page.waitForTimeout(300);
+  const avant = await page.$$eval('[data-epcol]', l => l.map(x => x.parentElement.textContent.trim()).join(' ; '));
+  console.log('COLONNES PROPOSÉES À LA REPRISE :', avant);
+  await page.check('[data-epcol="Type_etablissement"]'); await page.waitForTimeout(600);
+  await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find(x => x.dataset.act === 'st-fermer-fenetre'); if (b) b.click(); }); await page.waitForTimeout(300);
+  await page.click('[data-card="0"] h2'); await page.waitForTimeout(400);
+  console.log('LIGNES DE LA FRISE, APRÈS REPRISE :', await page.$$eval('[data-k="rows.col"] option', l => l.map(o => o.textContent).filter(t => /Type|Etablissement|Académie|Academie/i.test(t)).join(' ; ')));
+  await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find(x => x.dataset.act === 'st-reglages' || /Réglages du tableau/.test(x.textContent)); if (b) b.click(); }); await page.waitForTimeout(500);
   await page.fill('[data-ep="bornes"]', '1, 2, 5'); await page.press('[data-ep="bornes"]', 'Tab'); await page.waitForTimeout(600);
   console.log('CLASSES 1, 2, 5 :', await page.$$eval('[data-card="1"] table thead th', l => l.map(x => x.textContent.trim()).join(' | ')));
   await page.screenshot({ path: path.join(__C.sorties, 'run148-atelier.png'), fullPage: true });
