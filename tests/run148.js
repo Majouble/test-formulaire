@@ -1,4 +1,4 @@
-// 2.62.0-alpha.43 à .47 : durées de qualification — sources calculées « Épisodes de qualification » et « Durées par
+// 2.62.0-alpha.43 à .48 : durées de qualification — sources calculées « Épisodes de qualification » et « Durées par
 // établissement » (jours avec un signalement seulement, qualification la plus grave du jour, RAS exclu), frise (Gantt),
 // typologie par classe de durée, filtre commun appliqué avant le calcul, ajout des blocs dans l'atelier, export Word (image)
 const __C = require('./chemins');
@@ -31,6 +31,10 @@ function docDurees() {
   // 4 (autre académie) : perturbation du 12 au 13, puis plus rien
   aj(4, 12, 9, 'Perturbation'); aj(4, 13, 9, 'Perturbation'); aj(4, 13, 18, 'RAS');
   D.Reponses = R;
+  // sigle dans le référentiel (2.62.0-alpha.48) : établissement 3 sans sigle, établissement 4 absent du référentiel
+  { const te = T.id[T.tableId.indexOf('Etablissements')], n = Math.max(...C.id) + 1;
+    for (const k of Object.keys(C)) C[k].push(k === 'id' ? n : k === 'parentId' ? te : k === 'colId' ? 'Sigle' : k === 'label' ? 'Sigle' : k === 'type' ? 'Text' : k === 'isFormula' ? false : (typeof C[k][0] === 'number' ? 0 : typeof C[k][0] === 'boolean' ? false : ''));
+    D.Etablissements.Sigle = D.Etablissements.id.map(id => ({ 1: 'LJM', 2: 'CLP' })[id] || ''); }
   return doc;
 }
 const BLOCS = [
@@ -114,6 +118,14 @@ if (require.main === module) (async () => {
   await ouvrir({ name: 'Tableau de bord', filters: [], blocks: [{ ...BLOCS[0], frise: { fenetre: 'derniers', n: 3 } }] });
   console.log('FRISE, 3 DERNIERS JOURS :', await barresDe());
 
+  // 3 quinquies. sigle du référentiel comme nom affiché, et colonne du référentiel reprise (2.62.0-alpha.48)
+  await ouvrir({ name: 'Tableau de bord', filters: [], episodes: { nom: 'ref:Sigle', colonnes: ['ref:Type'] }, blocks: [BLOCS[0]] });
+  await page.waitForTimeout(800);
+  console.log('FRISE, SIGLE DU RÉFÉRENTIEL :', await page.$$eval('[data-card="0"] .chart svg text[text-anchor="end"] title', l => l.map(t => t.textContent).join(' ; ')));
+  await page.click('[data-card="0"] .chart svg rect[data-tip]'); await page.waitForTimeout(500);
+  console.log('DÉTAIL, COLONNES :', await page.$$eval('#drill th', l => l.map(t => t.textContent.trim()).join(' | ')));
+  await page.keyboard.press('Escape');
+
   // 3 ter. colonne reprise au choix (2.62.0-alpha.46) : type d'établissement en lignes d'un tableau des durées
   await ouvrir({ name: 'Tableau de bord', filters: [], episodes: { colonnes: ['Type_etablissement'] }, blocks: [{ id: 'type', type: 'cross', title: 'Jours touchés par type', source: '__Durees', measure: { agg: 'sum', col: 'Jours_touches' }, rows: { col: 'Type_etablissement' }, cols: { col: '' }, conds: [], view: 'table', sort: 'value', top: 0 }] });
   console.log('COLONNE REPRISE (Type) EN LIGNES :', (await lignesTableau(0)).join(' / '));
@@ -140,7 +152,8 @@ if (require.main === module) (async () => {
   await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find(x => x.dataset.act === 'st-reglages' || /Réglages du tableau/.test(x.textContent)); if (b) b.click(); }); await page.waitForTimeout(500);
   console.log('RÉGLAGES « DURÉES DE QUALIFICATION » :', await page.$$eval('[data-ep]', l => l.map(x => `${x.dataset.ep}=${x.tagName === 'SELECT' ? x.options[x.selectedIndex].textContent : x.value}`).join(' ; ')));
   await page.click('[data-detailbox="__ep-colonnes"] > summary'); await page.waitForTimeout(300);
-  const avant = await page.$$eval('[data-epcol]', l => l.map(x => x.parentElement.textContent.trim()).join(' ; '));
+  const avant = await page.$$eval('[data-epcol]', l => l.map(x => x.dataset.epcol).join(' ; '));
+  console.log('NOM AFFICHÉ, CHOIX :', await page.$$eval('[data-ep="nom"] option', l => l.map(o => o.textContent).filter(t => /Sigle|automatique/.test(t)).join(' ; ')));
   console.log('COLONNES PROPOSÉES À LA REPRISE :', avant);
   await page.check('[data-epcol="Type_etablissement"]'); await page.waitForTimeout(600);
   await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find(x => x.dataset.act === 'st-fermer-fenetre'); if (b) b.click(); }); await page.waitForTimeout(300);
