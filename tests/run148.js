@@ -1,4 +1,4 @@
-// 2.62.0-alpha.43 à .46 : durées de qualification — sources calculées « Épisodes de qualification » et « Durées par
+// 2.62.0-alpha.43 à .47 : durées de qualification — sources calculées « Épisodes de qualification » et « Durées par
 // établissement » (jours avec un signalement seulement, qualification la plus grave du jour, RAS exclu), frise (Gantt),
 // typologie par classe de durée, filtre commun appliqué avant le calcul, ajout des blocs dans l'atelier, export Word (image)
 const __C = require('./chemins');
@@ -105,6 +105,15 @@ if (require.main === module) (async () => {
   // 3 bis. condition de la frise sur les chiffres de l'établissement recopiés sur ses épisodes (2.62.0-alpha.44)
   await ouvrir({ name: 'Tableau de bord', filters: [], blocks: [{ ...BLOCS[0], conds: [{ col: 'Jours_touches', op: 'ge', val: '3' }] }] });
   console.log('FRISE, JOURS TOUCHÉS ≥ 3 :', await page.$$eval('[data-card="0"] .chart svg text[text-anchor="end"] title', l => l.map(t => t.textContent).join(' ; ')));
+  // 3 quater. dates affichées de la frise (2.62.0-alpha.47) : période fixe, derniers jours ; mesure et tableau inchangés
+  const barresDe = () => page.$$eval('[data-card="0"] .chart svg rect[data-tip]', l => l.map(r => r.getAttribute('data-tip').split('\u0001').join(' → ')).join(' ; '));
+  await ouvrir({ name: 'Tableau de bord', filters: [], blocks: [{ ...BLOCS[0], frise: { fenetre: 'dates', du: '2026-11-16', au: '2026-11-17' } }] });
+  console.log('FRISE DU 16 AU 17/11 :', await barresDe());
+  console.log('  axe :', await page.$$eval('[data-card="0"] .chart svg text:not([text-anchor]):not(.val)', l => l.map(t => t.textContent).join(' ')), '| mesure :', await page.$$eval('[data-card="0"] .chart svg text.val', l => l.map(t => t.textContent).join(' ; ')),
+    '| note :', await page.$$eval('[data-card="0"] .chart .hint', l => l.map(t => t.textContent).join(' ')), '| tableau :', (await lignesTableau(0)).slice(-1)[0]);
+  await ouvrir({ name: 'Tableau de bord', filters: [], blocks: [{ ...BLOCS[0], frise: { fenetre: 'derniers', n: 3 } }] });
+  console.log('FRISE, 3 DERNIERS JOURS :', await barresDe());
+
   // 3 ter. colonne reprise au choix (2.62.0-alpha.46) : type d'établissement en lignes d'un tableau des durées
   await ouvrir({ name: 'Tableau de bord', filters: [], episodes: { colonnes: ['Type_etablissement'] }, blocks: [{ id: 'type', type: 'cross', title: 'Jours touchés par type', source: '__Durees', measure: { agg: 'sum', col: 'Jours_touches' }, rows: { col: 'Type_etablissement' }, cols: { col: '' }, conds: [], view: 'table', sort: 'value', top: 0 }] });
   console.log('COLONNE REPRISE (Type) EN LIGNES :', (await lignesTableau(0)).join(' / '));
