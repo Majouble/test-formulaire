@@ -594,7 +594,11 @@ function calculVirtuel() {
   const commun = [{ id: "Etablissement", label: "Établissement", type: "Text" }, ...copie];
   const colsEp = [...commun, { id: "Qualification", label: qLabel, type: "Choice" }, { id: "Debut", label: "Début", type: "Date" }, { id: "Fin", label: "Fin", type: "Date" },
     { id: "Duree", label: "Durée (jours)", type: "Int" }, { id: "Classe_duree", label: "Classe de durée", type: "Choice" },
-    { id: "En_cours", label: "En cours (pas de RAS depuis)", type: "Bool" }, { id: "Episode", label: "N° de l'épisode", type: "Int" }];
+    { id: "En_cours", label: "En cours (pas de RAS depuis)", type: "Bool" }, { id: "Episode", label: "N° de l'épisode", type: "Int" },
+    // chiffres de l'établissement, recopiés sur chacun de ses épisodes (conditions d'une frise : « Jours touchés ≥ 3 »…)
+    { id: "Jours_touches", label: "Jours touchés (établissement)", type: "Int" }, { id: "Nb_episodes", label: "Nombre d'épisodes (établissement)", type: "Int" },
+    { id: "Qualification_max", label: `${qLabel} la plus grave (établissement)`, type: "Choice" }];
+  const parEtab = new Map(res.etablissements.map(e => [e.cle, e]));
   const colsJours = qualifs.map((q, k) => ({ id: `Jours_${k + 1}`, label: `Jours : ${q}`, type: "Int", q }));
   const colsDu = [...commun, { id: "Premier_jour", label: "Premier jour", type: "Date" }, { id: "Dernier_jour", label: "Dernier jour", type: "Date" },
     { id: "Jours_touches", label: "Jours touchés", type: "Int" }, { id: "Classe_duree", label: "Classe de durée", type: "Choice" },
@@ -604,7 +608,8 @@ function calculVirtuel() {
   cacheVirtuel = { cle, colQualif: c.qualif,
     choix: { Qualification: qualifs, Qualification_max: qualifs, Dernier_etat: [...new Set([...tous, ...qualifs])], Classe_duree: res.classes },
     [SRC_EPISODES]: ctx(colsEp, res.episodes.map(e => ({ ...etab(e), Qualification: e.qualification, Debut: secondesDuJour(e.debut), Fin: secondesDuJour(e.fin),
-      Duree: e.duree, Classe_duree: e.classe, En_cours: e.enCours, Episode: e.rang }))),
+      Duree: e.duree, Classe_duree: e.classe, En_cours: e.enCours, Episode: e.rang,
+      Jours_touches: parEtab.get(e.cle).jours, Nb_episodes: parEtab.get(e.cle).episodes, Qualification_max: parEtab.get(e.cle).plusGrave }))),
     [SRC_DUREES]: ctx(colsDu, res.etablissements.map(e => ({ ...etab(e), Premier_jour: secondesDuJour(e.premier), Dernier_jour: secondesDuJour(e.dernier),
       Jours_touches: e.jours, Classe_duree: e.classe, Nb_episodes: e.episodes, Qualification_max: e.plusGrave, Dernier_etat: e.dernierEtat, En_cours: e.enCours,
       ...Object.fromEntries(colsJours.map(x => [x.id, e.joursPar[x.q] || 0])) }))) };
