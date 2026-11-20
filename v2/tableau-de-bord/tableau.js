@@ -1475,37 +1475,76 @@ function friseDonnees(b, d) {
 }
 function renderFrise(b, d, bi) {
   const F = friseDonnees(b, d); if (F.erreur) return `<p class="hint">${esc(F.erreur)}</p>`;
-  const { lignes, min, max } = F, n = max - min + 1;
   const W = Math.max(360, Math.min(1100, ($("blocks").clientWidth || 700) - 32));
-  const labelW = Math.min(240, Math.round(W * 0.3)), valW = 56, plotW = W - labelW - valW, dw = plotW / n;
-  const axeH = 22, pas = 22, barH = 14, H = axeH + lignes.length * pas + 4;
-  const x = j => labelW + (j - min) * dw, saut = F.saut(dw);
-  let m = "";
-  for (let j = min; j <= max + 1; j++) {
-    if (dw >= 5 || (j - min) % saut === 0) m += `<line x1="${x(j).toFixed(1)}" x2="${x(j).toFixed(1)}" y1="${axeH - 4}" y2="${H}" stroke="var(--grid)" stroke-width="${(j - min) % saut === 0 ? 1 : 0.5}"></line>`;
-    if ((j - min) % saut === 0 && j <= max) m += `<text x="${(x(j) + 3).toFixed(1)}" y="${axeH - 8}">${jjmm(jourNum(j))}</text>`;
+  const { svg } = friseSvg(b, d, F, F.lignes, { W, bi, titre: plain(b.title || "Frise") });
+  const legende = d.cc ? `<div class="legend">${F.valeurs.map(k => `<span><i style="background:${F.couleur(k)}"></i>${rich(keyLabel(d.cc, k, d.cg))}</span>`).join("")}${F.enCours ? `<span><i style="background:var(--axis)"></i>▸ en cours (pas de RAS depuis)</span>` : ""}</div>` : "";
+  const note = (F.cachees ? `<p class="hint">${F.cachees} autre(s) ligne(s) non affichée(s) : augmentez « Lignes affichées ».</p>` : "")
+    + (F.horsFenetre ? `<p class="hint">${F.horsFenetre} ligne(s) sans période dans les dates affichées (${esc(F.fenetre)}).</p>` : "");
+  return `<div class="chart">${svg}${legende}${note}</div>`;
+}
+// Dessin de la frise (écran et images) : axe des dates en haut et en bas, un trait par jour, un filet entre deux lignes.
+// o.bi : écran (infobulles, détail au clic) ; o.image : image à enregistrer (plus grande, titre, légende en haut et en bas,
+// couleurs claires) ; o.partie : « 1 sur 3 » quand la frise est découpée en plusieurs images.
+function friseSvg(b, d, F, lignes, o) {
+  const img = !!o.image, W = o.W, { min, max } = F, n = max - min + 1;
+  const T = img ? { pas: 32, barH: 22, axe: 28, police: 15, car: 8.4 } : { pas: 22, barH: 14, axe: 22, police: 13.33, car: 7.3 };
+  const labelW = Math.min(img ? 330 : 240, Math.round(W * 0.32)), valW = img ? 70 : 56, plotW = W - labelW - valW, dw = plotW / n;
+  const saut = F.saut(dw), x = j => labelW + (j - min) * dw;
+  // légende (images) : carré de couleur et nom de chaque valeur, sur une ou plusieurs lignes
+  const items = [...F.valeurs.map(k => ({ c: F.couleur(k), t: F.nom(k) })), ...(F.enCours ? [{ c: "var(--axis)", t: "▸ en cours (pas de RAS depuis)" }] : [])];
+  const legende = y0 => {
+    let lx = labelW, ly = y0 + T.police, out = "";
+    items.forEach(it => { const w = 22 + it.t.length * T.car * 0.85; if (lx + w > W && lx > labelW) { lx = labelW; ly += T.police + 8; }
+      out += `<rect x="${lx}" y="${ly - T.police + 3}" width="${T.police - 2}" height="${T.police - 2}" rx="3" fill="${it.c}"></rect><text x="${lx + T.police + 4}" y="${ly}">${esc(it.t)}</text>`; lx += w + 14; });
+    return { svg: out, h: ly - y0 + 10 };
+  };
+  let y = 0, m = "";
+  if (img) { m += `<text x="0" y="${T.police + 4}" style="font-weight:700;font-size:${T.police + 2}px">${esc(o.titre)}${o.partie ? ` (${esc(o.partie)})` : ""}</text>`; y = T.police + 16; }
+  if (img && items.length) { const L = legende(y); m += L.svg; y += L.h; }
+  const haut = y + T.axe, bas = haut + lignes.length * T.pas;             // zone des lignes
+  const dates = yy => { let t = ""; for (let j = min; j <= max; j += saut) t += `<text x="${(x(j) + 3).toFixed(1)}" y="${yy}">${jjmm(jourNum(j))}</text>`; return t; };
+  m += dates(haut - 8) + dates(bas + T.axe - 8);
+  for (let j = min; j <= max + 1; j++) {                                // un trait par jour, plus marqué aux dates écrites
+    const fort = (j - min) % saut === 0;
+    m += `<line x1="${x(j).toFixed(1)}" x2="${x(j).toFixed(1)}" y1="${haut - 4}" y2="${bas + 4}" stroke="${fort ? "var(--axis)" : "var(--grid)"}" stroke-width="${fort ? 1 : 0.6}"></line>`;
   }
+  for (let k = 0; k <= lignes.length; k++) m += `<line x1="0" x2="${W}" y1="${haut + k * T.pas}" y2="${haut + k * T.pas}" stroke="var(--grid)" stroke-width="${k % lignes.length ? 0.6 : 1}"></line>`;
   const auj = numJour(jourParis());
-  if (auj >= min && auj <= max) m += `<line x1="${x(auj + 0.5).toFixed(1)}" x2="${x(auj + 0.5).toFixed(1)}" y1="${axeH - 4}" y2="${H}" stroke="var(--ink-2)" stroke-dasharray="3 3"><title>Aujourd'hui</title></line>`;
-  const maxChars = Math.max(10, Math.floor((labelW - 12) / 7.3));
+  if (auj >= min && auj <= max) m += `<line x1="${x(auj + 0.5).toFixed(1)}" x2="${x(auj + 0.5).toFixed(1)}" y1="${haut - 4}" y2="${bas + 4}" stroke="var(--ink-2)" stroke-dasharray="3 3"><title>Aujourd'hui</title></line>`;
+  const maxChars = Math.max(10, Math.floor((labelW - 12) / T.car));
   const ordre = new Map(d.colKeys.map((c, j) => [c, j]));            // la première valeur des colonnes (la plus grave) dessinée en dernier, au-dessus
   lignes.forEach((l, k) => {
-    const y = axeH + k * pas + (pas - barH) / 2;
-    m += `<text x="${labelW - 8}" y="${y + barH / 2 + 4}" text-anchor="end"><title>${esc(plain(l.libelle))}</title>${svgRich(l.libelle, maxChars)}</text>`;
+    const yb = haut + k * T.pas + (T.pas - T.barH) / 2, yt = yb + T.barH / 2 + T.police * 0.35;
+    m += `<text x="${labelW - 8}" y="${yt.toFixed(1)}" text-anchor="end"><title>${esc(plain(l.libelle))}</title>${svgRich(l.libelle, maxChars)}</text>`;
     l.segs.slice().sort((s, t) => (ordre.get(t.ck) ?? 1e9) - (ordre.get(s.ck) ?? 1e9)).forEach(s => {
       const x0 = x(s.a) + 0.5, w = Math.max(2, (s.z - s.a + 1) * dw - 1), c = F.couleur(s.ck);
       const a0 = s.a0 ?? s.a, z0 = s.z0 ?? s.z, nj = z0 - a0 + 1;         // infobulle : la période entière, même coupée par les dates affichées
       const quand = a0 === z0 ? `le ${dateLabel(jourNum(a0), "jour")}` : `du ${dateLabel(jourNum(a0), "jour")} au ${dateLabel(jourNum(z0), "jour")}`;
-      const tip = tipAttr(`${plain(l.libelle)}${s.ck !== null ? " · " + s.ck : ""}`, `${quand} · ${nj} jour${nj > 1 ? "s" : ""}${s.enCours ? " · en cours" : ""}`) + drillAttr(bi, l.rk, s.ck);
-      m += `<rect x="${x0.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="${barH}" rx="2" fill="${c}" ${tip}></rect>`;
-      if (s.enCours) m += `<path d="M${(x0 + w + 1).toFixed(1)} ${y}l6 ${barH / 2}l-6 ${barH / 2}z" fill="${c}" ${tip}></path>`;
+      const tip = o.bi === undefined ? "" : tipAttr(`${plain(l.libelle)}${s.ck !== null ? " · " + s.ck : ""}`, `${quand} · ${nj} jour${nj > 1 ? "s" : ""}${s.enCours ? " · en cours" : ""}`) + drillAttr(o.bi, l.rk, s.ck);
+      m += `<rect x="${x0.toFixed(1)}" y="${yb}" width="${w.toFixed(1)}" height="${T.barH}" rx="2" fill="${c}" ${tip}></rect>`;
+      if (s.enCours) m += `<path d="M${(x0 + w + 1).toFixed(1)} ${yb}l${T.barH * 0.45} ${T.barH / 2}l-${T.barH * 0.45} ${T.barH / 2}z" fill="${c}" ${tip}></path>`;
     });
-    m += `<text class="val" x="${W - valW + 14}" y="${y + barH / 2 + 4}">${esc(l.valeur)}</text>`;
+    m += `<text class="val" x="${W - valW + 14}" y="${yt.toFixed(1)}">${esc(l.valeur)}</text>`;
   });
-  const legende = d.cc ? `<div class="legend">${F.valeurs.map(k => `<span><i style="background:${F.couleur(k)}"></i>${rich(keyLabel(d.cc, k, d.cg))}</span>`).join("")}${F.enCours ? `<span><i style="background:var(--axis)"></i>▸ en cours (pas de RAS depuis)</span>` : ""}</div>` : "";
-  const note = (F.cachees ? `<p class="hint">${F.cachees} autre(s) ligne(s) non affichée(s) : augmentez « Lignes affichées ».</p>` : "")
-    + (F.horsFenetre ? `<p class="hint">${F.horsFenetre} ligne(s) sans période dans les dates affichées (${esc(F.fenetre)}).</p>` : "");
-  return `<div class="chart">${svgWrap(W, H, m, plain(b.title || "Frise"))}${legende}${note}</div>`;
+  // séparation des jours visible aussi sur les barres (fins traits de la couleur du fond), pour compter les jours
+  if (dw >= 6) for (let j = min + 1; j <= max; j++) m += `<line x1="${x(j).toFixed(1)}" x2="${x(j).toFixed(1)}" y1="${haut}" y2="${bas}" stroke="var(--surface)" stroke-width="1" pointer-events="none"></line>`;
+  y = bas + T.axe + 6;
+  if (img && items.length) { const L = legende(y); m += L.svg; y += L.h; }
+  const H = Math.ceil(y + 4);
+  return { svg: svgWrap(W, H, m, o.titre), W, H };
+}
+// Images de la frise : FRISE_IMAGE lignes par image (même axe des dates), en grand, couleurs claires
+const FRISE_IMAGE = 25;
+async function friseImages(b) {
+  const d = crossData(b), F = friseDonnees(b, d); if (F.erreur) return [];
+  const parts = []; for (let i = 0; i < F.lignes.length; i += FRISE_IMAGE) parts.push(F.lignes.slice(i, i + FRISE_IMAGE));
+  const out = [];
+  for (const [k, lignes] of parts.entries()) {
+    const { svg, W, H } = friseSvg(b, d, F, lignes, { W: 1000, image: true, titre: plain(b.title || "Frise"), partie: parts.length > 1 ? `${k + 1} sur ${parts.length}` : "" });
+    const inner = svg.replace(/^<svg[^>]*>/, "").replace(/<\/svg>$/, "").replace(/<title>[\s\S]*?<\/title>/g, "");
+    out.push({ ...(await rasteriser(lightVars(inner).replace(/<text(?![^>]*fill=)/g, '<text fill="#000000"'), W, H, 15)), partie: parts.length > 1 ? `${k + 1} sur ${parts.length}` : "" });
+  }
+  return out;
 }
 // Frise dans Word (graphique modifiable, aussi dans Excel) : barres horizontales empilées. Pour chaque rang d'épisode k,
 // une série « écart » invisible (début du premier épisode, puis jours sans signalement) et une série « épisode k » dont
@@ -2389,9 +2428,13 @@ function chartToPng(card) {
   let inner = svg.innerHTML.replace(/<title>[\s\S]*?<\/title>/g, "").replace(/ data-tip="[^"]*"/g, "")
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");     // caractères interdits en XML
   inner = lightVars(inner).replace(/<text class="val"/g, '<text fill="#000000"').replace(/<text(?![^>]*fill=)/g, '<text fill="#000000"');
+  return rasteriser(inner + leg, W, H);
+}
+// Dessin SVG (contenu, en couleurs claires) -> PNG sur fond blanc, à 2x pour une impression nette
+function rasteriser(inner, W, H, police = 13.33) {
   const src = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-    <style>text{font-family:Marianne,Arial,Helvetica,sans-serif;font-size:13.33px}</style>
-    <rect width="100%" height="100%" fill="#ffffff"/>${inner}${leg}</svg>`;
+    <style>text{font-family:Marianne,Arial,Helvetica,sans-serif;font-size:${police}px}</style>
+    <rect width="100%" height="100%" fill="#ffffff"/>${inner}</svg>`;
   return new Promise((resolve, reject) => {
     const img = new Image(), k = 2;
     img.onload = () => {
@@ -2786,6 +2829,12 @@ async function exportWord(onlyIndex = null) {
           }
           if (spec.frise) body.push(wLegende(spec.legende, spec.enCours));
         }
+      } else if ((b.view || "both") !== "table" && b.chart === "gantt") {   // frise en images : une par tranche de lignes
+        for (const im of await friseImages(b)) {
+          const n = media.length + 1, rid = "rIdImg" + n;
+          media.push({ name: `word/media/graphique${n}.png`, data: new Uint8Array(await im.blob.arrayBuffer()), rid });
+          body.push(wImage(rid, n, im.w, im.h));
+        }
       } else if ((b.view || "both") !== "table") {
         const png = await chartToPng(document.querySelector(`[data-card="${i}"]`));
         if (png) {
@@ -2833,6 +2882,16 @@ async function exportWord(onlyIndex = null) {
 
 async function downloadPng(b, i) {
   try {
+    if (b.chart === "gantt" && (b.view || "both") !== "table") {          // frise : une image par tranche de FRISE_IMAGE lignes
+      const imgs = await friseImages(b);
+      if (!imgs.length) { showMsg("warn", "Frise vide : rien à enregistrer."); return; }
+      for (const [k, im] of imgs.entries()) {
+        if (k) await new Promise(r => setTimeout(r, 600));                 // les navigateurs refusent des téléchargements trop rapprochés
+        triggerDownload(new Blob([im.blob], { type: "application/octet-stream" }), `${fileSafe(b.title || "frise")}${im.partie ? ` ${k + 1} sur ${imgs.length}` : ""}.png`);
+      }
+      if (imgs.length > 1) showMsg("ok", `Frise enregistrée en ${imgs.length} images de ${FRISE_IMAGE} lignes au plus.`);
+      return;
+    }
     const png = await chartToPng(document.querySelector(`[data-card="${i}"]`));
     if (!png) { showMsg("warn", "Ce bloc n'affiche pas de graphique : réglez « Affichage » sur « Graphique et tableau »."); return; }
     // type générique : certains navigateurs ignorent le nom de fichier pour une image
@@ -3151,7 +3210,7 @@ RACINE.addEventListener("keydown", e => {
   renderCross = (b, i, base) => inSrc(b, () => _rc(b, i, isMainSrc(b) ? base : baseRows()));
   crossData = withBase2(crossData); tileNumbers = withBase2(tileNumbers);
   tileValue = withB(tileValue); blockTable = withB(blockTable); tableHtml = withB(tableHtml); downloadCsv = withB(downloadCsv);
-  blockDesc = withB(blockDesc); blockEditor = withB(blockEditor); chartSpec = withB(chartSpec); renderChart = withB(renderChart); friseSpec = withB(friseSpec);
+  blockDesc = withB(blockDesc); blockEditor = withB(blockEditor); chartSpec = withB(chartSpec); renderChart = withB(renderChart); friseSpec = withB(friseSpec); friseImages = withB(friseImages);
   openDrill = withI(openDrill); drillRows = withI(drillRows);
   renderDrill = withDrill(renderDrill); drillCsv = withDrill(drillCsv);
   const _df = drillFilter; drillFilter = () => { inSrc(drillState && config.blocks[drillState.i], () => { const keep = render; render = () => {}; try { _df(); } finally { render = keep; } }); render(); };
