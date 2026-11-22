@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Signalements</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.51"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.51"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.51"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.51"></script>
-<script src="../commun/fiche-etab.js?v=2.62.0-alpha.51"></script>
-<script src="../commun/demandes.js?v=2.62.0-alpha.51"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.52"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.52"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.52"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.52"></script>
+<script src="../commun/fiche-etab.js?v=2.62.0-alpha.52"></script>
+<script src="../commun/demandes.js?v=2.62.0-alpha.52"></script>
 <style>
   :root {
     --bleu: #000091; --bleu-clair: #e3e3fd; --fond-suivi: #f5f5fe; --fond-visa: #fef7ec; --brun: #8a4b00; --fond-res: #eef8f4; --vert-res: #0b6b4f;
@@ -3854,6 +3854,9 @@ async function preparerRefSite(ds) {
     const t = await lireTableReference(cible);
     ds._siteEtab = new Map(t.id.map((id, i) => [id, refId(t[ce.colId][i])]));
     if (cc) ds._siteComp = new Map(t.id.map((id, i) => [id, refId(t[cc.colId][i])]));
+    // occupants (liste de références vers les établissements et composantes) : le site est aussi proposé à chacun d'eux
+    const co = m.find(c => /^RefList:/.test(c.type || "") && /occupant/i.test(c.colId) && (c.type === `RefList:${ETAB.table}` || (visee && c.type === `RefList:${visee}`)));
+    if (co) ds._siteOcc = new Map(t.id.map((id, i) => [id, new Set((Array.isArray(t[co.colId][i]) ? t[co.colId][i].slice(t[co.colId][i][0] === "L" ? 1 : 0) : []).map(refId).filter(Boolean))]));
     // mots-clés des sites (Mots_cles, Autres_noms…) : retrouvent le site quand l'agent tape un autre nom
     const cm = m.filter(c => /^Text/.test(c.type || "") && /^(mots?_?cles?|autres?_noms?|alias)/i.test(c.colId)).map(c => c.colId);
     ds._motsSite = new Map(t.id.map((id, i) => [id, cm.map(c => t[c] && t[c][i]).filter(x => typeof x === "string" && x.trim()).join(" | ")]));
@@ -3870,12 +3873,14 @@ async function preparerRefSite(ds) {
    site sans site propre au référentiel reprend ceux de son établissement de rattachement. Le site déjà choisi reste. */
 function sitesDeLEtablissement(d, e, opts, choisi) {
   if (d._inactifs && d._inactifs.size) opts = opts.filter(o => !d._inactifs.has(o.id) || o.id === choisi);
-  const a = opts.filter(o => d._siteEtab.get(o.id) === e || (d._siteComp && d._siteComp.get(o.id) === e) || o.id === choisi);
+  const occupe = (o, x) => !!(d._siteOcc && d._siteOcc.get(o.id) && d._siteOcc.get(o.id).has(x));   // occupant (établissement ou composante)
+  const a = opts.filter(o => d._siteEtab.get(o.id) === e || (d._siteComp && d._siteComp.get(o.id) === e) || occupe(o, e) || o.id === choisi);
   const p = d._parent && d._parent.get(e);
   const r = !p || a.some(o => o.id !== choisi) ? a : opts.filter(o => d._siteEtab.get(o.id) === p || o.id === choisi);
   // dossier ouvert depuis une composante : ses sites d'abord
-  const c = composanteChoisie && d._siteComp ? composanteChoisie.id : null;
-  return c ? [...r.filter(o => d._siteComp.get(o.id) === c), ...r.filter(o => d._siteComp.get(o.id) !== c)] : r;
+  const c = composanteChoisie && (d._siteComp || d._siteOcc) ? composanteChoisie.id : null;
+  const deC = o => (d._siteComp && d._siteComp.get(o.id) === c) || occupe(o, c);
+  return c ? [...r.filter(deC), ...r.filter(o => !deC(o))] : r;
 }
 function etablissementDuFormulaire() {
   if (initiale) return refId(val(initiale, "Etablissement"));
@@ -4974,7 +4979,7 @@ class Tableau {
     if (!this.pret) { this.el.innerHTML = `<p class="note">Chargement…</p>`; return; }
     if (!this.sousDefs.length) { this.el.innerHTML = `<p class="bandeau">La table « ${esc(this.table)} » n'a aucune colonne à saisir (colonnes non formules autres que Dossier, Ligne_id et Ordre).</p>`; return; }
     this.el.innerHTML = (this.avertissement && !modeEtab ? `<p class="bandeau">${esc(this.avertissement)}</p>` : "") +
-      (this.noteAuto && this.lignes.some(l => l._repris) ? `<p class="note">${esc(this.noteAuto)}</p>` : "") +
+      (this.noteAuto && (this.lignes.some(l => l._repris) || this.noteAuto === NOTE_SITE_UNIQUE) ? `<p class="note">${esc(this.noteAuto)}</p>` : "") +
       (this.retires && this.retires.length ? `<p class="note retires">${this.retires.length} site${this.retires.length > 1 ? "s" : ""} laissé${this.retires.length > 1 ? "s" : ""} de côté pour ce signalement (${this.retires.map(x => esc(this.nomLigne(x.l))).join(", ")})  : ${this.retires.length > 1 ? "ils ne seront plus proposés" : "il ne sera plus proposé"} ensuite. <button type="button" class="lien-texte" data-action="remettre-retires">Remettre</button></p>` : "") +
       (this.supprimes && this.supprimes.length ? `<p class="note retires supprimes">${this.supprimes.length > 1 ? `${this.supprimes.length} sites seront supprimés` : "1 site sera supprimé"} du dossier à l'enregistrement, dans toutes ses étapes (${this.supprimes.map(x => esc(this.nomLigne(x.l))).join(", ")}). <button type="button" class="lien-texte" data-action="annuler-supprimes">Annuler la suppression</button></p>` : "") +
       (this.offreReprise && etabCourant && this.offreReprise.etab === etabCourant.id && !this.lignes.some(l => l._repris)
@@ -6332,21 +6337,33 @@ function reprendreEtatSites(c, etabId, avecRas = c.sites.avecRas !== false, doss
    le tableau part vide, rien n'est proposé ; une reprise d'un signalement précédent ne reprend pas les sites). Refait si
    l'établissement change tant qu'aucune ligne n'a été touchée. */
 let sitesAutoPour = null;
+/* Site unique : quand l'établissement (ou la composante du dossier) n'a qu'un site proposable et que le tableau des sites
+   est vide, ce site est présélectionné sur la première ligne (l'agent peut le changer ou en ajouter d'autres). */
+function preselectionnerSiteUnique(c) {
+  if (!c || !c.sites || !c.sites.site || c.lignes.some(l => !c.ligneVide(l))) return false;
+  const d = c.sousDefs.find(x => x.colId === c.sites.site); if (!d || !d._siteEtab) return false;
+  const opts = c.sitesProposables(d); if (opts.length !== 1) return false;
+  let l = c.lignes.find(x => c.ligneVide(x)); if (!l) { l = { _id: nouvelIdLigne(), valeurs: {} }; c.lignes.push(l); }
+  l.valeurs[c.sites.site] = opts[0].id;
+  return true;
+}
+const NOTE_SITE_UNIQUE = "Seul site de cet établissement au référentiel : présélectionné (modifiable).";
 function reprendreSitesAuto() {
   const c = sitesCtrl(); if (!c || dossierId || !etabCourant || modeEtab) return;
   const e = etabCourant.id; if (sitesAutoPour === e) return;
   const intactes = c.lignes.every(l => c.ligneVide(l) || (l._repris && !["modifie", "confirme"].includes(l._repris.etat)));
   if (!intactes) return;
   sitesAutoPour = e;
-  if (c.sites.reprise === "non") { c.offreReprise = null; c.noteAuto = ""; return; }
+  if (c.sites.reprise === "non") { c.offreReprise = null; c.noteAuto = preselectionnerSiteUnique(c) ? NOTE_SITE_UNIQUE : ""; if (c.noteAuto) c.dessiner(); return; }
   if (c.sites.reprise === "bouton") {
     // reprise automatique désactivée (administration) : le tableau reste vide, la reprise est proposée par un bouton
     const nb = dernierEtatSites(c, e, c.sites.avecRas).length;
     c.offreReprise = nb ? { etab: e, n: nb } : null;
+    if (!nb && preselectionnerSiteUnique(c)) c.noteAuto = NOTE_SITE_UNIQUE;
     c.dessiner(); return;
   }
   const n = reprendreEtatSites(c, e);
-  c.noteAuto = n ? `${n} site${n > 1 ? "s" : ""} du dernier signalement de cet établissement, dans leur dernier état : confirmez ou modifiez ceux qui ne sont pas revenus à la normale, ajoutez les nouveaux.` : "";
+  c.noteAuto = n ? `${n} site${n > 1 ? "s" : ""} du dernier signalement de cet établissement, dans leur dernier état : confirmez ou modifiez ceux qui ne sont pas revenus à la normale, ajoutez les nouveaux.` : preselectionnerSiteUnique(c) ? NOTE_SITE_UNIQUE : "";
   c.dessiner();
   qualifTouchee = false; majQualifDeduite();
 }

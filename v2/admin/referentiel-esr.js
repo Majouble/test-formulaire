@@ -22,6 +22,17 @@
    Rien n'est supprimé, une cellule vide du classeur n'efface rien, une colonne formule n'est jamais écrite.
    Les établissements sans coordonnées prennent celles d'un de leurs sites situé dans leur commune.
    Bilan affiché avant toute écriture ; réimporter une version corrigée du classeur met à jour sans doublon.
+   Format v8 (2.62) : en plus,
+   - établissements : Nom court, Ministère de contrat ou de reconnaissance, Périmètre, Statut juridique, Domaine ;
+   - sites : Actif, Nom d'usage, Voie, Numéro, Occupants (liste de références vers les établissements et composantes),
+     Remplacé par (site qui remplace un site fusionné ou fermé) ; références vers un site fusionné (signalements, sièges,
+     correspondances…) reportées sur le site qui le remplace, sur option ; colonnes formules « Nom calculé »
+     (« Site de <Commune> – <nom d'usage> », nom court de l'établissement pour un monosite, à défaut la voie) et
+     « Libellé » (nom calculé + composantes présentes, rangées par effectif, 4 au plus), créées si absentes ;
+   - tables annexes, créées si absentes et tenues à jour : Liaisons_sites (site – composante ; les liaisons d'origine
+     « Unité Atlas », dérivées, sont remplacées à chaque import), Unites_Atlas (UAI de l'Atlas → établissement,
+     composante, site), Confirmations_sites (site confirmé en revue), Effectifs (UAI, année, effectif) ; formules
+     d'effectif (dernière année) par unité, par site et par établissement ou composante.
    ===================================================================== */
 (function () {
   "use strict";
@@ -39,7 +50,8 @@
   const ORIGINE = "Référentiel ESR";
   const TABLE_SITES = "Referentiel_sites", TABLE_ALIAS = "Sites_correspondances";
   // onglets : format v7 d'abord, puis l'ancien format
-  const FEUILLES = { etab: ["Établissements", "Etablissements_ESR"], sites: ["Sites", "Campus et sites"], alias: ["Sites base mouvements"], fusions: ["Lignes retirées", "Lignes fusionnées"] };
+  const FEUILLES = { etab: ["Établissements", "Etablissements_ESR"], sites: ["Sites", "Campus et sites"], alias: ["Sites base mouvements"], fusions: ["Lignes retirées", "Lignes fusionnées"],
+    liaisons: ["Liaisons"], unites: ["Unités Atlas"], confirmations: ["Confirmations"], effectifs: ["Effectifs"] };
   const nomsF = k => FEUILLES[k].map(n => `« ${n} »`).join(" ou ");
 
   // Colonnes reprises d'office (créées si besoin). role : rôle du socle à défaut d'une colonne du même nom.
@@ -67,6 +79,11 @@
     { entete: "Membre de", id: "Membre_de", liste: true },   // EPE, IEP rattachés… (jamais « rattach » ni « parent » : ce n'est pas le parent)
     { entete: "Siège", id: "Siege", siege: true },
     { entete: "Ministère de tutelle", id: "Ministere_tutelle", type: "Choice" },
+    { entete: "Ministère de contrat ou de reconnaissance", id: "Ministere_contrat", type: "Choice" },   // privé : contrat, EESPIG, reconnaissance, agrément (v8)
+    { entete: "Périmètre", id: "Perimetre", type: "Choice" },
+    { entete: "Statut juridique", id: "Statut_juridique", type: "Choice" },
+    { entete: "Domaine", id: "Domaine", type: "Choice" },
+    { entete: "Nom court", id: "Nom_court" },   // lu par les formules des sites (nom d'un monosite, libellé)
     { entete: "Commentaire", id: "Commentaire" },
   ];
   const CHAMPS_SITES = [
@@ -86,13 +103,35 @@
     { entete: "Précision des coordonnées", id: "Precision_coordonnees" },
     { entete: "Implantation multi-occupants", id: "Multi_occupants" },
     { entete: "Autres occupants", id: "Autres_occupants" },
+    { entete: "Actif", id: "Actif", type: "Bool" },
+    { entete: "Nom d'usage", id: "Nom_usage" },
+    { entete: "Voie", id: "Voie" },
+    { entete: "Numéro", id: "Numero" },
+    { entete: "Occupants", id: "Occupants", occ: true },   // autres établissements et composantes présents sur le site (v8)
+    { entete: "Remplacé par", id: "Remplace_par", siteRef: true },   // site fusionné ou fermé → site qui le remplace (v8)
   ];
-  const SITES_IGNORES = ["Établissement", "Établissement (base des sites)"];   // noms en clair : l'identifiant suffit
+  // noms en clair (l'identifiant suffit) ; « Libellé » est une colonne formule du document (voir formulesSites)
+  const SITES_IGNORES = ["Établissement", "Établissement (base des sites)", "Libellé"];
+  // tables annexes du format v8 : feuille → table, colonnes (ref : etab | site), clé de rapprochement
+  const ANNEXES = [
+    { cle: "liaisons", table: "Liaisons_sites", titre: "Liaisons site – composante", feuille: "liaisons", cles: ["Site ID", "Composante ID", "Origine"], derivees: { col: "Origine", valeur: "Unité Atlas" },
+      cols: [{ entete: "Site ID", id: "Site", ref: "site" }, { entete: "Composante ID", id: "Composante", ref: "etab" }, { entete: "Origine", id: "Origine", type: "Choice" }] },
+    { cle: "unites", table: "Unites_Atlas", titre: "Unités de l'Atlas", feuille: "unites", cles: ["UAI"],
+      cols: [{ entete: "UAI", id: "UAI" }, { entete: "Libellé Atlas", id: "Libelle_Atlas" }, { entete: "Catégorie Atlas", id: "Categorie_Atlas", type: "Choice" }, { entete: "Secteur", id: "Secteur", type: "Choice" },
+        { entete: "Commune", id: "Commune" }, { entete: "UAI établissement (Atlas)", id: "UAI_etablissement_Atlas" }, { entete: "Établissement ID", id: "Etablissement", ref: "etab" },
+        { entete: "Composante ID", id: "Composante", ref: "etab" }, { entete: "Site ID", id: "Site", ref: "site" }, { entete: "Méthode site", id: "Methode_site", type: "Choice" },
+        { entete: "Décision", id: "Decision", type: "Choice" }, { entete: "Motif", id: "Motif" }, { entete: "Site à confirmer", id: "Site_a_confirmer", type: "Bool" },
+        { entete: "Année de début", id: "Annee_debut", type: "Int" }, { entete: "Source", id: "Source" }] },
+    { cle: "confirmations", table: "Confirmations_sites", titre: "Confirmations de site", feuille: "confirmations", cles: ["UAI", "Site ID"],
+      cols: [{ entete: "UAI", id: "UAI" }, { entete: "Site ID", id: "Site", ref: "site" }, { entete: "Motif", id: "Motif" }, { entete: "Date", id: "Date", type: "Date" }] },
+    { cle: "effectifs", table: "Effectifs", titre: "Effectifs", feuille: "effectifs", cles: ["UAI", "Année"],
+      cols: [{ entete: "UAI", id: "UAI" }, { entete: "Année", id: "Annee", type: "Int" }, { entete: "Effectif", id: "Effectif", type: "Int" }] },
+  ];
 
   let racine = null, classeur = null, nomFichier = "", choixTable = "", analyse = null, enCours = false;
 
   const optionsCochees = { etab: null, sites: null };   // en-têtes facultatifs cochés (null : colonnes déjà présentes)
-  let reporter = true;
+  let reporter = true, reporterSites = true;
 
   /* ---------- Lecture du classeur (.xlsx = zip de XML) ---------- */
   let chargementZip = null;
@@ -190,7 +229,8 @@
       if (c && c.isFormula) { lignes.push({ ...ch, col: null, formule: c.colId }); prises.add(c.colId); continue; }
       if (c) { prises.add(c.colId); lignes.push({ ...ch, col: c.colId, meta: c }); continue; }
       const id = tm && tm.colonnes[ch.id] ? `${ch.id}_ESR` : ch.id;
-      const m = { colId: id, type: ch.etab ? `Ref:${etabTable}` : typeCreation(ch, table), label: ch.entete, isFormula: false, widgetOptions: "", differe: !!ch.siege };
+      // Remplacé par (site → site) : créée après la table des sites, qu'elle désigne
+      const m = { colId: id, type: ch.etab ? `Ref:${etabTable}` : ch.occ ? `RefList:${etabTable}` : ch.siteRef ? `Ref:${table}` : typeCreation(ch, table), label: ch.entete, isFormula: false, widgetOptions: "", differe: !!(ch.siege || ch.siteRef) };
       creer.push(m); prises.add(id); lignes.push({ ...ch, col: id, meta: m, cree: true });
     }
     const pris = new Set(champs.map(c => c.entete));
@@ -375,7 +415,7 @@
         fS.entetes.filter(h => !SITES_IGNORES.includes(h)), optionsCochees.sites, {}, tS || TABLE_SITES, table);
       const lS = id => pS.lignes.find(l => l.id === id || (l.cleRef && id === "cle") || (l.nom && id === "nom") || (l.etab && l.entete === "Établissement ID" && id === "etab")) || {};
       const cActif = tmS && tmS.colonnes.Actif && tmS.colonnes.Actif.type === "Bool" ? "Actif" : (!tmS ? "Actif" : null);
-      if (!tmS) pS.creer.push({ colId: "Actif", type: "Bool", label: "Actif", isFormula: false, widgetOptions: "" });
+      if (!tmS && !pS.creer.some(c => c.colId === "Actif")) pS.creer.push({ colId: "Actif", type: "Bool", label: "Actif", isFormula: false, widgetOptions: "" });
       const kS = lS("cle").col, nS = lS("nom").col, eS = lS("etab").col;
       const idxS = new Map(), idxN = new Map(), posS = new Map(exS.id.map((rid, i) => [rid, i]));
       exS.id.forEach((rid, i) => { const k = kS && exS[kS] ? idDe(exS[kS][i], "SITE") : null; if (k && !idxS.has(k)) idxS.set(k, rid);
@@ -388,19 +428,27 @@
         let ex = idxS.get(sid); if (ex != null && prisS.has(ex)) ex = null;
         if (ex == null && oe && oe.ex != null) { const r = idxN.get(`${oe.ex}|${nomNorm(l["Nom du site"])}`); if (r != null && !prisS.has(r)) ex = r; }
         if (ex != null) prisS.add(ex);
-        const f = {}, refs = {};
+        const f = {}, refs = {}, occ = {}, remp = {};
         for (const c of pS.lignes) {
           if (!c.col) continue;
+          // v8 : occupants (liste d'identifiants ETAB-…) et site qui remplace un site fusionné : résolus après l'écriture des sites
+          if (c.occ) { const ids = [...new Set(String(l[c.entete] ?? "").match(/ETAB-[A-Z]{0,2}\d+/g) || [])]; if (ids.length) occ[c.col] = ids; continue; }
+          if (c.siteRef) { const r = idDe(l[c.entete], "SITE"); if (r && r !== sid) remp[c.col] = r; continue; }
           if (c.etab) { const r = idDe(l[c.entete], "ETAB"); if (r) refs[c.col] = r; else if (c.entete === "Composante concernée" && fS.nom === "Sites" && idDe(l["Établissement ID"], "ETAB")) refs[c.col] = null; continue; }   // v7 : composante vide = aucune
           const v = c.cleRef ? sid : await convS(c.meta, l[c.entete]);
           if (v !== undefined) f[c.col] = v;
         }
-        if (ex == null) { if (cActif) f[cActif] = true; ajoutsS.push({ sid, f, refs }); continue; }
+        if (ex == null) { if (cActif && f[cActif] === undefined) f[cActif] = true; ajoutsS.push({ sid, f, refs, occ, remp }); continue; }
         const i = posS.get(ex), diff = {};
         for (const [k, v] of Object.entries(f)) if (!memeValeur(exS[k] ? exS[k][i] : undefined, v)) diff[k] = v;
-        majsS.push({ sid, id: ex, f: diff, refs, avant: Object.fromEntries(Object.keys(refs).map(k => [k, exS[k] ? refId(exS[k][i]) : null])) });
+        majsS.push({ sid, id: ex, f: diff, refs, occ, remp, avant: Object.fromEntries([...Object.keys(refs), ...Object.keys(occ), ...Object.keys(remp)].map(k => [k, exS[k] ? exS[k][i] : null])) });
       }
-      sites = { table: tS || TABLE_SITES, cree: !tS, plan: pS, ajouts: ajoutsS, majs: majsS, nouveauxChoix: nvChoixS, cleCol: kS, ex: exS,
+      // sites fusionnés ou fermés déjà dans Grist : références (signalements, sièges, correspondances…) à reporter
+      const lRemp = pS.lignes.find(c => c.siteRef && c.col);
+      const fusionnesS = lRemp ? majsS.filter(m => m.remp[lRemp.col]).map(m => ({ ex: m.id, sid: m.sid, vers: m.remp[lRemp.col] })) : [];
+      const referencesS = tS && fusionnesS.length ? await window.References.chercher(ctx.meta, tS, new Set(fusionnesS.map(x => x.ex)), { exclure: (t, c) => t === tS && c === lRemp.col }) : [];
+      sites = { table: tS || TABLE_SITES, cree: !tS, plan: pS, ajouts: ajoutsS, majs: majsS, nouveauxChoix: nvChoixS, cleCol: kS, ex: exS, fusionnes: fusionnesS, references: referencesS,
+        occupants: [...ajoutsS, ...majsS].filter(x => Object.keys(x.occ).length).length,
         absents: exS.id.filter(rid => !prisS.has(rid)).map(rid => String(nS && exS[nS] ? exS[nS][posS.get(rid)] ?? "" : rid)) };
       inchS = majsS.filter(m => !Object.keys(m.f).length).length; sites.inchanges = inchS;
     }
@@ -422,8 +470,16 @@
       alias = { cree: !exA, lignes: lignesA, decides };
     }
 
+    // tables annexes (format v8) : lues ici, écrites après les établissements et les sites
+    const annexes = [];
+    for (const def of ANNEXES) {
+      const f = await classeur.lireUne(FEUILLES[def.feuille]); if (!f || !def.cles.every(h => f.entetes.includes(h))) continue;
+      const lignesA = f.lignes.filter(l => def.cles.every(h => !vide(l[h])));
+      annexes.push({ def, lignes: lignesA, existe: !!ctx.meta[def.table], avant: ctx.meta[def.table] ? (await grist.docApi.fetchTable(def.table)).id.length : 0 });
+    }
+
     return { ctx, table, tm, plan: pE, cLat, cLon, lCle, lRatt, existant, lignes, parId, ajouts, majs, inchanges, parMode, coordsCompletees, absorbees, references,
-      absentes: absentes.map(nomEx), nouveauxChoix, sites, alias,
+      absentes: absentes.map(nomEx), nouveauxChoix, sites, alias, annexes,
       retirees, membres: lignes.filter(o => o.membres.length).length, sieges: lignes.filter(o => o.siege).length, stats: { etab: lignes.length, niveaux: lignes.reduce((a, o) => { const n = String(o.l.Niveau || "?"); a[n] = (a[n] || 0) + 1; return a; }, {}) } };
   }
 
@@ -440,7 +496,7 @@
       <p class="aide">Import du classeur consolidé des établissements, composantes et sites (onglets ${nomsF("etab")}, ${nomsF("sites")}, ${nomsF("alias")}, ${nomsF("fusions")}).
         Les lignes sont rapprochées par identifiant (ETAB-…, SITE-…), puis UAI, puis nom : les existantes sont mises à jour, les nouvelles ajoutées. Rien n'est supprimé, une cellule vide n'efface rien.
         Un bilan s'affiche avant toute écriture ; un classeur corrigé peut être réimporté.</p>
-      <p class="aide esr-regle">Unité de compte : <strong>une personne morale = un établissement</strong> (règle des 3 questions, appliquée dans le classeur v7).
+      <p class="aide esr-regle">Unité de compte : <strong>une personne morale = un établissement</strong> (règle des 3 questions, appliquée dans le classeur depuis la v7).
         Une composante interne (UFR, IUT, école interne d'une université, d'un INP ou de l'IMT…) est rattachée à sa personne morale ; ses sites restent ceux de la personne morale, la composante dans « Composante concernée ».
         Le rattachement est effacé sur les lignes de niveau « Établissement ».</p>
       <div class="esr-outils">
@@ -469,10 +525,20 @@
         ${ligneT("Sites du classeur", `<strong>${nf(a.sites.ajouts.length + a.sites.majs.length)}</strong>`)}
         ${ligneT("À ajouter", `<strong>${nf(a.sites.ajouts.length)}</strong>`)}
         ${ligneT("Existants", `${nf(a.sites.majs.length)} <span class="aide">(dont ${nf(a.sites.inchanges)} sans changement de valeur)</span>`)}
+        ${a.sites.occupants ? ligneT("Occupants", `${nf(a.sites.occupants)} site(s) avec d'autres établissements ou composantes occupants`) : ""}
+        ${a.sites.fusionnes.length ? ligneT("Sites fusionnés ou fermés", `${nf(a.sites.fusionnes.length)} site(s) déjà dans Grist, remplacé(s) par un autre site (colonne Remplacé par)
+          ${a.sites.references.length ? `<br><label><input type="checkbox" id="esr-reporter-sites"${reporterSites ? " checked" : ""}> reporter les ${nf(a.sites.references.length)} référence(s) (signalements, sièges, correspondances…) sur le site qui le remplace</label>` : ""}`) : ""}
         ${a.sites.absents.length ? ligneT("Sites absents du classeur", `${nf(a.sites.absents.length)} <span class="aide">conservés : ${a.sites.absents.slice(0, 12).map(esc).join(" ; ")}${a.sites.absents.length > 12 ? " ; …" : ""}</span>`) : ""}
       </tbody></table>${a.sites.cree ? "" : colonnes(a.sites.plan, a.sites.table)}${formules(a.sites.plan)}${facultatifs(a.sites.plan, "sites")}` : `<p class="aide">Pas d'onglet ${nomsF("sites")} : sites non importés.</p>`}
       ${a.alias ? `<h3 class="esr-titre">Sites saisis dans la base d'octobre → ${TABLE_ALIAS}${a.alias.cree ? " <span class=\"pastille reco\">table créée</span>" : ""}</h3>
         <p>${nf(a.alias.lignes.filter(l => l.statut === "Validé").length)} correspondance(s) libellé saisi → site, ${nf(a.alias.lignes.filter(l => l.statut !== "Validé").length)} saisie(s) visant l'établissement entier (écartées)${a.alias.decides ? `, ${nf(a.alias.decides)} déjà décidée(s) dans Grist (inchangées)` : ""}.</p>` : ""}
+      ${a.annexes.length ? `<h3 class="esr-titre">Tables annexes (unités de l'Atlas, effectifs, liaisons)</h3>
+      <table class="eq-table esr-bilan"><tbody>
+        ${a.annexes.map(x => ligneT(`${esc(x.def.titre)} → ${esc(x.def.table)}${x.existe ? "" : " <span class=\"pastille reco\">table créée</span>"}`,
+          `<strong>${nf(x.lignes.length)}</strong> ligne(s) dans le classeur${x.existe ? ` <span class="aide">(${nf(x.avant)} dans Grist ; rapprochées par ${x.def.cles.join(" + ")}${x.def.derivees ? ` ; liaisons « ${esc(x.def.derivees.valeur)} » recalculées : celles absentes du classeur sont retirées` : ""})</span>` : ""}`)).join("")}
+      </tbody></table>
+      <p class="aide">Colonnes formules créées si absentes : effectif de la dernière année par unité (Unites_Atlas), par site, par établissement ou composante ;
+        « Nom calculé » et « Libellé » des sites (nom d'usage, nom court d'un monosite, voie ; composantes présentes rangées par effectif).</p>` : ""}
       <div class="boutons"><button class="primaire" id="esr-importer"${enCours ? " disabled" : ""}>Importer dans Grist</button><span class="statut${type ? ` ${type}` : ""}" id="esr-statut" role="status">${esc(message || "")}</span></div>`
       : message ? `<p class="statut ${type || ""}" id="esr-statut" role="status">${esc(message)}</p>` : ""}`;
     lier();
@@ -487,6 +553,7 @@
     });
     const t = $("esr-table"); if (t) t.addEventListener("change", () => { choixTable = t.value; optionsCochees.etab = optionsCochees.sites = null; relancer(); });
     const r = $("esr-reporter"); if (r) r.addEventListener("change", () => { reporter = r.checked; });
+    const rs = $("esr-reporter-sites"); if (rs) rs.addEventListener("change", () => { reporterSites = rs.checked; });
     racine.querySelectorAll("[data-opt]").forEach(c => c.addEventListener("change", () => {
       const k = c.dataset.opt; optionsCochees[k] = [...racine.querySelectorAll(`[data-opt="${k}"]:checked`)].map(x => x.value);
       const ouverts = [...racine.querySelectorAll("details.esr-options")].map(d => d.open);
@@ -524,6 +591,110 @@
       acts.push(["ModifyColumn", table, c, { widgetOptions: JSON.stringify({ ...o, choices: ch.concat([...s].filter(x => !ch.includes(x))) }) }]);
     }
     if (acts.length) await actions(acts);
+  }
+
+  /* ---------- Tables annexes (format v8) ---------- */
+  // date du classeur : numéro de série Excel, ou texte AAAA-MM-JJ → secondes (Date de Grist)
+  const dateGrist = v => { if (typeof v === "number") return v > 1e7 ? v : Math.round((v - 25569) * 86400); const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v ?? "")); return m ? Date.UTC(+m[1], +m[2] - 1, +m[3]) / 1000 : null; };
+  async function importerAnnexes(a, rowDe, siteDe, tSites) {
+    const bilan = []; let creees = false;
+    const etabInv = new Map([...rowDe].map(([k, r]) => [r, k])), siteInv = new Map([...siteDe].map(([k, r]) => [r, k]));
+    for (const x of a.annexes) {
+      const def = x.def, cols = def.cols.filter(c => c.ref !== "site" || tSites);
+      const typeDe = c => c.ref === "etab" ? `Ref:${a.table}` : c.ref === "site" ? `Ref:${tSites}` : c.type || "Text";
+      let meta = await S.lireMeta();
+      if (!meta[def.table]) {
+        await actions([["AddTable", def.table, cols.map(c => ({ id: c.id, type: typeDe(c), isFormula: false }))]]);
+        await actions(cols.flatMap(c => [["ModifyColumn", def.table, c.id, { untieColIdFromLabel: true }], ["ModifyColumn", def.table, c.id, { label: c.entete }]]));
+        creees = true;
+      } else {
+        const manq = cols.filter(c => !meta[def.table].colonnes[c.id]);
+        if (manq.length) await actions(manq.map(c => ["AddColumn", def.table, c.id, { type: typeDe(c), label: c.entete, isFormula: false, untieColIdFromLabel: true }]));
+      }
+      meta = await S.lireMeta(); const tm = meta[def.table], choix = new Map();
+      const ecrit = cols.filter(c => tm.colonnes[c.id] && !tm.colonnes[c.id].isFormula);
+      const val = (c, v) => {
+        if (c.ref === "etab") { const id = idDe(v, "ETAB"); return id ? rowDe.get(id) || 0 : 0; }
+        if (c.ref === "site") { const id = idDe(v, "SITE"); return id ? siteDe.get(id) || 0 : 0; }
+        if (vide(v)) return null;
+        const t = c.type || "Text";
+        if (t === "Int") { const n = typeof v === "number" ? v : Number(String(v).replace(",", ".").replace(/\s/g, "")); return Number.isFinite(n) ? Math.round(n) : null; }
+        if (t === "Bool") return typeof v === "boolean" ? v : /^(oui|vrai|true|1|x)$/i.test(String(v).trim());
+        if (t === "Date") return dateGrist(v);
+        const s2 = typeof v === "string" ? v.trim() : String(v);
+        if (t === "Choice") { if (!choix.has(c.id)) choix.set(c.id, new Set()); choix.get(c.id).add(s2); }
+        return s2;
+      };
+      const ex = await grist.docApi.fetchTable(def.table), colDe = h => cols.find(c => c.entete === h);
+      const cleEx = i => def.cles.map(h => { const c = colDe(h), v = c && ex[c.id] ? ex[c.id][i] : null;
+        return !c ? "" : c.ref === "etab" ? etabInv.get(refId(v)) || "" : c.ref === "site" ? siteInv.get(refId(v)) || "" : String(v ?? "").trim(); }).join("|");
+      const cleCl = l => def.cles.map(h => { const c = colDe(h); return !c ? "" : c.ref ? idDe(l[h], c.ref === "etab" ? "ETAB" : "SITE") || "" : String(l[h] ?? "").trim(); }).join("|");
+      const idx = new Map(), pos = new Map(ex.id.map((rid, i) => [rid, i]));
+      ex.id.forEach((rid, i) => { const k = cleEx(i); if (!idx.has(k)) idx.set(k, rid); });
+      const vus = new Set(), ajouts = [], majs = [];
+      for (const l of x.lignes) {
+        const k = cleCl(l); if (vus.has(k)) continue; vus.add(k);
+        const f = {};
+        for (const c of ecrit) { if (!(c.entete in l)) continue; const v = val(c, l[c.entete]); if (v === null) continue; f[c.id] = v; }
+        const rid = idx.get(k);
+        if (rid == null) { ajouts.push(f); continue; }
+        const i = pos.get(rid), diff = {};
+        for (const [c, v] of Object.entries(f)) if (!memeValeur(ex[c] ? ex[c][i] : undefined, v)) diff[c] = v;
+        if (Object.keys(diff).length) majs.push(["UpdateRecord", def.table, rid, diff]);
+      }
+      await etendreChoix(def.table, choix);
+      await ajouterLignes(def.table, ajouts, def.titre); await parLots(majs, def.titre);
+      // liaisons dérivées (origine « Unité Atlas ») absentes du classeur : retirées, elles se recalculent à chaque version
+      let retirees = 0;
+      if (def.derivees && ex[def.derivees.col]) {
+        const rm = ex.id.filter((rid, i) => String(ex[def.derivees.col][i] ?? "") === def.derivees.valeur && !vus.has(cleEx(i)));
+        for (let k = 0; k < rm.length; k += LOT) await actions([["BulkRemoveRecord", def.table, rm.slice(k, k + LOT)]]);
+        retirees = rm.length;
+      }
+      bilan.push(`${def.table} : ${nf(ajouts.length)} ajoutée(s), ${nf(majs.length)} mise(s) à jour${retirees ? `, ${nf(retirees)} retirée(s)` : ""}`);
+    }
+    return { bilan, creees };
+  }
+  /* Colonnes formules (créées si absentes, jamais modifiées si elles existent) : effectifs de la dernière année et noms des sites */
+  async function poserFormules(a, tSites) {
+    const meta = await S.lireMeta(), acts = [], noms = [], E = a.table, tmE = meta[E], tmS = tSites ? meta[tSites] : null;
+    const ajout = (t, id, label, type, formula) => { if (!meta[t] || meta[t].colonnes[id]) return; acts.push(["AddColumn", t, id, { type, label, isFormula: true, formula, untieColIdFromLabel: true }]); noms.push(`${t}.${id}`); };
+    const colE = id => { const l = a.plan.lignes.find(x => x.id === id && x.col); return l && tmE.colonnes[l.col] ? l.col : (tmE.colonnes[id] ? id : null); };
+    const colS = id => { if (!tmS) return null; const l = a.sites && a.sites.plan.lignes.find(x => x.id === id && x.col); return l && tmS.colonnes[l.col] ? l.col : (tmS.colonnes[id] ? id : null); };
+    if (meta.Unites_Atlas && meta.Effectifs)
+      ajout("Unites_Atlas", "Effectif", "Effectif (dernière année)", "Int", "r = Effectifs.lookupRecords(UAI=$UAI)\nreturn max(r, key=lambda x: x.Annee or 0).Effectif if r else None");
+    const effU = !!(meta.Unites_Atlas && (meta.Unites_Atlas.colonnes.Effectif || noms.includes("Unites_Atlas.Effectif")));
+    const niv = colE("Niveau");
+    if (effU) {
+      ajout(E, "Effectif_Atlas", "Effectif (Atlas, dernière année)", "Int", (niv ? `if $${niv} == "Composante interne":\n  return sum(u.Effectif or 0 for u in Unites_Atlas.lookupRecords(Composante=$id))\n` : "")
+        + "return sum(u.Effectif or 0 for u in Unites_Atlas.lookupRecords(Etablissement=$id))");
+      if (tmS) ajout(tSites, "Etudiants_Atlas", "Étudiants (Atlas, dernière année)", "Int", "return sum(u.Effectif or 0 for u in Unites_Atlas.lookupRecords(Site=$id))");
+    }
+    if (tmS) {
+      const cE = colS("Etablissement"), cC = colS("Composante"), cO = colS("Occupants"), cCo = colS("Commune"), cU = colS("Nom_usage"), cV = colS("Voie"), cA = colS("Actif");
+      const court = colE("Nom_court"), nom = colE("Nom"), sigle = colE("Sigle");
+      if (cCo && cU && cV) {   // colonnes du format v8 : la formule n'est posée qu'une fois toutes présentes
+        const monosite = cE && court ? `if not u and $${cE}${cC ? ` and not $${cC}` : ""}${cO ? ` and not $${cO}` : ""}:\n`
+          + `  if len([s for s in ${tSites}.lookupRecords(${cE}=$${cE}.id)${cA ? ` if s.${cA}` : ""}]) == 1:\n    u = ($${cE}.${court} or "").strip()\n` : "";
+        ajout(tSites, "Nom_calcule", "Nom calculé", "Text", [
+          "import re", `c = ($${cCo} or "").strip()`,
+          "if not c:\n  base = \"Site\"", "elif c.startswith(\"Le \"):\n  base = \"Site du \" + c[3:]", "elif c.startswith(\"Les \"):\n  base = \"Site des \" + c[4:]",
+          "elif c[:2] in (\"L'\", u\"L\u2019\"):\n  base = \"Site de l'\" + c[2:]", "elif re.match(u\"[AEIOUYÀÂÄÉÈÊËÎÏÔÖÙÛÜ]\", c[0].upper()):\n  base = \"Site d'\" + c", "else:\n  base = \"Site de \" + c",
+          `u = (${cU ? `$${cU}` : "\"\""} or "").strip()`, monosite.trimEnd(), cV ? `if not u:\n  u = ($${cV} or "").strip()` : "", "return base + (u\" \u2013 \" + u if u else \"\")"].filter(Boolean).join("\n"));
+      }
+      if (meta.Liaisons_sites && cE) {
+        const nc = [court, sigle, nom].filter(Boolean).map(c => `c.${c}`).join(" or ") || "\"\"";
+        ajout(tSites, "Libelle", "Libellé", "Text", [
+          (tmS.colonnes.Nom_calcule || noms.includes(`${tSites}.Nom_calcule`)) ? "n = $Nom_calcule or \"\"" : `n = $${colS("Nom") || "Nom"} or ""`, "vus = set()", "parts = []",
+          "for l in Liaisons_sites.lookupRecords(Site=$id):", "  c = l.Composante", "  if not c or c.id in vus:\n    continue", "  vus.add(c.id)",
+          effU ? "  eff = sum(u.Effectif or 0 for u in Unites_Atlas.lookupRecords(Site=$id, Composante=c.id))" : "  eff = 0", "  parts.append((eff, c))",
+          court ? `ec = ($${cE}.${court} or "").strip() if $${cE} else ""` : "ec = \"\"", "noms = []",
+          "for eff, c in sorted(parts, key=lambda x: -x[0])[:4]:", `  x = (${nc} or "").strip()`, "  if x and x != ec and x not in noms:\n    noms.append(x)",
+          "return n + (\" (\" + \" - \".join(noms) + \")\" if noms else \"\")"].join("\n"));
+      }
+    }
+    if (acts.length) await actions(acts);
+    return noms;
   }
   async function importer() {
     if (!analyse || enCours) return;
@@ -590,14 +761,16 @@
         await parLots(acts, "Références reportées"); reportees = acts.length;
       }
       // 5. sites
-      let nSitesA = 0, nSitesM = 0;
+      let nSitesA = 0, nSitesM = 0, reporteesS = 0;
       const siteDe = new Map();
       if (a.sites) {
         const s = a.sites;
         if (s.cree) {
-          await actions([["AddTable", s.table, s.plan.creer.map(c => ({ id: c.colId, type: c.type, isFormula: false }))]]);
+          const d0 = s.plan.creer.filter(c => !c.differe), d1 = s.plan.creer.filter(c => c.differe);   // Remplacé par : vers la table elle-même, après sa création
+          await actions([["AddTable", s.table, d0.map(c => ({ id: c.colId, type: c.type, isFormula: false }))]]);
           // libellés : identifiant détaché du libellé d'abord, sinon Grist renommerait la colonne
-          await actions(s.plan.creer.flatMap(c => [["ModifyColumn", s.table, c.colId, { untieColIdFromLabel: true }], ["ModifyColumn", s.table, c.colId, { label: c.label }]]));
+          await actions(d0.flatMap(c => [["ModifyColumn", s.table, c.colId, { untieColIdFromLabel: true }], ["ModifyColumn", s.table, c.colId, { label: c.label }]]));
+          if (d1.length) await actions(d1.map(c => ["AddColumn", s.table, c.colId, { type: `Ref:${s.table}`, label: c.label, isFormula: false, untieColIdFromLabel: true }]));
           tablesCreees = true;
         } else if (s.plan.creer.length) await actions(s.plan.creer.map(c => ["AddColumn", s.table, c.colId, { type: c.type, label: c.label, isFormula: false, untieColIdFromLabel: true }]));
         await etendreChoix(s.table, s.nouveauxChoix);
@@ -606,12 +779,32 @@
         const acts = [];
         for (const m of s.majs) {
           const f = { ...m.f };
-          for (const [c, eid] of Object.entries(m.refs)) { const rid = eid === null ? 0 : rowDe.get(eid); if (rid != null && rid !== (m.avant[c] || 0)) f[c] = rid; }
+          for (const [c, eid] of Object.entries(m.refs)) { const rid = eid === null ? 0 : rowDe.get(eid); if (rid != null && rid !== (refId(m.avant[c]) || 0)) f[c] = rid; }
           if (Object.keys(f).length) acts.push(["UpdateRecord", s.table, m.id, f]);
         }
         await parLots(acts, "Sites mis à jour"); nSitesM = acts.length;
         const tS = await grist.docApi.fetchTable(s.table), kS = (s.plan.lignes.find(l => l.cleRef) || {}).col;
         if (kS && tS[kS]) tS.id.forEach((rid, i) => { const k = idDe(tS[kS][i], "SITE"); if (k && !siteDe.has(k)) siteDe.set(k, rid); });
+        // 5 a. occupants et site qui remplace (identifiants résolus maintenant que tous les sites existent)
+        const posT = new Map(tS.id.map((rid, i) => [rid, i])), actsO = [];
+        for (const x of [...s.ajouts, ...s.majs]) {
+          const rid = siteDe.get(x.sid); if (rid == null) continue;
+          const f = {}, i = posT.get(rid);
+          for (const [c, ids] of Object.entries(x.occ || {})) {
+            const v = [...new Set(ids.map(e => rowDe.get(e)).filter(r => r != null))]; if (!v.length) continue;
+            const av = Array.isArray(tS[c] && tS[c][i]) ? tS[c][i].slice(tS[c][i][0] === "L" ? 1 : 0) : [];
+            if (av.length !== v.length || av.some((r, k) => r !== v[k])) f[c] = ["L", ...v];
+          }
+          for (const [c, sid2] of Object.entries(x.remp || {})) { const r = siteDe.get(sid2); if (r != null && r !== rid && refId(tS[c] && tS[c][i]) !== r) f[c] = r; }
+          if (Object.keys(f).length) actsO.push(["UpdateRecord", s.table, rid, f]);
+        }
+        await parLots(actsO, "Occupants et sites remplacés");
+        // 5 b. références vers les sites fusionnés ou fermés → site qui les remplace
+        if (reporterSites && s.references.length) {
+          const vers = new Map(s.fusionnes.map(x => [x.ex, siteDe.get(x.vers)]).filter(([, r]) => r != null));
+          const acts = window.References.actions(s.references, vers);
+          await parLots(acts, "Références de sites reportées"); reporteesS = acts.length;
+        }
       }
       // 5 bis. siège : référence vers le référentiel des sites (colonne créée au besoin)
       let nSieges = 0;
@@ -649,6 +842,14 @@
         await parLots(acts, "Correspondances mises à jour"); await ajouterLignes(TABLE_ALIAS, ajouts, "Correspondances ajoutées");
         nAlias = acts.length + ajouts.length;
       }
+      // 6 bis. tables annexes (unités de l'Atlas, effectifs, liaisons, confirmations) puis colonnes formules
+      let bilanAnnexes = [], formulesPosees = [];
+      if (a.annexes.length) {
+        const tSites = a.sites ? a.sites.table : tableSitesDe(await contexte(), table);
+        if (tSites && !siteDe.size) { const tS = await grist.docApi.fetchTable(tSites), kS = colonneIdentifiants(tS, "SITE"); if (kS) tS.id.forEach((rid, i) => { const k = idDe(tS[kS][i], "SITE"); if (k && !siteDe.has(k)) siteDe.set(k, rid); }); }
+        const r = await importerAnnexes(a, rowDe, siteDe, tSites); bilanAnnexes = r.bilan; if (r.creees) tablesCreees = true;
+        formulesPosees = await poserFormules(a, tSites);
+      } else if (a.sites) formulesPosees = await poserFormules(a, a.sites.table);
       // 7. trace dans Config, règles d'accès des tables créées
       const config = await S.lireConfig();
       await actions([S.actionConfig(config, "referentiel_esr", { fichier: nomFichier, table, sites: a.sites ? a.sites.table : null, derniere_mise_a_jour: Date.now() / 1000,
@@ -659,7 +860,8 @@
       }
       if (S.viderCacheLecture) S.viderCacheLecture();
       const bilan = `Import terminé : ${nf(a.ajouts.length)} établissement(s) ajouté(s), ${nf(champs.size)} mis à jour${reportees ? `, ${nf(reportees)} référence(s) reportée(s)` : ""}${nSieges ? `, ${nf(nSieges)} siège(s)` : ""}`
-        + (a.sites ? `, ${nf(nSitesA)} site(s) ajouté(s), ${nf(nSitesM)} mis à jour` : "") + (nAlias ? `, ${nf(nAlias)} correspondance(s)` : "") + "." + acces;
+        + (a.sites ? `, ${nf(nSitesA)} site(s) ajouté(s), ${nf(nSitesM)} mis à jour` : "") + (reporteesS ? `, ${nf(reporteesS)} référence(s) de site reportée(s)` : "") + (nAlias ? `, ${nf(nAlias)} correspondance(s)` : "") + "."
+        + (bilanAnnexes.length ? ` Tables annexes : ${bilanAnnexes.join(" ; ")}.` : "") + (formulesPosees.length ? ` Formules créées : ${formulesPosees.join(", ")}.` : "") + acces;
       enCours = false;
       await relancer(bilan, acces ? "err" : "ok");
       if (window.OngletSitesESR) window.OngletSitesESR.afficher();
@@ -681,5 +883,5 @@
     dessiner();
     if (info) racine.querySelector(".esr-outils").insertAdjacentHTML("afterend", `<p class="aide">${esc(info)}</p>`);
   }
-  window.OngletReferentielESR = { afficher, lireClasseur };
+  window.OngletReferentielESR = { afficher, lireClasseur, analyse: () => analyse };
 })();
