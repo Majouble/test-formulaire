@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.61.0 (15/11/2026)";
+  const VERSION = "2.62.0 (22/11/2026)";
 
   /* ---------- version publiée ----------
      GitHub Pages laisse les navigateurs garder chaque fichier 10 minutes. Au chargement, la page lit version.json sans
