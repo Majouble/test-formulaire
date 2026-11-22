@@ -496,7 +496,7 @@
       <p class="aide">Import du classeur consolidé des établissements, composantes et sites (onglets ${nomsF("etab")}, ${nomsF("sites")}, ${nomsF("alias")}, ${nomsF("fusions")}).
         Les lignes sont rapprochées par identifiant (ETAB-…, SITE-…), puis UAI, puis nom : les existantes sont mises à jour, les nouvelles ajoutées. Rien n'est supprimé, une cellule vide n'efface rien.
         Un bilan s'affiche avant toute écriture ; un classeur corrigé peut être réimporté.</p>
-      <p class="aide esr-regle">Unité de compte : <strong>une personne morale = un établissement</strong> (règle des 3 questions, appliquée dans le classeur v7).
+      <p class="aide esr-regle">Unité de compte : <strong>une personne morale = un établissement</strong> (règle des 3 questions, appliquée dans le classeur depuis la v7).
         Une composante interne (UFR, IUT, école interne d'une université, d'un INP ou de l'IMT…) est rattachée à sa personne morale ; ses sites restent ceux de la personne morale, la composante dans « Composante concernée ».
         Le rattachement est effacé sur les lignes de niveau « Établissement ».</p>
       <div class="esr-outils">
