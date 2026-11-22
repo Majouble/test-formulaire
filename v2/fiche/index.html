@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>PRISME · Fiche établissement</title>
+<!-- Widget « Fiche établissement » du socle v2 : un établissement par page A4, en tuiles empilées (synthèse, puis détail au clic).
+     Tables et colonnes choisies dans les réglages du widget (options de la page, clé « fiche ») ; calculs dans fiche-moteur.js. -->
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.52"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.52"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.52"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.52"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.52"></script>
+<script src="../commun/demandes.js?v=2.62.0-alpha.52"></script>
+<script src="fiche-moteur.js?v=2.62.0-alpha.52"></script>
+<style>
+  :root { --bleu: #000091; --bleu-pale: #eef0fa; --gris: #55596b; --bord: #b9bed0; --fond: #f6f6f6; --texte: #161616; --page: #fff;
+          --jaune: #ffe600; --attention: #fff1de; --rouge: #c9191e; }
+  :root[data-theme="dark"] { --bleu: #8585f6; --bleu-pale: #21213f; --gris: #a5a5a5; --bord: #3c3c3c; --fond: #242424; --texte: #cecece; --page: #1e1e1e; --attention: #33281a; }
+  :root[data-theme="dark"] :is(select, input, textarea, button:not(.principal)) { background: #161616; color: #cecece; border-color: #3c3c3c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Marianne, Arial, sans-serif; color: var(--texte); background: var(--page); }
+  header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 8px 12px; border-bottom: 2px solid var(--bleu); }
+  header h1 { font-size: 15px; margin: 0; color: var(--bleu); }
+  header .version { color: var(--gris); font-size: 11px; }
+  header .spacer { flex: 1; }
+  .groupe-impression { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 2px 6px; border: 1px solid var(--bord); border-radius: 6px; }
+  header input[type=text] { width: min(340px, 100%); }
+  button { font: inherit; padding: 5px 11px; border-radius: 4px; border: 1px solid var(--bleu); background: #fff; color: var(--bleu); cursor: pointer; }
+  button.principal { background: var(--bleu); color: #fff; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.petit { padding: 2px 8px; font-size: 12px; }
+  select, input[type=text], input[type=number], textarea { padding: 4px 6px; border: 1px solid #bbb; border-radius: 4px; font: inherit; background: #fff; color: var(--texte); width: 100%; }
+  .message { margin: 8px 12px; padding: 6px 10px; border-radius: 4px; display: none; }
+  .message.erreur { display: block; background: #fee; color: var(--rouge); }
+  .message.info { display: block; background: var(--bleu-pale); }
+  .chargement { display: flex; align-items: center; gap: 10px; margin: 8px 12px; padding: 8px 12px; border-radius: 4px; background: var(--bleu-pale); font-size: 13px; }
+  .chargement[hidden] { display: none; }
+  .chargement .rond { width: 14px; height: 14px; border: 2px solid var(--bleu); border-right-color: transparent; border-radius: 50%; animation: tourne .8s linear infinite; flex: none; }
+  @keyframes tourne { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .chargement .rond { animation: none; } }
+  @media print { .chargement { display: none !important; } }
+
+  /* ---------- la fiche ---------- */
+  main { max-width: 210mm; margin: 0 auto; padding: 16px 14px 32px; }
+  .entete { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; border-bottom: 2px solid var(--bleu); padding-bottom: 8px; }
+  .entete .surtitre { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--bleu); }
+  .entete h2 { margin: 2px 0; font-size: 26px; line-height: 1.15; }
+  .entete .details { color: var(--gris); }
+  .entete .repere { font-size: 12px; font-weight: 700; background: var(--jaune); color: #161616; padding: 2px 8px; border-radius: 3px; }
+  .badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 2px; }
+  .badge { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--bleu); background: var(--bleu); color: #fff; }
+  .badge.non { background: transparent; color: var(--gris); border-color: var(--bord); }
+  /* couleurs choisies badge par badge (texte toujours écrit : la couleur n'est jamais seule porteuse du sens) */
+  .badge.c-vert { background: #18753c; border-color: #18753c; color: #fff; } .badge.c-rouge { background: #ce0500; border-color: #ce0500; color: #fff; }
+  .badge.c-orange { background: #b34000; border-color: #b34000; color: #fff; } .badge.c-jaune { background: #ffe600; border-color: #b3a100; color: #161616; }
+  .badge.c-bleu { background: #000091; border-color: #000091; color: #fff; } .badge.c-gris { background: #e5e5e5; border-color: #929292; color: #161616; }
+  .couleurs-badge { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
+  .couleurs-badge .regle { display: inline-flex; gap: 4px; align-items: center; border: 1px solid var(--bord); border-radius: 4px; padding: 2px 4px; }
+  .couleurs-badge input, .couleurs-badge select { width: auto; } .couleurs-badge input { width: 110px; }
+  .couleurs-badge .sans-effet { color: #b34000; font-size: 11px; }
+  .filtres-sup { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
+  .filtres-sup .regle { display: inline-flex; gap: 4px; align-items: center; border: 1px solid var(--bord); border-radius: 4px; padding: 2px 4px; }
+  .filtres-sup select { width: auto; max-width: 220px; } .filtres-sup input { width: 200px; }
+  .bloc > h3 { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--bleu); margin: 18px 0 8px; }
+  .grille { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-flow: row dense; gap: 12px; }
+  .tuile { border: 1px solid var(--bord); border-radius: 6px; background: var(--bleu-pale); }
+  .tuile.restreint { background: var(--attention); }
+  .tuile.l2 { grid-column: span 2; } .tuile.l3, .tuile.ouverte { grid-column: 1 / -1; }
+  .tuile .tete { all: unset; box-sizing: border-box; display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 12px 14px; cursor: pointer; border-radius: 6px; }
+  .tuile .tete:focus-visible { outline: 3px solid var(--bleu); outline-offset: 2px; }
+  .tuile .titre { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--gris); }
+  .tuile .grand { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 22px; font-weight: 700; line-height: 1.2; }
+  .tuile.vide .grand { color: var(--gris); }
+  .tuile .pastille { font-size: 12px; font-weight: 700; background: var(--jaune); color: #161616; padding: 1px 6px; border-radius: 3px; }
+  .tuile .periode, .tuile .source { font-size: 12px; color: var(--gris); }
+  .tuile .detail { display: none; padding: 0 14px 12px; }
+  .tuile.ouverte .detail { display: block; }
+  .ventilation { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 8px; padding: 8px 0 0; border-top: 1px solid var(--bord); list-style: none; }
+  .barres { display: grid; gap: 4px; margin: 0 0 8px; padding: 8px 0 0; border-top: 1px solid var(--bord); }
+  .barre-ligne { display: grid; grid-template-columns: minmax(90px, 32%) minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 13px; }
+  .barre-lib { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .barre-piste { display: block; height: 12px; background: var(--page); border: 1px solid var(--bord); border-radius: 2px; overflow: hidden; }
+  .barre-val { display: block; height: 100%; background: var(--bleu); }
+  .barre-n { font-weight: 700; white-space: nowrap; } .barre-p { font-weight: 400; color: var(--gris); }
+  .barres.compactes { margin: 4px 0 0; padding: 0; border-top: none; gap: 2px; }
+  /* compactes (synthèse) : libellé et nombre sur une ligne, barre fine dessous, pour ne pas couper les libellés */
+  .compactes .barre-ligne { font-size: 12px; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "lib n" "piste piste"; gap: 0 6px; }
+  .compactes .barre-lib { grid-area: lib; } .compactes .barre-n { grid-area: n; } .compactes .barre-piste { grid-area: piste; height: 6px; }
+  .tuile.ouverte .tete .compactes { display: none; }   /* tuile dépliée : les barres complètes suffisent */
+  .detail table { width: 100%; border-collapse: collapse; font-size: 13px; border-top: 1px solid var(--bord); }
+  .detail th { text-align: left; font-size: 12px; color: var(--gris); font-weight: 600; padding: 6px 6px 2px; }
+  .detail td { padding: 3px 6px; vertical-align: top; }
+  .detail td:first-child { font-weight: 700; white-space: nowrap; }
+  .detail tr.nouveau td { background: var(--jaune); color: #161616; }
+  .mot-nouveau { font-weight: 700; }
+  .note-restreint { display: none; font-style: italic; font-size: 12px; }
+  .annexe, .note-detail { display: none; }
+  .entete-annexe { border-bottom: 2px solid #161616; padding-bottom: 6px; margin-bottom: 4px; font-size: 13px; }
+  .annexe h3 { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin: 14px 0 4px; }
+  .annexe-tuile h4 { margin: 10px 0 2px; font-size: 14px; break-after: avoid; }
+  .annexe-tuile h4 span { font-weight: 400; font-size: 12px; color: #4a4a4a; }
+  .annexe-tuile .detail { display: block; padding: 0; }
+  .pied { margin-top: 20px; padding-top: 6px; border-top: 1px solid var(--bord); font-size: 12px; color: var(--gris); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .invite { color: var(--gris); padding: 30px 0; text-align: center; }
+  @media (max-width: 640px) { .grille { grid-template-columns: 1fr; } .tuile.l2 { grid-column: auto; } }
+
+  /* ---------- filtres et sélection ---------- */
+  .barre-filtres { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 12px; border-bottom: 1px solid var(--bord); background: var(--fond); }
+  .barre-filtres .sous { font-size: 12px; color: var(--gris); }
+  .barre-filtres .spacer { flex: 1; }
+  .qchip.ajout { border-style: dashed; color: var(--bleu); }
+  #qpop label.aide { display: block; margin: 4px 0; } #qpop label.aide select { width: 100%; }
+  .qchip { border-radius: 999px; border-color: var(--bord); color: var(--texte); background: var(--page); padding: 3px 10px; font-size: 12px; }
+  .qchip.on { border-color: var(--bleu); background: var(--bleu-pale); color: var(--bleu); }
+  button.lien { border: none; padding: 2px 0; text-decoration: underline; background: none; }
+  #compteSelection { font-size: 12px; font-weight: 600; }
+  #position { font-size: 12px; color: var(--gris); min-width: 70px; text-align: center; }
+  .qpop { position: fixed; z-index: 20; width: 320px; max-height: 60vh; overflow: auto; background: var(--page); border: 1px solid var(--bord); border-radius: 6px;
+          box-shadow: 0 6px 18px rgba(0,0,0,.18); padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .qpop[hidden] { display: none; }
+  .qpop .qrow { display: flex; gap: 6px; }
+  .qpop .qopt { display: flex; gap: 6px; align-items: center; } .qpop .qopt .c { margin-left: auto; color: var(--gris); font-size: 12px; }
+  #avances { margin: 8px 12px; padding: 8px 10px; border: 1px solid var(--bord); border-radius: 6px; background: var(--fond); display: flex; flex-direction: column; gap: 4px; }
+  #avances[hidden] { display: none; }
+  #avances .titre-av { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  #avances .filtre { display: flex; flex-direction: column; gap: 3px; padding: 4px 0; border-bottom: 1px dashed var(--bord); }
+  #avances .ligne { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  #avances select, #avances input[type=text], #avances input[type=number] { width: auto; }
+  .modeles { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .modeles[hidden], #formModele[hidden] { display: none; }
+  .modeles select { width: auto; max-width: 240px; } #nomModele { width: 180px; }
+  .navigation { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  #avances .ligne select[data-ch=source] { max-width: 220px; } #avances .ligne select[data-ch=col] { max-width: 200px; } #avances .ligne input[data-ch=val] { width: 200px; }
+  #avances .periode { gap: 6px; padding: 4px 0; border-bottom: 1px dashed var(--bord); } #avances input[type=date] { width: auto; }
+  #avances .portee { margin-left: 26px; font-size: 12px; } #avances .portee input[type=number] { width: 70px; }
+  #avances .resume { margin-left: 26px; font-size: 11px; color: var(--gris); }
+  #avances .num-f { font-size: 11px; font-weight: 600; color: var(--bleu); min-width: 20px; }
+  #formule { width: 200px; }
+  #lot { display: none; }
+
+  /* ---------- réglages ---------- */
+  #reglages { margin: 10px 12px; padding: 10px; border: 1px solid var(--bord); border-radius: 6px; background: var(--fond); }
+  #reglages .barre { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  #reglages details { border: 1px solid var(--bord); border-radius: 6px; margin-bottom: 8px; background: var(--page); }
+  #reglages summary { cursor: pointer; padding: 6px 10px; font-weight: 600; }
+  .champs { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px 14px; padding: 8px 10px 10px; }
+  .champs .large { grid-column: 1 / -1; }
+  .champs label > span { display: block; font-weight: 600; font-size: 12px; margin-bottom: 2px; }
+  .aide { color: var(--gris); font-size: 11px; }
+  .cases { display: flex; flex-wrap: wrap; gap: 2px 12px; max-height: 120px; overflow: auto; }
+  .cases label { white-space: nowrap; font-weight: normal; }
+  .case-detail { display: inline-flex; gap: 6px; align-items: baseline; margin-right: 10px; } .case-detail .aide { white-space: nowrap; }
+  .carte { margin: 6px 10px; }
+  .carte > summary { display: flex; gap: 8px; align-items: center; }
+  .carte > summary .spacer { flex: 1; }
+  .ligne-badge { display: grid; grid-template-columns: 2fr 1.3fr 1.3fr 1fr 1.3fr auto; gap: 6px; align-items: end; padding: 4px 10px; }
+  #alertes:empty { display: none; }
+  #alertes { margin-bottom: 8px; padding: 6px 10px; background: #fff4e5; color: #6e4400; border-radius: 4px; font-size: 12px; }
+  #alertes li { margin-left: 16px; }
+
+  /* ---------- page de synthèse imprimée (« synthèse en page 1, détail ensuite ») ----------
+     Classe « impression » posée sur body juste avant d'imprimer (beforeprint) : la page prend la largeur utile d'une A4,
+     la synthèse se resserre, puis le script la mesure et la réduit (zoom) si elle dépasse une page. */
+  body.impression { font-size: 12px; }
+  body.impression main, body.impression #lot { max-width: none; width: 186mm; padding: 0; }   /* #lot (sélection) est hors de main */
+  body.impression .tuile { background: #fff !important; border-color: #161616; box-shadow: none !important; margin: 0 !important; break-inside: avoid; }
+  body.impression.lot #fiche { display: none; } body.impression.lot #lot { display: block; }
+  body.impression.mp-synthese .tuile .detail { display: none !important; }
+  body.impression.mp-synthese .grille { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  body.impression.mp-synthese .tuile.l2 { grid-column: span 2; } body.impression.mp-synthese .tuile.l3 { grid-column: 1 / -1; }
+  body.impression.mp-synthese .tuile.ouverte:not(.l2):not(.l3) { grid-column: auto; }
+  body.impression.mp-synthese .tuile .tete { padding: 6px 9px; gap: 1px; }
+  body.impression.mp-synthese .tuile .grand { font-size: 16px; }
+  body.impression.mp-synthese .tuile .titre { font-size: 11px; }
+  body.impression.mp-synthese .tuile .legende, body.impression.mp-synthese .tuile .periode { font-size: 11px; }
+  body.impression.mp-synthese .bloc > h3 { margin: 10px 0 4px; font-size: 11px; }
+  body.impression.mp-synthese .entete h2 { font-size: 22px; }
+  body.impression.mp-synthese .badges { margin: 6px 0 0; gap: 4px; } body.impression.mp-synthese .badge { font-size: 11px; padding: 2px 8px; }
+  body.impression.mp-synthese .tuile.ouverte .tete .compactes { display: grid; }
+  body.impression.mp-synthese .tuile.a-detail .titre::after { content: " ▸"; }
+  body.impression.mp-synthese:not(.imprimer-restreint) .tuile.restreint.a-detail .titre::after { content: ""; }
+  body.impression.mp-synthese .note-detail { display: inline; }
+  body.impression.mp-synthese .pied { margin-top: 10px; }
+  body.impression.mp-synthese .annexe { display: block; break-before: page; }
+  body.impression.mp-seule .annexe, body.impression.mp-seule .note-detail { display: none !important; }
+  body.impression.mp-seule .tuile.a-detail .titre::after { content: "" !important; }
+
+  /* ---------- impression : A4, toutes les tuiles détaillées, détail restreint masqué par défaut ---------- */
+  @page { size: A4; margin: 12mm; }
+  @media print {
+    header, #reglages, .message, .pas-imprime, .md-liste, .barre-filtres, #avances, .qpop { display: none !important; }
+    body.lot #fiche { display: none; } body.lot #lot { display: block; }
+    .fiche-lot + .fiche-lot { break-before: page; }
+    body { background: #fff; color: #161616; font-size: 12px; }
+    main { max-width: none; padding: 0; }
+    .grille { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .tuile { background: #fff !important; border-color: #161616; box-shadow: none !important; margin: 0 !important; break-inside: avoid; }
+    .tuile.l2, .tuile.l3 { grid-column: 1 / -1; } .tuile.ouverte:not(.l2):not(.l3) { grid-column: auto; }
+    .tuile .detail { display: block; }
+    body:not(.imprimer-restreint) .restreint .contenu-restreint { display: none; }
+    body:not(.imprimer-restreint) .restreint .note-restreint { display: block; }
+    body.mp-complet .tete .compactes { display: none; }
+    .badge { background: #161616; border-color: #161616; } .badge.non { background: #fff; color: #4a4a4a; border-color: #767676; }
+    .badge[class*=" c-"] { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .entete .repere { background: none; border: 1.5px solid #161616; }
+    .detail tr.nouveau td, .tuile .pastille, .barre-val { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .barre-val { background: #000091; } .barre-piste { border-color: #767676; background: #fff; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="prisme-logo" data-variante="compact"></span>Fiche établissement</h1>
+  <span class="version" id="version"></span>
+  <span class="spacer"></span>
+  <input type="text" id="recherche" list="liste-etabs" placeholder="Rechercher un établissement (nom, UAI…)" aria-label="Rechercher un établissement">
+  <datalist id="liste-etabs"></datalist>
+  <button id="actualiser" title="Relire les tables du document">Actualiser</button>
+  <span class="groupe-impression" role="group" aria-label="Impression">
+    <select id="miseEnPage" aria-label="Mise en page à l'impression" style="width:auto">
+      <option value="synthese">Synthèse en page 1, détail ensuite</option><option value="seule">Synthèse seulement (une page)</option><option value="complet">Tuiles détaillées</option></select>
+    <label title="Sans cette case, les tuiles marquées « diffusion restreinte » n'impriment que leur synthèse"><input type="checkbox" id="imprimerRestreint"> détail restreint</label>
+    <button id="imprimer" title="Imprimer la fiche affichée">Imprimer la fiche</button>
+    <button id="imprimerSelection" title="Une fiche après l'autre, pour chaque établissement de la sélection">Imprimer la sélection</button>
+  </span>
+  <button id="demanderComplements" hidden title="Demander aux partenaires (DSDEN, rectorats…) de compléter les fiches des établissements de la sélection">Demander des compléments…</button>
+  <button id="ouvrirReglages">⚙ Réglages</button>
+</header>
+<div class="barre-filtres" id="barreFiltres">
+  <span class="modeles" id="sourceZone" hidden><label class="sous" for="source">Fiche réglée :</label><select id="source" style="width:auto;max-width:260px"></select></span>
+  <span class="modeles"><select id="modele" aria-label="Modèle de sélection"><option value="">— Modèles —</option></select>
+    <button class="petit" id="enregModele" title="Enregistrer les filtres actuels sous un nom">Enregistrer…</button>
+    <button class="petit" id="defautModele" disabled title="Ouvrir la fiche sur ce modèle">☆ Par défaut</button>
+    <button class="petit" id="supprModele" disabled>Supprimer</button>
+    <span id="formModele" hidden><input type="text" id="nomModele" placeholder="Nom du modèle" aria-label="Nom du modèle">
+      <button class="petit principal" id="validerModele">OK</button><button class="petit" id="annulerModele">Annuler</button></span></span>
+  <span class="sous">Filtrer :</span><span id="puces"></span>
+  <button class="qchip" id="btnAvances" aria-expanded="false" aria-controls="avances">Sélection d'établissements…</button>
+  <button class="lien" id="effacerFiltres" hidden>Effacer les filtres</button>
+  <span class="spacer"></span>
+  <span class="navigation"><span id="compteSelection"></span>
+    <button class="petit" id="precedent" aria-label="Établissement précédent de la sélection">◀</button>
+    <span id="position"></span>
+    <button class="petit" id="suivant" aria-label="Établissement suivant de la sélection">▶</button></span>
+</div>
+<section id="avances" hidden aria-label="Sélection d'établissements"></section>
+<div id="qpop" class="qpop" role="dialog" hidden></div>
+<div id="message" class="message"></div>
+<section id="reglages" hidden></section>
+<div class="chargement" id="chargement" role="status" aria-live="polite"><span class="rond" aria-hidden="true"></span><span id="chargementTexte">Chargement de la fiche…</span></div>
+<main id="fiche"></main>
+<div id="lot"></div>
+
+<script>
+"use strict";
+/* =====================================================================
+   Fiche établissement — page du widget
+   Définit : l'affichage de la fiche, le choix de l'établissement, l'impression et le panneau de réglages.
+   Utilise : window.Socle (schéma des tables, configuration de départ), window.FicheMoteur (calculs),
+             window.FiltresColonnes (filtres avancés, commun/filtres-colonnes.js), API des widgets Grist.
+   État : config (réglages enregistrés), brouillon (réglages en cours de modification, affichés en direct),
+          schema et donnees (tables lues), etabId (établissement affiché), ouvertes (tuiles dépliées),
+          etat (filtres de la page, enregistrés dans les options du widget, clé « filtres »), selection (établissements retenus),
+          modèles de sélection (Config, clé « fiche », ou options de la page, clé « modeles »),
+          source (page, ou ligne d'un partenaire de la table Partenaires sur une page des partenaires).
+   ===================================================================== */
+const M = window.FicheMoteur;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// texte des cellules : « **mot** » (gras à la manière du markdown, fréquent dans les descriptions collées) affiché en gras
+const escGras = s => esc(s).replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, "<strong>$1</strong>");
+const RAFRAICHIR_APRES = 60;
+const TRI = new Intl.Collator("fr").compare;   // bien plus rapide que localeCompare sur des milliers de noms
+// bandeau d'attente : texte de l'étape en cours, masqué quand texte vide
+function attente(texte) { $("chargement").hidden = !texte; if (texte) $("chargementTexte").textContent = texte; }
+const heureParis = s => new Intl.DateTimeFormat("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" }).format(new Date(s * 1000)).replace(" ", " à ");   // secondes : au changement d'établissement, les tables plus anciennes sont relues
+
+let config = null, brouillon = null, schema = {}, tablesDoc = [], donnees = {}, chargeLe = 0, lecteur = null, marque = null;
+let etabId = null, tableLiee = null, demarre = false;
+let base = null;                   // contexte commun des fiches (index de rattachement), refait à chaque lecture ou réglage
+const illisibles = new Set();      // tables refusées par les règles d'accès
+/* Source des réglages, filtres et modèles :
+   - la page (options du widget), cas ordinaire ;
+   - sur une page des partenaires (option « partenaires », réglée par un propriétaire), la ligne du partenaire dans la
+     table Partenaires (colonne Fiche, en JSON) : un partenaire ouvert par son lien ne lit que sa ligne et y enregistre
+     ses propres réglages ; la fiche de la page sert de modèle de départ. Un propriétaire choisit la fiche qu'il règle. */
+const PART = Socle.PARTENAIRES;
+let optionsDePage = {}, pagePartenaires = false, partenaires = [], proprietaire = false, source = null;
+const FC = window.FiltresColonnes;
+const ouvertes = new Set();
+const actuelle = () => brouillon || config || M.normaliserConfig(null);
+
+function message(texte, type = "erreur") { const m = $("message"); m.className = "message" + (texte ? " " + type : ""); m.textContent = texte || ""; }
+
+/* ---------- lecture du document ---------- */
+// Structure des tables : métadonnées de Grist ; pour un lien (partenaire, établissement), que Grist en prive,
+// copie tenue à jour par l'administration dans Config (clé « schema_partenaires », sinon « schema »)
+async function chargerSchema() {
+  try {
+    const T = await grist.docApi.fetchTable("_grist_Tables");
+    tablesDoc = T.tableId.filter(t => t && !/^GristHidden|^_grist/.test(t)).sort(TRI);
+    schema = await Socle.instantaneSchema(tablesDoc);
+  } catch (e) {
+    const C = await grist.docApi.fetchTable("Config").catch(() => null);
+    const lire = cle => { const i = C && C.Cle ? C.Cle.indexOf(cle) : -1; try { return i < 0 ? null : JSON.parse(C.Valeur[i]); } catch (_) { return null; } };
+    const copie = lire(PART.schema) || lire("schema");
+    if (!copie || !copie.tables) throw new Error("structure du document illisible avec ce lien : un propriétaire doit appliquer les règles d'accès (onglet Accès), qui en écrivent une copie pour les partenaires");
+    schema = copie.tables;
+    tablesDoc = Object.keys(schema).sort(TRI);
+  }
+}
+/* Lecture rapide par l'API SQL de Grist (comme la saisie) : lue directement dans la base du document, sans passer par
+   le moteur de calcul, qui traite les demandes une par une (une grande table y fait attendre toutes les autres).
+   Refusée sans accès complet au document (lien de partenaire, règles d'accès) : lecture habituelle (fetchTable).
+   Points_situation, lue seulement pour l'heure du dernier point : sa seule colonne Horodatage. */
+let jetonSQL = null, sqlRefuse = "";
+const listeSQL = ["ChoiceList", "RefList", "Attachments"];
+async function lireTableSQL(tid, seules) {
+  if (sqlRefuse) throw new Error(sqlRefuse);
+  if (!grist.docApi.getAccessToken) { sqlRefuse = "jeton d'accès indisponible"; throw new Error(sqlRefuse); }
+  if (!jetonSQL || Date.now() > jetonSQL.expire) {
+    const j = await grist.docApi.getAccessToken({ readOnly: true });
+    jetonSQL = { ...j, expire: Date.now() + Math.max(30, Math.min(Number(j.ttl) || 300, 600) - 20) * 1000 };
+  }
+  const meta = (schema[tid] || []).filter(c => c.colId !== "id" && c.colId !== "manualSort" && !String(c.colId).startsWith("gristHelper") && (!seules || seules.includes(c.colId)));
+  if (!schema[tid]) throw new Error("table inconnue");
+  const q = x => `"${String(x).replace(/"/g, '""')}"`;
+  const sql = `SELECT id${meta.map(c => `, ${q(c.colId)}`).join("")} FROM ${q(tid)}`;
+  const r = await fetch(`${jetonSQL.baseUrl}/sql?q=${encodeURIComponent(sql)}&auth=${encodeURIComponent(jetonSQL.token)}`);
+  if (r.status === 401 || r.status === 403) { sqlRefuse = `lecture SQL refusée (${r.status})`; throw new Error(sqlRefuse); }
+  if (!r.ok) throw new Error(`lecture SQL : erreur ${r.status}`);
+  const recs = (await r.json()).records || [];
+  // valeurs telles que les donnerait fetchTable : cases à cocher en booléens, listes au format ["L", …]
+  const conv = meta.map(c => {
+    const ty = String(c.type || "").split(":")[0];
+    if (ty === "Bool") return v => v == null ? v : !!v;
+    if (listeSQL.includes(ty)) return v => { if (typeof v !== "string" || !v.startsWith("[")) return v; try { return ["L", ...JSON.parse(v)]; } catch (_) { return v; } };
+    return v => v;
+  });
+  const t = { id: recs.map(x => x.fields.id) };
+  meta.forEach((c, k) => { t[c.colId] = recs.map(x => conv[k](x.fields[c.colId])); });
+  return t;
+}
+const durees = {};   // dernière lecture de chaque table : { ms, mode, lignes }
+async function lireTable(t, seules) {
+  const t0 = performance.now();
+  let d, mode = "SQL";
+  try { d = await lireTableSQL(t, seules); }
+  catch (_) { mode = "fetchTable"; d = await grist.docApi.fetchTable(t); }
+  durees[t] = { ms: Math.round(performance.now() - t0), mode, lignes: d && d.id ? d.id.length : 0 };
+  return d;
+}
+const enVol = new Map();   // lectures en cours, partagées (démarrage et première ligne envoyée par Grist)
+async function chargerDonnees(forcer) {
+  // tables des réglages, plus celles des filtres de la barre et de la sélection avancée
+  const duFiltre = [...(etat.colonnes || []).map(x => x.slice(0, x.indexOf("."))), ...(etat.avances || []).map(f => String(f.source || ""))].filter(t => t && schema[t]);
+  const cfg = actuelle(), besoin = [...new Set([...M.tablesNecessaires(cfg, schema), ...duFiltre])];
+  const vieux = forcer || Date.now() / 1000 - chargeLe > RAFRAICHIR_APRES;
+  const a = besoin.filter(t => vieux || !(t in donnees));
+  // tables lues en parallèle ; table illisible avec les droits de la personne (lien de partenaire…) : ignorée, ses tuiles restent vides
+  let faites = 0;
+  // Points_situation demandée seulement pour le repère « nouveau » (aucune tuile, badge ni référentiel ne la lit)
+  const psSeule = a.includes("Points_situation") && !M.tablesNecessaires({ ...cfg, nouveau: "" }, schema).includes("Points_situation");
+  if (a.length) attente(`Lecture des données : 0 / ${a.length} table${a.length > 1 ? "s" : ""}…`);
+  await Promise.all(a.map(t => {
+    if (!enVol.has(t)) enVol.set(t, lireTable(t, t === "Points_situation" && psSeule ? ["Horodatage"] : null).then(d => { donnees[t] = d; illisibles.delete(t); }, () => { donnees[t] = null; illisibles.add(t); })
+      .finally(() => enVol.delete(t)));
+    return enVol.get(t).then(() => attente(`Lecture des données : ${++faites} / ${a.length} table${a.length > 1 ? "s" : ""}…`));
+  }));
+  if (vieux) chargeLe = Date.now() / 1000;
+  lecteur = M.creerLecteur(schema, donnees);
+  // repère « nouveau » : heure du dernier point de situation enregistré (table Points_situation du widget Point de situation)
+  const ps = donnees.Points_situation;
+  marque = ps && ps.Horodatage ? Math.max(...ps.Horodatage.filter(x => typeof x === "number"), -Infinity) : null;
+  if (marque === -Infinity) marque = null;
+}
+
+/* ---------- choix de l'établissement : ligne sélectionnée dans Grist, ou recherche ---------- */
+let correspondances = new Map(), rechercheAJour = false;
+function remplirRecherche() { rechercheAJour = false; $("liste-etabs").innerHTML = ""; }
+function construireRecherche() {
+  if (rechercheAJour) return;
+  rechercheAJour = true;
+  const r = actuelle().referentiel, l = $("liste-etabs");
+  correspondances = new Map();
+  if (!lecteur || !r.table || !r.titre) { l.innerHTML = ""; return; }
+  // recherche limitée aux établissements de la sélection
+  const retenus = new Set(selection.map(x => x.id));
+  const opts = lecteur.lignes(r.table).filter(e => retenus.has(e.id)).map(e => {
+    const lib = [lecteur.texte(r.table, r.titre, e[r.titre]), r.cle ? lecteur.texte(r.table, r.cle, e[r.cle]) : ""].filter(Boolean).join(" — ");
+    correspondances.set(lib, e.id);
+    return lib;
+  }).sort(TRI);
+  l.innerHTML = opts.map(o => `<option value="${esc(o)}">`).join("");
+}
+$("recherche").addEventListener("focus", construireRecherche);
+$("recherche").addEventListener("input", construireRecherche);
+$("recherche").addEventListener("change", () => {
+  construireRecherche();
+  const id = correspondances.get($("recherche").value);
+  if (!id) return;
+  $("recherche").value = ""; $("recherche").blur();
+  allerA(id);
+});
+
+/* ---------- affichage de la fiche ---------- */
+function empilement(n) {   // bords décalés sous la tuile : une couche par niveau de détail
+  const p = [];
+  for (let i = 1; i < n; i++) p.push(`0 ${5 * i}px 0 -${3 * i}px var(--page)`, `0 ${5 * i}px 0 -${3 * i - 1}px var(--bord)`);
+  return p.length ? `box-shadow:${p.join(",")};margin-bottom:${5 * (n - 1)}px` : "";
+}
+function htmlTuile(t, k) {
+  const ouverte = ouvertes.has(k);
+  const classes = ["tuile", "l" + t.largeur, ouverte ? "ouverte" : "", t.vide ? "vide" : "", t.restreint ? "restreint" : "", aDuDetail(t) ? "a-detail" : ""].filter(Boolean).join(" ");
+  const tableau = t.detail.length ? `<table><thead><tr>${t.colonnesDetail.map(c => `<th>${esc(c)}</th>`).join("")}</tr></thead><tbody>${
+    t.detail.map(l => `<tr${l.nouveau ? ' class="nouveau"' : ""}>${l.cellules.map((c, i) => `<td>${i === 0 && l.nouveau ? '<span class="mot-nouveau">Nouveau · </span>' : ""}${escGras(c)}</td>`).join("")}</tr>`).join("")
+  }</tbody></table>${t.reste ? `<p class="periode">… et ${t.reste} autre${t.reste > 1 ? "s" : ""} ligne${t.reste > 1 ? "s" : ""}.</p>` : ""}` : "";
+  const ventil = !t.ventilation.length ? "" : t.barres ? htmlBarres(t.ventilation, false)
+    : `<ul class="ventilation">${t.ventilation.map(v => `<li><b>${esc(v.texte)}</b> ${esc(v.valeur)}</li>`).join("")}</ul>`;
+  const contenu = ventil + tableau || (t.vide ? '<p class="periode">Aucune ligne pour cet établissement.</p>' : "");
+  const detail = `${t.restreint ? '<p class="note-restreint">Diffusion restreinte : détail non imprimé.</p>' : ""}
+    <div class="contenu-restreint">${contenu}</div>
+    ${t.source || t.maj ? `<p class="source">${[t.source ? "Source : " + esc(t.source) : "", t.maj ? "mis à jour le " + esc(t.maj) : ""].filter(Boolean).join(" · ")}</p>` : ""}`;
+  if (k === "annexe") return `<div class="annexe-tuile${t.restreint ? " restreint" : ""}"><h4>${esc(t.titre)} <span>${escGras([t.grand, t.legende, t.periode].filter(Boolean).join(" · "))}</span></h4><div class="detail">${detail}</div></div>`;
+  return `<section class="${classes}" style="${empilement(t.couches)}">
+  <button type="button" class="tete" data-tuile="${k}" aria-expanded="${ouverte}">
+    <span class="titre">${esc(t.titre)}</span>
+    <span class="grand"><span>${escGras(t.grand)}</span>${t.nouveaux ? `<span class="pastille">${t.nouveaux} nouveau${t.nouveaux > 1 ? "x" : ""}</span>` : ""}</span>
+    ${t.legende ? `<span class="legende">${escGras(t.legende)}</span>` : ""}
+    ${t.periode ? `<span class="periode">${esc(t.periode)}</span>` : ""}
+    ${t.barres && t.ventilation.length ? htmlBarres(t.ventilation.slice(0, 3), true) : ""}
+  </button>
+  <div class="detail">${detail}</div>
+</section>`;
+}
+/* barres horizontales de la ventilation : longueur relative à la plus grande valeur, nombre et part en texte
+   (lisibles sans couleur, à l'impression comme à l'écran) ; compactes = les trois premières, dans la synthèse */
+function htmlBarres(vs, compactes) {
+  const max = Math.max(...vs.map(v => v.n), 0);
+  return `<span class="barres${compactes ? " compactes" : ""}">${vs.map(v => `<span class="barre-ligne">
+    <span class="barre-lib" title="${esc(v.valeur)}">${esc(v.valeur)}</span>
+    <span class="barre-piste"><span class="barre-val" style="width:${max > 0 ? Math.max(0, v.n / max * 100).toFixed(1) : 0}%"></span></span>
+    <span class="barre-n">${esc(v.texte)} <span class="barre-p">(${v.part} %)</span></span></span>`).join("")}</span>`;
+}
+// tuile dont le détail mérite une page d'annexe : ventilation ou lignes
+const aDuDetail = t => t.ventilation.length > 0 || t.detail.length > 0;
+function afficher() {
+  const cfg = actuelle(), zone = $("fiche");
+  if (!cfg.referentiel.table) { zone.innerHTML = '<p class="invite">Ouvrez « ⚙ Réglages » pour choisir la table des établissements et les tuiles.</p>'; return; }
+  if (!lecteur) return;
+  if (etabId == null && !selection.length && filtresActifs()) { zone.innerHTML = '<p class="invite">Aucun établissement ne répond aux filtres.</p>'; return; }
+  if (etabId == null || !lecteur.ligne(cfg.referentiel.table, etabId)) {
+    zone.innerHTML = '<p class="invite">Choisissez un établissement : sélectionnez sa ligne dans Grist ou recherchez-le ci-dessus.</p>'; return;
+  }
+  zone.innerHTML = htmlFiche(M.construireFiche(cfg, lecteur, etabId, base), true);
+}
+// « Libellé » ou « Libellé : non » (oui / non) ; « Libellé : valeur » ou « Libellé : — » (valeur de la colonne)
+const texteBadge = b => b.affichage === "valeur" ? `${b.libelle} : ${b.actif ? b.valeur : "—"}` : b.actif ? b.libelle : `${b.libelle} : non`;
+function htmlFiche(f, ecran) {
+  const cfg = actuelle();
+  let k = 0;
+  return `<div class="page-synthese"><div class="entete">
+    <div><div class="surtitre">Fiche établissement</div><h2>${esc(f.titre)}</h2><div class="details">${f.details.map(esc).join(" · ")}</div></div>
+    ${marque != null && cfg.nouveau === "point" ? `<span class="repere">Surligné = nouveau depuis le point du ${esc(heureParis(marque))}</span>` : ""}
+  </div>
+  ${f.badges.length ? `<div class="badges">${f.badges.map(b => `<span class="badge${b.couleur ? ` c-${esc(b.couleur)}` : b.actif ? "" : " non"}">${esc(texteBadge(b))}</span>`).join("")}</div>` : ""}
+  ${f.blocs.map(b => `<div class="bloc">${b.titre ? `<h3>${esc(b.titre)}</h3>` : ""}<div class="grille">${b.tuiles.map(t => htmlTuile(t, ecran ? k++ : -1)).join("")}</div></div>`).join("")}
+  <div class="pied"><span>Édité le ${esc(heureParis(Date.now() / 1000))}</span>
+    <span class="pas-imprime">Appuyer sur une tuile pour la détailler.</span>
+    ${f.blocs.some(b => b.tuiles.some(aDuDetail)) ? '<span class="note-detail">▸ détail de la tuile en pages suivantes</span>' : ""}</div></div>
+  ${htmlAnnexe(f)}`;
+}
+/* Annexe (impression « synthèse en page 1, détail ensuite ») : sur les pages qui suivent la synthèse, le détail de
+   chaque tuile qui en a, dans l'ordre de la fiche, sous son titre et sa synthèse. Invisible à l'écran. */
+function htmlAnnexe(f) {
+  const tuiles = f.blocs.flatMap(b => b.tuiles).filter(aDuDetail);
+  if (!tuiles.length) return "";
+  return `<section class="annexe" aria-hidden="true"><div class="entete-annexe"><b>${esc(f.titre)}</b> · détail des tuiles</div>
+    ${f.blocs.map(b => { const ts = b.tuiles.filter(aDuDetail); return ts.length ? `${b.titre ? `<h3>${esc(b.titre)}</h3>` : ""}${ts.map(t => htmlTuile(t, "annexe")).join("")}` : ""; }).join("")}</section>`;
+}
+function appliquerMiseEnPage() {
+  const v = $("miseEnPage").value;
+  // « seule » : la page de synthèse, sans les pages de détail
+  document.body.classList.toggle("mp-synthese", v === "synthese" || v === "seule");
+  document.body.classList.toggle("mp-seule", v === "seule");
+  document.body.classList.toggle("mp-complet", v === "complet");
+}
+$("miseEnPage").addEventListener("change", appliquerMiseEnPage);
+$("fiche").addEventListener("click", e => {
+  const b = e.target.closest("[data-tuile]"); if (!b) return;
+  const k = Number(b.dataset.tuile);
+  ouvertes.has(k) ? ouvertes.delete(k) : ouvertes.add(k);
+  afficher();
+  const nb = document.querySelector(`[data-tuile="${k}"]`); if (nb) nb.focus();
+});
+$("imprimer").addEventListener("click", () => window.print());
+$("imprimerRestreint").addEventListener("change", e => document.body.classList.toggle("imprimer-restreint", e.target.checked));
+$("actualiser").addEventListener("click", () => rafraichir(true));
+async function rafraichir(forcer) {
+  const t0 = performance.now();
+  try {
+    await chargerDonnees(forcer);
+    const t1 = performance.now();
+    attente("Préparation des fiches…");
+    await new Promise(r => setTimeout(r, 0));   // laisse le bandeau s'afficher avant le calcul
+    base = M.preparer(actuelle(), lecteur, { marque });
+    recalculerSelection(); remplirRecherche(); afficherFiltres(); afficher();
+    const t2 = performance.now();
+    const s1 = x => (Math.round(x / 100) / 10).toLocaleString("fr-FR");
+    console.info(`[fiche] lecture ${Math.round(t1 - t0)} ms, calcul ${Math.round(t2 - t1)} ms`, durees);
+    $("version").title = `Dernier chargement : lecture des tables ${s1(t1 - t0)} s, calcul ${s1(t2 - t1)} s\n`
+      + Object.entries(durees).sort((x, y) => y[1].ms - x[1].ms).map(([t, d]) => `${t} : ${s1(d.ms)} s, ${d.lignes} lignes (${d.mode})`).join("\n");
+  }
+  catch (e) { console.error(e); message("Lecture impossible : " + (e.message || e)); }
+  finally { attente(""); }
+}
+
+/* =====================================================================
+   Filtres et sélection
+   - filtres rapides : puces (colonnes du référentiel et badges choisis dans les réglages), liste de valeurs à cocher ;
+   - filtres avancés : moteur des Extractions sur les lignes d'une tuile ou du référentiel (portée, comptage, ET / OU / formule) ;
+   - sélection : établissements retenus, rangés par nom, parcourus avec ◀ ▶, imprimés en lot (une fiche par page).
+   ===================================================================== */
+let etat = etatVide(), dims = [], apresAvances = [], selection = [], minuteurFiltres = null;
+let modelesDoc = [], modelesPage = [], socleConfig = null;   // modèles de sélection : du document (Config, clé « fiche »), de la page
+let modeleDefaut = null;   // nom du modèle appliqué à l'ouverture (null : celui de la page)
+function etatVide() { return { rapides: {}, avances: [], combinaison: "cascade", formule: "", periode: { mode: "", du: "", au: "", jours: 7 }, colonnes: [] }; }
+function normaliserEtat(e) {
+  const o = { ...etatVide(), ...(e && typeof e === "object" ? e : {}) };
+  if (!o.rapides || typeof o.rapides !== "object") o.rapides = {};
+  o.periode = { ...etatVide().periode, ...(o.periode && typeof o.periode === "object" ? o.periode : {}) };
+  o.avances = (Array.isArray(o.avances) ? o.avances : []).map(f => ({ ...FC.reprendre(f), source: f.source == null ? "" : String(f.source) }));
+  if (!FC.COMBINAISONS.some(x => x[0] === o.combinaison)) o.combinaison = "cascade";
+  o.colonnes = (Array.isArray(o.colonnes) ? o.colonnes : []).filter(x => typeof x === "string" && x.includes("."));   // filtres ajoutés dans la barre
+  return o;
+}
+const periodeActive = () => !!(base && M.bornesPeriode(etat.periode, base.maintenant));
+const filtresActifs = () => Object.keys(etat.rapides).length + etat.avances.filter(FC.actif).length + (periodeActive() ? 1 : 0);
+function recalculerSelection() {
+  const r = actuelle().referentiel;
+  if (!lecteur || !base || !r.table) { dims = []; apresAvances = []; selection = []; return; }
+  dims = M.dimensionsRapides(actuelle(), lecteur, base, etat.colonnes, etat.periode);   // puces ajoutées : lignes de la période
+  for (const id of Object.keys(etat.rapides)) if (!dims.some(d => d.id === id)) delete etat.rapides[id];   // filtre retiré des réglages
+  apresAvances = lecteur.lignes(r.table).filter(e => M.passeAvances(e, etat, FC, lecteur, base));
+  selection = apresAvances.filter(e => M.passeRapides(e, dims, etat.rapides))
+    .map(e => ({ id: e.id, titre: M.titreEtab(e, lecteur, r) })).sort((a, b) => TRI(a.titre, b.titre));
+  // pas de fiche hors de la sélection : l'établissement affiché en fait partie, sinon le premier retenu
+  if (!selection.some(x => x.id === etabId)) { etabId = selection.length ? selection[0].id : null; ouvertes.clear(); }
+}
+function appliquerFiltres(depuisModele) {
+  if (!depuisModele) { $("modele").value = ""; majBoutonsModele(); }
+  recalculerSelection();
+  // après un changement de filtre : l'établissement affiché reste s'il est retenu, sinon le premier de la sélection
+  if (selection.length && filtresActifs() && !selection.some(x => x.id === etabId)) { etabId = selection[0].id; ouvertes.clear(); }
+  remplirRecherche(); afficherFiltres(); afficher();
+  clearTimeout(minuteurFiltres);
+  minuteurFiltres = setTimeout(sauvegarderFiltres, 600);
+}
+// contenu enregistré : réglages de la fiche (s'ils existent), filtres en cours, modèles propres à la page ou au partenaire
+const contenuSource = () => ({ ...(config ? { fiche: config } : {}), filtres: etat, modeles: modelesPage, ...(modeleDefaut != null ? { modeleDefaut } : {}) });
+async function ecrireSource() {
+  if (affichageSeul()) return;   // lien d'affichage seul : filtres gardés le temps de la visite, rien d'enregistré
+  if (source == null) { optionsDePage = { ...contenuSource(), partenaires: pagePartenaires }; return grist.setOptions(optionsDePage); }
+  const contenu = contenuSource();
+  await grist.docApi.applyUserActions([["UpdateRecord", PART.table, source, { [PART.fiche]: JSON.stringify(contenu) }]]);
+  const p = partenaires.find(x => x.id === source); if (p) p.contenu = contenu;
+}
+function sauvegarderFiltres() {
+  if (source == null) try { localStorage.setItem("prisme-fiche-filtres", JSON.stringify(etat)); } catch (_) {}
+  try { Promise.resolve(ecrireSource()).catch(() => {}); } catch (_) {}
+}
+// lignes lisibles de la table Partenaires (toutes pour un propriétaire, la sienne pour un partenaire) ;
+// propriétaire : seul à pouvoir lire les règles d'accès du document
+async function lirePartenaires() {
+  partenaires = []; proprietaire = false;
+  try { await grist.docApi.fetchTable("_grist_ACLRules"); proprietaire = true; } catch (_) {}   // aussi hors page des partenaires : demandes de compléments
+  if (!pagePartenaires) return;
+  try {
+    const d = await grist.docApi.fetchTable(PART.table), col = k => d[k] || [];
+    partenaires = d.id.map((id, i) => { let contenu = {}; try { contenu = JSON.parse(col(PART.fiche)[i] || "{}") || {}; } catch (_) {}
+      return { id, nom: String(col(PART.nom)[i] || `Partenaire ${id}`), contenu, lecture: !!col(PART.lecture)[i],
+        academies: Array.isArray(col(PART.academies)[i]) ? col(PART.academies)[i].slice(1) : [] }; }).sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
+  } catch (_) { partenaires = []; }
+}
+/* lien de partenaire en affichage seul (case « Lecture_seule » de sa ligne) : il consulte, filtre, applique les modèles et
+   imprime, mais ne règle rien et n'enregistre rien (ni réglages, ni modèles, ni filtres) ; les règles d'accès lui
+   refusent d'ailleurs toute modification de sa ligne */
+const affichageSeul = () => pagePartenaires && !proprietaire && source != null && !!(partenaires.find(p => p.id === source) || {}).lecture;
+function appliquerAffichageSeul() {
+  const seul = affichageSeul();
+  for (const id of ["ouvrirReglages", "enregModele", "defautModele", "supprModele"]) $(id).hidden = seul;
+  if (seul) { $("reglages").hidden = true; $("formModele").hidden = true; }
+}
+// réglages, filtres et modèles de la source choisie ; un partenaire sans réglages part de la fiche de la page
+function chargerSource() {
+  const p = source == null ? null : partenaires.find(x => x.id === source), c = p ? p.contenu : optionsDePage;
+  const fiche = c.fiche || (p ? optionsDePage.fiche : null);
+  config = fiche ? M.normaliserConfig(fiche) : null;
+  let local = null;
+  if (!p) try { local = JSON.parse(localStorage.getItem("prisme-fiche-filtres") || "null"); } catch (_) {}
+  etat = normaliserEtat(c.filtres || local);
+  modelesPage = Array.isArray(c.modeles) ? c.modeles : [];
+  modeleDefaut = typeof c.modeleDefaut === "string" ? c.modeleDefaut : null;
+}
+// propriétaire sur une page des partenaires : choix de la fiche réglée (celle de la page, ou celle d'un partenaire)
+function afficherSource() {
+  const sel = $("source"), voir = pagePartenaires && proprietaire;
+  $("sourceZone").hidden = !voir;
+  if (!voir) return;
+  sel.innerHTML = `<option value="">Fiche de la page (modèle de départ)</option>` + partenaires.map(p => `<option value="${p.id}">${esc(p.nom)}${p.academies && p.academies.length ? ` — ${p.academies.every(a => typeof a === "string") ? esc(p.academies.join(", ")) : `${p.academies.length} académie${p.academies.length > 1 ? "s" : ""}`}` : ""}${p.lecture ? " (affichage seul)" : ""}</option>`).join("");
+  sel.value = source == null ? "" : String(source);
+}
+
+/* ---------- modèles de sélection : filtres enregistrés sous un nom, pour passer d'un regard à l'autre ----------
+   Page ordinaire : modèles du document (Config, clé « fiche ») quand c'est possible, sinon de la page (options du
+   widget) ; même règle que les modèles des Extractions.
+   Page des partenaires : les modèles du document (ligne « fiche » de Config, lisible des partenaires) et ceux que le
+   propriétaire prépare sur la fiche de la page (« communs », options de la page) : chaque partenaire les voit et les
+   applique, sans pouvoir les modifier ; ses propres modèles vont dans sa ligne de la table Partenaires.
+   Modèle par défaut : appliqué à l'ouverture (nom enregistré avec la page, ou dans la ligne du partenaire ; un
+   partenaire qui n'en a pas choisi prend celui de la page). */
+const horsDoc = l => (Array.isArray(l) ? l : []).filter(m => !modelesDoc.some(d => d.nom === m.nom));   // un même nom : celui du document
+const modeles = () => source != null
+  ? [...modelesDoc.map(m => ({ ...m, origine: "document" })), ...horsDoc(optionsDePage.modeles).map(m => ({ ...m, origine: "commun" })), ...modelesPage.map(m => ({ ...m, origine: "partenaire" }))]
+  : [...modelesDoc.map(m => ({ ...m, origine: "document" })), ...(pagePartenaires ? horsDoc(modelesPage) : modelesPage).map(m => ({ ...m, origine: pagePartenaires ? "commun" : "page" }))];
+// propriétaire sur la page des partenaires : modèles communs et modèle par défaut des options de la page recopiés
+// dans Config, où les partenaires les lisent même si Grist n'a pas gardé les options
+async function rangerModelesPartenaires() {
+  if (source != null || !pagePartenaires || !socleConfig || socleConfig.lectureSeule) return;
+  const manquants = horsDoc(optionsDePage.modeles), defaut = typeof optionsDePage.modeleDefaut === "string" ? optionsDePage.modeleDefaut : "";
+  if (!manquants.length && (defautPartenairesDoc() != null || !defaut)) return;
+  try {
+    const v = (socleConfig.valeurs && socleConfig.valeurs.fiche) || {};
+    await Socle.ecrireConfig("fiche", { ...v, modeles: [...modelesDoc, ...manquants].sort((a, b) => a.nom.localeCompare(b.nom, "fr")),
+      ...(defautPartenairesDoc() == null && defaut ? { defautPartenaires: defaut } : {}) });
+    await lireModelesDoc();
+  } catch (_) {}
+}
+/* Page des partenaires : modèles et modèle par défaut préparés par le propriétaire rangés dans Config (ligne « fiche »,
+   lisible des partenaires, enregistrée aussitôt) plutôt que dans les options de la page, que Grist garde en brouillon
+   tant qu'on ne clique pas sur son icône verte (les partenaires ne voyaient alors rien) */
+const defautPartenairesDoc = () => { const v = socleConfig && socleConfig.valeurs && socleConfig.valeurs.fiche; return v && typeof v.defautPartenaires === "string" ? v.defautPartenaires : null; };
+function nomDefaut() {
+  const dePage = defautPartenairesDoc() ?? (typeof optionsDePage.modeleDefaut === "string" ? optionsDePage.modeleDefaut : "");
+  if (source != null) return modeleDefaut != null ? modeleDefaut : dePage;
+  if (pagePartenaires) return dePage;
+  return modeleDefaut || "";
+}
+function majBoutonsModele() {
+  const m = modeles()[$("modele").value], b = $("defautModele"), d = !!m && m.nom === nomDefaut();
+  $("supprModele").disabled = !m; b.disabled = !m;
+  b.textContent = d ? "★ Par défaut" : "☆ Par défaut";
+  b.title = d ? "Modèle appliqué à l'ouverture : cliquer pour ne plus en appliquer" : "Ouvrir la fiche sur ce modèle";
+}
+// à l'ouverture : filtres du modèle par défaut, s'il existe encore
+function appliquerModeleDefaut() {
+  const nom = nomDefaut(), i = nom ? modeles().findIndex(x => x.nom === nom) : -1;
+  afficherModeles(i < 0 ? "" : String(i));
+  if (i >= 0) { etat = normaliserEtat(JSON.parse(JSON.stringify(modeles()[i].filtres))); etabId = null; }
+}
+const ORIGINES = { document: "document", page: "cette page", commun: "commun aux partenaires", partenaire: "partenaire" };
+function afficherModeles(choisi = "") {
+  const sel = $("modele");
+  const d = nomDefaut();
+  sel.innerHTML = '<option value="">— Modèles —</option>' + modeles().map((m, i) => `<option value="${i}">${m.nom === d ? "★ " : ""}${esc(m.nom)} · ${ORIGINES[m.origine]}</option>`).join("");
+  sel.value = choisi; majBoutonsModele();
+}
+async function lireModelesDoc() {
+  // partenaire : seules les lignes de Config ouvertes par les règles d'accès (dont « fiche ») ; pas d'écriture
+  try { socleConfig = await Socle.lireConfig(); } catch (_) { socleConfig = null; }
+  if (pagePartenaires && !proprietaire) socleConfig = socleConfig ? { ...socleConfig, lectureSeule: true } : null;
+  const v = socleConfig && socleConfig.valeurs && socleConfig.valeurs.fiche;
+  modelesDoc = v && Array.isArray(v.modeles) ? v.modeles : [];
+}
+async function ecrireModelesDoc(liste) {
+  const v = (socleConfig && socleConfig.valeurs && socleConfig.valeurs.fiche) || {};
+  await Socle.ecrireConfig("fiche", { ...v, modeles: liste });
+  await lireModelesDoc();
+}
+const remplacer = (liste, m) => [...liste.filter(x => x.nom !== m.nom), m].sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
+$("source").addEventListener("change", async e => {
+  source = e.target.value === "" ? null : Number(e.target.value);
+  brouillon = null; $("reglages").hidden = true; $("reglages").innerHTML = "";
+  chargerSource(); etabId = null; ouvertes.clear(); fermerPuce();
+  await lireModelesDoc();
+  appliquerModeleDefaut(); $("miseEnPage").value = actuelle().impression; appliquerMiseEnPage();
+  message(source == null ? "" : `Fiche du partenaire « ${(partenaires.find(x => x.id === source) || {}).nom} » : vos changements sont enregistrés dans sa ligne de la table ${PART.table}.`, "info");
+  await rafraichir(false);
+});
+$("modele").addEventListener("change", e => {
+  const m = modeles()[e.target.value];
+  majBoutonsModele();
+  if (!m) return;
+  etat = normaliserEtat(JSON.parse(JSON.stringify(m.filtres)));
+  etabId = null; ouvertes.clear(); fermerPuce();
+  appliquerFiltres(true);
+  if (!selection.length) message(`Modèle « ${m.nom} » : aucun établissement ne répond à ces filtres.`, "info"); else message("");
+});
+$("enregModele").addEventListener("click", () => {
+  const m = modeles()[$("modele").value];
+  $("formModele").hidden = false; $("nomModele").value = m ? m.nom : ""; $("nomModele").focus();
+});
+$("annulerModele").addEventListener("click", () => { $("formModele").hidden = true; });
+$("nomModele").addEventListener("keydown", e => { if (e.key === "Enter") $("validerModele").click(); if (e.key === "Escape") $("annulerModele").click(); });
+$("validerModele").addEventListener("click", async () => {
+  const nom = $("nomModele").value.trim();
+  if (!nom) { message("Donnez un nom au modèle."); return; }
+  const m = { nom, filtres: JSON.parse(JSON.stringify(etat)) };
+  const dejaPage = modelesPage.some(x => x.nom === nom);
+  let doc = false;
+  if (socleConfig && !socleConfig.lectureSeule && !dejaPage && source == null) { try { await ecrireModelesDoc(remplacer(modelesDoc, m)); doc = true; } catch (_) { doc = false; } }
+  if (!doc) { modelesPage = remplacer(modelesPage, m); try { await ecrireSource(); } catch (err) { message("Enregistrement impossible : " + (err.message || err)); return; } }
+  $("formModele").hidden = true;
+  const origine = doc ? "document" : source != null ? "partenaire" : pagePartenaires ? "commun" : "page";
+  afficherModeles(String(modeles().findIndex(x => x.nom === nom && x.origine === origine)));
+  message({ document: `Modèle « ${nom} » enregistré pour tout le document.`, partenaire: `Modèle « ${nom} » enregistré dans les réglages du partenaire.`,
+    commun: `Modèle « ${nom} » enregistré pour tous les partenaires de cette page.`,
+    page: `Modèle « ${nom} » enregistré pour cette page (seuls les propriétaires partagent un modèle avec tout le document).` }[origine], "info");
+});
+$("defautModele").addEventListener("click", async () => {
+  const m = modeles()[$("modele").value];
+  if (!m) return;
+  const retirer = m.nom === nomDefaut(), avant = modeleDefaut;
+  if (source == null && pagePartenaires && socleConfig && !socleConfig.lectureSeule) {
+    try { const v = (socleConfig.valeurs && socleConfig.valeurs.fiche) || {}; await Socle.ecrireConfig("fiche", { ...v, defautPartenaires: retirer ? "" : m.nom }); await lireModelesDoc(); }
+    catch (err) { message("Enregistrement impossible : " + (err.message || err)); return; }
+  } else {
+    modeleDefaut = retirer ? "" : m.nom;
+    try { await ecrireSource(); } catch (err) { modeleDefaut = avant; message("Enregistrement impossible : " + (err.message || err)); return; }
+  }
+  afficherModeles($("modele").value);
+  message(retirer ? "Plus de modèle par défaut : la fiche s'ouvrira sur les derniers filtres utilisés."
+    : `La fiche s'ouvrira désormais sur le modèle « ${m.nom} »` + (source == null && pagePartenaires ? " (pour les partenaires qui n'en ont pas choisi d'autre)." : "."), "info");
+});
+$("supprModele").addEventListener("click", async () => {
+  const m = modeles()[$("modele").value];
+  if (!m) return;
+  if (source != null && m.origine === "document") { message(`« ${m.nom} » est un modèle du document : il se modifie hors de la page des partenaires, par un propriétaire.`); return; }
+  if (source != null && m.origine === "commun") { message(`« ${m.nom} » est un modèle commun aux partenaires : il se modifie sur la fiche de la page, par un propriétaire.`); return; }
+  if (!confirm(`Supprimer le modèle « ${m.nom} » ?`)) return;
+  try {
+    if (m.origine === "document") await ecrireModelesDoc(modelesDoc.filter(x => x.nom !== m.nom));
+    else { modelesPage = modelesPage.filter(x => x.nom !== m.nom); sauvegarderFiltres(); }
+    afficherModeles(); message(`Modèle « ${m.nom} » supprimé.`, "info");
+  } catch (e) { message(`Suppression impossible : ${e.message || e} (modèle du document : réservé aux propriétaires).`); }
+});
+
+// ---------- barre : puces, compte, position ----------
+function libellePuce(d) {
+  const v = etat.rapides[d.id];
+  if (!v) return "Toutes";
+  if (!v.length) return "aucune valeur";
+  return v[0] + (v.length > 1 ? ` +${v.length - 1}` : "");
+}
+function afficherFiltres() {
+  $("puces").innerHTML = dims.map(d => `<button class="qchip${etat.rapides[d.id] ? " on" : ""}" data-qf="${esc(d.id)}" aria-haspopup="dialog">${esc(d.libelle)} : <b>${esc(libellePuce(d))}</b> ▾</button>`).join(" ")
+    + ` <button class="qchip ajout" id="ajouterPuce" aria-haspopup="dialog" title="Filtrer sur une colonne de n'importe quelle table liée aux établissements">+ Filtre</button>`;
+  const nAv = etat.avances.filter(FC.actif).length, btn = $("btnAvances");
+  const parts = [nAv ? `${nAv} filtre${nAv > 1 ? "s" : ""}` : "", periodeActive() ? "période" : ""].filter(Boolean);
+  btn.textContent = parts.length ? `Sélection (${parts.join(", ")})` : "Sélection d'établissements…";
+  btn.classList.toggle("on", parts.length > 0);
+  $("effacerFiltres").hidden = !filtresActifs();
+  const total = lecteur && actuelle().referentiel.table ? lecteur.lignes(actuelle().referentiel.table).length : 0;
+  $("compteSelection").textContent = filtresActifs() ? `${selection.length.toLocaleString("fr-FR")} / ${total.toLocaleString("fr-FR")} établissements` : `${total.toLocaleString("fr-FR")} établissements`;
+  afficherPosition();
+  if (!$("avances").hidden) afficherAvances();
+}
+function afficherPosition() {
+  const i = selection.findIndex(x => x.id === etabId);
+  $("position").textContent = !selection.length ? "aucun" : i < 0 ? "hors sélection" : `${i + 1} / ${selection.length}`;
+  $("precedent").disabled = $("suivant").disabled = !selection.length;
+  $("imprimerSelection").disabled = !selection.length;
+  // demande de compléments (2.62.0-alpha.41) : propriétaires, sur la sélection en cours
+  $("demanderComplements").hidden = !(proprietaire && window.Demandes && actuelle().referentiel.table);
+  $("demanderComplements").disabled = !selection.length;
+}
+function allerA(id, depuisGrist) {
+  if (!selection.some(x => x.id === id)) {   // ligne choisie dans Grist hors de la sélection : la fiche ne change pas
+    if (depuisGrist) message("Cet établissement ne fait pas partie de la sélection en cours : effacez ou changez les filtres pour l'afficher.", "info");
+    return;
+  }
+  if (depuisGrist) message("");
+  etabId = id; ouvertes.clear(); afficher(); afficherPosition();
+  if (!depuisGrist && tableLiee && tableLiee === actuelle().referentiel.table) Promise.resolve(grist.setCursorPos({ rowId: id })).catch(() => {});
+}
+function deplacer(sens) {
+  if (!selection.length) return;
+  const i = selection.findIndex(x => x.id === etabId);
+  allerA(selection[(i < 0 ? 0 : i + sens + selection.length) % selection.length].id);
+}
+$("precedent").addEventListener("click", () => deplacer(-1));
+$("suivant").addEventListener("click", () => deplacer(1));
+$("effacerFiltres").addEventListener("click", () => { etat = { ...etatVide(), colonnes: etat.colonnes }; fermerPuce(); appliquerFiltres(); });   // les filtres ajoutés restent, sans valeur
+
+// ---------- filtres rapides : liste à cocher (comme le tableau de bord) ----------
+function ouvrirPuce(id, ancre) {
+  const d = dims.find(x => x.id === id), pop = $("qpop");
+  if (!d) return;
+  const valeurs = M.compterValeurs(d, apresAvances.filter(e => M.passeRapides(e, dims, etat.rapides, id)));
+  (etat.rapides[id] || []).forEach(v => { if (!valeurs.some(x => x.valeur === v)) valeurs.push({ valeur: v, nombre: 0 }); });
+  const retenues = etat.rapides[id] ? new Set(etat.rapides[id]) : null;
+  pop._toutes = valeurs.map(v => v.valeur); pop.dataset.dim = id;
+  pop.innerHTML = `<b>${esc(d.libelle)}</b>
+    <input type="text" id="qsearch" placeholder="Rechercher…" aria-label="Rechercher une valeur">
+    <div class="qrow"><button class="petit" data-q="tout">Tout</button><button class="petit" data-q="aucune">Aucune</button><button class="petit" data-q="fermer">Fermer</button>${d.ajoute ? '<button class="petit" data-q="retirer" title="Retirer ce filtre de la barre">Retirer</button>' : ""}</div>
+    <div>${valeurs.map(v => `<label class="qopt" data-txt="${esc(v.valeur.toLowerCase())}"><input type="checkbox" value="${esc(v.valeur)}"${!retenues || retenues.has(v.valeur) ? " checked" : ""}>
+      <span>${esc(v.valeur)}</span><span class="c">${v.nombre}</span></label>`).join("") || '<span class="aide">Aucune valeur</span>'}</div>`;
+  const r = ancre.getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 330)) + "px";
+  pop.style.top = (r.bottom + 6) + "px";
+  pop.hidden = false;
+  $("qsearch").focus();
+}
+function fermerPuce() { $("qpop").hidden = true; }
+function retenir(id, valeurs, toutes) {
+  if (valeurs.length === toutes.length) delete etat.rapides[id]; else etat.rapides[id] = valeurs;
+  appliquerFiltres();
+}
+// « + Filtre » : choix d'une table liée aux établissements, puis d'une colonne
+function ouvrirAjoutPuce(ancre) {
+  const pop = $("qpop"), sources = M.sourcesFiltres(actuelle(), schema);
+  pop.dataset.dim = "+"; pop._toutes = [];
+  const cols = t => colonnes(t).filter(c => !etat.colonnes.includes(`${t}.${c.colId}`));
+  const optionsCol = t => cols(t).map(c => `<option value="${esc(c.colId)}">${esc(c.label && c.label !== c.colId ? `${c.label} (${c.colId})` : c.colId)}</option>`).join("");
+  pop.innerHTML = `<b>Ajouter un filtre</b>
+    <label class="aide">Table <select id="ajoutTable">${sources.map(s => `<option value="${esc(s.table)}">${esc(s.source === "" ? `${s.table} (établissement)` : s.table)}</option>`).join("")}</select></label>
+    <label class="aide">Colonne <select id="ajoutColonne">${optionsCol(sources[0] ? sources[0].table : "")}</select></label>
+    <div class="qrow"><button class="petit principal" data-q="ajouter">Ajouter</button><button class="petit" data-q="fermer">Fermer</button></div>`;
+  pop._optionsCol = optionsCol;
+  const r = ancre.getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 330)) + "px"; pop.style.top = (r.bottom + 6) + "px";
+  pop.hidden = false; $("ajoutTable").focus();
+}
+async function ajouterPuce() {
+  const t = $("ajoutTable").value, c = $("ajoutColonne").value; if (!t || !c) return;
+  const cle = `${t}.${c}`;
+  if (!etat.colonnes.includes(cle)) etat.colonnes.push(cle);
+  fermerPuce();
+  if (!(t in donnees)) await rafraichir(false);   // table pas encore lue
+  appliquerFiltres();
+  const b = document.querySelector(`#puces [data-qf="${CSS.escape("tab:" + cle)}"]`);
+  if (b) ouvrirPuce("tab:" + cle, b);
+}
+$("puces").addEventListener("click", e => {
+  if (e.target.closest("#ajouterPuce")) { e.stopPropagation(); if (!$("qpop").hidden && $("qpop").dataset.dim === "+") fermerPuce(); else ouvrirAjoutPuce(e.target.closest("#ajouterPuce")); return; }
+  const b = e.target.closest("[data-qf]"); if (!b) return;
+  e.stopPropagation();
+  if (!$("qpop").hidden && $("qpop").dataset.dim === b.dataset.qf) fermerPuce(); else ouvrirPuce(b.dataset.qf, b);
+});
+$("qpop").addEventListener("click", e => {
+  e.stopPropagation();
+  const pop = $("qpop"), q = e.target.dataset && e.target.dataset.q;
+  if (q === "fermer") fermerPuce();
+  else if (q === "ajouter") ajouterPuce();
+  else if (q === "retirer") {
+    const id = pop.dataset.dim; etat.colonnes = etat.colonnes.filter(x => "tab:" + x !== id); delete etat.rapides[id];
+    fermerPuce(); appliquerFiltres();
+  }
+  else if (q === "tout" || q === "aucune") {
+    pop.querySelectorAll("input[type=checkbox]").forEach(i => { i.checked = q === "tout"; });
+    retenir(pop.dataset.dim, q === "tout" ? pop._toutes : [], pop._toutes);
+  }
+});
+$("qpop").addEventListener("change", e => {
+  if (e.target.id === "ajoutTable") { $("ajoutColonne").innerHTML = $("qpop")._optionsCol(e.target.value); return; }
+  if (e.target.type !== "checkbox") return;
+  const pop = $("qpop");
+  retenir(pop.dataset.dim, [...pop.querySelectorAll("input[type=checkbox]:checked")].map(i => i.value), pop._toutes);
+});
+$("qpop").addEventListener("input", e => {
+  if (e.target.id !== "qsearch") return;
+  const t = e.target.value.trim().toLowerCase();
+  $("qpop").querySelectorAll(".qopt").forEach(l => { l.hidden = t && !l.dataset.txt.includes(t); });
+});
+document.addEventListener("click", () => fermerPuce());
+document.addEventListener("keydown", e => { if (e.key === "Escape") fermerPuce(); });
+
+// ---------- filtres avancés (moteur des Extractions) ----------
+const options = (liste, v) => liste.map(([id, lib]) => `<option value="${esc(id)}"${id === v ? " selected" : ""}>${esc(lib)}</option>`).join("");
+const sourcesSelection = () => M.sourcesFiltres(actuelle(), schema);
+const sourceFiltre = f => sourcesSelection().find(x => x.source === String(f.source ?? "")) || null;
+function tableSource(f) { const s = sourceFiltre(f); return s ? s.table : actuelle().referentiel.table; }
+const libelleCol = (t, c) => ((colonnes(t).find(x => x.colId === c) || {}).label) || c;
+function valeursColonne(t, c) {
+  if (!lecteur || !c || !lecteur.existe(t)) return [];
+  const n = new Map();
+  for (const l of lecteur.lignes(t)) for (const v of lecteur.elements(t, c, l[c])) n.set(v, (n.get(v) || 0) + 1);
+  return [...n].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "fr")).slice(0, 300);
+}
+function afficherAvances() {
+  const sources = sourcesSelection().map(x => [x.source, x.libelle]);
+  // filtres enregistrés avant la 2.62.0-alpha.8 (source = numéro de tuile) : ramenés à la table de la tuile
+  etat.avances.forEach(f => { if (/^\d+$/.test(String(f.source)) && !sources.some(x => x[0] === String(f.source))) { const t = actuelle().tuiles[Number(f.source)]; f.source = t ? (t.table || "") : ""; } });
+  if (!etat.avances.length) etat.avances = [nouveauFiltre()];
+  const nActifs = etat.avances.filter(FC.actif).length;
+  $("avances").innerHTML = `<div class="titre-av"><b>Sélection d'établissements</b>
+      <select id="combinaison" title="Comment se combinent les filtres"${nActifs < 2 ? " disabled" : ""}>${options(FC.COMBINAISONS, etat.combinaison)}</select>
+      <input type="text" id="formule" placeholder="ex. 1 ET (2 OU 3)" aria-label="Formule de combinaison des filtres" value="${esc(etat.formule)}"${etat.combinaison === "formule" && nActifs > 1 ? "" : " hidden"}>
+      <span class="aide">Comme dans les Extractions : chaque filtre porte sur toutes les lignes de l'établissement dans une table (ex. Reponses : Qualification est égal à Blocage, compter le nombre de jours ≥ 3). Enregistrez la sélection en modèle pour la retrouver.</span></div>
+    <div class="ligne periode"><b>Période</b>
+      <select id="periodeMode" aria-label="Période de la sélection">${options([["", "toute la période"], ["dates", "du … au …"], ["jours", "les N derniers jours"]], etat.periode.mode)}</select>
+      ${etat.periode.mode === "dates" ? `du <input type="date" id="periodeDu" value="${esc(etat.periode.du)}" aria-label="Début de la période"> au <input type="date" id="periodeAu" value="${esc(etat.periode.au)}" aria-label="Fin de la période">` : ""}
+      ${etat.periode.mode === "jours" ? `<input type="number" min="1" id="periodeJours" value="${esc(etat.periode.jours)}" aria-label="Nombre de jours" style="width:70px"> derniers jours, aujourd'hui compris` : ""}
+      ${etat.periode.mode ? `<span class="aide">Les filtres ne lisent que les lignes de la période (colonne date de chaque table) ; sans filtre, sont retenus les établissements qui ont au moins un signalement dans la période.</span>` : ""}
+    </div>
+    ${etat.avances.map((f, i) => {
+      const t = tableSource(f), cols = colonnes(t), n = i + 1, compter = f.portee === "compter";
+      const optCols = (v, vide) => `<option value="">${vide}</option>` + cols.map(c => `<option value="${esc(c.colId)}"${c.colId === v ? " selected" : ""}>${esc(c.label || c.colId)}</option>`).join("");
+      return `<div class="filtre" data-i="${i}">
+      <div class="ligne"><span class="num-f">F${n}</span>
+        <select data-ch="source" aria-label="Table du filtre ${n}">${options(sources, String(f.source ?? ""))}</select>
+        <select data-ch="col" aria-label="Colonne du filtre ${n}">${optCols(f.col, compter ? "— toutes les lignes —" : "— colonne —")}</select>
+        <select data-ch="op" aria-label="Opérateur du filtre ${n}"${f.col ? "" : " hidden"}>${options(FC.OPERATEURS, f.op)}</select>
+        <input type="text" data-ch="val" list="fa-valeurs-${i}" value="${esc(f.val ?? "")}" placeholder="valeur (a ; b = l'un ou l'autre)" aria-label="Valeur du filtre ${n}"${!f.col || FC.sansValeur(f.op) ? " hidden" : ""}>
+        <datalist id="fa-valeurs-${i}">${valeursColonne(t, f.col).map(([v, k]) => `<option value="${esc(v)}" label="${k} ligne${k > 1 ? "s" : ""}"></option>`).join("")}</datalist>
+        <button class="petit" data-retirer="${i}" aria-label="Retirer le filtre ${n}">✕</button></div>
+      <div class="ligne portee">
+        ${(sourceFiltre(f) || {}).dossier ? `<select data-ch="versions" aria-label="Versions lues par le filtre ${n}">${options(FC.VERSIONS, f.versions)}</select>` : ""}
+        <select data-ch="portee" aria-label="Portée du filtre ${n}">${options(FC.PORTEES, f.portee)}</select>
+        ${compter ? `<select data-ch="mesure" aria-label="Mesure du filtre ${n}">${options(FC.MESURES, f.mesure)}</select>
+        ${FC.avecColonneMesure(f.mesure) ? `<select data-ch="colMesure" aria-label="Colonne mesurée par le filtre ${n}">${optCols(f.colMesure, "— colonne —")}</select>` : ""}
+        <select data-ch="cmp" aria-label="Comparaison du filtre ${n}">${options(FC.COMPARAISONS, f.cmp)}</select>
+        <input type="number" step="any" data-ch="seuil" value="${esc(f.seuil ?? "")}" placeholder="seuil" aria-label="Seuil du filtre ${n}">` : ""}
+      </div>
+      <div class="resume">${FC.actif(f) ? esc(FC.libelle(f, c => libelleCol(t, c))) : "Filtre incomplet : sans effet."}</div></div>`;
+    }).join("")}
+    <div><button class="lien" data-ajouter="1">+ Ajouter un filtre</button></div>`;
+}
+// nouveau filtre : sur la première table à dossiers (les signalements), sinon la première table rattachée
+function nouveauFiltre() {
+  const s = sourcesSelection(), choix = s.find(x => x.dossier) || s[1] || s[0];
+  return { ...FC.nouveau(), mesure: "jours", versions: choix && choix.dossier ? "derniere" : "toutes", source: choix ? choix.source : "" };
+}
+$("btnAvances").addEventListener("click", () => {
+  const z = $("avances"); z.hidden = !z.hidden;
+  $("btnAvances").setAttribute("aria-expanded", String(!z.hidden));
+  if (!z.hidden) afficherAvances();
+});
+let minuteurSaisie = null;
+function majFiltre(el, immediat) {
+  const ligne = el.closest(".filtre");
+  if (el.id === "combinaison") etat.combinaison = el.value;
+  else if (el.id === "periodeMode") etat.periode.mode = el.value;
+  else if (el.id === "periodeDu") etat.periode.du = el.value;
+  else if (el.id === "periodeAu") etat.periode.au = el.value;
+  else if (el.id === "periodeJours") etat.periode.jours = Number(el.value) || "";
+  else if (el.id === "formule") etat.formule = el.value;
+  else if (ligne && el.dataset.ch) {
+    const f = etat.avances[Number(ligne.dataset.i)];
+    f[el.dataset.ch] = el.value;
+    if (el.dataset.ch === "source") { f.col = ""; f.colMesure = ""; f.val = ""; f.versions = (sourceFiltre(f) || {}).dossier ? "derniere" : "toutes"; }
+  } else return;
+  // les listes qui changent la forme de la ligne la redessinent ; la saisie de texte garde le focus
+  const redessiner = immediat || ["source", "col", "op", "portee", "mesure"].includes(el.dataset.ch) || ["combinaison", "periodeMode"].includes(el.id);
+  clearTimeout(minuteurSaisie);
+  minuteurSaisie = setTimeout(() => {
+    appliquerFiltres();
+    if (redessiner) afficherAvances();
+    else document.querySelectorAll("#avances .filtre").forEach((d, i) => {
+      const f = etat.avances[i], r = d.querySelector(".resume");
+      if (f && r) r.textContent = FC.actif(f) ? FC.libelle(f, c => libelleCol(tableSource(f), c)) : "Filtre incomplet : sans effet.";
+    });
+  }, redessiner ? 0 : 350);
+}
+$("avances").addEventListener("change", e => majFiltre(e.target, true));
+$("avances").addEventListener("input", e => { if (e.target.matches("input[type=text], input[type=number]")) majFiltre(e.target, false); });
+$("avances").addEventListener("click", e => {
+  const r = e.target.closest("[data-retirer]"), a = e.target.closest("[data-ajouter]");
+  if (r) { etat.avances.splice(Number(r.dataset.retirer), 1); appliquerFiltres(); afficherAvances(); }
+  if (a) { etat.avances.push(nouveauFiltre()); afficherAvances(); }
+});
+
+// ---------- impression de la sélection : une fiche par page ----------
+$("demanderComplements").addEventListener("click", () => {
+  const nom = $("modele").value ? ` (modèle « ${$("modele").selectedOptions[0].textContent.trim()} »)` : "";
+  const filtres = [...$("puces").querySelectorAll(".qchip.on")].map(b => b.textContent.replace("▾", "").trim()).filter(Boolean);
+  if (etat.avances.filter(FC.actif).length) filtres.push(`${etat.avances.filter(FC.actif).length} filtre(s) de sélection avancée`);
+  window.Demandes.ouvrirCreation({ referentiel: actuelle().referentiel.table, etabs: selection.map(x => x.id),
+    source: (`Fiche établissement${nom}` + (filtres.length ? ` ; ${filtres.join(" ; ")}` : "")).slice(0, 400),
+    dire: (t, err) => message(t, err ? "erreur" : "info") });
+});
+$("imprimerSelection").addEventListener("click", () => {
+  if (!selection.length || !lecteur) return;
+  if (selection.length > 50 && !confirm(`Imprimer ${selection.length} fiches (une par page) ?`)) return;
+  $("lot").innerHTML = selection.map(x => `<div class="fiche-lot">${htmlFiche(M.construireFiche(actuelle(), lecteur, x.id, base), false)}</div>`).join("");
+  document.body.classList.add("lot");
+  window.print();
+});
+/* Page de synthèse ajustée à la page A4 juste avant l'impression : agrandie si elle est courte, réduite si elle
+   déborde, pour remplir la page. Pour un facteur z, la page est mise en page sur une largeur 186 mm / z puis zoomée
+   de z : elle garde ainsi la largeur utile et sa hauteur finale vaut (hauteur à cette largeur) × z. Le plus grand z
+   qui tient dans la hauteur utile (297 − 2 × 12 mm, marge de sécurité) est cherché par dichotomie, entre 0,5 et 1,35. */
+const HAUTEUR_PAGE = (297 - 24) * 96 / 25.4 * 0.96, ZOOM_MIN = 0.5, ZOOM_MAX = 1.35;
+function ajusterPage(el) {
+  el.style.zoom = ""; el.style.width = "";
+  const largeur = el.getBoundingClientRect().width;
+  const hauteurA = z => { el.style.width = `${largeur / z}px`; return el.getBoundingClientRect().height * z; };
+  let bas = ZOOM_MIN, haut = ZOOM_MAX;
+  if (hauteurA(ZOOM_MAX) <= HAUTEUR_PAGE) bas = ZOOM_MAX;
+  else for (let i = 0; i < 9; i++) { const z = (bas + haut) / 2; if (hauteurA(z) <= HAUTEUR_PAGE) bas = z; else haut = z; }
+  el.style.width = `${largeur / bas}px`; el.style.zoom = bas.toFixed(3);
+}
+function preparerImpression() {
+  document.body.classList.add("impression");
+  const zone = document.body.classList.contains("lot") ? $("lot") : $("fiche");
+  zone.querySelectorAll(".page-synthese").forEach(el => {
+    el.style.zoom = ""; el.style.width = "";
+    if (document.body.classList.contains("mp-synthese")) ajusterPage(el);
+  });
+}
+window.addEventListener("beforeprint", preparerImpression);
+window.addEventListener("afterprint", () => {
+  document.body.classList.remove("impression", "lot"); $("lot").innerHTML = "";
+  document.querySelectorAll(".page-synthese").forEach(el => { el.style.zoom = ""; el.style.width = ""; });
+});
+
+/* =====================================================================
+   Réglages : modifiés dans le brouillon, appliqués en direct à la fiche, enregistrés dans les options du widget
+   ===================================================================== */
+const opt = (v, lib, sel) => `<option value="${esc(v)}"${v === sel ? " selected" : ""}>${esc(lib)}</option>`;
+const colonnes = t => schema[t] || [];
+function selTable(champ, val, vide = "— choisir —") {
+  return `<select data-champ="${champ}" data-recharge="1">${opt("", vide, val)}${tablesDoc.map(t => opt(t, t, val)).join("")}</select>`;
+}
+function selColonne(champ, table, val, vide = "— aucune —", filtre = () => true) {
+  const cols = colonnes(table).filter(filtre);
+  const inconnue = val && !cols.some(c => c.colId === val) ? opt(val, `${val} (introuvable)`, val) : "";
+  return `<select data-champ="${champ}">${opt("", vide, val)}${inconnue}${cols.map(c => opt(c.colId, c.label && c.label !== c.colId ? `${c.label} (${c.colId})` : c.colId, val)).join("")}</select>`;
+}
+const estDateCol = c => M.estDate(c.type);
+const champ = (lib, html, aide = "", large = false) => `<label${large ? ' class="large"' : ""}><span>${lib}</span>${html}${aide ? `<div class="aide">${aide}</div>` : ""}</label>`;
+
+function htmlCarteTuile(t, i, n) {
+  const tab = t.table || brouillon.referentiel.table, p = `tuiles.${i}`;
+  const detail = [0, 1, 2, 3, 4].map(k => selColonne(`${p}.detail.${k}`, tab, t.detail[k] || "", k === 0 ? "— aucune (pas de détail) —" : "— aucune —")).join("");
+  return `<details class="carte" data-cle="tuile-${i}"><summary><span>${esc(t.bloc ? t.bloc + " › " : "")}<b>${esc(t.titre)}</b> <span class="aide">${esc(tab || "")}</span></span><span class="spacer"></span>
+    <button class="petit" data-action="monter" data-i="${i}" ${i === 0 ? "disabled" : ""} aria-label="Monter">↑</button>
+    <button class="petit" data-action="descendre" data-i="${i}" ${i === n - 1 ? "disabled" : ""} aria-label="Descendre">↓</button>
+    <button class="petit" data-action="dupliquer" data-i="${i}">Dupliquer</button>
+    <button class="petit" data-action="supprimer" data-i="${i}">Supprimer</button></summary>
+  <div class="champs">
+    ${champ("Titre", `<input type="text" data-champ="${p}.titre" value="${esc(t.titre)}">`)}
+    ${champ("Bloc", `<input type="text" data-champ="${p}.bloc" value="${esc(t.bloc)}">`, "Les tuiles d'un même bloc sont regroupées sous ce titre.")}
+    ${champ("Largeur", `<select data-champ="${p}.largeur" data-type="nombre">${[1, 2, 3].map(x => opt(String(x), ["un tiers", "deux tiers", "toute la largeur"][x - 1], String(t.largeur))).join("")}</select>`)}
+    ${champ("Table", selTable(`${p}.table`, t.table, "— le référentiel —"))}
+    ${champ("Lien vers l'établissement", selColonne(`${p}.lien`, tab, t.lien, "— la table est le référentiel —"), "Référence vers le référentiel, ou colonne texte comparée à la clé (UAI…).")}
+    ${champ("Une ligne par dossier", selColonne(`${p}.parDossier`, tab, t.parDossier, "— toutes les lignes —"), "Ne garde que la version la plus récente de chaque dossier.")}
+    ${champ("Colonne date", selColonne(`${p}.date`, tab, t.date, "— aucune —", estDateCol), "Tri, période, nombre de jours.")}
+    ${champ("Colonne de saisie", selColonne(`${p}.saisie`, tab, t.saisie, "— la colonne date —", estDateCol), "Repère « nouveau » et date de mise à jour.")}
+    ${champ("Depuis", `<input type="text" data-champ="${p}.depuis" value="${esc(t.depuis)}" placeholder="AAAA-MM-JJ ou nombre de jours">`)}
+    ${champ("Filtre : colonne", selColonne(`${p}.filtre.colonne`, tab, t.filtre.colonne))}
+    ${champ("Filtre : valeurs", `<input type="text" data-champ="${p}.filtre.valeurs" value="${esc(t.filtre.valeurs)}" placeholder="a ; b">`, `<label><input type="checkbox" data-champ="${p}.filtre.exclure"${t.filtre.exclure ? " checked" : ""}> exclure ces valeurs</label>`)}
+    <div class="filtres-sup"><span class="aide">Autres filtres (tous appliqués) :</span>
+      ${(t.filtresSup || []).map((f, k) => `<span class="regle">${selColonne(`${p}.filtresSup.${k}.colonne`, tab, f.colonne)}
+        <select data-champ="${p}.filtresSup.${k}.exclure" aria-label="Garder ou exclure, filtre ${k + 2}">${opt("", "est l'une de", f.exclure ? "1" : "")}${opt("1", "n'est aucune de", f.exclure ? "1" : "")}</select>
+        <input type="text" data-champ="${p}.filtresSup.${k}.valeurs" value="${esc(f.valeurs)}" placeholder="Retour à la normale ; J+1" aria-label="Valeurs du filtre ${k + 2}">
+        <button class="petit" data-action="supprimer-filtre" data-i="${i}" data-k="${k}" aria-label="Retirer le filtre ${k + 2}">✕</button></span>`).join("")}
+      <button class="petit" data-action="ajouter-filtre" data-i="${i}">+ filtre</button>
+    </div>
+    ${champ("Synthèse", `<select data-champ="${p}.synthese.mode" data-recharge="1">${M.MODES.map(([v, l]) => opt(v, l, t.synthese.mode)).join("")}</select>`)}
+    ${champ("Colonne de la synthèse", selColonne(`${p}.synthese.colonne`, tab, t.synthese.colonne), "Pour une somme ou la valeur la plus récente.")}
+    ${t.synthese.mode === "valeur" ? champ("Valeurs à ignorer", `<input type="text" data-champ="${p}.synthese.ignorer" value="${esc(t.synthese.ignorer)}" placeholder="Retour à la normale ; RAS">`,
+      `<label><input type="checkbox" data-champ="${p}.synthese.ignorerMemeJour"${t.synthese.ignorerMemeJour !== false ? " checked" : ""}> parmi les lignes du jour le plus récent seulement</label><br>
+      Affiche la valeur la plus récente qui n'est pas l'une de celles-ci (l'état du jour reste visible après un retour à la normale) ; pour lire toutes les versions de la journée, laissez « Une ligne par dossier » vide.`) : ""}
+    ${champ("Unité", `<input type="text" data-champ="${p}.synthese.unite" value="${esc(t.synthese.unite)}" placeholder="jours, faits, élèves…">`)}
+    ${champ("Légende", `<input type="text" data-champ="${p}.synthese.legende" value="${esc(t.synthese.legende)}" placeholder="Dernier état : {Qualification}">`, "{nombre}, {jours}, {episodes}, {total} (colonnes comparées), {principal} (première valeur de la ventilation et sa part), {ventilation} (« 2 A, 3 B et 1 C » ; {ventilation:2} : les deux premières, le reste en « autres ») ou {Colonne} (valeur la plus récente). Exemple : « dont {ventilation} ».", true)}
+    ${champ("Ventilation par valeur (couche 2)", selColonne(`${p}.ventilation`, tab, t.ventilation), "Décompte par valeur de cette colonne (Catégorie, Thème…).")}
+    ${champ("Valeurs exclues de la ventilation", `<input type="text" data-champ="${p}.ventilationExclure" value="${esc(t.ventilationExclure || "")}" placeholder="Retour à la normale ; J+1">`, "Séparées par « ; ». Retirées du décompte par valeur, des barres et des trous {ventilation} et {principal} ; le grand chiffre et le détail des lignes ne changent pas.")}
+    ${champ("Ou ventilation par colonnes", `<div class="cases">${colonnes(tab).filter(c => /^(Int|Numeric)$/.test(c.type)).map(c => `<label><input type="checkbox" data-liste="${p}.ventilationColonnes" value="${esc(c.colId)}"${t.ventilationColonnes.includes(c.colId) ? " checked" : ""}> ${esc(c.label || c.colId)}</label>`).join("") || '<span class="aide">Aucune colonne numérique dans cette table.</span>'}</div>`, "Une colonne par thème (Moyens, Climat, Parcoursup…) : une barre par colonne cochée, somme sur les lignes ; remplace la ventilation par valeur. Synthèse « Total des colonnes comparées » pour leur somme.", true)}
+    ${champ("Affichage de la ventilation", `<select data-champ="${p}.ventilationAffichage">${opt("liste", "liste de nombres", t.ventilationAffichage)}${opt("barres", "barres (les trois premières aussi sur la synthèse)", t.ventilationAffichage)}</select>`)}
+    ${champ("Lignes affichées au plus", `<input type="number" min="1" data-champ="${p}.limite" data-type="nombre" value="${esc(t.limite)}">`)}
+    ${champ("Détail (couche 3) : colonnes, dans l'ordre", `<div class="champs" style="padding:0">${detail}</div>`, "", true)}
+    ${champ("Source", `<input type="text" data-champ="${p}.source" value="${esc(t.source)}" placeholder="SDS BV2A, DGESCO…">`)}
+    ${champ("Affichage", `<label><input type="checkbox" data-champ="${p}.masquerSiVide"${t.masquerSiVide ? " checked" : ""}> seulement si elle est renseignée</label>`, "Tuile absente de la fiche quand elle n'a aucune ligne, ou quand la valeur affichée est vide (point de vigilance…).")}
+    ${champ("Diffusion restreinte", `<label><input type="checkbox" data-champ="${p}.restreint"${t.restreint ? " checked" : ""}> détail non imprimé par défaut</label>`)}
+  </div></details>`;
+}
+function htmlBadge(b, i, liste) {
+  // valeurs de la colonne (mode « valeur ») : une règle de couleur qui n'en vise aucune est signalée
+  const cles = b.affichage === "valeur" && b.colonne ? new Set(valeursColonne(b.table || brouillon.referentiel.table, b.colonne).map(([v]) => M.cleVal(v))) : null;
+  const sansEffet = v => !!cles && cles.size > 0 && String(v || "").trim() !== "" && M.cleVal(v) !== "vide" && !cles.has(M.cleVal(v));
+  const tab = b.table || brouillon.referentiel.table, p = `badges.${i}`;
+  return `<div class="ligne-badge">
+    ${champ("Libellé", `<input type="text" data-champ="${p}.libelle" value="${esc(b.libelle)}" placeholder="Bâti dégradé · liste des 200">`)}
+    ${champ("Table", selTable(`${p}.table`, b.table, "— le référentiel —"))}
+    ${champ("Lien", selColonne(`${p}.lien`, tab, b.lien, "—"))}
+    ${champ("Affichage", `<select data-champ="${p}.affichage" data-recharge="1">${opt("oui_non", "oui / non", b.affichage)}${opt("valeur", "valeur de la colonne", b.affichage)}</select>`)}
+    ${champ(b.affichage === "valeur" ? "Colonne affichée" : "Colonne oui / non", selColonne(`${p}.colonne`, tab, b.colonne, b.affichage === "valeur" ? "— choisir —" : "— présence dans la table —"))}
+    <span style="display:inline-flex;gap:4px">
+      <button class="petit" data-action="monter-badge" data-i="${i}" ${i === 0 ? "disabled" : ""} aria-label="Monter le badge ${esc(b.libelle || i + 1)}">↑</button>
+      <button class="petit" data-action="descendre-badge" data-i="${i}" ${i === liste.length - 1 ? "disabled" : ""} aria-label="Descendre le badge ${esc(b.libelle || i + 1)}">↓</button>
+      <button class="petit" data-action="supprimer-badge" data-i="${i}">Supprimer</button></span>
+    <div class="couleurs-badge"><span class="aide">Couleurs :</span>
+      ${b.couleurs.map((c, k) => `<span class="regle">si <input type="text" list="${b.affichage === "valeur" ? `valeurs-badge-${i}` : "valeurs-oui-non"}" data-champ="${p}.couleurs.${k}.valeur" value="${esc(c.valeur)}" placeholder="${b.affichage === "valeur" ? "Niv 3, vide…" : "Oui, Non"}" aria-label="Valeur de la règle de couleur ${k + 1}">${sansEffet(c.valeur) ? `<span class="sans-effet" title="Aucune cellule de la colonne n'a cette valeur : la règle ne s'appliquera pas">⚠ aucune valeur</span>` : ""}
+        → <select data-champ="${p}.couleurs.${k}.couleur" aria-label="Couleur de la règle ${k + 1}">${COULEURS.map(([v, l]) => opt(v, l, c.couleur)).join("")}</select>
+        <button class="petit" data-action="supprimer-couleur" data-i="${i}" data-k="${k}" aria-label="Retirer la règle de couleur ${k + 1}">✕</button></span>`).join("")}
+      <button class="petit" data-action="ajouter-couleur" data-i="${i}">+ couleur</button>
+      ${b.affichage === "valeur" ? `<datalist id="valeurs-badge-${i}">${valeursColonne(tab, b.colonne).map(([v]) => `<option value="${esc(v)}">`).join("")}<option value="vide"></datalist>` : ""}
+    </div></div>`;
+}
+const COULEURS = [["vert", "vert"], ["rouge", "rouge"], ["orange", "orange"], ["jaune", "jaune"], ["bleu", "bleu"], ["gris", "gris"]];
+function alertesReglages(b) {
+  const tables = new Set([b.referentiel.table, ...b.tuiles.map(t => t.table || b.referentiel.table), ...b.badges.map(x => x.table || b.referentiel.table)]);
+  return [...M.verifierConfig(b, schema), ...[...illisibles].filter(t => tables.has(t)).map(t => `Table ${t} illisible avec vos droits : ses tuiles et badges restent vides.`)];
+}
+function afficherReglages() {
+  const z = $("reglages"), b = brouillon, r = b.referentiel;
+  const ouverts = new Set([...z.querySelectorAll("details[open]")].map(d => d.dataset.cle));
+  const premiere = !z.innerHTML;
+  // chaque colonne : affichée sous le nom, et au besoin précédée de son libellé (« Effectif : 612 »)
+  const cases = colonnes(r.table).map(c => `<span class="case-detail"><label><input type="checkbox" data-liste="referentiel.details" value="${esc(c.colId)}"${r.details.includes(c.colId) ? " checked" : ""}> ${esc(c.label || c.colId)}</label>
+    <label class="aide"><input type="checkbox" data-liste="referentiel.libelles" value="${esc(c.colId)}"${r.libelles.includes(c.colId) ? " checked" : ""}> avec libellé</label></span>`).join("");
+  z.innerHTML = `<div class="barre"><b>Réglages de la fiche</b><span class="spacer" style="flex:1"></span>
+    <button data-action="proposer" title="Remplace les réglages par une fiche de départ tirée des tables du socle">Configuration de départ</button>
+    <button data-action="annuler">Annuler</button><button class="principal" data-action="enregistrer">Enregistrer</button></div>
+  <ul id="alertes">${alertesReglages(b).map(a => `<li>${esc(a)}</li>`).join("")}</ul>
+  <details data-cle="etab"><summary>Établissement</summary><div class="champs">
+    ${champ("Table des établissements", selTable("referentiel.table", r.table))}
+    ${champ("Nom affiché", selColonne("referentiel.titre", r.table, r.titre))}
+    ${champ("Clé de rapprochement", selColonne("referentiel.cle", r.table, r.cle), "Colonne comparée aux tables reliées par du texte (UAI…).")}
+    ${source == null && (proprietaire || !pagePartenaires) ? champ("Page des partenaires", `<label><input type="checkbox" id="pagePartenaires"${pagePartenaires ? " checked" : ""}> page ouverte aux partenaires par leur lien</label>`,
+      `Chaque partenaire y règle sa propre fiche (réglages, filtres, modèles), rangée dans sa ligne de la table ${PART.table}${schema[PART.table] ? "" : " (à créer : administration, onglet Accès, carte « Partenaires »)"} ; la fiche de cette page sert de modèle de départ.`, true) : ""}
+    ${champ("Impression proposée", `<select data-champ="impression">${opt("synthese", "synthèse en page 1, détail ensuite", b.impression)}${opt("seule", "synthèse seulement (une page)", b.impression)}${opt("complet", "tuiles détaillées", b.impression)}</select>`)}
+    ${champ("Repère « nouveau »", `<select data-champ="nouveau">${opt("point", "lignes saisies après le dernier point de situation", b.nouveau)}${opt("", "aucun", b.nouveau)}</select>`)}
+    ${champ("Sous le nom", `<div class="cases">${cases || '<span class="aide">Choisissez d\'abord la table.</span>'}</div>`, "Cochez « avec libellé » pour afficher « Libellé : valeur » (le libellé est celui de la colonne dans Grist).", true)}
+    ${champ("Filtres rapides proposés", `<div class="cases">${colonnes(r.table).map(c => `<label><input type="checkbox" data-liste="filtresRapides" value="${esc(c.colId)}"${b.filtresRapides.includes(c.colId) ? " checked" : ""}> ${esc(c.label || c.colId)}</label>`).join("")}</div>
+      <label><input type="checkbox" data-champ="filtrerBadges"${b.filtrerBadges ? " checked" : ""}> proposer aussi les badges (oui / non)</label>`, "Puces en haut de la fiche, pour choisir les établissements parcourus et imprimés.", true)}
+  </div></details>
+  <details data-cle="badges"><summary>Badges (${b.badges.length})</summary>
+    <p class="aide" style="margin:6px 10px">Affichés en tête : oui / non (présence de l'établissement dans la table, ou colonne cochée), ou valeur d'une colonne (« Label CVL : Niv 3 »).
+      Couleurs : la première règle dont la valeur correspond s'applique (« Oui », « Non », une valeur de la colonne, « vide ») ; sans règle, bleu si allumé, contour gris sinon.</p>
+    <datalist id="valeurs-oui-non"><option value="Oui"><option value="Non"></datalist>
+    ${b.badges.map(htmlBadge).join("")}<div style="padding:6px 10px"><button class="petit" data-action="ajouter-badge">Ajouter un badge</button></div></details>
+  <details data-cle="tuiles"><summary>Tuiles (${b.tuiles.length})</summary>
+    ${b.tuiles.map((t, i) => htmlCarteTuile(t, i, b.tuiles.length)).join("")}<div style="padding:6px 10px"><button class="petit" data-action="ajouter-tuile">Ajouter une tuile</button></div></details>
+  <details data-cle="json"><summary>Configuration en texte (copier vers un autre document)</summary><div class="champs">
+    <label class="large"><textarea id="json" rows="8">${esc(JSON.stringify(b, null, 1))}</textarea></label>
+    <div><button class="petit" data-action="json">Appliquer ce texte</button></div></div></details>`;
+  z.querySelectorAll("details").forEach(d => { if (ouverts.has(d.dataset.cle) || (premiere && ["etab", "tuiles"].includes(d.dataset.cle))) d.open = true; });
+}
+function ecrire(objet, chemin, valeur) {
+  const p = chemin.split("."); let o = objet;
+  for (const k of p.slice(0, -1)) o = o[k];
+  o[p[p.length - 1]] = valeur;
+}
+async function apresModification(recharger) {
+  brouillon = M.normaliserConfig(brouillon);
+  if (recharger) afficherReglages();
+  else $("alertes").innerHTML = alertesReglages(brouillon).map(a => `<li>${esc(a)}</li>`).join("");
+  await rafraichir(false);
+}
+$("reglages").addEventListener("change", e => {
+  const el = e.target;
+  if (el.dataset.liste) {
+    ecrire(brouillon, el.dataset.liste, [...$("reglages").querySelectorAll(`[data-liste="${el.dataset.liste}"]:checked`)].map(x => x.value));
+  } else if (el.dataset.champ) {
+    const v = el.type === "checkbox" ? el.checked : el.dataset.type === "nombre" ? Number(el.value) : el.value;
+    const m = /^(tuiles\.\d+\.detail)\.(\d+)$/.exec(el.dataset.champ);
+    if (m) { const t = brouillon.tuiles[Number(m[1].split(".")[1])], d = [...t.detail]; d[Number(m[2])] = v; t.detail = d.map(x => x || ""); }
+    else ecrire(brouillon, el.dataset.champ, v);
+  } else return;
+  apresModification(!!el.dataset.recharge);
+});
+$("reglages").addEventListener("click", async e => {
+  const b = e.target.closest("[data-action]"); if (!b) return;
+  e.preventDefault();
+  const i = Number(b.dataset.i), T = brouillon.tuiles;
+  switch (b.dataset.action) {
+    case "ajouter-tuile": T.push({ ...JSON.parse(JSON.stringify(M.TUILE_VIDE)), bloc: (T[T.length - 1] || {}).bloc || "" }); break;
+    case "supprimer": if (!confirm(`Supprimer la tuile « ${T[i].titre} » ?`)) return; T.splice(i, 1); break;
+    case "dupliquer": T.splice(i + 1, 0, { ...JSON.parse(JSON.stringify(T[i])), titre: T[i].titre + " (copie)" }); break;
+    case "monter": [T[i - 1], T[i]] = [T[i], T[i - 1]]; break;
+    case "descendre": [T[i + 1], T[i]] = [T[i], T[i + 1]]; break;
+    case "ajouter-badge": brouillon.badges.push({ libelle: "", table: "", lien: "", colonne: "", affichage: "oui_non" }); break;
+    case "supprimer-badge": brouillon.badges.splice(i, 1); break;
+    case "monter-badge": { const B = brouillon.badges; [B[i - 1], B[i]] = [B[i], B[i - 1]]; break; }
+    case "descendre-badge": { const B = brouillon.badges; [B[i + 1], B[i]] = [B[i], B[i + 1]]; break; }
+    case "ajouter-couleur": brouillon.badges[i].couleurs.push({ valeur: brouillon.badges[i].affichage === "valeur" ? "" : "Oui", couleur: "vert" }); break;
+    case "supprimer-couleur": brouillon.badges[i].couleurs.splice(Number(b.dataset.k), 1); break;
+    case "ajouter-filtre": (T[i].filtresSup = T[i].filtresSup || []).push({ colonne: "", valeurs: "", exclure: true }); break;
+    case "supprimer-filtre": T[i].filtresSup.splice(Number(b.dataset.k), 1); break;
+    case "json":
+      try { brouillon = M.normaliserConfig(JSON.parse($("json").value)); } catch (err) { message("Texte illisible : " + err.message); return; }
+      break;
+    case "proposer":
+      if (brouillon.tuiles.length && !confirm("Remplacer les réglages actuels par la configuration de départ ?")) return;
+      brouillon = await configurationDeDepart(); break;
+    case "annuler": brouillon = null; $("reglages").hidden = true; $("reglages").innerHTML = ""; message(""); await rafraichir(false); return;
+    case "enregistrer":
+      config = M.normaliserConfig(brouillon);
+      if ($("pagePartenaires")) pagePartenaires = $("pagePartenaires").checked;
+      try { await ecrireSource(); } catch (err) { message("Enregistrement impossible : " + (err.message || err)); return; }
+      if (source == null) { await lirePartenaires(); afficherSource(); }
+      brouillon = null; $("reglages").hidden = true; $("reglages").innerHTML = "";
+      $("miseEnPage").value = config.impression; appliquerMiseEnPage();
+      message("Réglages enregistrés.", "info"); setTimeout(() => message(""), 3000); await rafraichir(false); return;
+  }
+  ouvertes.clear();
+  await apresModification(true);
+});
+function ouvrirReglages() {
+  if (affichageSeul()) return;
+  if (!brouillon) brouillon = M.normaliserConfig(config);
+  $("reglages").hidden = false; afficherReglages();
+}
+$("ouvrirReglages").addEventListener("click", ouvrirReglages);
+
+/* ---------- configuration de départ : tirée des rôles du socle (référentiel et table des réponses) ---------- */
+async function configurationDeDepart() {
+  const c = M.normaliserConfig(null);
+  try {
+    const meta = await Socle.lireMeta(), sc = await Socle.lireConfig(meta), g = Socle.general(sc);
+    const assoc = (sc && sc.valeurs.roles) || {}, ctx = { reponses: g.reponses, referentiel: g.referentiel };
+    const col = (r, role) => (r[role] && r[role].col) || "";
+    if (meta[g.referentiel]) {
+      const rf = Socle.resoudreRoles("referentiel", meta[g.referentiel], ctx, assoc.referentiel || {}, {});
+      c.referentiel = { table: g.referentiel, titre: col(rf, "Nom"), cle: col(rf, "UAI"), details: [col(rf, "Type"), col(rf, "Commune"), col(rf, "Academie"), col(rf, "UAI")].filter(Boolean) };
+      c.filtresRapides = [col(rf, "Academie"), col(rf, "Departement"), col(rf, "Type")].filter(Boolean);
+    }
+    if (meta[g.reponses]) {
+      const rr = Socle.resoudreRoles("reponses", meta[g.reponses], ctx, assoc.reponses || {}, {});
+      const etab = col(rr, "Etablissement"), dossier = col(rr, "Dossier"), saisie = col(rr, "Cree_le"), faits = col(rr, "Date_faits") || saisie;
+      const qualif = col(rr, "Qualification"), desc = col(rr, "Description");
+      const base = { table: g.reponses, lien: etab, parDossier: dossier, date: faits, saisie, source: "PRISME" };
+      c.tuiles = [
+        { ...base, titre: "Situation", bloc: "Situation en cours", largeur: 2, synthese: { mode: "valeur", colonne: qualif, unite: "", legende: "{jours} jour(s) signalé(s)" }, detail: [faits, qualif, desc].filter(Boolean), limite: 10 },
+        { ...base, titre: "Historique", bloc: "Situation en cours", largeur: 1, synthese: { mode: "episodes", colonne: "", unite: "épisode(s)", legende: "{jours} jour(s) au total" }, ventilation: qualif },
+      ];
+    }
+  } catch (e) { console.warn("Configuration de départ incomplète", e); }
+  if (!c.referentiel.table) {
+    const t = tablesDoc.find(x => /etablissement/i.test(x)) || "";
+    c.referentiel.table = t;
+    c.referentiel.titre = (colonnes(t).find(x => /^Text/.test(x.type)) || {}).colId || "";
+  }
+  return M.normaliserConfig(c);
+}
+
+/* ---------- démarrage ---------- */
+async function demarrer(options) {
+  if (demarre) return;
+  demarre = true;
+  $("version").textContent = window.Socle ? `socle ${Socle.VERSION}` : "";
+  try {
+    attente("Lecture de la structure du document…");
+    optionsDePage = options || {}; pagePartenaires = !!optionsDePage.partenaires;
+    await Promise.all([chargerSchema(), lirePartenaires(),
+      (async () => { try { tableLiee = grist.selectedTable && grist.selectedTable.getTableId ? await grist.selectedTable.getTableId() : null; } catch (_) { tableLiee = null; } })()]);
+    // partenaire ouvert par son lien : sa ligne ; propriétaire : la page, puis le choix d'une fiche de partenaire
+    source = pagePartenaires && !proprietaire && partenaires.length ? partenaires[0].id : null;
+    chargerSource(); afficherSource(); appliquerAffichageSeul();
+    await lireModelesDoc(); await rangerModelesPartenaires();
+    appliquerModeleDefaut();
+    if (!config && affichageSeul()) { attente(""); message("Cette fiche n'est pas encore réglée : revenez quand le propriétaire l'aura préparée."); return; }
+    if (!config) {
+      brouillon = await configurationDeDepart();
+      message("Fiche pas encore réglée : voici une configuration de départ, à compléter puis enregistrer.", "info");
+      $("reglages").hidden = false; afficherReglages();
+    }
+    $("miseEnPage").value = actuelle().impression; appliquerMiseEnPage();
+    await rafraichir(true);
+  } catch (e) { console.error(e); attente(""); message("Démarrage impossible : " + (e.message || e)); }
+}
+grist.ready({ requiredAccess: "full", onEditOptions: ouvrirReglages });
+grist.onOptions(opts => demarrer(opts));
+if (grist.onRecord) grist.onRecord(rec => {
+  if (!rec || rec.id == null) return;
+  if (tableLiee && tableLiee !== actuelle().referentiel.table) return;   // widget relié à une autre table : on garde la recherche
+  if (!lecteur) { etabId = rec.id; return; }   // démarrage en cours : la fiche s'ouvrira sur cette ligne
+  if (Date.now() / 1000 - chargeLe > RAFRAICHIR_APRES) { etabId = rec.id; rafraichir(false); }
+  else if (rec.id !== etabId) allerA(rec.id, true);
+});
+setTimeout(() => demarrer(null), 1500);   // si aucune option n'est envoyée
+</script>
+</body>
+</html>

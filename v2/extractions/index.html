@@ -6,11 +6,12 @@
 <!-- Widget « Extractions » du socle v2 (2.44) : une ligne par établissement, filtres, export Excel ; page créée depuis l'administration (onglet Tableau de bord). -->
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0"></script>
-<script src="../commun/marque.js?v=2.62.0"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0"></script>
-<script src="../commun/socle.js?v=2.62.0"></script>
-<script src="filtres-colonnes.js?v=2.62.0"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.52"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.52"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.52"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.52"></script>
+<script src="../commun/filtres-colonnes.js?v=2.62.0-alpha.52"></script>
+<script src="../commun/demandes.js?v=2.62.0-alpha.52"></script>
 <style>
   :root {
     --bleu: #000091; --bleu-clair: #e3e3fd; --gris: #666; --bord: #ddd;
@@ -136,7 +137,14 @@
       <div>
         <label class="titre">Colonnes fusionnées</label>
         <div class="cases" id="fusCols"></div>
-        <div class="aide">Valeurs de toutes les versions, dans l'ordre chronologique, sans doublons (une valeur répétée garde sa première date). Choix multiples sans date : liste des éléments distincts.</div>
+        <div class="aide">Valeurs des versions de l'établissement, dans l'ordre chronologique (valeurs vides ignorées).</div>
+        <label for="fusion">Valeurs répétées</label>
+        <select id="fusion">
+          <option value="distinct">Une seule fois (à sa première date)</option>
+          <option value="changements">À chaque changement (A, B, A)</option>
+          <option value="toutes">Toutes les versions, même répétées</option>
+        </select>
+        <div class="aide" id="fusionAide"></div>
         <label><input type="checkbox" id="prefixeDate"> Préfixer chaque valeur par sa date</label>
       </div>
       <div>
@@ -183,6 +191,7 @@
     <span class="compte" id="compte">Chargement…</span>
     <span class="spacer" style="flex:1"></span>
     <button id="btnRafraichir">Rafraîchir les données</button>
+    <button id="btnDemande" hidden title="Demander aux partenaires (DSDEN, rectorats…) de compléter les fiches des établissements retenus">Demander des compléments…</button>
     <button id="btnExcel" class="principal">Télécharger Excel</button>
   </div>
 
@@ -217,13 +226,20 @@ let config = configParDefaut();
 let filtres = filtresVides();
 let modeles = [];         // modèles affichés : ceux du document (Config, clé « extractions ») puis ceux de la page
 let modelesDoc = [], modelesPage = [], socleConfig = null, socleGeneral = null;
+let demandeSource = null;   // { colEtab, referentiel } : table de réponses du socle, établissements des lignes retenues
 let tri = { key: null, sens: -1 };
 let resultat = { colonnes: [], lignes: [], total: 0 };
 let optionsChargees = false;
 
+// valeurs répétées dans les colonnes fusionnées (2.62.0-alpha.42) : réglage du modèle, « distinct » par défaut (comportement antérieur)
+const FUSIONS = {
+  distinct: "Une valeur déjà vue n'est pas reprise : elle garde sa première date. Choix multiples sans date : liste des éléments distincts.",
+  changements: "Une valeur n'est reprise que si elle diffère de la précédente : un retour à une valeur antérieure est listé (A, B, A).",
+  toutes: "Chaque version non vide donne une entrée, même identique à la précédente."
+};
 function configParDefaut() {
   return { tableId: "", cleCol: "", dateCol: "", qualCol: "", exclure: "RAS", gravite: [],
-           idCols: [], fusCols: [], prefixeDate: true,
+           idCols: [], fusCols: [], fusion: "distinct", prefixeDate: true,
            calc: Object.fromEntries(CALCULEES.map(c => [c.key, c.defaut])) };
 }
 function filtresVides() {
@@ -461,6 +477,9 @@ function afficherReglages() {
     CALCULEES.filter(c => config.calc[c.key]).map(c => c.key),
     () => { const on = valeursCochees($("calcCols")); CALCULEES.forEach(c => config.calc[c.key] = on.includes(c.key)); majResultat(); });
   $("prefixeDate").checked = !!config.prefixeDate;
+  if (!FUSIONS[config.fusion]) config.fusion = "distinct";
+  $("fusion").value = config.fusion;
+  $("fusionAide").textContent = FUSIONS[config.fusion];
 }
 
 // valeurs proposées dans le menu déroulant d'un filtre de colonne (commun/menu-deroulant.js) : valeurs distinctes de
@@ -629,22 +648,27 @@ function calculer() {
       o.qualHist = qs.filter((q, i) => i === 0 || q !== qs[i - 1]).join(" → ");
     }
     o.nbVersions = rs.length;
-    /* Colonnes fusionnées : une entrée par valeur distincte, dans l'ordre chronologique. Avec « préfixer par la date »
+    /* Colonnes fusionnées : une entrée par valeur, dans l'ordre chronologique ; les valeurs répétées suivent le réglage
+       « fusion » (2.62.0-alpha.42) : « distinct » (une fois, à sa première date ; défaut), « changements » (reprise si elle
+       diffère de la précédente entrée), « toutes » (chaque version non vide). Avec « préfixer par la date »
        (2.53), chaque entrée porte sa date, y compris pour les choix multiples (valeur de la ligne : « a, b ») et les
        lignes sans date (« sans date ») ; une valeur sur plusieurs lignes garde ses retours à la ligne et les entrées
        sont alors séparées par une ligne vide, pour que chaque date ouvre bien son entrée. */
     config.fusCols.forEach(c => {
-      const vus = new Set(), morceaux = [];
+      const vus = new Set(), morceaux = [], mode = FUSIONS[config.fusion] ? config.fusion : "distinct";
       const estListe = avecJour.some(({ r }) => Array.isArray(r[c]) && r[c][0] === "L");
-      if (estListe && !config.prefixeDate) {   // choix multiples sans date : liste des éléments distincts
+      if (estListe && !config.prefixeDate && mode === "distinct") {   // choix multiples sans date : liste des éléments distincts
         avecJour.forEach(({ r }) => elementsListe(T, c, r[c]).forEach(t => { if (!vus.has(t)) { vus.add(t); morceaux.push(t); } }));
         o["fus_" + c] = morceaux.join(", ");
         return;
       }
+      let precedente = null;
       avecJour.forEach(({ r, j }) => {
         const t = (estListe ? elementsListe(T, c, r[c]).join(", ") : texteCellule(T, c, r[c])).trim();
-        if (!t || vus.has(t)) return;
-        vus.add(t);
+        if (!t) return;
+        if (mode === "distinct" && vus.has(t)) return;
+        if (mode === "changements" && t === precedente) return;
+        vus.add(t); precedente = t;
         morceaux.push(config.prefixeDate && config.dateCol ? `${j ? jourCourt(j) : "sans date"} : ${t}` : t);
       });
       o["fus_" + c] = morceaux.join(config.prefixeDate && morceaux.some(m => m.includes("\n")) ? "\n\n" : "\n");
@@ -838,7 +862,7 @@ function sauvegarder() {
 
 // ---------- Événements ----------
 async function changerTable(tableId) {
-  const garde = { calc: config.calc, prefixeDate: config.prefixeDate };
+  const garde = { calc: config.calc, prefixeDate: config.prefixeDate, fusion: config.fusion };
   config = Object.assign(configParDefaut(), garde, { tableId });
   filtres = filtresVides();
   await chargerEtAfficher(true);
@@ -866,8 +890,30 @@ async function chargerEtAfficher(deviner = false) {
     config.idCols = config.idCols.length ? config.idCols : cols.filter(c => /^(nom|libelle|commune|departement|academie)/i.test(normaliser(c.id))).map(c => c.id).slice(0, 4);
     if (config.qualCol && !valeursQualification().includes(config.exclure)) config.exclure = "";
   }
+  await majDemande();
   afficherReglages(); afficherFiltres(); majResultat(); sauvegarder();
 }
+/* Demande de compléments (2.62.0-alpha.41) : les établissements retenus par l'extraction (colonne Établissement d'une
+   table de réponses du socle) sont proposés aux partenaires ; fenêtre commune (commun/demandes.js). */
+async function majDemande() {
+  demandeSource = null;
+  const roles = window.Demandes && socleConfig ? await rolesSocle(config.tableId) : null, colEtab = roles && roles.Etablissement;
+  const ref = colEtab && ((meta[config.tableId] || {})[colEtab] || {}).refTable;
+  if (ref) demandeSource = { colEtab, referentiel: ref };
+  $("btnDemande").hidden = !demandeSource;
+}
+function resumeDemande() {
+  const m = $("modele").value !== "" && modeles[$("modele").value];
+  const p = resumeParametres().filter(([k]) => !/^(Extraction réalisée|Table|Regroupement|Jours non comptés|Établissements retenus)/.test(k)).map(([k, v]) => `${k} : ${v}`);
+  return ["Extractions" + (m ? ` (modèle « ${m.nom} »)` : ""), ...p].join(" ; ").slice(0, 400);
+}
+$("btnDemande").addEventListener("click", async () => {
+  if (!demandeSource || !resultat) return;
+  const ids = new Set();
+  resultat.lignes.forEach(o => (o._rs || []).forEach(({ r }) => { const v = r[demandeSource.colEtab]; const id = typeof v === "number" ? v : Array.isArray(v) ? v[2] : null; if (id) ids.add(id); }));
+  await window.Demandes.ouvrirCreation({ referentiel: demandeSource.referentiel, etabs: [...ids], source: resumeDemande(),
+    dire: (t, err) => message(t, err ? "erreur" : "info") });
+});
 
 $("table").addEventListener("change", e => changerTable(e.target.value));
 ["cleCol", "dateCol"].forEach(id => $(id).addEventListener("change", e => { config[id] = e.target.value; majResultat(); sauvegarder(); }));
@@ -881,6 +927,7 @@ $("gravite").addEventListener("change", e => {
   afficherFiltres(); majResultat(); sauvegarder();
 });
 $("prefixeDate").addEventListener("change", e => { config.prefixeDate = e.target.checked; majResultat(); sauvegarder(); });
+$("fusion").addEventListener("change", e => { config.fusion = e.target.value; $("fusionAide").textContent = FUSIONS[config.fusion] || ""; majResultat(); sauvegarder(); });
 ["idCols", "fusCols", "calcCols"].forEach(id => $(id).addEventListener("change", sauvegarder));
 [["du", "change"], ["au", "change"], ["joursMin", "input"], ["joursMax", "input"], ["qualMode", "change"]]
   .forEach(([id, ev]) => $(id).addEventListener(ev, e => { filtres[id] = e.target.value; majResultat(); sauvegarder(); }));

@@ -11,7 +11,7 @@
 (function () {
   "use strict";
 
-  const VERSION = "2.62.0 (22/11/2026)";
+  const VERSION = "2.62.0-alpha.52 (22/11/2026)";
 
   /* ---------- version publiée ----------
      GitHub Pages laisse les navigateurs garder chaque fichier 10 minutes. Au chargement, la page lit version.json sans
@@ -450,6 +450,26 @@ return sorted(champs)`;
      Clé dans Agents.Cle_acces, page de saisie dans Agents.Page_saisie, lien dans Agents.Lien_acces (?Invite_=<clé>).
      Attribut utilisateur « Invite » (onglet Accès) : l'invité a les droits d'un agent actif de l'équipe. */
   const INVITE = { attribut: "Invite", cle: "Cle_acces", page: "Page_saisie", lien: "Lien_acces", expire: "Lien_expire_le", valide: "Lien_valide" };
+  /* Partenaires (2.62) : consultation des fiches établissement par lien personnel (?Partenaire_=<clé>).
+     Table Partenaires : une ligne par partenaire (nom, clé, lien, actif) ; colonne Fiche = ses réglages, filtres et
+     modèles de la fiche (JSON), qu'il est seul à lire et modifier. Attribut utilisateur « Partenaire » (onglet Accès) :
+     lecture seule des tables ouvertes aux partenaires (clé « partenaires » de Config), rien d'autre. */
+  const PARTENAIRES = { table: "Partenaires", attribut: "Partenaire", nom: "Nom", cle: "Cle", lien: "Lien", actif: "Actif", fiche: "Fiche",
+    lecture: "Lecture_seule",   // case cochée : lien d'affichage seul (ni réglages, ni modèles, ni filtres enregistrés)
+    academies: "Academies",     // périmètre (liste d'académies ; vide : toutes) : seules les lignes dont la colonne Academie y figure
+    colAcademie: "Academie",    // colonne des tables ouvertes comparée au périmètre (formule $Etablissement.Academie au besoin)
+    schema: "schema_partenaires",     // copie des colonnes des tables ouvertes (clé de Config)
+    // 2.62.0-alpha.37 : un partenaire est aussi un service (DSDEN, rectorat…) : périmètre par échelon (Départemental +
+    // Departements, Académique + Academies, National : tout le document ; liste vide : rien), lien à échéance ; il consulte
+    // la fiche établissement et le tableau de bord, et complète les fiches (données demandées, éléments réservés)
+    echelon: "Echelon", departements: "Departements", expire: "Lien_expire_le", valide: "Lien_valide" };
+  const ECHELONS_PARTENAIRE = ["Départemental", "Académique", "National"];
+  // Réglages des partenaires (clé « partenaires » de Config) : tables ouvertes, durée de validité des liens
+  function reglagesPartenaires(config) {
+    const v = (config && config.valeurs && config.valeurs.partenaires) || {};
+    return { tables: Array.isArray(v.tables) ? v.tables : [], duree: DUREES_INVITE.some(d => d[0] === v.duree) ? v.duree : "30j" };
+  }
+  const nomPartenaireLieu = (echelon, lieu) => `${echelon === "Académique" ? "Rectorat" : "DSDEN"} ${lieu}`;
   // Durées de validité d'un lien d'invité (clé « acces_invites » de Config, réglée dans l'onglet Équipe › Agents)
   const DUREES_INVITE = [["24h", "24 heures", 24], ["72h", "3 jours", 72], ["7j", "7 jours", 168], ["30j", "30 jours", 720], ["illimite", "sans limite", 0]];
   // Auteur d'une ligne (formule d'initialisation) : adresse du compte Grist, sinon « Invité : <nom> » pour le lien d'un agent,
@@ -480,6 +500,39 @@ return sorted(champs)`;
     if (!c || c.isFormula) return false;
     const f = String(c.formula || "").trim();
     return f === "" || f === "user.Email" || (/^# Auteur \(socle/.test(f) && !f.startsWith(MARQUE_AUTEUR)) || (/user\.LinkKey/.test(f) && /Invité/.test(f) && !f.startsWith("#"));
+  }
+  // Éléments réservés aux services (partie de rôle « r » d'un formulaire, 2.62.0-alpha.33) : formule d'initialisation qui reprend, dans
+  // chaque nouvelle version d'un dossier, la valeur de la version précédente. Calculée par Grist à la création de la ligne,
+  // elle s'applique aussi quand l'établissement, qui ne lit pas ces colonnes, publie un suivi.
+  const MARQUE_REPRISE = "# Reprise des éléments réservés (socle v2.62)";
+  function formuleReprise(table, colDossier, col) {
+    return [MARQUE_REPRISE,
+      `if not $${colDossier}:`,
+      `  return None`,
+      `prec = [v for v in ${table}.lookupRecords(${colDossier}=$${colDossier}) if v.id < $id]`,
+      `return getattr(max(prec, key=lambda v: v.id), "${col}") if prec else None`].join("\n");
+  }
+  // Données structurelles demandées aux services (2.62.0-alpha.34, carte de l'onglet Référentiel, clé « structurel » de
+  // Config) : colonnes du référentiel que les départements et les académies complètent depuis l'onglet Compléments de la
+  // saisie. Réglage d'un référentiel : { colonnes: { <colonne>: "masquee" | "lecture" | "modification" (ce qu'en fait
+  // l'établissement) }, echelons: ["dep", "aca"] }. Deux colonnes du référentiel datent et signent chaque modification
+  // (formules d'initialisation recalculées quand une colonne demandée change).
+  const STRUCTUREL = { le: "Donnees_maj_le", par: "Donnees_maj_par" };
+  const DROITS_ETAB_STRUCTUREL = [["masquee", "Masquée"], ["lecture", "Lecture"], ["modification", "Modification"]];
+  function reglagesStructurel(config, table) {
+    const t = config && config.valeurs && config.valeurs.structurel && config.valeurs.structurel.tables;
+    const r = t && t[table];
+    if (!r || !r.colonnes || !Object.keys(r.colonnes).length) return null;
+    return { colonnes: { ...r.colonnes }, echelons: Array.isArray(r.echelons) ? r.echelons : ["dep", "aca"] };
+  }
+  // Auteur d'une modification du référentiel : comme l'auteur d'un signalement, « Établissement » pour un lien d'établissement
+  function formuleAuteurStructurel(g) {
+    const l = formuleAuteur(g, null).split("\n");
+    l[0] = "# Auteur de la mise à jour (socle v2.62)";
+    l.splice(l.length - 1, 0, `if lk.get("${PARTENAIRES.attribut}"):`, `  p = ${PARTENAIRES.table}.lookupOne(${PARTENAIRES.cle}=lk["${PARTENAIRES.attribut}"])`,
+      `  return ("Partenaire : " + p.${PARTENAIRES.nom}) if p else "Partenaire"`,
+      `if any(k.startswith("Etab") and v for k, v in lk.items()):`, `  return "Établissement"`);
+    return l.join("\n");
   }
   const ANCIENNE_FORMULE_LIEN_INVITE = `SELF_HYPERLINK(page=$${INVITE.page} or None, LinkKey_${INVITE.attribut}=$${INVITE.cle}) if $${INVITE.cle} else ""`;
   const formuleLienInvite = () => `(SELF_HYPERLINK(page=$${INVITE.page} or None, LinkKey_${INVITE.attribut}=$${INVITE.cle})${STYLE_LIEN}) if $${INVITE.cle} else ""`;
@@ -791,6 +844,7 @@ return sorted(champs)`;
       tables[tableId].colonnes[colId] = {
         ref, colId, type: c.type[i], label: c.label[i] || colId,
         isFormula: !!c.isFormula[i], formula: c.formula[i] || "", widgetOptions: c.widgetOptions[i] || "",
+        visibleCol: (c.visibleCol && c.visibleCol[i]) || 0,   // référence : colonne affichée de la table visée
       };
     });
     return tables;
@@ -1164,11 +1218,13 @@ return sorted(champs)`;
   window.Socle = {
     reglagesPointParDefaut,
     espaces, espaceDeTable, AUTRE_CHAMP_DEFAUT, VERSION, TABLE_CONFIG, TABLE_ADMIN, TABLE_CELLULE, STYLE_LIEN, formuleLienInvite, ANCIENNE_FORMULE_LIEN_INVITE, DEFAUTS_GENERAL, NATURES, ROLES,
+    ECHELONS_PARTENAIRE, reglagesPartenaires, nomPartenaireLieu,
+    MARQUE_REPRISE, formuleReprise, STRUCTUREL, DROITS_ETAB_STRUCTUREL, reglagesStructurel, formuleAuteurStructurel,
     colonnesEmargements, lireEmargements, STATUTS_ACTION, PRIORITES_ACTION, ACTIONS_DEFAUT, reglagesActions, optionsStatuts, colonnesActions, lireActions,
     PLANNING_DEFAUT, CHAMPS, champsDe, listeChoix, reglagesPlanning, colonnesAgents, lirePlanning, affectationsEnCours,
     norm, cibleRef, lireMeta, lireConfig, activerCacheLecture, viderCacheLecture, oublierStructure, surEcriture, general, actionConfig, ecrireConfig,
     resoudreRoles, colonnesCompatibles, formuleDerniereVersion, planInstallation, appliquer, COLONNES_ETABLISSEMENT,
-    instantaneSchema, majSchemaPublic, tableauxDeBord, valeurTableauxDeBord, INVITE, DUREES_INVITE, formuleAuteur, auteurAMettreAJour,
+    instantaneSchema, majSchemaPublic, tableauxDeBord, valeurTableauxDeBord, INVITE, PARTENAIRES, DUREES_INVITE, formuleAuteur, auteurAMettreAJour,
     REGIONS_ACADEMIQUES, regionDeAcademie, genreSection, rattachementSection, colonnesHistoriqueTableau, MOUVEMENTS_TABLEAU,
     ECHELONS_VISA, COLONNES_VISEURS, STATUTS_VALIDATION, STATUT, COLONNE_STATUT, MARQUE_STATUT, estFavorable, reglagesValidation,
     optionsStatutValidation, formuleStatutValidation, statutValidation, viseurCouvre,
