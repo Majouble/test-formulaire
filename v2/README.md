@@ -39,6 +39,7 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 ├── commun/menu-deroulant.js  menu déroulant des champs à valeurs proposées (<input list> + <datalist>), dans tous les widgets
 ├── commun/filtres-colonnes.js  moteur des filtres de colonnes (condition, portée ou comptage avec seuil, versions, combinaison), pour les Extractions et la Fiche établissement
 ├── commun/geo.js        fond de carte commun : départements et académies (Lambert-93, encarts), placement d'un point latitude / longitude
+├── commun/video.js      vidéo MP4 (H.264 encodé par le navigateur, fichier MP4 non fragmenté) et GIF animé à partir d'images, sans bibliothèque (cartes animées du tableau de bord)
 ├── saisie/              formulaire de saisie
 ├── admin/               administration : installation.js, configuration.js, referentiel.js, equipe.js, planning.js, pages-agents.js (onglet Équipe, Pages de saisie), actions.js, acces.js, liens.js, campagnes.js (onglet Établissements, carte Campagnes), effectifs.js (onglet Référentiel, carte Effectifs), structurel.js (onglet Référentiel, carte « Données demandées aux services »), partenaires.js (onglet Accès, carte « Partenaires : DSDEN, rectorats… »), veille.js (onglet Veille), validation.js (onglet Validation), repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css), secours.js (carte « Mode secours » : kit, relais, page de réintégration)
 ├── point-situation/     production du point de situation

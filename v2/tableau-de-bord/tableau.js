@@ -1641,7 +1641,8 @@ function mapEditor(b, i) {
     <select data-b="${i}" data-k="map.classes">${opt(MAP_CLASSES, m.classes || "quantile")}</select>
     <select data-b="${i}" data-k="map.n">${opt([["3", "3 classes"], ["4", "4 classes"], ["5", "5 classes"]], String(m.n || 5))}</select>
     <select data-b="${i}" data-k="map.labels">${opt([["auto", "chiffres sur la carte"], ["off", "sans chiffres"]], m.labels === "off" ? "off" : "auto")}</select>
-    <span class="hint">Dans Word : image. Lignes du bloc : codes ou noms de départements ou d'académies (voir « Lignes »).</span>`;
+    <span class="hint">Dans Word : image. Lignes du bloc : codes ou noms de départements ou d'académies (voir « Lignes »).</span>
+    ${animEditor(b, i)}`;
 }
 function mapLevel(b, d) {
   const m = b.map || {}; if (m.level) return m.level;
@@ -1669,58 +1670,87 @@ function renderMap(b, d, bi) {
   const level = mapLevel(b, d), m = b.map || {};
   const additive = ADDITIVE.has(b.measure.agg || "count") || b.measure.agg === "distinct";
   const rate = m.metric === "rate" && d.expected;
-  const num = new Map(), den = new Map(), orig = new Map(), unmatched = [];
+  const A = animation(b, d, bi);                                     // null : carte fixe (total des colonnes)
+  // zone (département ou académie) de chaque ligne du bloc ; valeur attendue de chaque zone (taux)
+  const zoneDe = new Map(), orig = new Map(), den = new Map(), unmatched = [];
   d.rowKeys.forEach(rk => {
     if (rk === EMPTY) return;
     const g = level === "dep" ? depKey(rk) : acaKey(rk);
     if (!g) { if ((d.rowVal.get(rk) || 0) > 0) unmatched.push(rk); return; }
-    const v = d.rowVal.get(rk);
+    zoneDe.set(rk, g);
     if (!orig.has(g)) orig.set(g, rk);
-    num.set(g, additive ? (num.get(g) || 0) + (v || 0) : num.has(g) ? num.get(g) : v);
     if (rate) den.set(g, (den.get(g) || 0) + (d.expected.get(rk) || 0));
   });
-  const valOf = g => rate ? (den.get(g) ? (num.get(g) || 0) / den.get(g) * 100 : NaN) : num.get(g);
+  // valeur de chaque zone, pour une valeur par ligne du bloc (total, ou valeur d'une date de l'animation)
+  const valeursZones = get => {
+    const num = new Map();
+    zoneDe.forEach((g, rk) => { const v = get(rk); num.set(g, additive ? (num.get(g) || 0) + (v || 0) : num.has(g) ? num.get(g) : v); });
+    return { num, val: g => rate ? (den.get(g) ? (num.get(g) || 0) / den.get(g) * 100 : NaN) : num.get(g) };
+  };
   const keys = level === "dep" ? Object.keys(DEP_NAMES) : ACA_NAMES;
+  const images = A ? A.frames.map((_, p) => valeursZones(rk => A.val(rk, p))) : [valeursZones(rk => d.rowVal.get(rk))];
   const n = Math.max(3, Math.min(5, Number(m.n) || 5));
-  const br = mapBreaks(keys.map(valOf), n, m.classes || "quantile"), ramp = RAMP[br.length] || [];
-  const ints = !rate && keys.every(k => { const v = valOf(k); return v === undefined || isNaN(v) || Number.isInteger(v); });
+  // classes calculées sur toutes les dates de l'animation : une couleur garde le même sens d'une date à l'autre
+  const echantillon = images.flatMap(Z => keys.map(Z.val));
+  const br = mapBreaks(echantillon, n, m.classes || "quantile"), ramp = RAMP[br.length] || [];
+  const ints = !rate && echantillon.every(v => v === undefined || isNaN(v) || Number.isInteger(v));
   const classOf = v => (v === undefined || isNaN(v) || v <= 0) ? -1 : br.findIndex(t => v <= t);
   const colorOf = v => { const c = classOf(v); return c < 0 ? "var(--q0)" : classeCouleur(b, ramp[c] || 5); };
   const fmt = v => rate ? fmtPct(v) : fmtNum(v);
   const W = Math.max(320, Math.min(760, ($("blocks").clientWidth || 700) - 32)), k = W / GEO.w, H = Math.round(GEO.h * k);
   const name = g => level === "dep" ? `${g} · ${DEP_NAMES[g]}` : `Académie ${/^[AEIOUÉ]/.test(g) ? "d'" : "de "}${g}`;
-  const tipTxt = g => { const v = valOf(g); if (v === undefined || isNaN(v)) return rate ? "aucune valeur attendue" : "0";
-    return rate ? `${fmtPct(v)} (${fmtNum(num.get(g) || 0)} sur ${fmtNum(den.get(g) || 0)})` : fmtNum(v); };
-  let shapes = "", lines = "", labels = "";
   const layer = level === "dep" ? GEO.dep : GEO.aca;
-  layer.forEach(e => {
-    const v = valOf(e.k), rk = orig.get(e.k);
-    shapes += `<path d="${e.d}" fill="${colorOf(v)}" stroke="var(--surface)" stroke-width="${(0.8 / k).toFixed(2)}" stroke-linejoin="round" ${tipAttr(name(e.k), tipTxt(e.k))}${rk !== undefined ? drillAttr(bi, rk, null) : ""}></path>`;
+  const showLabels = m.labels !== "off";
+  const etiquetee = e => showLabels && e.x !== undefined && !(e.i === "metro" && ["Paris", "75", "92", "93", "94"].includes(e.k));   // trop petits : chiffre dans l'encart
+  // état de la carte pour une image : couleur, info-bulle, détail et chiffre de chaque zone
+  const etat = (Z, ck) => {
+    const tip = g => { const v = Z.val(g); if (v === undefined || isNaN(v)) return rate ? "aucune valeur attendue" : "0";
+      return rate ? `${fmtPct(v)} (${fmtNum(Z.num.get(g) || 0)} sur ${fmtNum(den.get(g) || 0)})` : fmtNum(v); };
+    const chiffre = g => {
+      let v = Z.val(g);
+      if (rate && (v === undefined || isNaN(v))) { if (!den.get(g)) return null; v = 0; }
+      if (v === undefined || isNaN(v)) v = 0;                                     // zone sans valeur : étiquette « 0 »
+      return rate ? nf.format(Math.round(v)) + " %" : fmtNum(v);
+    };
+    return {
+      fill: layer.map(e => colorOf(Z.val(e.k))), cls: layer.map(e => classOf(Z.val(e.k)) + 1),
+      tip: layer.map(e => `${name(e.k)}${TIP_SEP}${tip(e.k)}`),
+      drill: layer.map(e => orig.has(e.k) ? JSON.stringify([bi, orig.get(e.k), ck]) : ""),
+      txt: layer.map(e => etiquetee(e) ? chiffre(e.k) : null),
+      ink: layer.map(e => inkOn(colorOf(Z.val(e.k)))),
+    };
+  };
+  const etats = A ? images.map((Z, p) => etat(Z, A.frames[p].cle)) : [etat(images[0], null)];
+  if (A) etats.forEach((E, p) => { E.hausse = E.cls.map((c, z) => p > 0 && c - etats[p - 1].cls[z] >= 2); });   // forte hausse : 2 classes ou plus
+  const E = etats[A ? A.pos : 0];
+  let shapes = "", lines = "", labels = "", hausses = "";
+  layer.forEach((e, z) => {
+    shapes += `<path data-z="${z}" d="${e.d}" fill="${E.fill[z]}" stroke="var(--surface)" stroke-width="${(0.8 / k).toFixed(2)}" stroke-linejoin="round" data-tip="${esc(E.tip[z])}"${E.drill[z] ? ` data-drill="${esc(E.drill[z])}"` : ""}></path>`;
+    if (A) hausses += `<path data-zh="${z}" d="${e.d}" fill="none" stroke="#d85a30" stroke-width="${(2.6 / k).toFixed(2)}" stroke-linejoin="round" opacity="${E.hausse[z] ? 1 : 0}"></path>`;
   });
   if (level === "dep") GEO.aca.forEach(e => lines += `<path d="${e.d}" fill="none" stroke="var(--ink-2)" stroke-width="${(1 / k).toFixed(2)}" stroke-linejoin="round" pointer-events="none" opacity=".7"></path>`);
-  const showLabels = m.labels !== "off";
-  if (showLabels) layer.forEach(e => {
-    if (e.x === undefined || (e.i === "metro" && ["Paris", "75", "92", "93", "94"].includes(e.k))) return;   // trop petits : chiffre dans l'encart
-    let v = valOf(e.k);
-    if (rate && (v === undefined || isNaN(v))) { if (!den.get(e.k)) return; v = 0; }
-    if (v === undefined || isNaN(v)) v = 0;                                   // zone sans valeur : étiquette « 0 »
-    labels += `<text class="val" x="${(e.x * k).toFixed(1)}" y="${(e.y * k + 4).toFixed(1)}" text-anchor="middle" style="fill:${inkOn(colorOf(v))};font-size:${level === "aca" ? "9pt" : "7.5pt"}" pointer-events="none">${esc(rate ? nf.format(Math.round(v)) + " %" : fmtNum(v))}</text>`;
+  layer.forEach((e, z) => {
+    if (E.txt[z] === null) return;
+    labels += `<text class="val" data-zl="${z}" x="${(e.x * k).toFixed(1)}" y="${(e.y * k + 4).toFixed(1)}" text-anchor="middle" style="fill:${E.ink[z]};font-size:${level === "aca" ? "9pt" : "7.5pt"}" pointer-events="none">${esc(E.txt[z])}</text>`;
   });
   const frames = GEO.frames.map(f => `<rect x="${(f.x * k).toFixed(1)}" y="${(f.y * k).toFixed(1)}" width="${(f.w * k).toFixed(1)}" height="${(f.h * k).toFixed(1)}" fill="none" stroke="var(--axis)" stroke-width="1" rx="3"></rect>
     <text x="${(f.x * k + 4).toFixed(1)}" y="${(f.y * k + 11).toFixed(1)}" style="font-size:7.5pt">${esc(f.t)}</text>`).join("");
-  const svg = svgWrap(W, H, `<g transform="scale(${k.toFixed(5)})">${shapes}${lines}</g>${frames}${labels}`, "Carte " + (level === "dep" ? "par département" : "par académie"));
+  const svg = svgWrap(W, H, `<g transform="scale(${k.toFixed(5)})">${shapes}${lines}${hausses ? `<g pointer-events="none">${hausses}</g>` : ""}</g>${frames}${labels}`, "Carte " + (level === "dep" ? "par département" : "par académie"));
   // légende : une case par classe, plus « aucun »
   let prev = 0;
   const items = br.map((t, j) => { const lo = ints ? Math.floor(prev) + 1 : prev, txt = j === 0 && !ints ? `jusqu'à ${fmt(t)}` : lo >= t ? fmt(t) : `${ints ? fmtNum(lo) : fmt(lo)} – ${fmt(t)}`; prev = t; return `<span><i style="background:${classeCouleur(b, ramp[j])}"></i>${esc(txt)}</span>`; });
   items.unshift(`<span><i style="background:var(--q0)"></i>${rate ? "0 ou sans attendu" : "0"}</span>`);
   if (rate) items.unshift(`<span><i style="background:transparent"></i>Taux :</span>`);
+  if (A) { items.unshift(legendeDate(A)); items.push(`<span class="anim-hausse"><i style="background:transparent;box-shadow:inset 0 0 0 2px #d85a30"></i>forte hausse (2 classes ou plus)</span>`); }
   const what = rate ? "Taux : valeur ÷ attendu" : plain(measureText(b.measure));
   const notes = [];
   const unk = unmatched.filter(x => x === UNKNOWN), other = unmatched.filter(x => x !== UNKNOWN);
   if (unk.length) notes.push(`${fmtNum(d.rowVal.get(UNKNOWN))} sans ${level === "dep" ? "département" : "académie"} reconnu(e) (valeur vide ou mal formée) : non placé(s) sur la carte.`);
   if (other.length) notes.push(`${other.length} valeur(s) non placée(s) sur la carte : ${other.slice(0, 6).join(", ")}${other.length > 6 ? "…" : ""}. Réglez « Lignes » sur « département (code ou nom) », « académie (nom) » ou une valeur déduite de l'UAI.`);
-  if (d.cc) notes.push("La carte montre le total de chaque ligne ; les colonnes restent visibles dans le tableau.");
-  return `<div class="chart map">${svg}<div class="legend" title="${esc(what)}">${items.join("")}</div>${notes.map(t => `<p class="hint">${esc(t)}</p>`).join("")}</div>`;
+  if (A) notes.push(animNote(A, b));
+  else if (d.cc) notes.push("La carte montre le total de chaque ligne ; les colonnes restent visibles dans le tableau.");
+  if (A) memoriserAnimation(A, b, etats);
+  return `<div class="chart map${A ? " anime" : ""}">${A ? lecteurHtml(A, bi) : ""}${svg}<div class="legend" title="${esc(what)}">${items.join("")}</div>${notes.map(t => `<p class="hint">${esc(t)}</p>`).join("")}</div>`;
 }
 // ---- Carte des établissements : un point par ligne du bloc, placé d'après la latitude et la longitude du référentiel ----
 const cibleDe = type => (/^Ref:(.+)$/.exec(type || "") || [])[1] || "";
@@ -1754,7 +1784,8 @@ function pointsEditor(b, i) {
     ${P.table ? `${cols("lat", p.lat || P.lat, "Latitude…")}${cols("lon", p.lon || P.lon, "Longitude…")}${cols("name", p.name || P.name, "Nom affiché : valeur de la ligne")}` : ""}
     <select data-b="${i}" data-k="pts.size">${opt([["value", "taille : selon la valeur"], ["fixed", "taille fixe"]], p.size || "value")}</select>
     <select data-b="${i}" data-k="pts.color">${opt([["classes", "couleur : classes de valeur"], ["unie", "couleur unie"]], p.color || "classes")}</select>
-    <span class="hint">Lignes du bloc : la colonne de l'établissement${P.self ? " (UAI, par exemple) ; coordonnées lues sur les lignes de cette table" : P.parRef ? " (référence : coordonnées lues dans « " + esc(P.table) + " »)" : " ; choisissez la colonne du référentiel qui lui correspond (UAI…)"}. Dans Word : image.</span>`;
+    <span class="hint">Lignes du bloc : la colonne de l'établissement${P.self ? " (UAI, par exemple) ; coordonnées lues sur les lignes de cette table" : P.parRef ? " (référence : coordonnées lues dans « " + esc(P.table) + " »)" : " ; choisissez la colonne du référentiel qui lui correspond (UAI…)"}. Dans Word : image.</span>
+    ${animEditor(b, i)}`;
 }
 function renderPoints(b, d, bi) {
   const p = b.pts || {}, P = ptsCols(b), G = window.Geo;
@@ -1770,34 +1801,44 @@ function renderPoints(b, d, bi) {
   }
   if (!P.lat || !P.lon) return msg(`La table « ${P.table} » n'a pas de colonnes de latitude et de longitude reconnues : choisissez-les dans le réglage « Graphique ».`);
   if (!P.key) return msg("Choisissez la colonne du référentiel qui correspond aux lignes du bloc.");
+  const A = animation(b, d, bi);                                     // null : carte fixe (total des colonnes)
   const idx = new Map(), coord = j => isFinite(G.nombre(data[P.lat][j])) && isFinite(G.nombre(data[P.lon][j]));
   if (P.key === "id") (data.id || []).forEach((id, j) => { idx.set(refNorm(String(id)), j); idx.set(refNorm(textOf(id)), j); });
   else (data[P.key] || []).forEach((v, j) => {   // première ligne qui a des coordonnées
     (Array.isArray(v) ? (v[0] === "L" ? v.slice(1) : v) : [v]).forEach(x => { const t = textOf(x); if (t !== null && (!idx.has(refNorm(t)) || (!coord(idx.get(refNorm(t))) && coord(j)))) idx.set(refNorm(t), j); });
   });
+  // valeurs d'un établissement : une par date de l'animation, sinon le total ; v = la plus grande (taille, ordre de dessin)
+  const valeursDe = rk => A ? A.frames.map((_, q) => A.val(rk, q) || 0) : [d.rowVal.get(rk) || 0];
   const pts = []; let sansRef = 0, sansCoord = 0, valSans = 0;
   d.rowKeys.forEach(rk => {
     if (rk === EMPTY) return;
-    const v = d.rowVal.get(rk) || 0; if (!(v > 0)) return;
+    const vals = valeursDe(rk), v = Math.max(0, ...vals); if (!(v > 0)) return;
     const j = idx.get(refNorm(rk));
     if (j === undefined) { sansRef++; valSans += v; return; }
     const pos = G.placer(data[P.lat][j], data[P.lon][j]);
     if (!pos) { sansCoord++; valSans += v; return; }
-    pts.push({ rk, v, pos, nom: (P.name && textOf(data[P.name][j])) || rk });
+    pts.push({ rk, v, vals, pos, nom: (P.name && textOf(data[P.name][j])) || rk });
   });
+  pts.sort((x, y) => y.v - x.v);                                     // les gros points dessous
   const W = Math.max(320, Math.min(760, ($("blocks").clientWidth || 700) - 32)), k = W / GEO.w, H = Math.round(GEO.h * k);
   const max = Math.max(0, ...pts.map(x => x.v)) || 1;
-  const n = 4, br = p.color === "unie" ? [] : mapBreaks(pts.map(x => x.v), n, "quantile"), ramp = { 1: [4], 2: [3, 5], 3: [2, 4, 5], 4: [2, 3, 4, 5] }[br.length] || [];
+  const n = 4, br = p.color === "unie" ? [] : mapBreaks(pts.flatMap(x => x.vals.filter(v => v > 0)), n, "quantile"), ramp = { 1: [4], 2: [3, 5], 3: [2, 4, 5], 4: [2, 3, 4, 5] }[br.length] || [];
   const unie = b.couleurs && b.couleurs.teinte ? classeCouleur(b, 3) : "var(--s1)";
   const couleur = v => !br.length ? unie : classeCouleur(b, ramp[Math.max(0, br.findIndex(t => v <= t))] || 5);
-  const ints = pts.every(x => Number.isInteger(x.v));
-  const rayon = v => p.size === "fixed" ? 4 : 2.5 + 11 * Math.sqrt(v / max);
-  const parisK = 1;   // l'encart de Paris est déjà agrandi dans le fond
+  const ints = pts.every(x => x.vals.every(Number.isInteger));
+  const rayon = v => v > 0 ? (p.size === "fixed" ? 4 : 2.5 + 11 * Math.sqrt(v / max)) : 0;
+  // état des points pour une image (q : rang de la date de l'animation, 0 pour la carte fixe)
+  const etat = (q, ck) => ({
+    r: pts.map(x => rayon(x.vals[q])), fill: pts.map(x => couleur(x.vals[q])),
+    tip: pts.map(x => `${x.nom}${TIP_SEP}${fmtNum(x.vals[q])}`), drill: pts.map(x => JSON.stringify([bi, x.rk, ck])),
+  });
+  const etats = A ? A.frames.map((f, q) => etat(q, f.cle)) : [etat(0, null)];
+  const E = etats[A ? A.pos : 0];
   let ronds = "";
-  [...pts].sort((x, y) => y.v - x.v).forEach(x => {
-    const att = `fill="${couleur(x.v)}" fill-opacity=".85" stroke="var(--surface)" stroke-width="1" style="cursor:pointer" ${tipAttr(x.nom, fmtNum(x.v))}${drillAttr(bi, x.rk, null)}`;
-    ronds += `<circle cx="${(x.pos.x * k).toFixed(1)}" cy="${(x.pos.y * k).toFixed(1)}" r="${rayon(x.v).toFixed(1)}" ${att}></circle>`;
-    if (x.pos.paris) ronds += `<circle cx="${(x.pos.paris.x * k).toFixed(1)}" cy="${(x.pos.paris.y * k).toFixed(1)}" r="${(rayon(x.v) * parisK).toFixed(1)}" ${att}></circle>`;
+  pts.forEach((x, z) => {
+    const att = `data-z="${z}" fill="${E.fill[z]}" fill-opacity=".85" stroke="var(--surface)" stroke-width="1" style="cursor:pointer" data-tip="${esc(E.tip[z])}" data-drill="${esc(E.drill[z])}"`;
+    ronds += `<circle cx="${(x.pos.x * k).toFixed(1)}" cy="${(x.pos.y * k).toFixed(1)}" r="${E.r[z].toFixed(1)}" ${att}></circle>`;
+    if (x.pos.paris) ronds += `<circle cx="${(x.pos.paris.x * k).toFixed(1)}" cy="${(x.pos.paris.y * k).toFixed(1)}" r="${E.r[z].toFixed(1)}" ${att}></circle>`;   // l'encart de Paris est déjà agrandi dans le fond
   });
   const fond = G.fondSvg(k, { fond: "var(--q0)", trait: "var(--surface)", traitAcademie: "var(--axis)" }).replace(/<title>[^<]*<\/title>/g, "");
   const frames = GEO.frames.map(f => `<rect x="${(f.x * k).toFixed(1)}" y="${(f.y * k).toFixed(1)}" width="${(f.w * k).toFixed(1)}" height="${(f.h * k).toFixed(1)}" fill="none" stroke="var(--axis)" stroke-width="1" rx="3"></rect>
@@ -1806,11 +1847,215 @@ function renderPoints(b, d, bi) {
   let prev = 0;
   const items = br.length ? br.map((t, j) => { const lo = ints ? Math.floor(prev) + 1 : prev, txt = lo >= t ? fmtNum(t) : `${fmtNum(lo)} – ${fmtNum(t)}`; prev = t; return `<span><i style="background:${classeCouleur(b, ramp[j])}"></i>${esc(txt)}</span>`; })
     : [`<span><i style="background:${unie}"></i>${esc(plain(measureText(b.measure)))}</span>`];
-  const notes = [`${fmtNum(pts.length)} établissement(s) sur la carte${p.size === "fixed" ? "" : ` ; taille des points selon la valeur (jusqu'à ${fmtNum(max)})`}.`];
+  if (A) items.unshift(legendeDate(A));
+  const notes = [A ? `${fmtNum(pts.length)} établissement(s) touché(s) au moins une fois sur la période${p.size === "fixed" ? "" : ` ; taille des points selon la valeur (jusqu'à ${fmtNum(max)})`}.`
+    : `${fmtNum(pts.length)} établissement(s) sur la carte${p.size === "fixed" ? "" : ` ; taille des points selon la valeur (jusqu'à ${fmtNum(max)})`}.`];
   if (sansRef) notes.push(`${fmtNum(sansRef)} ligne(s) introuvable(s) dans « ${P.table} »${P.parRef ? "" : ` (colonne « ${P.key} »)`} : non placée(s).`);
   if (sansCoord) notes.push(`${fmtNum(sansCoord)} établissement(s) sans coordonnées utilisables : non placé(s).`);
-  if (d.cc) notes.push("La carte montre le total de chaque ligne ; les colonnes restent visibles dans le tableau.");
-  return `<div class="chart map points">${svg}<div class="legend" title="${esc(plain(measureText(b.measure)))}">${items.join("")}</div>${notes.map(t => `<p class="hint">${esc(t)}</p>`).join("")}</div>`;
+  if (A) notes.push(animNote(A, b));
+  else if (d.cc) notes.push("La carte montre le total de chaque ligne ; les colonnes restent visibles dans le tableau.");
+  if (A) memoriserAnimation(A, b, etats);
+  return `<div class="chart map points${A ? " anime" : ""}">${A ? lecteurHtml(A, bi) : ""}${svg}<div class="legend" title="${esc(plain(measureText(b.measure)))}">${items.join("")}</div>${notes.map(t => `<p class="hint">${esc(t)}</p>`).join("")}</div>`;
+}
+// =============================================================================
+// Animation des cartes : une image par date des colonnes du bloc (lecture, curseur, vidéo MP4 et GIF)
+// Réglage du bloc : anim = { actif, jours: "sauter" | "dernier" | "vides", weekend, cumul: "" | "cumul", vitesse (ms par date) }.
+// Les images sont calculées au rendu (dans la table source du bloc) et gardées dans animCache ; la lecture ne fait
+// ensuite que changer les couleurs, les chiffres et les tailles déjà dessinés (transitions CSS), sans redessiner.
+// =============================================================================
+const ANIM_VITESSES = [[1000, "1 date par seconde"], [500, "2 dates par seconde"], [250, "4 dates par seconde"], [125, "8 dates par seconde"]];
+const ANIM_JOURS = [["sauter", "jours sans signalement : sautés"], ["dernier", "jours sans signalement : dernier état connu"], ["vides", "jours sans signalement : carte vide"]];
+const JOURS_SEMAINE = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
+const animCache = new Map();          // clé du bloc -> { frames, etats, pos, grain, titre, mesure, type }
+const animEtat = new Map();           // clé du bloc -> { date affichée, minuteur de lecture, vitesse choisie par le lecteur }
+const cleAnim = (b, bi) => "a" + (b.id || bi);
+const etatAnim = cle => { let e = animEtat.get(cle); if (!e) animEtat.set(cle, e = {}); return e; };
+
+// Dates de l'animation et valeur de chaque ligne du bloc à chaque date ; null si le bloc n'est pas animé
+function animation(b, d, bi) {
+  const a = b.anim || {};
+  if (!a.actif || !d.cc || !isDate(d.cc)) return null;
+  const grain = d.cg || "jour", dates = d.colKeys.filter(k => k !== EMPTY);
+  if (!dates.length) return null;
+  let cal = dates;
+  if (grain === "jour" && a.jours && a.jours !== "sauter") {        // calendrier complet : les jours sans signalement sont montrés
+    cal = []; for (let j = dates[0]; j <= dates[dates.length - 1]; j = shiftDay(j, -1)) cal.push(j);
+  }
+  if (grain === "jour" && a.weekend) cal = cal.filter(j => { const w = new Date(j + "T00:00:00Z").getUTCDay(); return w !== 0 && w !== 6; });
+  if (!cal.length) return null;
+  const presentes = new Set(dates); let derniere = null;
+  const frames = cal.map(j => {
+    if (presentes.has(j)) { derniere = j; return { date: j, cle: j, note: "" }; }
+    if (a.jours === "dernier" && derniere) return { date: j, cle: derniere, note: `pas de signalement : état du ${dateLabel(derniere, grain)}` };
+    return { date: j, cle: null, note: "pas de signalement" };
+  });
+  const nul = ADDITIVE.has(b.measure.agg || "count") ? 0 : NaN, valeurs = new Map();
+  if (a.cumul !== "cumul") d.rowKeys.forEach(rk => valeurs.set(rk, frames.map(f => f.cle === null ? nul : d.val(rk, f.cle))));
+  else {                                                             // cumul : toutes les lignes jusqu'à la date (valeurs distinctes comptées une fois)
+    const parLigne = new Map();
+    d.rows.forEach(r => {
+      const ck = keysOf(d.cc, r[d.cc], d.cg)[0]; if (ck === EMPTY) return;
+      [...new Set(keysOf(d.rc, r[d.rc], d.rg))].forEach(rk => { let l = parLigne.get(rk); if (!l) parLigne.set(rk, l = []); l.push([ck, r]); });
+    });
+    d.rowKeys.forEach(rk => {
+      const l = (parLigne.get(rk) || []).sort((x, y) => x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0), cumul = [];
+      let j = 0;
+      valeurs.set(rk, frames.map(f => { while (j < l.length && l[j][0] <= f.date) cumul.push(l[j++][1]); return cumul.length ? aggregate(cumul, b.measure) : nul; }));
+    });
+  }
+  const cle = cleAnim(b, bi), e = etatAnim(cle);
+  let pos = frames.findIndex(f => f.date === e.date); if (pos < 0) pos = frames.length - 1;   // par défaut : la date la plus récente
+  e.date = frames[pos].date;
+  return { cle, frames, pos, grain, cumul: a.cumul === "cumul", vitesse: Number(a.vitesse) || 500, val: (rk, p) => { const v = valeurs.get(rk); return v ? v[p] : nul; } };
+}
+function memoriserAnimation(A, b, etats) {
+  animCache.set(A.cle, { ...A, etats, titre: plain(b.title || measureText(b.measure)), mesure: plain(measureText(b.measure)) + (A.cumul ? " (cumul depuis le début)" : "") });
+}
+function libelleImage(A, p) {
+  const f = A.frames[p];
+  return A.grain === "jour" ? `${JOURS_SEMAINE[new Date(f.date + "T00:00:00Z").getUTCDay()]} ${dateLabel(f.date, "jour")}` : dateLabel(f.date, A.grain);
+}
+const legendeDate = A => `<span class="anim-jour"><i style="background:transparent"></i>${esc(`${A.grain === "jour" ? "Jour" : "Période"} : ${libelleImage(A, A.pos)}${A.frames[A.pos].note ? " (" + A.frames[A.pos].note + ")" : ""}`)}</span>`;
+const animNote = (A, b) => `Animation : ${A.frames.length} date(s), du ${dateLabel(A.frames[0].date, A.grain)} au ${dateLabel(A.frames[A.frames.length - 1].date, A.grain)}${A.cumul ? ", valeurs cumulées" : ""} ; couleurs calculées sur toute la période. Dans Word : la date affichée.`;
+function lecteurHtml(A, bi) {
+  const e = etatAnim(A.cle), enLecture = !!e.minuteur;
+  return `<div class="anim-lecteur" data-anim="${esc(A.cle)}">
+    <button class="anim-bouton" data-act="anim-lecture" data-b="${bi}" aria-label="${enLecture ? "Pause" : "Lecture"}" title="${enLecture ? "Pause" : "Lecture"}">${enLecture ? "❚❚" : "▶"}</button>
+    <input type="range" class="anim-curseur" min="0" max="${A.frames.length - 1}" step="1" value="${A.pos}" aria-label="Date affichée">
+    <span class="anim-date">${esc(libelleImage(A, A.pos))}</span>
+    <select class="anim-vitesse" aria-label="Vitesse de lecture">${opt(ANIM_VITESSES.map(([v, l]) => [String(v), l]), String(e.vitesse || A.vitesse))}</select>
+    <span class="anim-sp"></span>
+    <button class="ghost" data-act="anim-mp4" data-b="${bi}" title="Vidéo MP4 de toute la période, à insérer dans PowerPoint">Vidéo MP4</button>
+    <button class="ghost" data-act="anim-gif" data-b="${bi}" title="Image animée GIF de toute la période, à insérer dans Word ou Tchap">GIF animé</button></div>`;
+}
+// Image p de l'animation appliquée à un dessin (celui de la page, ou une copie pour l'export)
+function appliquerImage(svg, A, p) {
+  const E = A.etats[p];
+  svg.querySelectorAll("[data-z]").forEach(el => {
+    const z = Number(el.dataset.z);
+    el.style.fill = E.fill[z];
+    el.setAttribute("data-tip", E.tip[z]);
+    if (E.drill[z]) el.setAttribute("data-drill", E.drill[z]); else el.removeAttribute("data-drill");
+    if (E.r) { el.setAttribute("r", E.r[z].toFixed(1)); el.style.opacity = E.r[z] > 0 ? "" : "0"; }
+  });
+  if (E.txt) svg.querySelectorAll("[data-zl]").forEach(el => { const z = Number(el.dataset.zl); el.textContent = E.txt[z] ?? ""; el.style.fill = E.ink[z]; });
+  if (E.hausse) svg.querySelectorAll("[data-zh]").forEach(el => el.setAttribute("opacity", E.hausse[Number(el.dataset.zh)] ? 1 : 0));
+}
+function afficherImage(cle, p) {
+  const A = animCache.get(cle), zone = RACINE.querySelector(`[data-anim="${cle}"]`); if (!A || !zone) return false;
+  const chart = zone.closest(".chart"), svg = chart && chart.querySelector("svg"); if (!svg) return false;
+  appliquerImage(svg, A, p);
+  A.pos = p; etatAnim(cle).date = A.frames[p].date;
+  zone.querySelector(".anim-curseur").value = p;
+  zone.querySelector(".anim-date").textContent = libelleImage(A, p);
+  const leg = chart.querySelector(".anim-jour"); if (leg) leg.innerHTML = legendeDate(A).replace(/^<span[^>]*>|<\/span>$/g, "");
+  return true;
+}
+function arreterLecture(cle) {
+  const e = etatAnim(cle); clearInterval(e.minuteur); e.minuteur = null;
+  const bt = RACINE.querySelector(`[data-anim="${cle}"] .anim-bouton`);
+  if (bt) { bt.textContent = "▶"; bt.title = "Lecture"; bt.setAttribute("aria-label", "Lecture"); }
+}
+function basculerLecture(cle) {
+  const e = etatAnim(cle);
+  if (e.minuteur) return arreterLecture(cle);
+  const A = animCache.get(cle); if (!A) return;
+  if (A.pos >= A.frames.length - 1) afficherImage(cle, 0);          // à la fin : on repart du début
+  e.minuteur = setInterval(() => {
+    const B = animCache.get(cle);                                   // données du dernier rendu (la page a pu se redessiner)
+    if (!B || B.pos >= B.frames.length - 1 || !afficherImage(cle, B.pos + 1) || B.pos >= B.frames.length - 1) arreterLecture(cle);
+  }, e.vitesse || A.vitesse);
+  const bt = RACINE.querySelector(`[data-anim="${cle}"] .anim-bouton`);
+  if (bt) { bt.textContent = "❚❚"; bt.title = "Pause"; bt.setAttribute("aria-label", "Pause"); }
+}
+
+// ---- Export : une image par date (titre, date, carte, légende, frise du temps), puis MP4 ou GIF (commun/video.js)
+let videoPromesse = null;
+function chargerVideo() {
+  if (window.Video) return Promise.resolve();
+  return videoPromesse = videoPromesse || new Promise((ok, ko) => {
+    const s = document.createElement("script");
+    s.src = new URL("../commun/video.js" + new URL(ICI, location.href).search, ICI).href;   // même ?v=<version> que ce fichier
+    s.onload = ok; s.onerror = () => { videoPromesse = null; ko(new Error(`module vidéo introuvable (${s.src})`)); };
+    document.head.appendChild(s);
+  });
+}
+function dessinerSvg(src, largeur, hauteur) {
+  return new Promise((ok, ko) => {
+    const img = new Image();
+    img.onload = () => { const c = document.createElement("canvas"); c.width = largeur; c.height = hauteur; c.getContext("2d").drawImage(img, 0, 0, largeur, hauteur); ok(c); };
+    img.onerror = () => ko(new Error("image de la carte illisible"));
+    img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(src.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F￾￿]/g, ""));
+  });
+}
+// image p : dessin de la page copié, état de la date appliqué, en couleurs claires ; largeur et hauteur paires (MP4)
+async function imageAnimation(chart, A, p, largeurCible) {
+  const svg = chart.querySelector("svg"), copie = svg.cloneNode(true);
+  appliquerImage(copie, A, p);
+  const W0 = Number(svg.getAttribute("width")), H0 = Number(svg.getAttribute("height")), M = 16, W = W0 + 2 * M;
+  let carte = copie.innerHTML.replace(/<title>[\s\S]*?<\/title>/g, "").replace(/ data-(tip|drill|z|zl|zh)="[^"]*"/g, "");
+  carte = lightVars(carte).replace(/<text(?![^>]*fill=)/g, '<text fill="#000000"');
+  const f = A.frames[p], date = libelleImage(A, p);
+  let y = 30, haut = `<text x="${M}" y="${y}" fill="#161616" style="font-size:17px;font-weight:700">${esc(A.titre)}</text>
+    <text x="${W - M}" y="${y}" text-anchor="end" fill="#000091" style="font-size:20px;font-weight:700">${esc(date)}</text>
+    <text x="${M}" y="${y + 19}" fill="#555555" style="font-size:12px">${esc(A.mesure)}</text>
+    ${f.note ? `<text x="${W - M}" y="${y + 19}" text-anchor="end" fill="#555555" style="font-size:12px">${esc(f.note)}</text>` : ""}`;
+  y += 32;
+  // légende de la page (sans la ligne de la date, déjà en titre), redessinée sous la carte
+  const items = [...chart.querySelectorAll(".legend span:not(.anim-jour)")].map(s => ({ i: s.querySelector("i"), t: s.textContent.trim(), hausse: s.classList.contains("anim-hausse") }));
+  let lx = M, ly = y + H0 + 22, leg = "";
+  items.forEach(it => {
+    const w = 18 + it.t.length * 7.2, fond = it.i ? lightVars(it.i.style.background || "transparent") : "transparent", bord = it.hausse ? ` stroke="#d85a30" stroke-width="2"` : "";
+    if (lx + w > W - M) { lx = M; ly += 18; }
+    leg += `<rect x="${lx}" y="${ly - 9}" width="10" height="10" rx="2" fill="${fond}"${bord}/><text x="${lx + 15}" y="${ly}" fill="#333333">${esc(it.t)}</text>`;
+    lx += w + 12;
+  });
+  // frise du temps : avancée de la date affichée sur la période
+  const fy = ly + 22, n = A.frames.length, part = n > 1 ? p / (n - 1) : 1, larg = W - 2 * M;
+  const frise = `<rect x="${M}" y="${fy}" width="${larg}" height="5" rx="2.5" fill="#e1e0d9"/><rect x="${M}" y="${fy}" width="${(larg * part).toFixed(1)}" height="5" rx="2.5" fill="#000091"/>
+    <circle cx="${(M + larg * part).toFixed(1)}" cy="${fy + 2.5}" r="6" fill="#000091" stroke="#ffffff" stroke-width="2"/>
+    <text x="${M}" y="${fy + 22}" fill="#555555" style="font-size:11px">${esc(dateLabel(A.frames[0].date, A.grain))}</text>
+    <text x="${W - M}" y="${fy + 22}" text-anchor="end" fill="#555555" style="font-size:11px">${esc(dateLabel(A.frames[n - 1].date, A.grain))}</text>
+    <text x="${W / 2}" y="${fy + 22}" text-anchor="middle" fill="#898781" style="font-size:11px">PRISME · tableau de bord · ${esc(stamp())}</text>`;
+  const H = fy + 34;
+  const src = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+    <style>text{font-family:Marianne,Arial,Helvetica,sans-serif;font-size:12px}</style>
+    <rect width="100%" height="100%" fill="#ffffff"/>${haut}<g transform="translate(${M},${y})">${carte}</g>${leg}${frise}</svg>`;
+  const k = largeurCible / W, pair = x => 2 * Math.round(x * k / 2);
+  return dessinerSvg(src, pair(W), pair(H));
+}
+async function exporterAnimation(b, i, format, bouton) {
+  const cle = cleAnim(b, i), A = animCache.get(cle), zone = RACINE.querySelector(`[data-anim="${cle}"]`), chart = zone && zone.closest(".chart");
+  if (!A || !chart) { showMsg("warn", "Animation introuvable : rechargez le tableau de bord."); return; }
+  arreterLecture(cle);
+  const libelle = bouton.textContent, pos = A.pos, vitesse = etatAnim(cle).vitesse || A.vitesse;
+  bouton.disabled = true;
+  try {
+    await chargerVideo();
+    const images = [];
+    for (let p = 0; p < A.frames.length; p++) {
+      bouton.textContent = `Images ${p + 1}/${A.frames.length}`;
+      const canvas = await imageAnimation(chart, A, p, format === "mp4" ? 1280 : 800);
+      images.push({ canvas, duree: vitesse + (p === 0 ? 1000 : 0) + (p === A.frames.length - 1 ? 2500 : 0) });   // début et fin tenus plus longtemps
+    }
+    bouton.textContent = "Encodage…";
+    const fichier = format === "mp4" ? await window.Video.mp4(images) : await window.Video.gif(images);
+    triggerDownload(new Blob([fichier], { type: "application/octet-stream" }), `${fileSafe(A.titre || "carte")}.${format}`);
+    showMsg("ok", format === "mp4" ? `Vidéo MP4 enregistrée : ${A.frames.length} dates, ${Math.round(images.reduce((s, x) => s + x.duree, 0) / 1000)} s (PowerPoint : Insertion › Vidéo › Cet appareil).`
+      : `GIF animé enregistré : ${A.frames.length} dates, ${Math.round(fichier.size / 1024)} ko (Word : Insertion › Images ; il s'anime à l'écran, pas à l'impression).`);
+  } catch (e) { showMsg("err", `${format === "mp4" ? "Vidéo MP4" : "GIF animé"} impossible : ${e && e.message ? e.message : e}`); }
+  finally { bouton.disabled = false; bouton.textContent = libelle; afficherImage(cle, Math.min(pos, A.frames.length - 1)); }
+}
+// Réglages de l'animation (onglet Données de l'atelier, sous le type de graphique)
+function animEditor(b, i) {
+  if (!(b.cols && b.cols.col && isDate(b.cols.col))) return `<span class="hint">Animation : mettez une date en « Colonnes » (par jour ou par semaine) pour animer la carte jour après jour.</span>`;
+  const a = b.anim || {}, parJour = (b.cols.grain || "jour") === "jour";
+  return `<label title="Une image par date des colonnes : lecture, curseur, vidéo MP4 et GIF animé"><input type="checkbox" data-b="${i}" data-k="anim.actif" ${a.actif ? "checked" : ""}> Animer selon les dates</label>
+    ${a.actif ? `${parJour ? `<select data-b="${i}" data-k="anim.jours" title="Jours où aucune ligne ne correspond (samedi, vacances…) : une carte vide ferait croire à une accalmie">${opt(ANIM_JOURS, a.jours || "sauter")}</select>
+      <label><input type="checkbox" data-b="${i}" data-k="anim.weekend" ${a.weekend ? "checked" : ""}> Sans samedis ni dimanches</label>` : ""}
+      <select data-b="${i}" data-k="anim.cumul">${opt([["", "valeur de chaque date"], ["cumul", "cumul depuis le début"]], a.cumul || "")}</select>
+      <select data-b="${i}" data-k="anim.vitesse" title="Vitesse proposée au lecteur, qui peut la changer">${opt(ANIM_VITESSES.map(([v, l]) => [String(v), l]), String(a.vitesse || 500))}</select>
+      <span class="hint">Couleurs calculées sur toute la période. Dans Word : la carte de la date affichée ; boutons « Vidéo MP4 » (PowerPoint) et « GIF animé » (Word, Tchap) au-dessus de la carte.</span>` : ""}`;
 }
 const svgWrap = (W, H, inner, label) => `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="width:${W}px;max-width:100%" role="img" aria-label="${esc(label || "")}">${inner}</svg>`;
 
@@ -1998,6 +2243,7 @@ function render() {
   RACINE.classList.toggle("editing", editing); RACINE.classList.toggle("lecture", CTX.mode !== "edition");
   $("toggleEdit").textContent = editing ? "Terminer les modifications" : "Modifier le tableau de bord";
   renderGlobal();
+  animCache.clear();                                                // images des cartes animées : recalculées par les blocs ci-dessous
   const base = baseRows();
   const tiles = [], blocks = [];
   config.blocks.forEach((b, i) => { if (b.type === "tile" && !editing && attachedTo(b)) return; (b.type === "tile" ? tiles : blocks).push(b.type === "tile" ? renderTile(b, i, base) : renderCross(b, i, base)); });
@@ -2027,6 +2273,11 @@ function commit() { saveConfig(); render(); }
 
 RACINE.addEventListener("change", e => {
   const t = e.target;
+  if (t.classList && t.classList.contains("anim-curseur")) return;
+  if (t.classList && t.classList.contains("anim-vitesse")) {           // vitesse choisie par le lecteur, pour cette page
+    const cle = t.closest("[data-anim]").dataset.anim, e2 = etatAnim(cle), enLecture = !!e2.minuteur;
+    e2.vitesse = Number(t.value); if (enLecture) { arreterLecture(cle); basculerLecture(cle); } return;
+  }
   if (t.id === "dashName") { config.name = t.value.trim() || "Tableau de bord"; commit(); return; }
   if (t.dataset && t.dataset.couleur !== undefined) {                 // couleur choisie pour une valeur d'un graphique
     const b = config.blocks[Number(t.dataset.b)], c = b.couleurs = b.couleurs || {};
@@ -2067,6 +2318,7 @@ RACINE.addEventListener("change", e => {
     const b = config.blocks[Number(t.dataset.b)];
     const v = t.type === "checkbox" ? t.checked : t.type === "number" ? Number(t.value) : t.value;
     setPath(b, t.dataset.k, v);
+    if (t.dataset.k === "anim.actif" && v && (b.view || "both") === "both") b.view = "chart";
     if (t.dataset.k === "source") {
       const oldSrc = t.dataset.prev || null;
       if (!v) delete b.source;
@@ -2115,6 +2367,8 @@ RACINE.addEventListener("change", e => {
 RACINE.addEventListener("click", e => {
   const t = e.target.closest("button"); if (!t) return;
   const act = t.dataset.act, i = Number(t.dataset.b);
+  if (act === "anim-lecture") { const z = t.closest("[data-anim]"); if (z) basculerLecture(z.dataset.anim); return; }
+  if (act === "anim-mp4" || act === "anim-gif") { exporterAnimation(config.blocks[i], i, act === "anim-mp4" ? "mp4" : "gif", t); return; }
   if (act === "clrdetail") { delete config.blocks[i].detailCols; commit(); return; }
   if (act === "autodesc") { delete config.blocks[i].desc; commit(); return; }
   if (act === "coulreset") { delete config.blocks[i].couleurs; commit(); return; }
@@ -3063,6 +3317,9 @@ RACINE.addEventListener("change", e => {
   }
 });
 RACINE.addEventListener("input", e => {
+  if (e.target.classList && e.target.classList.contains("anim-curseur")) {    // curseur d'une carte animée
+    const cle = e.target.closest("[data-anim]").dataset.anim; arreterLecture(cle); afficherImage(cle, Number(e.target.value)); return;
+  }
   if (e.target.id !== "qsearch") return;
   const q = norm(e.target.value);
   $("qpop").querySelectorAll(".qopt").forEach(l => l.style.display = !q || l.dataset.txt.includes(q) ? "" : "none");
