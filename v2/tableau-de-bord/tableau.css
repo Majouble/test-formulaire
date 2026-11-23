@@ -97,7 +97,10 @@
   #tableau-de-bord .chart.anime path[data-z] { transition: fill .35s ease; }
   #tableau-de-bord .chart.anime path[data-zh] { transition: opacity .3s ease; }
   #tableau-de-bord .chart.anime circle[data-z] { transition: r .3s ease, fill .3s ease, opacity .3s ease; }
-  @media (prefers-reduced-motion: reduce) { #tableau-de-bord .chart.anime path, #tableau-de-bord .chart.anime circle { transition: none; } }
+  #tableau-de-bord .anim-histo { margin-top: 6px; }
+  #tableau-de-bord .anim-histo rect[data-hp] { transition: fill .25s ease, opacity .25s ease; }
+  #tableau-de-bord .anim-histo rect[data-anim-p]:hover { fill: var(--grid); fill-opacity: .5; }
+  @media (prefers-reduced-motion: reduce) { #tableau-de-bord .chart.anime path, #tableau-de-bord .chart.anime circle, #tableau-de-bord .anim-histo rect { transition: none; } }
   #tableau-de-bord #tip { position: fixed; pointer-events: none; z-index: 20; background: var(--surface); color: var(--ink); border: 1px solid var(--ring);
     box-shadow: 0 4px 14px rgba(0,0,0,.12); border-radius: 8px; padding: 6px 9px; font-size: 10pt; display: none; max-width: 260px; }
   #tableau-de-bord #tip b { font-weight: 600; }
