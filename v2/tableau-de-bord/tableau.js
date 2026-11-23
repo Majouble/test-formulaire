@@ -1863,7 +1863,7 @@ function renderPoints(b, d, bi) {
 // Les images sont calculées au rendu (dans la table source du bloc) et gardées dans animCache ; la lecture ne fait
 // ensuite que changer les couleurs, les chiffres et les tailles déjà dessinés (transitions CSS), sans redessiner.
 // =============================================================================
-const ANIM_VITESSES = [[1000, "1 date par seconde"], [500, "2 dates par seconde"], [250, "4 dates par seconde"], [125, "8 dates par seconde"]];
+const ANIM_VITESSES = [[2000, "1 date toutes les 2 secondes"], [1000, "1 date par seconde"], [500, "2 dates par seconde"], [250, "4 dates par seconde"], [125, "8 dates par seconde"]];
 const ANIM_JOURS = [["sauter", "jours sans signalement : sautés"], ["dernier", "jours sans signalement : dernier état connu"], ["vides", "jours sans signalement : carte vide"]];
 const JOURS_SEMAINE = ["dim.", "lun.", "mar.", "mer.", "jeu.", "ven.", "sam."];
 const animCache = new Map();          // clé du bloc -> { frames, etats, pos, grain, titre, mesure, type }
