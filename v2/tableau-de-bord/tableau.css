@@ -88,6 +88,16 @@
   #tableau-de-bord .chart .val { fill: var(--ink); font-variant-numeric: tabular-nums; }
   #tableau-de-bord .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 8px; color: var(--ink-2); font-size: 10pt; }
   #tableau-de-bord .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  /* cartes animées : lecteur (lecture, curseur, date, vitesse, exports) et transitions d'une date à l'autre */
+  #tableau-de-bord .anim-lecteur { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 8px; }
+  #tableau-de-bord .anim-lecteur .anim-bouton { min-width: 2.6em; font-weight: 700; }
+  #tableau-de-bord .anim-lecteur .anim-curseur { flex: 1 1 180px; min-width: 120px; accent-color: var(--s1); }
+  #tableau-de-bord .anim-lecteur .anim-date { font-weight: 700; font-variant-numeric: tabular-nums; min-width: 8.5em; }
+  #tableau-de-bord .anim-lecteur .anim-sp { flex: 1 1 0; }
+  #tableau-de-bord .chart.anime path[data-z] { transition: fill .35s ease; }
+  #tableau-de-bord .chart.anime path[data-zh] { transition: opacity .3s ease; }
+  #tableau-de-bord .chart.anime circle[data-z] { transition: r .3s ease, fill .3s ease, opacity .3s ease; }
+  @media (prefers-reduced-motion: reduce) { #tableau-de-bord .chart.anime path, #tableau-de-bord .chart.anime circle { transition: none; } }
   #tableau-de-bord #tip { position: fixed; pointer-events: none; z-index: 20; background: var(--surface); color: var(--ink); border: 1px solid var(--ring);
     box-shadow: 0 4px 14px rgba(0,0,0,.12); border-radius: 8px; padding: 6px 9px; font-size: 10pt; display: none; max-width: 260px; }
   #tableau-de-bord #tip b { font-weight: 600; }
