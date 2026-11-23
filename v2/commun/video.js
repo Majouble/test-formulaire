@@ -12,16 +12,29 @@
   "use strict";
 
   // ------------------------------------------------------------------ MP4
-  // Profils H.264 essayés dans l'ordre : « baseline » d'abord (pas d'images B, donc ordre d'affichage = ordre de lecture)
-  const CODECS_H264 = ["avc1.42e028", "avc1.42e01f", "avc1.4d0028", "avc1.640028"];
+  // Profils H.264 essayés dans l'ordre : « baseline » d'abord (pas d'images B, donc ordre d'affichage = ordre de lecture),
+  // niveau 5.1 (grandes images) puis 4.0 et 3.1
+  const CODECS_H264 = ["avc1.42e033", "avc1.42e028", "avc1.42e01f", "avc1.4d0033", "avc1.640033", "avc1.4d0028", "avc1.640028"];
+  // Débit : l'encodeur partage le débit entre les images d'une seconde. Une carte animée n'en montre que quelques-unes par
+  // seconde : le débit est calculé pour ce rythme réel (sinon chaque image est trop compressée : flou, traces de l'image
+  // précédente). Environ 1,2 bit par pixel et par image, ce qui garde nets les aplats, les traits et les chiffres.
+  const BITS_PAR_PIXEL = 1.2, DEBIT_MAX = 40e6;
 
-  async function choisirCodec(largeur, hauteur) {
+  async function choisirCodec(largeur, hauteur, images = 30) {
     if (typeof VideoEncoder === "undefined" || typeof VideoFrame === "undefined") return null;
+    const bitrate = Math.round(Math.min(DEBIT_MAX, largeur * hauteur * BITS_PAR_PIXEL * images));
     for (const codec of CODECS_H264) {
-      const config = { codec, width: largeur, height: hauteur, bitrate: 2500000, framerate: 30, avc: { format: "avc" } };
+      const config = { codec, width: largeur, height: hauteur, bitrate, bitrateMode: "variable", framerate: images, avc: { format: "avc" } };
       try { if ((await VideoEncoder.isConfigSupported(config)).supported) return config; } catch (_) { /* codec suivant */ }
     }
     return null;
+  }
+  // image réduite à une largeur donnée (encodeur qui refuse la grande taille)
+  function reduire(canvas, largeur) {
+    const k = largeur / canvas.width, c = document.createElement("canvas");
+    c.width = largeur; c.height = 2 * Math.round(canvas.height * k / 2);
+    const ctx = c.getContext("2d"); ctx.imageSmoothingQuality = "high"; ctx.drawImage(canvas, 0, 0, c.width, c.height);
+    return c;
   }
   async function mp4Possible() {
     return !!(await choisirCodec(640, 480));
@@ -29,10 +42,15 @@
 
   async function mp4(images) {
     if (!images.length) throw new Error("aucune image à enregistrer");
-    const largeur = images[0].canvas.width, hauteur = images[0].canvas.height;
-    if (largeur % 2 || hauteur % 2) throw new Error("la largeur et la hauteur doivent être paires");
-    const config = await choisirCodec(largeur, hauteur);
+    if (images[0].canvas.width % 2 || images[0].canvas.height % 2) throw new Error("la largeur et la hauteur doivent être paires");
+    const parSeconde = Math.max(1, Math.min(30, Math.round(1000 / Math.min(...images.map(im => im.duree)))));   // rythme réel
+    let config = await choisirCodec(images[0].canvas.width, images[0].canvas.height, parSeconde);
+    if (!config && images[0].canvas.width > 1280) {                 // grande taille refusée : 1 280 px de large
+      images = images.map(im => ({ ...im, canvas: reduire(im.canvas, 1280) }));
+      config = await choisirCodec(images[0].canvas.width, images[0].canvas.height, parSeconde);
+    }
     if (!config) throw new Error("ce navigateur ne sait pas produire de vidéo MP4 : utilisez Edge ou Chrome à jour");
+    const largeur = config.width, hauteur = config.height;
     const echantillons = []; let description = null, erreur = null;
     const encodeur = new VideoEncoder({
       output: (morceau, meta) => {
@@ -49,7 +67,7 @@
     let t = 0;                                                     // en millisecondes
     images.forEach((im, i) => {
       const image = new VideoFrame(im.canvas, { timestamp: t * 1000, duration: im.duree * 1000 });   // microsecondes
-      encodeur.encode(image, { keyFrame: i % 20 === 0 });
+      encodeur.encode(image, { keyFrame: i % 10 === 0 });
       image.close(); t += im.duree;
     });
     await encodeur.flush(); encodeur.close();
