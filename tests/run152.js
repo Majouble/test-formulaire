@@ -1,4 +1,4 @@
-// 2.62.0-alpha.53 : cartes animées du tableau de bord — une image par date des colonnes (lecture, curseur, vitesse),
+// 2.62.0-alpha.53 à .56 : cartes animées du tableau de bord (histogramme des dates : .56) — une image par date des colonnes (lecture, curseur, vitesse),
 // jours sans signalement sautés, dernier état connu ou carte vide, samedis et dimanches écartés, cumul (valeurs distinctes
 // comptées une fois), classes calculées sur toute la période, forte hausse ; carte des établissements (points) animée ;
 // exports « Vidéo MP4 » (H.264, fichier MP4 non fragmenté) et « GIF animé » vérifiés par ffprobe ; réglages dans l'atelier.
@@ -85,6 +85,15 @@ const API = doc => `window.__DOC__=${JSON.stringify(doc)};window.__OPTS__={};` +
   await aller(0, 3); await page.setViewportSize({ width: 1250, height: 1400 }); await page.waitForTimeout(600);
   console.log('APRÈS UN RENDU :', (await lecteur(0)).date);
 
+  // 1 bis. histogramme des dates (2.62.0-alpha.56) : une barre par date, date affichée foncée avec sa valeur, clic sur une date
+  const histo = k => page.evaluate(k => { const c = document.querySelector(`[data-card="${k}"]`), h = c.querySelector('.anim-histo svg'); if (!h) return 'absent';
+    const bars = [...h.querySelectorAll('[data-hp]')], cour = bars.findIndex(r => /ink/.test(r.style.fill)), pales = bars.filter(r => r.style.opacity === '0.3').length;
+    return `${bars.length} barres | date affichée : barre ${cour} (${h.querySelector('[data-hv]').textContent}) | ${pales} pâles | grises : ${bars.filter(r => /axis/.test(r.style.fill)).length} | hauteurs : ${bars.map(r => Math.round(Number(r.getAttribute('height')))).join(' ')}`; }, k);
+  await aller(0, 9); console.log('HISTO, jeudi 12 :', await histo(0));
+  await page.click('[data-card="0"] [data-anim-p="3"]'); await page.waitForTimeout(150);
+  console.log('HISTO, CLIC SUR LA 4e DATE :', (await lecteur(0)).date, '|', await histo(0));
+  await aller(1, 6); console.log('HISTO, DERNIER ÉTAT + CUMUL, dimanche 8 :', await histo(1));
+  await aller(0, 15);
   // 2. dernier état connu et cumul : 19 jours (dimanches compris), le dimanche 8 garde l'état du samedi 7
   L = await lecteur(1); console.log('DERNIER + CUMUL :', L.dates, 'dates |', L.date, '|', L.valeurs);
   await aller(1, 6); L = await lecteur(1); console.log('DERNIER, dimanche 8 :', L.date, '|', L.jour);
@@ -101,6 +110,7 @@ const API = doc => `window.__DOC__=${JSON.stringify(doc)};window.__OPTS__={};` +
 
   // 6. exports : GIF et MP4 de la carte du jour
   await aller(0, 11); await page.waitForTimeout(500);
+  console.log('HISTO, lundi 16 :', await histo(0));
   await page.locator('[data-card="0"] .chart').screenshot({ path: path.join(__C.sorties, 'run152-hausse.png') });
   for (const [act, ext] of [['anim-gif', 'gif'], ['anim-mp4', 'mp4']]) {
     const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 120000 }), page.click(`[data-card="0"] [data-act="${act}"]`)]);

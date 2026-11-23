@@ -1750,7 +1750,7 @@ function renderMap(b, d, bi) {
   if (A) notes.push(animNote(A, b));
   else if (d.cc) notes.push("La carte montre le total de chaque ligne ; les colonnes restent visibles dans le tableau.");
   if (A) memoriserAnimation(A, b, etats);
-  return `<div class="chart map${A ? " anime" : ""}">${A ? lecteurHtml(A, bi) : ""}${svg}<div class="legend" title="${esc(what)}">${items.join("")}</div>${notes.map(t => `<p class="hint">${esc(t)}</p>`).join("")}</div>`;
+  return `<div class="chart map${A ? " anime" : ""}">${A ? lecteurHtml(A, bi) : ""}${svg}<div class="legend" title="${esc(what)}">${items.join("")}</div>${A && A.histo ? histoHtml(A, b, W) : ""}${notes.map(t => `<p class="hint">${esc(t)}</p>`).join("")}</div>`;
 }
 // ---- Carte des établissements : un point par ligne du bloc, placé d'après la latitude et la longitude du référentiel ----
 const cibleDe = type => (/^Ref:(.+)$/.exec(type || "") || [])[1] || "";
@@ -1855,7 +1855,7 @@ function renderPoints(b, d, bi) {
   if (A) notes.push(animNote(A, b));
   else if (d.cc) notes.push("La carte montre le total de chaque ligne ; les colonnes restent visibles dans le tableau.");
   if (A) memoriserAnimation(A, b, etats);
-  return `<div class="chart map points${A ? " anime" : ""}">${A ? lecteurHtml(A, bi) : ""}${svg}<div class="legend" title="${esc(plain(measureText(b.measure)))}">${items.join("")}</div>${notes.map(t => `<p class="hint">${esc(t)}</p>`).join("")}</div>`;
+  return `<div class="chart map points${A ? " anime" : ""}">${A ? lecteurHtml(A, bi) : ""}${svg}<div class="legend" title="${esc(plain(measureText(b.measure)))}">${items.join("")}</div>${A && A.histo ? histoHtml(A, b, W) : ""}${notes.map(t => `<p class="hint">${esc(t)}</p>`).join("")}</div>`;
 }
 // =============================================================================
 // Animation des cartes : une image par date des colonnes du bloc (lecture, curseur, vidéo MP4 et GIF)
@@ -1903,13 +1903,22 @@ function animation(b, d, bi) {
       valeurs.set(rk, frames.map(f => { while (j < l.length && l[j][0] <= f.date) cumul.push(l[j++][1]); return cumul.length ? aggregate(cumul, b.measure) : nul; }));
     });
   }
+  // total de chaque date, toutes lignes du bloc confondues (histogramme) : mesure recalculée sur les lignes de la date
+  const parDate = new Map();
+  d.rows.forEach(r => { const ck = keysOf(d.cc, r[d.cc], d.cg)[0]; if (ck === EMPTY) return; let l = parDate.get(ck); if (!l) parDate.set(ck, l = []); l.push(r); });
+  let totaux;
+  if (a.cumul !== "cumul") totaux = frames.map(f => f.cle === null ? nul : aggregate(parDate.get(f.cle) || [], b.measure));
+  else {
+    const ordre = [...parDate.keys()].sort(), cumul = []; let j = 0;
+    totaux = frames.map(f => { while (j < ordre.length && ordre[j] <= f.date) cumul.push(...parDate.get(ordre[j++])); return cumul.length ? aggregate(cumul, b.measure) : nul; });
+  }
   const cle = cleAnim(b, bi), e = etatAnim(cle);
   let pos = frames.findIndex(f => f.date === e.date); if (pos < 0) pos = frames.length - 1;   // par défaut : la date la plus récente
   e.date = frames[pos].date;
-  return { cle, frames, pos, grain, cumul: a.cumul === "cumul", vitesse: Number(a.vitesse) || 500, val: (rk, p) => { const v = valeurs.get(rk); return v ? v[p] : nul; } };
+  return { cle, frames, pos, grain, totaux, histo: a.histo !== false, cumul: a.cumul === "cumul", vitesse: Number(a.vitesse) || 500, val: (rk, p) => { const v = valeurs.get(rk); return v ? v[p] : nul; } };
 }
 function memoriserAnimation(A, b, etats) {
-  animCache.set(A.cle, { ...A, etats, titre: plain(b.title || measureText(b.measure)), mesure: plain(measureText(b.measure)) + (A.cumul ? " (cumul depuis le début)" : "") });
+  animCache.set(A.cle, { ...A, etats, couleurHisto: classeCouleur(b, 3), titre: plain(b.title || measureText(b.measure)), mesure: plain(measureText(b.measure)) + (A.cumul ? " (cumul depuis le début)" : "") });
 }
 function libelleImage(A, p) {
   const f = A.frames[p];
@@ -1941,10 +1950,46 @@ function appliquerImage(svg, A, p) {
   if (E.txt) svg.querySelectorAll("[data-zl]").forEach(el => { const z = Number(el.dataset.zl); el.textContent = E.txt[z] ?? ""; el.style.fill = E.ink[z]; });
   if (E.hausse) svg.querySelectorAll("[data-zh]").forEach(el => el.setAttribute("opacity", E.hausse[Number(el.dataset.zh)] ? 1 : 0));
 }
+// ---- Histogramme des dates : une barre par date (total du bloc), la date affichée mise en avant ; un clic y amène la carte
+const HISTO = { h: 128, gauche: 40, droite: 8, haut: 18, bas: 96 };
+function histoHtml(A, b, W) {
+  const n = A.frames.length, vals = A.totaux.map(v => isNaN(v) ? 0 : v), max = Math.max(1, ...vals), coul = classeCouleur(b, 3);
+  const { h: H, gauche: G, droite: D, haut: Y0, bas: Y1 } = HISTO, larg = W - G - D, bande = larg / n, bw = Math.max(1, bande - (bande > 5 ? 2 : bande > 2 ? 1 : 0));
+  let s = "";
+  niceTicks(max, 3).filter(t => t > 0).forEach(t => { const y = Y1 - t / max * (Y1 - Y0); if (y >= Y0 - 1) s += `<line x1="${G}" x2="${W - D}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--grid)"></line><text x="${G - 6}" y="${(y + 4).toFixed(1)}" text-anchor="end" style="font-size:8pt">${fmtNum(t)}</text>`; });
+  s += `<line x1="${G}" x2="${W - D}" y1="${Y1}" y2="${Y1}" stroke="var(--axis)"></line><text x="${G - 6}" y="${Y1 + 4}" text-anchor="end" style="font-size:8pt">0</text>`;
+  A.frames.forEach((f, p) => {
+    const x = G + p * bande, hb = vals[p] / max * (Y1 - Y0), tip = `${libelleImage(A, p)}${f.note ? " (" + f.note + ")" : ""}${TIP_SEP}${fmtNum(A.totaux[p])}`;
+    const fond = p === A.pos ? "var(--ink)" : f.note ? "var(--axis)" : coul;   // état de départ ; ensuite appliquerHisto
+    s += `<rect data-hp="${p}" x="${(x + (bande - bw) / 2).toFixed(1)}" y="${(Y1 - hb).toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(0, hb).toFixed(1)}" rx="${bw > 6 ? 2 : 0}" style="fill:${fond};opacity:${p > A.pos ? ".3" : "1"}" pointer-events="none"></rect>
+      <rect data-anim-p="${p}" x="${x.toFixed(1)}" y="${Y0 - 6}" width="${bande.toFixed(1)}" height="${Y1 - Y0 + 6}" fill="transparent" style="cursor:pointer" data-tip="${esc(tip)}"></rect>`;
+  });
+  // repères de dates : début, fin et quelques dates régulières entre les deux
+  const pas = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(larg / 90))));
+  for (let p = 0; p < n; p += pas) if (p === 0 || n - 1 - p >= pas / 2) s += `<text x="${(G + (p + 0.5) * bande).toFixed(1)}" y="${Y1 + 15}" text-anchor="middle" style="font-size:8pt">${esc(dateLabel(A.frames[p].date, A.grain).replace(/\/\d{4}$/, ""))}</text>`;
+  if (n > 1) s += `<text x="${(G + (n - 0.5) * bande).toFixed(1)}" y="${Y1 + 15}" text-anchor="middle" style="font-size:8pt">${esc(dateLabel(A.frames[n - 1].date, A.grain).replace(/\/\d{4}$/, ""))}</text>`;
+  const yv = Math.max(Y0 - 4, Y1 - vals[A.pos] / max * (Y1 - Y0) - 4);
+  s += `<text class="val" data-hv x="${(G + (A.pos + 0.5) * bande).toFixed(1)}" y="${yv.toFixed(1)}" text-anchor="middle" style="font-size:8.5pt;font-weight:700;fill:var(--ink)">${esc(fmtNum(A.totaux[A.pos]))}</text>`;
+  s += `<text x="${G}" y="11" style="font-size:8pt">${esc(A.cumul ? "Total cumulé à chaque date" : "Total de chaque date")}</text>`;
+  const svg = svgWrap(W, H, s, "Histogramme des dates de l'animation");
+  return `<div class="anim-histo" data-coul="${esc(coul)}">${svg}</div>`;
+}
+// barres passées pleines, date affichée foncée avec sa valeur, dates à venir pâles ; dates sans signalement en gris
+function appliquerHisto(svg, A, p) {
+  const n = A.frames.length, vals = A.totaux.map(v => isNaN(v) ? 0 : v), max = Math.max(1, ...vals);
+  const { gauche: G, droite: D, haut: Y0, bas: Y1 } = HISTO, W = Number(svg.getAttribute("width")), bande = (W - G - D) / n;
+  svg.querySelectorAll("[data-hp]").forEach(r => {
+    const q = Number(r.dataset.hp), base = A.frames[q].note ? "var(--axis)" : A.couleurHisto;
+    r.style.fill = q === p ? "var(--ink)" : base; r.style.opacity = q > p ? ".3" : "1";
+  });
+  const t = svg.querySelector("[data-hv]");
+  if (t) { t.textContent = fmtNum(A.totaux[p]); t.setAttribute("x", (G + (p + 0.5) * bande).toFixed(1)); t.setAttribute("y", Math.max(Y0 - 4, Y1 - vals[p] / max * (Y1 - Y0) - 4).toFixed(1)); t.style.fill = "var(--ink)"; }
+}
 function afficherImage(cle, p) {
   const A = animCache.get(cle), zone = RACINE.querySelector(`[data-anim="${cle}"]`); if (!A || !zone) return false;
   const chart = zone.closest(".chart"), svg = chart && chart.querySelector("svg"); if (!svg) return false;
   appliquerImage(svg, A, p);
+  const histo = chart.querySelector(".anim-histo svg"); if (histo) appliquerHisto(histo, A, p);
   A.pos = p; etatAnim(cle).date = A.frames[p].date;
   zone.querySelector(".anim-curseur").value = p;
   zone.querySelector(".anim-date").textContent = libelleImage(A, p);
@@ -2010,8 +2055,21 @@ async function imageAnimation(chart, A, p, largeurCible) {
     leg += `<rect x="${lx}" y="${ly - 9}" width="10" height="10" rx="2" fill="${fond}"${bord}/><text x="${lx + 15}" y="${ly}" fill="#333333">${esc(it.t)}</text>`;
     lx += w + 12;
   });
-  // frise du temps : avancée de la date affichée sur la période
-  const fy = ly + 22, n = A.frames.length, part = n > 1 ? p / (n - 1) : 1, larg = W - 2 * M;
+  // histogramme des dates (s'il est affiché) ou frise du temps : avancée de la date affichée sur la période
+  const n = A.frames.length, part = n > 1 ? p / (n - 1) : 1, larg = W - 2 * M, histo = chart.querySelector(".anim-histo svg");
+  if (histo) {
+    const copieH = histo.cloneNode(true); appliquerHisto(copieH, A, p);
+    let h = copieH.innerHTML.replace(/<title>[\s\S]*?<\/title>/g, "").replace(/ data-(tip|hp|hv|anim-p)(="[^"]*")?/g, "");
+    h = lightVars(h).replace(/<text(?![^>]*fill=)/g, '<text fill="#333333"');
+    const yh = ly + 16, hh = Number(histo.getAttribute("height"));
+    const H = yh + hh + 22, k = largeurCible / W, pair = x => 2 * Math.round(x * k / 2);
+    const src = `<svg xmlns="http://www.w3.org/2000/svg" width="${pair(W)}" height="${pair(H)}" viewBox="0 0 ${W} ${H}">
+      <style>text{font-family:Marianne,Arial,Helvetica,sans-serif;font-size:12px}</style>
+      <rect width="100%" height="100%" fill="#ffffff"/>${haut}<g transform="translate(${M},${y})">${carte}</g>${leg}<g transform="translate(${M},${yh})">${h}</g>
+      <text x="${W / 2}" y="${H - 8}" text-anchor="middle" fill="#898781" style="font-size:11px">PRISME · tableau de bord · ${esc(stamp())}</text></svg>`;
+    return dessinerSvg(src, pair(W), pair(H));
+  }
+  const fy = ly + 22;
   const frise = `<rect x="${M}" y="${fy}" width="${larg}" height="5" rx="2.5" fill="#e1e0d9"/><rect x="${M}" y="${fy}" width="${(larg * part).toFixed(1)}" height="5" rx="2.5" fill="#000091"/>
     <circle cx="${(M + larg * part).toFixed(1)}" cy="${fy + 2.5}" r="6" fill="#000091" stroke="#ffffff" stroke-width="2"/>
     <text x="${M}" y="${fy + 22}" fill="#555555" style="font-size:11px">${esc(dateLabel(A.frames[0].date, A.grain))}</text>
@@ -2053,6 +2111,7 @@ function animEditor(b, i) {
   return `<label title="Une image par date des colonnes : lecture, curseur, vidéo MP4 et GIF animé"><input type="checkbox" data-b="${i}" data-k="anim.actif" ${a.actif ? "checked" : ""}> Animer selon les dates</label>
     ${a.actif ? `${parJour ? `<select data-b="${i}" data-k="anim.jours" title="Jours où aucune ligne ne correspond (samedi, vacances…) : une carte vide ferait croire à une accalmie">${opt(ANIM_JOURS, a.jours || "sauter")}</select>
       <label><input type="checkbox" data-b="${i}" data-k="anim.weekend" ${a.weekend ? "checked" : ""}> Sans samedis ni dimanches</label>` : ""}
+      <label title="Une barre par date (total du bloc) sous la carte, la date affichée mise en avant ; aussi dans la vidéo et le GIF"><input type="checkbox" data-b="${i}" data-k="anim.histo" ${a.histo !== false ? "checked" : ""}> Histogramme des dates</label>
       <select data-b="${i}" data-k="anim.cumul">${opt([["", "valeur de chaque date"], ["cumul", "cumul depuis le début"]], a.cumul || "")}</select>
       <select data-b="${i}" data-k="anim.vitesse" title="Vitesse proposée au lecteur, qui peut la changer">${opt(ANIM_VITESSES.map(([v, l]) => [String(v), l]), String(a.vitesse || 500))}</select>
       <span class="hint">Couleurs calculées sur toute la période. Dans Word : la carte de la date affichée ; boutons « Vidéo MP4 » (PowerPoint) et « GIF animé » (Word, Tchap) au-dessus de la carte.</span>` : ""}`;
@@ -3315,6 +3374,11 @@ RACINE.addEventListener("change", e => {
       const c = pop.querySelector('input[name=qpreset][value="custom"]'); if (c) c.checked = true;
     }
   }
+});
+RACINE.addEventListener("click", e => {                            // clic sur une date de l'histogramme d'une carte animée
+  const r = e.target.closest && e.target.closest("[data-anim-p]"); if (!r) return;
+  const z = r.closest(".chart") && r.closest(".chart").querySelector("[data-anim]"); if (!z) return;
+  arreterLecture(z.dataset.anim); afficherImage(z.dataset.anim, Number(r.dataset.animP));
 });
 RACINE.addEventListener("input", e => {
   if (e.target.classList && e.target.classList.contains("anim-curseur")) {    // curseur d'une carte animée
