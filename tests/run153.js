@@ -1,4 +1,4 @@
-// 2.62.0-alpha.57 et .58 (comptage en établissements) : graphique « Élèves concernés » du tableau de bord — carte à cercles proportionnels (parts par
+// 2.62.0-alpha.57, .58 (comptage en établissements) et .59 (vue fusionnée : tableau de barres, deux histogrammes ; retour à la normale) : graphique « Élèves concernés » du tableau de bord — carte à cercles proportionnels (parts par
 // qualification), compteur, carrés et histogramme animés par date ; un établissement compte une fois par date avec sa
 // qualification la plus grave ; qualifications comptées réglables ; clic sur une académie ; exports MP4 (images
 // intermédiaires) et GIF ; image dans Word ; réglages et modèle de bloc dans l'atelier.
@@ -37,7 +37,7 @@ const API = doc => `window.__DOC__=${JSON.stringify(doc)};window.__OPTS__={};` +
   const page = await browser.newPage({ viewport: { width: 1300, height: 1500 }, acceptDownloads: true });
   page.on('pageerror', e => console.log('PAGEERROR', e.message)); page.on('dialog', d => d.accept());
   const doc = docEleves();
-  publier(doc, { name: 'Tableau de bord', filters: [], blocks: [BLOC('tous', {}, { vitesse: '500' }), BLOC('fermes', { qualifs: ['Fermeture'] }, {}), BLOC('etabs', { mesure: 'etablissements' }, {})] });
+  publier(doc, { name: 'Tableau de bord', filters: [], blocks: [BLOC('tous', {}, { vitesse: '500' }), BLOC('fermes', { qualifs: ['Fermeture'] }, {}), BLOC('etabs', { mesure: 'etablissements' }, {}), BLOC('fusion', { mesure: 'fusion' }, { vitesse: '500' })] });
   await page.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: API(doc) }));
   await page.goto('file://' + __C.racine + '/v2/tableau-de-bord/index.html'); await page.waitForTimeout(2200);
   const lire = k => page.evaluate(k => { const c = document.querySelector(`[data-card="${k}"]`); if (!c || !c.querySelector('.el-total')) return { absent: c ? c.textContent.slice(0, 300) : 'bloc absent' };
@@ -66,6 +66,22 @@ const API = doc => `window.__DOC__=${JSON.stringify(doc)};window.__OPTS__={};` +
   await page.click('[data-card="2"] [data-zsel="Orléans-Tours"]'); await page.waitForTimeout(700); L = await lire(2);
   console.log('ÉTABLISSEMENTS, ORLÉANS-TOURS (16/11) :', L.total, '| attendu', attendu(doc, '2026-11-16', TOUTES, 'Orléans-Tours', true), '| infobulle :', await page.$eval('[data-card="2"] [data-zsel="Orléans-Tours"]', e => e.getAttribute('data-tip').replace('\u0001', ' → ')));
   await page.locator('[data-card="2"] .chart').screenshot({ path: path.join(__C.sorties, 'run153-etablissements.png') });
+  // vue fusionnée (2.62.0-alpha.59) : tableau de barres (établissements, élèves) et deux histogrammes
+  const tableau = k => page.evaluate(k => { const c = document.querySelector(`[data-card="${k}"]`), t = c.querySelector('.el-tableau'); if (!t) return 'absent';
+    const lignes = [...t.querySelectorAll('[data-tn^="e"]')].map(n => { const q = n.dataset.tn.slice(1); return `${t.querySelectorAll('text title')[q].textContent} ${n.textContent} établ. (${Math.round(t.querySelector(`[data-tb="e${q}"]`).getAttribute('width'))} px) / ${t.querySelector(`[data-tn="p${q}"]`).textContent} élèves (${Math.round(t.querySelector(`[data-tb="p${q}"]`).getAttribute('width'))} px)`; });
+    return `totaux ${t.querySelector('[data-tt="e"]').textContent} établ. / ${t.querySelector('[data-tt="p"]').textContent} élèves | ${lignes.join(' ; ')} | histogrammes : ${[...c.querySelectorAll('.anim-histo')].map(h => h.querySelector('text:last-of-type').textContent + ' ' + h.querySelector('[data-hv]').textContent).join(' + ')} | parts : « ${c.querySelector('.el-parts').textContent} »`; }, k);
+  await aller(3, 11); L = await lire(3);
+  console.log('FUSION, 16/11 :', L.total, L.sous, '| attendu', attendu(doc, '2026-11-16', TOUTES, null, true), 'établ. et', attendu(doc, '2026-11-16', TOUTES), 'élèves\n  ', await tableau(3));
+  await page.click('[data-card="3"] [data-zsel="Lyon"]'); await page.waitForTimeout(700); L = await lire(3);
+  console.log('FUSION, LYON :', L.total, L.sous, '| attendu', attendu(doc, '2026-11-16', TOUTES, 'Lyon', true), 'et', attendu(doc, '2026-11-16', TOUTES, 'Lyon'), '\n  ', await tableau(3));
+  await page.click('[data-card="3"] [data-act="el-france"]'); await page.waitForTimeout(600);
+  await page.locator('[data-card="3"] .chart').screenshot({ path: path.join(__C.sorties, 'run153-fusion.png') });
+  for (const [act, ext] of [['anim-gif', 'gif'], ['anim-mp4', 'mp4']]) {
+    const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 180000 }), page.click(`[data-card="3"] [data-act="${act}"]`)]);
+    const f = path.join(__C.sorties, `run153-fusion.${ext}`); await dl.saveAs(f);
+    console.log(`FUSION ${ext.toUpperCase()} :`, Math.round(fs.statSync(f).size / 1024), 'ko |', execSync(`ffprobe -v error -count_frames -show_entries stream=width,height,nb_read_frames -of compact=p=0 "${f}"`).toString().trim());
+  }
+  execSync(`ffmpeg -v error -y -i "${path.join(__C.sorties, 'run153-fusion.gif')}" -vf "select=eq(n\\,11)" -vframes 1 "${path.join(__C.sorties, 'run153-fusion-gif.png')}"`);
   // clic sur une académie, puis bouton France
   await page.click('[data-card="0"] [data-zsel="Orléans-Tours"]'); await page.waitForTimeout(700); L = await lire(0);
   console.log('CLIC ORLÉANS-TOURS (16/11) :', L.total, L.sous, '| attendu', attendu(doc, '2026-11-16', TOUTES, 'Orléans-Tours'), '|', L.carres, 'carrés |', L.unite);
@@ -89,6 +105,13 @@ const API = doc => `window.__DOC__=${JSON.stringify(doc)};window.__OPTS__={};` +
   const fw = path.join(__C.sorties, 'run153.docx'); await dw.saveAs(fw);
   console.log('WORD :', execSync(`unzip -l "${fw}" | grep -c "word/media/"`).toString().trim(), 'image(s), pas de graphique natif :', execSync(`unzip -l "${fw}" | grep -c "word/charts/" || true`).toString().trim());
 
+  // retour à la normale (2.62.0-alpha.59) : qualifications déclarées dans Config › general (ici « Perturbation », pour l'essai) non comptées
+  const doc3 = docEleves(), Cf = doc3.__data.Config; Cf.id.push(Math.max(...Cf.id) + 1); Cf.Cle.push('general'); Cf.Valeur.push(JSON.stringify({ retour_normale: ['RAS', 'Perturbation'] })); if (Cf.Modifie_le) Cf.Modifie_le.push(null);
+  publier(doc3, { name: 'Tableau de bord', filters: [], blocks: [BLOC('retour', { mesure: 'etablissements' }, {})] });
+  await page.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: API(doc3) }));
+  await page.goto('file://' + __C.racine + '/v2/tableau-de-bord/index.html'); await page.waitForTimeout(2200);
+  await aller(0, 11); L = await lire(0);
+  console.log('RETOUR À LA NORMALE = RAS, Perturbation :', L.total, '| attendu', attendu(doc3, '2026-11-16', ['Fermeture'], null, true), '|', L.parts, '|', L.notes.split(' / ')[0].replace(/.*qualifications comptées/, 'qualifications comptées'));
   // atelier : modèle « Élèves concernés », réglages, qualifications comptées
   const doc2 = docEleves(); publier(doc2, { name: 'Tableau de bord', filters: [], blocks: [] });
   await page.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.__DOC__=${JSON.stringify(doc2)};` + fs.readFileSync('mock.js') + fs.readFileSync('fakeapi.js') + fs.readFileSync('mock-saisie.js') + `;grist.getOption=async()=>null;` }));
