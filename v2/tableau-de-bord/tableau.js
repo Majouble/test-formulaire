@@ -1255,7 +1255,7 @@ function renderCross(b, i, base) {
 // =============================================================================
 // Graphiques : description commune (écran + Word), puis rendu SVG
 // =============================================================================
-const CHART_TYPES = [["barh", "Barres horizontales"], ["barv", "Colonnes (histogramme)"], ["line", "Courbe"], ["pie", "Anneau (répartition)"], ["map", "Carte (départements ou académies)"], ["points", "Carte des établissements (points)"], ["gantt", "Frise des durées (Gantt)"], ["eleves", "Élèves concernés (carte, compteur, animés)"]];
+const CHART_TYPES = [["barh", "Barres horizontales"], ["barv", "Colonnes (histogramme)"], ["line", "Courbe"], ["pie", "Anneau (répartition)"], ["map", "Carte (départements ou académies)"], ["points", "Carte des établissements (points)"], ["gantt", "Frise des durées (Gantt)"], ["eleves", "Élèves ou établissements concernés (carte, compteur, animés)"]];
 const STACK_MODES = [["stack", "Séries empilées"], ["group", "Séries côte à côte"], ["pct", "Empilées à 100 %"]];
 const PIE_MAX = 6;
 
@@ -2147,7 +2147,9 @@ function colonneEffectif(b) {
     || columns.find(x => /^effectif/i.test(x.id));
   return c ? c.id : "";
 }
-const niceUnite = m => [10, 25, 50, 100, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000].find(u => m / u <= EL_COLS * EL_LIGNES) || 100000;
+const niceUnite = (m, parEtab) => (parEtab ? [1, 2, 5, 10, 20, 50, 100, 200, 500] : [10, 25, 50, 100, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000]).find(u => m / u <= EL_COLS * EL_LIGNES) || 100000;
+// mot de l'unité comptée : élèves (effectifs) ou établissements (chacun compte pour 1)
+const motEleves = (X, n) => X.parEtab ? (n > 1 ? "établissements" : "établissement") : (n > 1 ? "élèves" : "élève");
 
 function renderEleves(b, d, bi) {
   const msg = t => `<div class="chart"><p class="hint">${esc(t)}</p></div>`;
@@ -2155,8 +2157,8 @@ function renderEleves(b, d, bi) {
   if (!isMainSrc(b)) return msg("Élèves concernés : ce graphique lit la table des signalements (Source : table du widget).");
   if (!c.etab || !c.qualif) return msg("Élèves concernés : colonnes de l'établissement et de la qualification non reconnues ; choisissez-les dans « Réglages du tableau › Durées de qualification ».");
   if (!d.cc || !isDate(d.cc)) return msg("Élèves concernés : mettez une date en « Colonnes » (en général la date des faits, par jour) : une image par date.");
-  const eff = colonneEffectif(b);
-  if (!eff) return msg("Élèves concernés : aucune colonne d'effectif trouvée dans la table ; choisissez-la dans les réglages du graphique (« Effectif »).");
+  const parEtab = (b.eleves || {}).mesure === "etablissements", eff = colonneEffectif(b);
+  if (!eff && !parEtab) return msg("Élèves concernés : aucune colonne d'effectif trouvée dans la table ; choisissez-la dans les réglages du graphique (« Effectif »).");
   const A = animation({ ...b, anim: { ...(b.anim || {}), actif: true } }, d, bi);
   if (!A) return msg("Élèves concernés : aucune date à afficher.");
   const E = b.eleves || {}, level = mapLevel(b, d), gravite = qualifsEleves(c);
@@ -2172,7 +2174,7 @@ function renderEleves(b, d, bi) {
     let m = parDate.get(jour); if (!m) parDate.set(jour, m = new Map());
     let x = m.get(cle); if (!x) m.set(cle, x = { q: null, eff: NaN, zone });
     keysOf(c.qualif, r[c.qualif]).filter(k => k !== EMPTY && !estRas(k)).map(groupeQualif).forEach(q => { vues.add(q); x.q = x.q === null ? q : plusGrave(x.q, q); });
-    const n = numOf(r[eff]); if (!isNaN(n)) x.eff = isNaN(x.eff) ? n : Math.max(x.eff, n);
+    const n = parEtab ? 1 : numOf(r[eff]); if (!isNaN(n)) x.eff = isNaN(x.eff) ? n : Math.max(x.eff, n);   // établissements : chacun compte pour 1
     if (!x.zone && zone) x.zone = zone;
   });
   const toutes = [...gravite, ...[...vues].filter(q => !rang.has(q)).sort((a, z) => a.localeCompare(z, "fr"))];
@@ -2212,25 +2214,25 @@ function renderEleves(b, d, bi) {
   const W = Math.max(360, Math.min(760, ($("blocks").clientWidth || 700) - 32)), Wc = Math.round(W * 0.6), Wg = W - Wc - 16;
   const k = Wc / GEO.w, Hc = Math.round(GEO.h * k);
   const name = g => level === "dep" ? `${g} · ${DEP_NAMES[g]}` : `Académie ${/^[AEIOUÉ]/.test(g) ? "d'" : "de "}${g}`;
-  const X = { ...A, type: "eleves", Q, zones, place, v, t, nb, sansEff, horsCarte, maxZone, NZ, NQ, k, Wc, Wg, name, level,
-    rmax: (level === "dep" ? 70 : 110) * (Number(E.rayon) || 100) / 100, unite: Number(E.unite) || 0, totaux, histoTitre: A.cumul ? "Élèves concernés, cumul à chaque date" : "Élèves concernés à chaque date" };
+  const X = { ...A, type: "eleves", parEtab, Q, zones, place, v, t, nb, sansEff, horsCarte, maxZone, NZ, NQ, k, Wc, Wg, name, level,
+    rmax: (level === "dep" ? 70 : 110) * (Number(E.rayon) || 100) / 100, unite: Number(E.unite) || 0, totaux, histoTitre: `${parEtab ? "Établissements" : "Élèves"} concernés${A.cumul ? ", cumul" : ""} à chaque date` };
   const etat = etatAnim(A.cle); if (etat.sel && !iz.has(etat.sel)) etat.sel = null;
   const V = valeursEleves(X, A.pos);
   let fond = "", lignes = "";
-  layer.forEach(e => { fond += `<path d="${e.d}" data-zsel="${esc(e.k)}" class="${etat.sel === e.k ? "sel" : ""}" fill="var(--q0)" stroke="var(--surface)" stroke-width="${(0.8 / k).toFixed(2)}" stroke-linejoin="round" data-tip="${esc(name(e.k) + TIP_SEP + fmtNum(Math.round(zoneTotal(X, V, iz.get(e.k)))) + " élèves")}"></path>`; });
+  layer.forEach(e => { fond += `<path d="${e.d}" data-zsel="${esc(e.k)}" class="${etat.sel === e.k ? "sel" : ""}" fill="var(--q0)" stroke="var(--surface)" stroke-width="${(0.8 / k).toFixed(2)}" stroke-linejoin="round" data-tip="${esc(name(e.k) + TIP_SEP + infoZone(X, zoneTotal(X, V, iz.get(e.k))))}"></path>`; });
   if (level === "dep") GEO.aca.forEach(e => lignes += `<path d="${e.d}" fill="none" stroke="var(--ink-2)" stroke-width="${(1 / k).toFixed(2)}" stroke-linejoin="round" pointer-events="none" opacity=".5"></path>`);
   const encarts = GEO.frames.map(f => `<rect x="${(f.x * k).toFixed(1)}" y="${(f.y * k).toFixed(1)}" width="${(f.w * k).toFixed(1)}" height="${(f.h * k).toFixed(1)}" fill="none" stroke="var(--axis)" stroke-width="1" rx="3"></rect>
     <text x="${(f.x * k + 4).toFixed(1)}" y="${(f.y * k + 10).toFixed(1)}" style="font-size:6.5pt">${esc(f.t)}</text>`).join("");
-  const carte = svgWrap(Wc, Hc, `<g transform="scale(${k.toFixed(5)})">${fond}${lignes}<g class="el-cercles" pointer-events="none">${cerclesEleves(X, V, etat.sel)}</g></g>${encarts}`, "Carte des élèves concernés");
+  const carte = svgWrap(Wc, Hc, `<g transform="scale(${k.toFixed(5)})">${fond}${lignes}<g class="el-cercles" pointer-events="none">${cerclesEleves(X, V, etat.sel)}</g></g>${encarts}`, `Carte des ${motEleves(X, 2)} concernés`);
   const grille = grilleEleves(X, V, etat.sel);
   memoriserAnimation(X, b, null);
   const C = animCache.get(A.cle); C.couleurHisto = Q.length ? Q[0].couleur : "var(--s1)";
   const items = [legendeDate(A), ...Q.map(x => `<span><i style="background:${x.couleur}"></i>${esc(x.q)}</span>`),
-    `<span class="el-unite"><i style="background:var(--q0)"></i>1 carré = ${fmtNum(uniteEleves(X, etat.sel))} élèves</span>`, `<span><i style="background:transparent;border:1.5px solid var(--ink-2);border-radius:50%"></i>cercle : surface selon le nombre d'élèves</span>`];
-  const notes = [`${fmtNum(F)} date(s), du ${dateLabel(A.frames[0].date, A.grain)} au ${dateLabel(A.frames[F - 1].date, A.grain)}. Un établissement compte une fois par date, avec sa qualification la plus grave du jour ; qualifications comptées : ${Q.map(x => x.q).join(", ") || "aucune"}. Effectif : colonne « ${labelOf(eff)} ».`];
+    `<span class="el-unite">${uniteTexte(X, etat.sel)}</span>`, `<span><i style="background:transparent;border:1.5px solid var(--ink-2);border-radius:50%"></i>cercle : surface selon le nombre d'${motEleves(X, 2)}</span>`];
+  const notes = [`${fmtNum(F)} date(s), du ${dateLabel(A.frames[0].date, A.grain)} au ${dateLabel(A.frames[F - 1].date, A.grain)}. Un établissement compte une fois par date, avec sa qualification la plus grave du jour ; qualifications comptées : ${Q.map(x => x.q).join(", ") || "aucune"}.${parEtab ? "" : ` Effectif : colonne « ${labelOf(eff)} ».`}`];
   const se = Math.max(...sansEff), hc = Math.max(...horsCarte);
   if (se) notes.push(`Jusqu'à ${fmtNum(se)} établissement(s) par date sans effectif connu : non comptés.`);
-  if (hc) notes.push(`Jusqu'à ${fmtNum(Math.round(hc))} élève(s) par date sans ${level === "dep" ? "département" : "académie"} reconnu(e) : comptés dans le total, absents de la carte.`);
+  if (hc) notes.push(`Jusqu'à ${fmtNum(Math.round(hc))} ${motEleves(X, hc)} par date sans ${level === "dep" ? "département" : "académie"} reconnu(e) : comptés dans le total, absents de la carte.`);
   return `<div class="chart eleves anime">${lecteurHtml(A, bi)}
     <div class="el-compteur"><b class="el-total">${esc(fmtNum(Math.round(V.total)))}</b><span class="el-sous">${esc(sousTitreEleves(X, etat.sel))}</span></div>
     <div class="el-parts">${partsEleves(X, V, etat.sel)}</div>
@@ -2250,10 +2252,12 @@ const valeursSelection = (X, V, sel) => { if (!sel) return V.q; const z = X.zone
 function uniteEleves(X, sel) {
   if (X.unite) return X.unite;
   const cle = sel || "", cache = X.unites || (X.unites = new Map());
-  if (!cache.has(cle)) { let m = 0; for (let p = 0; p < X.frames.length; p++) m = Math.max(m, sel ? zoneTotal(X, { z: X.v.subarray(p * X.NZ * X.NQ) }, X.zones.indexOf(sel)) : X.totaux[p]); cache.set(cle, niceUnite(m)); }
+  if (!cache.has(cle)) { let m = 0; for (let p = 0; p < X.frames.length; p++) m = Math.max(m, sel ? zoneTotal(X, { z: X.v.subarray(p * X.NZ * X.NQ) }, X.zones.indexOf(sel)) : X.totaux[p]); cache.set(cle, niceUnite(m, X.parEtab)); }
   return cache.get(cle);
 }
-const sousTitreEleves = (X, sel) => `élèves dans un établissement touché${X.cumul ? " depuis le début" : " ce jour"} · ${sel ? X.name(sel) : "France"}`;
+const sousTitreEleves = (X, sel) => `${X.parEtab ? "établissements touchés" : "élèves dans un établissement touché"}${X.cumul ? " depuis le début" : " ce jour"} · ${sel ? X.name(sel) : "France"}`;
+const infoZone = (X, n) => `${fmtNum(Math.round(n))} ${motEleves(X, Math.round(n))}`;
+const uniteTexte = (X, sel) => { const u = uniteEleves(X, sel); return `<i style="background:var(--q0)"></i>1 carré = ${esc(fmtNum(u))} ${motEleves(X, u)}`; };
 function partsEleves(X, V, sel) {
   const o = valeursSelection(X, V, sel);
   return X.Q.map((x, i) => `<span><i style="background:${x.couleur}"></i>${esc(x.q)} <strong>${esc(fmtNum(Math.round(o[i])))}</strong></span>`).join("");
@@ -2290,7 +2294,7 @@ function grilleEleves(X, V, sel) {
 // image de la page : cercles, carrés, compteur, parts, info-bulles (sur la page ou sur une copie pour l'export)
 function dessinerEleves(racine, X, V, sel) {
   const g = racine.querySelector(".el-cercles"); if (g) g.innerHTML = cerclesEleves(X, V, sel);
-  racine.querySelectorAll("[data-zsel]").forEach(el => { el.setAttribute("data-tip", X.name(el.dataset.zsel) + TIP_SEP + fmtNum(Math.round(zoneTotal(X, V, X.zones.indexOf(el.dataset.zsel)))) + " élèves"); el.classList.toggle("sel", el.dataset.zsel === sel); });
+  racine.querySelectorAll("[data-zsel]").forEach(el => { el.setAttribute("data-tip", X.name(el.dataset.zsel) + TIP_SEP + infoZone(X, zoneTotal(X, V, X.zones.indexOf(el.dataset.zsel)))); el.classList.toggle("sel", el.dataset.zsel === sel); });
   const o = valeursSelection(X, V, sel), u = uniteEleves(X, sel), cases = [];
   X.Q.forEach((x, q) => { for (let n = Math.round(o[q] / u); n > 0 && cases.length < EL_COLS * EL_LIGNES; n--) cases.push(x.couleur); });
   racine.querySelectorAll("[data-carre]").forEach(r => { r.style.fill = cases[Number(r.dataset.carre)] || "var(--q0)"; });
@@ -2299,7 +2303,7 @@ function dessinerEleves(racine, X, V, sel) {
   const sous = racine.querySelector(".el-sous"); if (sous) sous.textContent = sousTitreEleves(X, sel);
   const qui = racine.querySelector(".el-qui span"); if (qui) qui.textContent = sel ? X.name(sel) : "France entière";
   const bt = racine.querySelector('[data-act="el-france"]'); if (bt) bt.hidden = !sel;
-  const un = racine.querySelector(".el-unite"); if (un) un.innerHTML = `<i style="background:var(--q0)"></i>1 carré = ${esc(fmtNum(u))} élèves`;
+  const un = racine.querySelector(".el-unite"); if (un) un.innerHTML = uniteTexte(X, sel);
 }
 // passage d'une date à l'autre à l'écran : valeurs interpolées pendant 450 ms (cercles qui grossissent, compteur qui défile)
 function animerEleves(chart, X, p) {
@@ -2341,7 +2345,7 @@ async function imageEleves(chart, X, p, largeurCible) {
   s += `<g transform="translate(${M},${y})">${propre(carte)}</g>
     <text x="${M + Wc + 16}" y="${y + 12}" fill="#555555" style="font-size:12px">${esc(sel ? X.name(sel) : "France entière")}</text>
     <g transform="translate(${M + Wc + 16},${y + 20})">${propre(grille)}</g>
-    <text x="${M + Wc + 16}" y="${y + 20 + Hg + 16}" fill="#555555" style="font-size:11px">1 carré = ${esc(fmtNum(uniteEleves(X, sel)))} élèves</text>`;
+    <text x="${M + Wc + 16}" y="${y + 20 + Hg + 16}" fill="#555555" style="font-size:11px">1 carré = ${esc(fmtNum(uniteEleves(X, sel)))} ${motEleves(X, uniteEleves(X, sel))}</text>`;
   y += Math.max(Hc, Hg + 40) + 14;
   const histo = chart.querySelector(".anim-histo svg");
   if (histo) {
@@ -2361,9 +2365,11 @@ function elevesEditor(b, i) {
   if (!c.qualif) return `<span class="hint">Qualification non reconnue : réglez-la dans « Réglages du tableau › Durées de qualification ».</span>`;
   const toutes = qualifsEleves(c), eff = colonneEffectif(b);
   const cases = toutes.map(q => `<label><input type="checkbox" data-b="${i}" data-elq="${esc(q)}" ${!E.qualifs || E.qualifs.includes(q) ? "checked" : ""}> ${esc(q)}</label>`).join(" ");
-  return `<label>Effectif <select data-b="${i}" data-k="eleves.effectif">${opt([["", eff ? `automatique (${plain(labelOf(eff))})` : "Colonne d'effectif…"], ...columns.filter(x => isNumCol(x.id) || /effectif/i.test(x.id)).map(x => [x.id, plain(x.label)])], E.effectif || "")}</select></label>
+  const parEtab = E.mesure === "etablissements";
+  return `<select data-b="${i}" data-k="eleves.mesure" title="Ce que comptent le compteur, les cercles et les carrés">${opt([["", "compter : les élèves (effectifs)"], ["etablissements", "compter : les établissements"]], E.mesure || "")}</select>
+    ${parEtab ? "" : `<label>Effectif <select data-b="${i}" data-k="eleves.effectif">${opt([["", eff ? `automatique (${plain(labelOf(eff))})` : "Colonne d'effectif…"], ...columns.filter(x => isNumCol(x.id) || /effectif/i.test(x.id)).map(x => [x.id, plain(x.label)])], E.effectif || "")}</select></label>`}
     <select data-b="${i}" data-k="eleves.rayon" title="Taille des cercles">${opt([["60", "cercles : petits"], ["80", "cercles : moyens"], ["100", "cercles : normaux"], ["130", "cercles : grands"], ["160", "cercles : très grands"]], String(E.rayon || 100))}</select>
-    <select data-b="${i}" data-k="eleves.unite" title="Nombre d'élèves représentés par un carré">${opt([["", "carré : automatique"], ...[50, 100, 250, 500, 1000, 5000].map(n => [String(n), `1 carré = ${fmtNum(n)} élèves`])], String(E.unite || ""))}</select>
+    <select data-b="${i}" data-k="eleves.unite" title="Nombre représenté par un carré">${opt([["", "carré : automatique"], ...(parEtab ? [1, 2, 5, 10, 20] : [50, 100, 250, 500, 1000, 5000]).map(n => [String(n), `1 carré = ${fmtNum(n)} ${parEtab ? (n > 1 ? "établissements" : "établissement") : "élèves"}`])], String(E.unite || ""))}</select>
     <div class="row"><span class="lbl">Qualifications comptées</span>${cases || '<span class="hint">aucune qualification dans les choix de Grist</span>'}</div>
     <span class="hint">Un établissement compte une fois par date, avec sa qualification la plus grave du jour (« RAS » ne compte jamais). Les couleurs sont celles des qualifications dans Grist. Lecteur, vitesse, jours sans signalement et cumul : réglages « Animer selon les dates » ci-dessous.</span>
     ${animEditor({ ...b, anim: { ...(b.anim || {}), actif: true } }, i).replace(/<label title="Une image par date[\s\S]*?<\/label>/, "")}`;
@@ -2639,6 +2645,7 @@ RACINE.addEventListener("change", e => {
     const v = t.type === "checkbox" ? t.checked : t.type === "number" ? Number(t.value) : t.value;
     setPath(b, t.dataset.k, v);
     if (t.dataset.k === "anim.actif" && v && (b.view || "both") === "both") b.view = "chart";
+    if (t.dataset.k === "eleves.mesure") { delete b.eleves.unite; if (!v) delete b.eleves.mesure; }
     if (t.dataset.k === "source") {
       const oldSrc = t.dataset.prev || null;
       if (!v) delete b.source;
@@ -2746,6 +2753,7 @@ const MODELES = [
   { cle: "map", icone: ICONES.map, nom: "Carte par territoire", desc: "Départements ou académies colorés selon la valeur." },
   { cle: "points", icone: ICONES.points, nom: "Carte des établissements", desc: "Un point par établissement, taille selon la valeur." },
   { cle: "eleves", icone: ICONES.eleves, nom: "Élèves concernés", desc: "Carte à cercles, compteur et carrés des élèves des établissements touchés, animés jour par jour." },
+  { cle: "etablissements", icone: ICONES.eleves, nom: "Établissements concernés", desc: "La même vue en nombre d'établissements : 1 carré = 1 établissement, détail par qualification." },
   { cle: "frise", icone: ICONES.gantt, nom: "Frise des durées (Gantt)", desc: "Une ligne par établissement, une barre par période de qualification." },
   { cle: "durees", icone: ICONES.durees, nom: "Typologie des durées", desc: "Épisodes de qualification par classe de durée (1 jour, 2 à 3 jours…)." },
 ];
@@ -2767,17 +2775,18 @@ function creerBloc(cle) {
   else {
     const date = columns.find(c => isDate(c.id)), choix = columns.find(c => /^Choice/.test(c.type)) || columns.find(c => !isDate(c.id) && !isNumCol(c.id)) || columns[0] || {};
     const geo = columns.find(c => /^(departement|academie)$/i.test(c.id)), etab = columns.find(c => /^uai$/i.test(c.id)) || columns.find(c => /^Ref:/.test(c.type));
-    const col = cle === "line" || cle === "barv" ? (date || choix).id : cle === "map" || cle === "eleves" ? (geo || choix).id : cle === "points" ? (etab || choix).id : choix.id;
+    const col = cle === "line" || cle === "barv" ? (date || choix).id : cle === "map" || cle === "eleves" || cle === "etablissements" ? (geo || choix).id : cle === "points" ? (etab || choix).id : choix.id;
     const b = { id, type: "cross", title: "Nouveau bloc", measure: { agg: "count" }, rows: { col: col || "", grain: "jour" }, cols: { col: "", grain: "jour" }, conds: [],
-      view: cle === "table" ? "table" : ["map", "points", "pie", "eleves"].includes(cle) ? "chart" : "both", sort: cle === "line" || cle === "barv" ? "label" : "value", top: cle === "pie" ? 6 : 20 };
+      view: cle === "table" ? "table" : ["map", "points", "pie", "eleves", "etablissements"].includes(cle) ? "chart" : "both", sort: cle === "line" || cle === "barv" ? "label" : "value", top: cle === "pie" ? 6 : 20 };
     if (cle !== "table") b.chart = cle;
     if (cle === "map" && geo) b.rows.grain = /acad/i.test(geo.id) ? "aca_norm" : "dep_norm";
-    if (cle === "eleves") {                                          // lignes : l'académie ; colonnes : la date des faits, par jour
+    if (cle === "etablissements") { b.chart = "eleves"; b.eleves = { mesure: "etablissements" }; }
+    if (cle === "eleves" || cle === "etablissements") {               // lignes : l'académie ; colonnes : la date des faits, par jour
       const ce = colonnesEpisodes(), aca = columns.find(c => /^academie$/i.test(c.id)) || geo;
       b.rows = { col: aca ? aca.id : "", grain: aca && !/acad/i.test(aca.id) ? "dep_norm" : "aca_norm" };
       b.cols = { col: ce.faits || ce.cree || (date || {}).id || "", grain: "jour" }; b.view = "chart"; b.top = 0;
     }
-    if (cle === "map" || cle === "points" || cle === "eleves") b.top = 0;
+    if (cle === "map" || cle === "points" || cle === "eleves" || cle === "etablissements") b.top = 0;
     b.title = `${(MODELES.find(m => m.cle === cle) || {}).nom || "Bloc"}${col ? ` — ${plain(labelOf(col))}` : ""}`;
     config.blocks.push(b);
   }

@@ -1,4 +1,4 @@
-// 2.62.0-alpha.57 : graphique « Élèves concernés » du tableau de bord — carte à cercles proportionnels (parts par
+// 2.62.0-alpha.57 et .58 (comptage en établissements) : graphique « Élèves concernés » du tableau de bord — carte à cercles proportionnels (parts par
 // qualification), compteur, carrés et histogramme animés par date ; un établissement compte une fois par date avec sa
 // qualification la plus grave ; qualifications comptées réglables ; clic sur une académie ; exports MP4 (images
 // intermédiaires) et GIF ; image dans Word ; réglages et modèle de bloc dans l'atelier.
@@ -20,13 +20,13 @@ function docEleves() {
   return doc;
 }
 // calcul attendu, à part : élèves par date, qualification la plus grave du jour, qualifications comptées
-function attendu(doc, jour, retenues, aca) {
+function attendu(doc, jour, retenues, aca, parEtab) {
   const R = doc.__data.Reponses, rang = ['Fermeture', 'Fonctionnement dégradé', 'Perturbation'], m = new Map();
   R.id.forEach((_, k) => {
     if (new Date(R.Date_faits[k] * 1000).toISOString().slice(0, 10) !== jour || R.Qualification[k] === 'RAS' || (aca && R.Academie[k] !== aca)) return;
     const e = R.Etablissement[k], x = m.get(e); if (!x || rang.indexOf(R.Qualification[k]) < rang.indexOf(x.q)) m.set(e, { q: R.Qualification[k], eff: R.Effectif[k] });
   });
-  let s = 0; m.forEach(x => { if (retenues.includes(x.q)) s += x.eff; }); return s;
+  let s = 0; m.forEach(x => { if (retenues.includes(x.q)) s += parEtab ? 1 : x.eff; }); return s;
 }
 const BLOC = (id, eleves, anim) => ({ id, type: 'cross', title: 'Élèves concernés', measure: { agg: 'count' }, rows: { col: 'Academie', grain: 'aca_norm' },
   cols: { col: 'Date_faits', grain: 'jour' }, conds: [], view: 'chart', chart: 'eleves', top: 0, eleves, anim });
@@ -37,7 +37,7 @@ const API = doc => `window.__DOC__=${JSON.stringify(doc)};window.__OPTS__={};` +
   const page = await browser.newPage({ viewport: { width: 1300, height: 1500 }, acceptDownloads: true });
   page.on('pageerror', e => console.log('PAGEERROR', e.message)); page.on('dialog', d => d.accept());
   const doc = docEleves();
-  publier(doc, { name: 'Tableau de bord', filters: [], blocks: [BLOC('tous', {}, { vitesse: '500' }), BLOC('fermes', { qualifs: ['Fermeture'] }, {})] });
+  publier(doc, { name: 'Tableau de bord', filters: [], blocks: [BLOC('tous', {}, { vitesse: '500' }), BLOC('fermes', { qualifs: ['Fermeture'] }, {}), BLOC('etabs', { mesure: 'etablissements' }, {})] });
   await page.route('**/grist-plugin-api.js', r => r.fulfill({ contentType: 'text/javascript', body: API(doc) }));
   await page.goto('file://' + __C.racine + '/v2/tableau-de-bord/index.html'); await page.waitForTimeout(2200);
   const lire = k => page.evaluate(k => { const c = document.querySelector(`[data-card="${k}"]`); if (!c || !c.querySelector('.el-total')) return { absent: c ? c.textContent.slice(0, 300) : 'bloc absent' };
@@ -57,6 +57,15 @@ const API = doc => `window.__DOC__=${JSON.stringify(doc)};window.__OPTS__={};` +
   }
   await aller(1, 9); L = await lire(1);
   console.log('FERMETURES SEULES, 12/11 :', L.total, '| attendu', attendu(doc, '2026-11-12', ['Fermeture']), num(L.total) === attendu(doc, '2026-11-12', ['Fermeture']) ? 'OK' : 'ÉCART', '|', L.parts);
+  // comptage en établissements (2.62.0-alpha.58) : 1 par établissement, 1 carré = 1 établissement
+  for (const [p, j] of [[9, '2026-11-12'], [11, '2026-11-16']]) {
+    await aller(2, p); L = await lire(2); const a = attendu(doc, j, TOUTES, null, true);
+    console.log(`ÉTABLISSEMENTS, ${j} :`, L.total, L.sous, '| attendu', a, num(L.total) === a ? 'OK' : 'ÉCART', '|', L.parts, '|', L.carres, 'carrés |', L.unite);
+  }
+  console.log('ÉTABLISSEMENTS, HISTOGRAMME ET NOTE :', await page.$eval('[data-card="2"] .anim-histo text:last-of-type', t => t.textContent), '|', (await lire(2)).notes.split(' / ')[0].slice(-120));
+  await page.click('[data-card="2"] [data-zsel="Orléans-Tours"]'); await page.waitForTimeout(700); L = await lire(2);
+  console.log('ÉTABLISSEMENTS, ORLÉANS-TOURS (16/11) :', L.total, '| attendu', attendu(doc, '2026-11-16', TOUTES, 'Orléans-Tours', true), '| infobulle :', await page.$eval('[data-card="2"] [data-zsel="Orléans-Tours"]', e => e.getAttribute('data-tip').replace('\u0001', ' → ')));
+  await page.locator('[data-card="2"] .chart').screenshot({ path: path.join(__C.sorties, 'run153-etablissements.png') });
   // clic sur une académie, puis bouton France
   await page.click('[data-card="0"] [data-zsel="Orléans-Tours"]'); await page.waitForTimeout(700); L = await lire(0);
   console.log('CLIC ORLÉANS-TOURS (16/11) :', L.total, L.sous, '| attendu', attendu(doc, '2026-11-16', TOUTES, 'Orléans-Tours'), '|', L.carres, 'carrés |', L.unite);
@@ -89,11 +98,17 @@ const API = doc => `window.__DOC__=${JSON.stringify(doc)};window.__OPTS__={};` +
   L = await lire(0); console.log('MODÈLE CRÉÉ :', L.absent ? 'ÉCHEC ' + L.absent : `${L.date} | ${L.total} ${L.sous}`);
   await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find(x => /^Présentation$/.test(x.textContent.trim())); if (b) b.click(); }); await page.waitForTimeout(400);
   console.log('RÉGLAGES :', await page.$$eval('.studio [data-k^="eleves."], .studio [data-elq]', l => l.map(x => (x.dataset.k || 'qualif ' + x.dataset.elq) + '=' + (x.type === 'checkbox' ? x.checked : x.value)).join(' ; ')));
+  await page.selectOption('.studio [data-k="eleves.mesure"]', 'etablissements'); await page.waitForTimeout(800);
+  L = await lire(0); console.log('MESURE ÉTABLISSEMENTS :', L.total, L.sous, '|', L.unite, '| réglage effectif :', (await page.$('.studio [data-k="eleves.effectif"]')) ? 'visible' : 'masqué');
+  await page.selectOption('.studio [data-k="eleves.mesure"]', ''); await page.waitForTimeout(800);
   await page.uncheck('.studio [data-elq="Perturbation"]'); await page.waitForTimeout(800);
   L = await lire(0); console.log('SANS PERTURBATION :', L.date, L.total, '| attendu', attendu(doc2, '2026-11-20', ['Fermeture', 'Fonctionnement dégradé']), '|', L.parts);
   await page.waitForTimeout(2500);
   const cfg = await page.evaluate(() => { const C = window.__DOC__.__data.Config, v = JSON.parse(C.Valeur[C.Cle.indexOf('tableau_de_bord')]); const t = (v.tableaux && v.tableaux[0]) || v; const b = (t.brouillon || t.publie).blocks[0]; return JSON.stringify({ chart: b.chart, rows: b.rows, cols: b.cols, eleves: b.eleves, view: b.view }); });
   console.log('BROUILLON ENREGISTRÉ :', cfg);
+  await page.click('[data-act="st-fermer"]'); await page.waitForTimeout(300);
+  await page.click('[data-act="st-ajouter"]'); await page.waitForTimeout(300); await page.click('[data-act="st-creer"][data-k="etablissements"]'); await page.waitForTimeout(1200);
+  L = await lire(1); console.log('MODÈLE « ÉTABLISSEMENTS CONCERNÉS » :', L.absent ? 'ÉCHEC' : `${L.total} ${L.sous} | ${L.unite}`, '| titre :', await page.$eval('[data-card="1"] h2', h => h.textContent));
   await page.screenshot({ path: path.join(__C.sorties, 'run153-atelier.png'), fullPage: true });
   await browser.close();
 })();
