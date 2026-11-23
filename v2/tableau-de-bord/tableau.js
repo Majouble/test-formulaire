@@ -912,6 +912,7 @@ function groupesEditeur(auto) {
 // Réglage « Couleurs » d'un graphique : une case de couleur par série (ou par part d'un anneau), une teinte pour les cartes
 const versHex = c => { const h = hexOf(c).toLowerCase(); return "#" + (h.length === 3 ? h.replace(/./g, x => x + x) : h); };
 function couleursEditor(b, i) {
+  if (b.chart === "eleves") return "";                               // couleurs des qualifications dans Grist
   const c = b.couleurs || {}, carte = b.chart === "map" || b.chart === "points";
   const effacer = c.valeurs && Object.keys(c.valeurs).length || c.teinte || c.grist !== undefined
     ? `<button class="ghost" data-act="coulreset" data-b="${i}" title="Revenir aux couleurs automatiques">Couleurs automatiques</button>` : "";
@@ -1018,7 +1019,7 @@ function blockEditor(b, i) {
     </div>
     <div class="row"><span class="lbl">Graphique</span>
       <select data-b="${i}" data-k="chart">${opt(CHART_TYPES, b.chart || "barh")}</select>
-      ${b.chart === "map" ? mapEditor(b, i) : b.chart === "points" ? pointsEditor(b, i) : b.chart === "gantt" ? `<label>Dans Word <select data-b="${i}" data-k="wordChart">${opt([["native", "graphique modifiable (Word et Excel)"], ["image", "image"]], b.wordChart || "native")}</select></label>
+      ${b.chart === "map" ? mapEditor(b, i) : b.chart === "points" ? pointsEditor(b, i) : b.chart === "eleves" ? elevesEditor(b, i) : b.chart === "gantt" ? `<label>Dans Word <select data-b="${i}" data-k="wordChart">${opt([["native", "graphique modifiable (Word et Excel)"], ["image", "image"]], b.wordChart || "native")}</select></label>
       <span class="hint">Période : réglage « Période », avec les lignes et les colonnes.</span>` : `${b.cols && b.cols.col && (b.chart || "barh") !== "pie" ? `<select data-b="${i}" data-k="stack">${opt(STACK_MODES, b.stack || "stack")}</select>` : ""}
       ${b.cols && b.cols.col && (b.chart || "barh") !== "pie" ? `<select data-b="${i}" data-k="swap" title="Ce qui va en abscisse (ou en barres) et ce qui forme les séries (couleurs, courbes)">${opt([["", "abscisse : lignes du tableau, séries : colonnes"], ["1", "abscisse : colonnes du tableau, séries : lignes"]], b.swap ? "1" : "")}</select>` : ""}
       <select data-b="${i}" data-k="labels" title="Pourcentage d'une barre : part du total du bloc. Avec des séries : part de la barre.">${opt(LABEL_MODES, b.labels || "auto")}</select>
@@ -1254,7 +1255,7 @@ function renderCross(b, i, base) {
 // =============================================================================
 // Graphiques : description commune (écran + Word), puis rendu SVG
 // =============================================================================
-const CHART_TYPES = [["barh", "Barres horizontales"], ["barv", "Colonnes (histogramme)"], ["line", "Courbe"], ["pie", "Anneau (répartition)"], ["map", "Carte (départements ou académies)"], ["points", "Carte des établissements (points)"], ["gantt", "Frise des durées (Gantt)"]];
+const CHART_TYPES = [["barh", "Barres horizontales"], ["barv", "Colonnes (histogramme)"], ["line", "Courbe"], ["pie", "Anneau (répartition)"], ["map", "Carte (départements ou académies)"], ["points", "Carte des établissements (points)"], ["gantt", "Frise des durées (Gantt)"], ["eleves", "Élèves concernés (carte, compteur, animés)"]];
 const STACK_MODES = [["stack", "Séries empilées"], ["group", "Séries côte à côte"], ["pct", "Empilées à 100 %"]];
 const PIE_MAX = 6;
 
@@ -1428,6 +1429,7 @@ function legendHtml(spec) {
 
 function renderChart(b, d, shownRows, bi) {
   if (b.chart === "map") return renderMap(b, d, bi);
+  if (b.chart === "eleves") return renderEleves(b, d, bi);
   if (b.chart === "points") return renderPoints(b, d, bi);
   if (b.chart === "gantt") return renderFrise(b, d, bi);
   const spec = chartSpec(b, d, shownRows); spec.bi = bi;
@@ -1953,7 +1955,7 @@ function appliquerImage(svg, A, p) {
 // ---- Histogramme des dates : une barre par date (total du bloc), la date affichée mise en avant ; un clic y amène la carte
 const HISTO = { h: 128, gauche: 40, droite: 8, haut: 18, bas: 96 };
 function histoHtml(A, b, W) {
-  const n = A.frames.length, vals = A.totaux.map(v => isNaN(v) ? 0 : v), max = Math.max(1, ...vals), coul = classeCouleur(b, 3);
+  const n = A.frames.length, vals = A.totaux.map(v => isNaN(v) ? 0 : v), max = Math.max(1, ...vals), coul = A.couleurHisto || classeCouleur(b, 3);
   const { h: H, gauche: G, droite: D, haut: Y0, bas: Y1 } = HISTO, larg = W - G - D, bande = larg / n, bw = Math.max(1, bande - (bande > 5 ? 2 : bande > 2 ? 1 : 0));
   let s = "";
   niceTicks(max, 3).filter(t => t > 0).forEach(t => { const y = Y1 - t / max * (Y1 - Y0); if (y >= Y0 - 1) s += `<line x1="${G}" x2="${W - D}" y1="${y.toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--grid)"></line><text x="${G - 6}" y="${(y + 4).toFixed(1)}" text-anchor="end" style="font-size:8pt">${fmtNum(t)}</text>`; });
@@ -1970,7 +1972,7 @@ function histoHtml(A, b, W) {
   if (n > 1) s += `<text x="${(G + (n - 0.5) * bande).toFixed(1)}" y="${Y1 + 15}" text-anchor="middle" style="font-size:8pt">${esc(dateLabel(A.frames[n - 1].date, A.grain).replace(/\/\d{4}$/, ""))}</text>`;
   const yv = Math.max(Y0 - 4, Y1 - vals[A.pos] / max * (Y1 - Y0) - 4);
   s += `<text class="val" data-hv x="${(G + (A.pos + 0.5) * bande).toFixed(1)}" y="${yv.toFixed(1)}" text-anchor="middle" style="font-size:8.5pt;font-weight:700;fill:var(--ink)">${esc(fmtNum(A.totaux[A.pos]))}</text>`;
-  s += `<text x="${G}" y="11" style="font-size:8pt">${esc(A.cumul ? "Total cumulé à chaque date" : "Total de chaque date")}</text>`;
+  s += `<text x="${G}" y="11" style="font-size:8pt">${esc(A.histoTitre || (A.cumul ? "Total cumulé à chaque date" : "Total de chaque date"))}</text>`;
   const svg = svgWrap(W, H, s, "Histogramme des dates de l'animation");
   return `<div class="anim-histo" data-coul="${esc(coul)}">${svg}</div>`;
 }
@@ -1988,7 +1990,7 @@ function appliquerHisto(svg, A, p) {
 function afficherImage(cle, p) {
   const A = animCache.get(cle), zone = RACINE.querySelector(`[data-anim="${cle}"]`); if (!A || !zone) return false;
   const chart = zone.closest(".chart"), svg = chart && chart.querySelector("svg"); if (!svg) return false;
-  appliquerImage(svg, A, p);
+  if (A.type === "eleves") animerEleves(chart, A, p); else appliquerImage(svg, A, p);
   const histo = chart.querySelector(".anim-histo svg"); if (histo) appliquerHisto(histo, A, p);
   A.pos = p; etatAnim(cle).date = A.frames[p].date;
   zone.querySelector(".anim-curseur").value = p;
@@ -2035,6 +2037,7 @@ function dessinerSvg(src, largeur, hauteur) {
 }
 // image p : dessin de la page copié, état de la date appliqué, en couleurs claires ; largeur et hauteur paires (MP4)
 async function imageAnimation(chart, A, p, largeurCible) {
+  if (A.type === "eleves") return imageEleves(chart, A, p, largeurCible);
   const svg = chart.querySelector("svg"), copie = svg.cloneNode(true);
   appliquerImage(copie, A, p);
   const W0 = Number(svg.getAttribute("width")), H0 = Number(svg.getAttribute("height")), M = 16, W = W0 + 2 * M;
@@ -2091,10 +2094,16 @@ async function exporterAnimation(b, i, format, bouton) {
   try {
     await chargerVideo();
     const images = [];
+    // vidéo des élèves : images intermédiaires (cercles qui grossissent, compteur qui défile), 50 ms chacune
+    const inter = format === "mp4" && A.type === "eleves" ? Math.max(0, Math.min(8, Math.floor(vitesse * 0.5 / 50))) : 0;
     for (let p = 0; p < A.frames.length; p++) {
       bouton.textContent = `Images ${p + 1}/${A.frames.length}`;
+      for (let j = 1; p > 0 && j <= inter; j++) {
+        const u = 1 - Math.pow(1 - j / (inter + 1), 3);
+        images.push({ canvas: await imageAnimation(chart, A, p - 1 + u, 1920), duree: 50 });
+      }
       const canvas = await imageAnimation(chart, A, p, format === "mp4" ? 1920 : 800);   // MP4 : ramené à 1 280 px si l'encodeur refuse
-      images.push({ canvas, duree: vitesse + (p === 0 ? 1000 : 0) + (p === A.frames.length - 1 ? 2500 : 0) });   // début et fin tenus plus longtemps
+      images.push({ canvas, duree: vitesse - (p > 0 ? inter * 50 : 0) + (p === 0 ? 1000 : 0) + (p === A.frames.length - 1 ? 2500 : 0) });   // début et fin tenus plus longtemps
     }
     bouton.textContent = "Encodage…";
     const fichier = format === "mp4" ? await window.Video.mp4(images) : await window.Video.gif(images);
@@ -2116,6 +2125,250 @@ function animEditor(b, i) {
       <select data-b="${i}" data-k="anim.vitesse" title="Vitesse proposée au lecteur, qui peut la changer">${opt(ANIM_VITESSES.map(([v, l]) => [String(v), l]), String(a.vitesse || 500))}</select>
       <span class="hint">Couleurs calculées sur toute la période. Dans Word : la carte de la date affichée ; boutons « Vidéo MP4 » (PowerPoint) et « GIF animé » (Word, Tchap) au-dessus de la carte.</span>` : ""}`;
 }
+// =============================================================================
+// Élèves concernés : carte à cercles proportionnels (parts par qualification), compteur, carrés et histogramme,
+// animés par date. Lignes : département ou académie ; colonnes : une date (une image par date).
+// Un établissement compte une fois par date, avec sa qualification la plus grave du jour (règle des épisodes) ;
+// seules les qualifications retenues comptent (réglage) ; effectif lu dans une colonne de la table (réglage).
+// Réglage du bloc : eleves = { effectif, qualifs: [retenues] (absent : toutes sauf RAS), rayon (%), unite (élèves par carré) }
+// =============================================================================
+const COULEURS_QUALIF = ["#d03b3b", "#ec835a", "#fab219", "#9a6fd6", "#4f8fd9", "#7d7b74"];
+const EL_COLS = 16, EL_LIGNES = 13;                                  // carrés : 16 × 13 = 208 au plus
+const groupeQualif = q => (((config.episodes || {}).groupes || {})[q] || "").trim() || q;
+const estRas = q => window.EpisodesQualification ? window.EpisodesQualification.estRAS(q) : /^\s*ras\s*$/i.test(String(q ?? ""));
+// qualifications du plus grave au moins grave (ordre des choix dans Grist, regroupements des durées), sans RAS
+function qualifsEleves(c) {
+  return [...new Set(choixGrist(mainTable, c.qualif).filter(q => !estRas(q)).map(groupeQualif))];
+}
+function colonneEffectif(b) {
+  const e = (b.eleves || {}).effectif;
+  if (e && columnIds.has(e)) return e;
+  const c = columns.find(x => /^effectif/i.test(x.id) && isNumCol(x.id)) || columns.find(x => /effectif/i.test(x.id + " " + x.label) && isNumCol(x.id))
+    || columns.find(x => /^effectif/i.test(x.id));
+  return c ? c.id : "";
+}
+const niceUnite = m => [10, 25, 50, 100, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000].find(u => m / u <= EL_COLS * EL_LIGNES) || 100000;
+
+function renderEleves(b, d, bi) {
+  const msg = t => `<div class="chart"><p class="hint">${esc(t)}</p></div>`;
+  const c = colonnesEpisodes();
+  if (!isMainSrc(b)) return msg("Élèves concernés : ce graphique lit la table des signalements (Source : table du widget).");
+  if (!c.etab || !c.qualif) return msg("Élèves concernés : colonnes de l'établissement et de la qualification non reconnues ; choisissez-les dans « Réglages du tableau › Durées de qualification ».");
+  if (!d.cc || !isDate(d.cc)) return msg("Élèves concernés : mettez une date en « Colonnes » (en général la date des faits, par jour) : une image par date.");
+  const eff = colonneEffectif(b);
+  if (!eff) return msg("Élèves concernés : aucune colonne d'effectif trouvée dans la table ; choisissez-la dans les réglages du graphique (« Effectif »).");
+  const A = animation({ ...b, anim: { ...(b.anim || {}), actif: true } }, d, bi);
+  if (!A) return msg("Élèves concernés : aucune date à afficher.");
+  const E = b.eleves || {}, level = mapLevel(b, d), gravite = qualifsEleves(c);
+  const rang = new Map(gravite.map((q, i) => [q, i]));
+  const plusGrave = (a, q) => { const ra = rang.has(a) ? rang.get(a) : gravite.length, rq = rang.has(q) ? rang.get(q) : gravite.length; return rq < ra || (rq === ra && String(q).localeCompare(String(a), "fr") < 0) ? q : a; };
+  // 1. par date : établissement -> qualification la plus grave du jour, effectif, zone
+  const parDate = new Map(), vues = new Set();
+  d.rows.forEach(r => {
+    const jour = keysOf(d.cc, r[d.cc], d.cg)[0]; if (jour === EMPTY) return;
+    const et = r[c.etab]; if (et === null || et === undefined || et === "" || et === 0) return;
+    const cle = typeof et === "object" ? JSON.stringify(et) : String(et);
+    const rk = keysOf(d.rc, r[d.rc], d.rg)[0], zone = rk === EMPTY ? null : level === "dep" ? depKey(rk) : acaKey(rk);
+    let m = parDate.get(jour); if (!m) parDate.set(jour, m = new Map());
+    let x = m.get(cle); if (!x) m.set(cle, x = { q: null, eff: NaN, zone });
+    keysOf(c.qualif, r[c.qualif]).filter(k => k !== EMPTY && !estRas(k)).map(groupeQualif).forEach(q => { vues.add(q); x.q = x.q === null ? q : plusGrave(x.q, q); });
+    const n = numOf(r[eff]); if (!isNaN(n)) x.eff = isNaN(x.eff) ? n : Math.max(x.eff, n);
+    if (!x.zone && zone) x.zone = zone;
+  });
+  const toutes = [...gravite, ...[...vues].filter(q => !rang.has(q)).sort((a, z) => a.localeCompare(z, "fr"))];
+  const retenues = toutes.filter(q => !E.qualifs || E.qualifs.includes(q));
+  const Q = retenues.map((q, i) => ({ q, couleur: ((b.couleurs || {}).valeurs || {})[q] || couleurChoix(mainTable, c.qualif, q) || COULEURS_QUALIF[Math.min(i, COULEURS_QUALIF.length - 1)] }));
+  const iq = new Map(Q.map((x, i) => [x.q, i]));
+  // 2. zones placées sur la carte : encart (Paris et petite couronne, outre-mer) de préférence au contour métropolitain
+  const layer = level === "dep" ? GEO.dep : GEO.aca, place = new Map(), rangEncart = i => i === "pc" ? 0 : i === "om" ? 1 : 2;
+  layer.forEach(e => { if (e.x === undefined) return; const p = place.get(e.k); if (!p || rangEncart(e.i) < rangEncart(p.i)) place.set(e.k, e); });
+  const zones = [...place.keys()], iz = new Map(zones.map((g, i) => [g, i]));
+  // 3. valeurs de chaque image : élèves par zone et par qualification retenue, total par qualification
+  const F = A.frames.length, NQ = Q.length, NZ = zones.length;
+  const v = new Float64Array(F * NZ * NQ), t = new Float64Array(F * NQ), nb = new Array(F).fill(0), sansEff = new Array(F).fill(0), horsCarte = new Array(F).fill(0);
+  const cumul = new Map(), datesTriees = [...parDate.keys()].sort(); let jc = 0;
+  A.frames.forEach((f, p) => {
+    let m = f.cle === null ? null : parDate.get(f.cle);
+    if (A.cumul) {                                                    // cumul : établissements touchés jusqu'à la date, qualification la plus grave
+      while (jc < datesTriees.length && datesTriees[jc] <= f.date) {
+        parDate.get(datesTriees[jc++]).forEach((x, k) => { const y = cumul.get(k); if (!y) cumul.set(k, { ...x }); else { if (x.q) y.q = y.q === null ? x.q : plusGrave(y.q, x.q); if (!isNaN(x.eff)) y.eff = isNaN(y.eff) ? x.eff : Math.max(y.eff, x.eff); } });
+      }
+      m = cumul;
+    }
+    if (!m) return;
+    m.forEach(x => {
+      if (!x.q || !iq.has(x.q)) return;
+      nb[p]++;
+      if (isNaN(x.eff)) { sansEff[p]++; return; }
+      const q = iq.get(x.q); t[p * NQ + q] += x.eff;
+      const z = x.zone ? iz.get(x.zone) : undefined;
+      if (z === undefined) horsCarte[p] += x.eff; else v[(p * NZ + z) * NQ + q] += x.eff;
+    });
+  });
+  const totalZone = (p, z) => { let s = 0; for (let q = 0; q < NQ; q++) s += v[(p * NZ + z) * NQ + q]; return s; };
+  let maxZone = 0; for (let p = 0; p < F; p++) for (let z = 0; z < NZ; z++) maxZone = Math.max(maxZone, totalZone(p, z));
+  const totaux = A.frames.map((_, p) => { let s = 0; for (let q = 0; q < NQ; q++) s += t[p * NQ + q]; return s; });
+  // 4. dessin
+  const W = Math.max(360, Math.min(760, ($("blocks").clientWidth || 700) - 32)), Wc = Math.round(W * 0.6), Wg = W - Wc - 16;
+  const k = Wc / GEO.w, Hc = Math.round(GEO.h * k);
+  const name = g => level === "dep" ? `${g} · ${DEP_NAMES[g]}` : `Académie ${/^[AEIOUÉ]/.test(g) ? "d'" : "de "}${g}`;
+  const X = { ...A, type: "eleves", Q, zones, place, v, t, nb, sansEff, horsCarte, maxZone, NZ, NQ, k, Wc, Wg, name, level,
+    rmax: (level === "dep" ? 70 : 110) * (Number(E.rayon) || 100) / 100, unite: Number(E.unite) || 0, totaux, histoTitre: A.cumul ? "Élèves concernés, cumul à chaque date" : "Élèves concernés à chaque date" };
+  const etat = etatAnim(A.cle); if (etat.sel && !iz.has(etat.sel)) etat.sel = null;
+  const V = valeursEleves(X, A.pos);
+  let fond = "", lignes = "";
+  layer.forEach(e => { fond += `<path d="${e.d}" data-zsel="${esc(e.k)}" class="${etat.sel === e.k ? "sel" : ""}" fill="var(--q0)" stroke="var(--surface)" stroke-width="${(0.8 / k).toFixed(2)}" stroke-linejoin="round" data-tip="${esc(name(e.k) + TIP_SEP + fmtNum(Math.round(zoneTotal(X, V, iz.get(e.k)))) + " élèves")}"></path>`; });
+  if (level === "dep") GEO.aca.forEach(e => lignes += `<path d="${e.d}" fill="none" stroke="var(--ink-2)" stroke-width="${(1 / k).toFixed(2)}" stroke-linejoin="round" pointer-events="none" opacity=".5"></path>`);
+  const encarts = GEO.frames.map(f => `<rect x="${(f.x * k).toFixed(1)}" y="${(f.y * k).toFixed(1)}" width="${(f.w * k).toFixed(1)}" height="${(f.h * k).toFixed(1)}" fill="none" stroke="var(--axis)" stroke-width="1" rx="3"></rect>
+    <text x="${(f.x * k + 4).toFixed(1)}" y="${(f.y * k + 10).toFixed(1)}" style="font-size:6.5pt">${esc(f.t)}</text>`).join("");
+  const carte = svgWrap(Wc, Hc, `<g transform="scale(${k.toFixed(5)})">${fond}${lignes}<g class="el-cercles" pointer-events="none">${cerclesEleves(X, V, etat.sel)}</g></g>${encarts}`, "Carte des élèves concernés");
+  const grille = grilleEleves(X, V, etat.sel);
+  memoriserAnimation(X, b, null);
+  const C = animCache.get(A.cle); C.couleurHisto = Q.length ? Q[0].couleur : "var(--s1)";
+  const items = [legendeDate(A), ...Q.map(x => `<span><i style="background:${x.couleur}"></i>${esc(x.q)}</span>`),
+    `<span class="el-unite"><i style="background:var(--q0)"></i>1 carré = ${fmtNum(uniteEleves(X, etat.sel))} élèves</span>`, `<span><i style="background:transparent;border:1.5px solid var(--ink-2);border-radius:50%"></i>cercle : surface selon le nombre d'élèves</span>`];
+  const notes = [`${fmtNum(F)} date(s), du ${dateLabel(A.frames[0].date, A.grain)} au ${dateLabel(A.frames[F - 1].date, A.grain)}. Un établissement compte une fois par date, avec sa qualification la plus grave du jour ; qualifications comptées : ${Q.map(x => x.q).join(", ") || "aucune"}. Effectif : colonne « ${labelOf(eff)} ».`];
+  const se = Math.max(...sansEff), hc = Math.max(...horsCarte);
+  if (se) notes.push(`Jusqu'à ${fmtNum(se)} établissement(s) par date sans effectif connu : non comptés.`);
+  if (hc) notes.push(`Jusqu'à ${fmtNum(Math.round(hc))} élève(s) par date sans ${level === "dep" ? "département" : "académie"} reconnu(e) : comptés dans le total, absents de la carte.`);
+  return `<div class="chart eleves anime">${lecteurHtml(A, bi)}
+    <div class="el-compteur"><b class="el-total">${esc(fmtNum(Math.round(V.total)))}</b><span class="el-sous">${esc(sousTitreEleves(X, etat.sel))}</span></div>
+    <div class="el-parts">${partsEleves(X, V, etat.sel)}</div>
+    <div class="el-duo">${carte}<div class="el-droite"><div class="el-qui"><span>${esc(etat.sel ? name(etat.sel) : "France entière")}</span><button class="ghost" data-act="el-france"${etat.sel ? "" : " hidden"}>France</button></div>${grille}</div></div>
+    <div class="legend">${items.join("")}</div>${A.histo ? histoHtml(C, b, W) : ""}${notes.map(x => `<p class="hint">${esc(x)}</p>`).join("")}</div>`;
+}
+// valeurs d'une image (p entier) ou entre deux images (p décimal : images intermédiaires de la vidéo)
+function valeursEleves(X, p) {
+  const NZ = X.NZ, NQ = X.NQ, a = Math.floor(p), b = Math.min(X.frames.length - 1, Math.ceil(p)), u = p - a;
+  const z = new Float64Array(NZ * NQ), q = new Float64Array(NQ);
+  for (let i = 0; i < NZ * NQ; i++) z[i] = X.v[a * NZ * NQ + i] * (1 - u) + X.v[b * NZ * NQ + i] * u;
+  for (let i = 0; i < NQ; i++) q[i] = X.t[a * NQ + i] * (1 - u) + X.t[b * NQ + i] * u;
+  return { z, q, total: q.reduce((s, x) => s + x, 0) };
+}
+const zoneTotal = (X, V, z) => { if (z === undefined) return 0; let s = 0; for (let q = 0; q < X.NQ; q++) s += V.z[z * X.NQ + q]; return s; };
+const valeursSelection = (X, V, sel) => { if (!sel) return V.q; const z = X.zones.indexOf(sel), o = new Float64Array(X.NQ); for (let q = 0; q < X.NQ; q++) o[q] = V.z[z * X.NQ + q]; return o; };
+function uniteEleves(X, sel) {
+  if (X.unite) return X.unite;
+  const cle = sel || "", cache = X.unites || (X.unites = new Map());
+  if (!cache.has(cle)) { let m = 0; for (let p = 0; p < X.frames.length; p++) m = Math.max(m, sel ? zoneTotal(X, { z: X.v.subarray(p * X.NZ * X.NQ) }, X.zones.indexOf(sel)) : X.totaux[p]); cache.set(cle, niceUnite(m)); }
+  return cache.get(cle);
+}
+const sousTitreEleves = (X, sel) => `élèves dans un établissement touché${X.cumul ? " depuis le début" : " ce jour"} · ${sel ? X.name(sel) : "France"}`;
+function partsEleves(X, V, sel) {
+  const o = valeursSelection(X, V, sel);
+  return X.Q.map((x, i) => `<span><i style="background:${x.couleur}"></i>${esc(x.q)} <strong>${esc(fmtNum(Math.round(o[i])))}</strong></span>`).join("");
+}
+// cercles : surface proportionnelle au nombre d'élèves, parts par qualification (de la plus grave, en haut, dans le sens
+// des aiguilles d'une montre), aplats opaques et liseré blanc ; les grands dessous, la zone choisie cerclée de noir
+function cerclesEleves(X, V, sel) {
+  const liste = [];
+  X.zones.forEach((g, z) => { const T = zoneTotal(X, V, z); if (T >= 0.5) liste.push({ g, z, T }); });
+  liste.sort((a, b) => b.T - a.T);
+  const lis = (1.4 / X.k).toFixed(2);
+  return liste.map(({ g, z, T }) => {
+    const e = X.place.get(g), r = Math.max(2.5 / X.k, X.rmax * Math.sqrt(T / (X.maxZone || 1))), cx = e.x, cy = e.y;
+    let a = 0, s = "";
+    X.Q.forEach((x, q) => {
+      const part = V.z[z * X.NQ + q] / T; if (part <= 0) return;
+      const a1 = a + part * Math.PI * 2;
+      s += part > 0.9999 ? `<circle cx="${cx}" cy="${cy}" r="${r.toFixed(1)}" fill="${x.couleur}"></circle>`
+        : `<path d="M${cx} ${cy}L${(cx + r * Math.sin(a)).toFixed(1)} ${(cy - r * Math.cos(a)).toFixed(1)}A${r.toFixed(1)} ${r.toFixed(1)} 0 ${a1 - a > Math.PI ? 1 : 0} 1 ${(cx + r * Math.sin(a1)).toFixed(1)} ${(cy - r * Math.cos(a1)).toFixed(1)}Z" fill="${x.couleur}"></path>`;
+      a = a1;
+    });
+    return s + `<circle cx="${cx}" cy="${cy}" r="${r.toFixed(1)}" fill="none" stroke="${sel === g ? "var(--ink)" : "#ffffff"}" stroke-width="${sel === g ? (2.6 / X.k).toFixed(2) : lis}"></circle>`;
+  }).join("");
+}
+// carrés : 1 carré = « unité » élèves, remplis de la qualification la plus grave à la moins grave
+function grilleEleves(X, V, sel) {
+  const o = valeursSelection(X, V, sel), u = uniteEleves(X, sel), cases = [];
+  X.Q.forEach((x, q) => { for (let n = Math.round(o[q] / u); n > 0 && cases.length < EL_COLS * EL_LIGNES; n--) cases.push(x.couleur); });
+  const gap = 2, cote = (X.Wg - gap * (EL_COLS - 1)) / EL_COLS, H = EL_LIGNES * (cote + gap) - gap;
+  let s = "";
+  for (let i = 0; i < EL_COLS * EL_LIGNES; i++) s += `<rect data-carre="${i}" x="${((i % EL_COLS) * (cote + gap)).toFixed(1)}" y="${(Math.floor(i / EL_COLS) * (cote + gap)).toFixed(1)}" width="${cote.toFixed(1)}" height="${cote.toFixed(1)}" rx="1.5" style="fill:${cases[i] || "var(--q0)"}"></rect>`;
+  return svgWrap(X.Wg, Math.round(H), s, "Élèves concernés, en carrés").replace("<svg ", '<svg class="el-grille" ');
+}
+// image de la page : cercles, carrés, compteur, parts, info-bulles (sur la page ou sur une copie pour l'export)
+function dessinerEleves(racine, X, V, sel) {
+  const g = racine.querySelector(".el-cercles"); if (g) g.innerHTML = cerclesEleves(X, V, sel);
+  racine.querySelectorAll("[data-zsel]").forEach(el => { el.setAttribute("data-tip", X.name(el.dataset.zsel) + TIP_SEP + fmtNum(Math.round(zoneTotal(X, V, X.zones.indexOf(el.dataset.zsel)))) + " élèves"); el.classList.toggle("sel", el.dataset.zsel === sel); });
+  const o = valeursSelection(X, V, sel), u = uniteEleves(X, sel), cases = [];
+  X.Q.forEach((x, q) => { for (let n = Math.round(o[q] / u); n > 0 && cases.length < EL_COLS * EL_LIGNES; n--) cases.push(x.couleur); });
+  racine.querySelectorAll("[data-carre]").forEach(r => { r.style.fill = cases[Number(r.dataset.carre)] || "var(--q0)"; });
+  const tot = racine.querySelector(".el-total"); if (tot) tot.textContent = fmtNum(Math.round(o.reduce((s, x) => s + x, 0)));
+  const parts = racine.querySelector(".el-parts"); if (parts) parts.innerHTML = partsEleves(X, V, sel);
+  const sous = racine.querySelector(".el-sous"); if (sous) sous.textContent = sousTitreEleves(X, sel);
+  const qui = racine.querySelector(".el-qui span"); if (qui) qui.textContent = sel ? X.name(sel) : "France entière";
+  const bt = racine.querySelector('[data-act="el-france"]'); if (bt) bt.hidden = !sel;
+  const un = racine.querySelector(".el-unite"); if (un) un.innerHTML = `<i style="background:var(--q0)"></i>1 carré = ${esc(fmtNum(u))} élèves`;
+}
+// passage d'une date à l'autre à l'écran : valeurs interpolées pendant 450 ms (cercles qui grossissent, compteur qui défile)
+function animerEleves(chart, X, p) {
+  const e = etatAnim(X.cle), de = X.vAffiche || valeursEleves(X, X.pos), vers = valeursEleves(X, p), t0 = performance.now();
+  cancelAnimationFrame(e.raf);
+  const pas = now => {
+    const u = Math.min(1, (now - t0) / 450), k = 1 - Math.pow(1 - u, 3);
+    const V = { z: de.z.map((x, i) => x + (vers.z[i] - x) * k), q: de.q.map((x, i) => x + (vers.q[i] - x) * k) }; V.total = V.q.reduce((s, x) => s + x, 0);
+    X.vAffiche = V;
+    if (chart.isConnected) dessinerEleves(chart, X, V, etatAnim(X.cle).sel);
+    if (u < 1) e.raf = requestAnimationFrame(pas);
+  };
+  if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) { X.vAffiche = vers; dessinerEleves(chart, X, vers, e.sel); }
+  else e.raf = requestAnimationFrame(pas);
+}
+function choisirZone(cle, g) {
+  const X = animCache.get(cle), zone = RACINE.querySelector(`[data-anim="${cle}"]`); if (!X || !zone) return;
+  const e = etatAnim(cle); e.sel = g && e.sel !== g && X.zones.includes(g) ? g : null;
+  dessinerEleves(zone.closest(".chart"), X, X.vAffiche || valeursEleves(X, X.pos), e.sel);
+}
+// image de l'export : titre, date, compteur et parts, carte et carrés côte à côte, légende, histogramme
+async function imageEleves(chart, X, p, largeurCible) {
+  const sel = etatAnim(X.cle).sel, V = valeursEleves(X, p), q = Math.round(p), f = X.frames[q], M = 16;
+  const carte = chart.querySelector(".el-duo > svg").cloneNode(true), grille = chart.querySelector(".el-grille").cloneNode(true);
+  dessinerEleves(carte, X, V, sel); dessinerEleves(grille, X, V, sel);
+  const propre = n => lightVars(n.innerHTML.replace(/<title>[\s\S]*?<\/title>/g, "").replace(/ data-(tip|zsel|carre)="[^"]*"/g, "")).replace(/<text(?![^>]*fill=)/g, '<text fill="#333333"');
+  const Wc = Number(carte.getAttribute("width")), Hc = Number(carte.getAttribute("height")), Hg = Number(grille.getAttribute("height"));
+  const W = Wc + 16 + X.Wg + 2 * M, o = valeursSelection(X, V, sel), total = o.reduce((s, x) => s + x, 0);
+  let y = 30;
+  let s = `<text x="${M}" y="${y}" fill="#161616" style="font-size:17px;font-weight:700">${esc(X.titre)}</text>
+    <text x="${W - M}" y="${y}" text-anchor="end" fill="#000091" style="font-size:20px;font-weight:700">${esc(libelleImage(X, q))}</text>`;
+  if (f.note) s += `<text x="${W - M}" y="${y + 18}" text-anchor="end" fill="#555555" style="font-size:12px">${esc(f.note)}</text>`;
+  y += 50;
+  s += `<text x="${M}" y="${y}" fill="#161616" style="font-family:Georgia,'Times New Roman',serif;font-size:40px">${esc(fmtNum(Math.round(total)))}</text>
+    <text x="${M + 14 + String(fmtNum(Math.round(total))).length * 21}" y="${y}" fill="#555555" style="font-size:13px">${esc(sousTitreEleves(X, sel))}</text>`;
+  let lx = M; y += 22;
+  X.Q.forEach((x, i) => { const txt = `${x.q} ${fmtNum(Math.round(o[i]))}`; s += `<rect x="${lx}" y="${y - 9}" width="10" height="10" rx="2" fill="${x.couleur}"/><text x="${lx + 15}" y="${y}" fill="#333333">${esc(txt)}</text>`; lx += 30 + txt.length * 6.8; });
+  y += 14;
+  s += `<g transform="translate(${M},${y})">${propre(carte)}</g>
+    <text x="${M + Wc + 16}" y="${y + 12}" fill="#555555" style="font-size:12px">${esc(sel ? X.name(sel) : "France entière")}</text>
+    <g transform="translate(${M + Wc + 16},${y + 20})">${propre(grille)}</g>
+    <text x="${M + Wc + 16}" y="${y + 20 + Hg + 16}" fill="#555555" style="font-size:11px">1 carré = ${esc(fmtNum(uniteEleves(X, sel)))} élèves</text>`;
+  y += Math.max(Hc, Hg + 40) + 14;
+  const histo = chart.querySelector(".anim-histo svg");
+  if (histo) {
+    const h = histo.cloneNode(true); appliquerHisto(h, X, q);
+    s += `<g transform="translate(${M + (W - 2 * M - Number(histo.getAttribute("width"))) / 2},${y})">${lightVars(h.innerHTML.replace(/ data-(tip|hp|hv|anim-p)(="[^"]*")?/g, "")).replace(/<text(?![^>]*fill=)/g, '<text fill="#333333"')}</g>`;
+    y += Number(histo.getAttribute("height"));
+  }
+  const H = y + 22, k = largeurCible / W, pair = x => 2 * Math.round(x * k / 2);
+  s += `<text x="${W / 2}" y="${H - 8}" text-anchor="middle" fill="#898781" style="font-size:11px">PRISME · tableau de bord · ${esc(stamp())}</text>`;
+  const src = `<svg xmlns="http://www.w3.org/2000/svg" width="${pair(W)}" height="${pair(H)}" viewBox="0 0 ${W} ${H}">
+    <style>text{font-family:Marianne,Arial,Helvetica,sans-serif;font-size:12px}</style><rect width="100%" height="100%" fill="#ffffff"/>${s}</svg>`;
+  return dessinerSvg(src, pair(W), pair(H));
+}
+// réglages du graphique (onglet Présentation de l'atelier)
+function elevesEditor(b, i) {
+  const c = colonnesEpisodes(), E = b.eleves || {};
+  if (!c.qualif) return `<span class="hint">Qualification non reconnue : réglez-la dans « Réglages du tableau › Durées de qualification ».</span>`;
+  const toutes = qualifsEleves(c), eff = colonneEffectif(b);
+  const cases = toutes.map(q => `<label><input type="checkbox" data-b="${i}" data-elq="${esc(q)}" ${!E.qualifs || E.qualifs.includes(q) ? "checked" : ""}> ${esc(q)}</label>`).join(" ");
+  return `<label>Effectif <select data-b="${i}" data-k="eleves.effectif">${opt([["", eff ? `automatique (${plain(labelOf(eff))})` : "Colonne d'effectif…"], ...columns.filter(x => isNumCol(x.id) || /effectif/i.test(x.id)).map(x => [x.id, plain(x.label)])], E.effectif || "")}</select></label>
+    <select data-b="${i}" data-k="eleves.rayon" title="Taille des cercles">${opt([["60", "cercles : petits"], ["80", "cercles : moyens"], ["100", "cercles : normaux"], ["130", "cercles : grands"], ["160", "cercles : très grands"]], String(E.rayon || 100))}</select>
+    <select data-b="${i}" data-k="eleves.unite" title="Nombre d'élèves représentés par un carré">${opt([["", "carré : automatique"], ...[50, 100, 250, 500, 1000, 5000].map(n => [String(n), `1 carré = ${fmtNum(n)} élèves`])], String(E.unite || ""))}</select>
+    <div class="row"><span class="lbl">Qualifications comptées</span>${cases || '<span class="hint">aucune qualification dans les choix de Grist</span>'}</div>
+    <span class="hint">Un établissement compte une fois par date, avec sa qualification la plus grave du jour (« RAS » ne compte jamais). Les couleurs sont celles des qualifications dans Grist. Lecteur, vitesse, jours sans signalement et cumul : réglages « Animer selon les dates » ci-dessous.</span>
+    ${animEditor({ ...b, anim: { ...(b.anim || {}), actif: true } }, i).replace(/<label title="Une image par date[\s\S]*?<\/label>/, "")}`;
+}
+
 const svgWrap = (W, H, inner, label) => `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="width:${W}px;max-width:100%" role="img" aria-label="${esc(label || "")}">${inner}</svg>`;
 
 function svgBarH(spec, W) {
@@ -2349,6 +2602,14 @@ RACINE.addEventListener("change", e => {
     if (Object.keys(ep).length) config.episodes = ep; else delete config.episodes;
     commit(); return;
   }
+  if (t.dataset && t.dataset.elq !== undefined) {                     // élèves concernés : qualification comptée ou non
+    const b = config.blocks[Number(t.dataset.b)], toutes = inSrc(b, () => qualifsEleves(colonnesEpisodes()));
+    const l = new Set(b.eleves && b.eleves.qualifs ? b.eleves.qualifs : toutes);
+    t.checked ? l.add(t.dataset.elq) : l.delete(t.dataset.elq);
+    b.eleves = { ...(b.eleves || {}) };
+    if (toutes.every(q => l.has(q))) delete b.eleves.qualifs; else b.eleves.qualifs = toutes.filter(q => l.has(q));
+    commit(); return;
+  }
   if (t.dataset && t.dataset.epcol !== undefined) {                   // colonne reprise dans les sources calculées
     const ep = { ...(config.episodes || {}) }, l = new Set(ep.colonnes || []);
     t.checked ? l.add(t.dataset.epcol) : l.delete(t.dataset.epcol);
@@ -2426,6 +2687,7 @@ RACINE.addEventListener("change", e => {
 RACINE.addEventListener("click", e => {
   const t = e.target.closest("button"); if (!t) return;
   const act = t.dataset.act, i = Number(t.dataset.b);
+  if (act === "el-france") { const z = t.closest(".chart") && t.closest(".chart").querySelector("[data-anim]"); if (z) choisirZone(z.dataset.anim, null); return; }
   if (act === "anim-lecture") { const z = t.closest("[data-anim]"); if (z) basculerLecture(z.dataset.anim); return; }
   if (act === "anim-mp4" || act === "anim-gif") { exporterAnimation(config.blocks[i], i, act === "anim-mp4" ? "mp4" : "gif", t); return; }
   if (act === "clrdetail") { delete config.blocks[i].detailCols; commit(); return; }
@@ -2466,7 +2728,7 @@ RACINE.addEventListener("click", e => {
 $("toggleEdit").addEventListener("click", () => { editing = !editing; render(); });
 
 // ---- Atelier : panneau du bloc choisi, fenêtres « Ajouter un bloc » et « Réglages du tableau »
-const ICONES = { tile: "123", table: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 7h12M2 10h12M7 3v10"/></svg>`, barh: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3v10"/><path d="M2 5h9M2 8h12M2 11h6"/></svg>`, barv: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 14h12"/><path d="M4 13V8M8 13V3M12 13V6"/></svg>`, line: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 14h12"/><path d="M2 11l4-4 3 2 5-6"/></svg>`, pie: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5V8l4 3.8"/></svg>`, map: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4l4-1.5 4 1.5 4-1.5v9.5l-4 1.5-4-1.5-4 1.5z"/><path d="M6 2.5v9.5M10 4v9.5"/></svg>`, points: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="6" r="1.6"/><circle cx="11" cy="5" r="2.2"/><circle cx="8" cy="11" r="1.2"/></svg>`, gantt: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 2v12"/><path d="M4 4h5M7 8h6M5 12h4"/></svg>`, durees: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.5"/></svg>` };
+const ICONES = { tile: "123", table: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M2 7h12M2 10h12M7 3v10"/></svg>`, barh: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3v10"/><path d="M2 5h9M2 8h12M2 11h6"/></svg>`, barv: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 14h12"/><path d="M4 13V8M8 13V3M12 13V6"/></svg>`, line: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 14h12"/><path d="M2 11l4-4 3 2 5-6"/></svg>`, pie: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 2.5V8l4 3.8"/></svg>`, map: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4l4-1.5 4 1.5 4-1.5v9.5l-4 1.5-4-1.5-4 1.5z"/><path d="M6 2.5v9.5M10 4v9.5"/></svg>`, points: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="5" cy="6" r="1.6"/><circle cx="11" cy="5" r="2.2"/><circle cx="8" cy="11" r="1.2"/></svg>`, gantt: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 2v12"/><path d="M4 4h5M7 8h6M5 12h4"/></svg>`, eleves: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="6" r="3.5"/><circle cx="11.5" cy="10.5" r="2"/><path d="M2 14h12"/></svg>`, durees: `<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.5"/></svg>` };
 function genreBloc(b) {
   if (b.type === "tile") return { icone: ICONES.tile, nom: "Chiffre clé" };
   if (b.chart === "gantt" && (b.view || "both") === "chart") return { icone: ICONES.gantt, nom: "Frise des durées" };
@@ -2483,6 +2745,7 @@ const MODELES = [
   { cle: "pie", icone: ICONES.pie, nom: "Anneau", desc: "Répartition en parts (peu de valeurs)." },
   { cle: "map", icone: ICONES.map, nom: "Carte par territoire", desc: "Départements ou académies colorés selon la valeur." },
   { cle: "points", icone: ICONES.points, nom: "Carte des établissements", desc: "Un point par établissement, taille selon la valeur." },
+  { cle: "eleves", icone: ICONES.eleves, nom: "Élèves concernés", desc: "Carte à cercles, compteur et carrés des élèves des établissements touchés, animés jour par jour." },
   { cle: "frise", icone: ICONES.gantt, nom: "Frise des durées (Gantt)", desc: "Une ligne par établissement, une barre par période de qualification." },
   { cle: "durees", icone: ICONES.durees, nom: "Typologie des durées", desc: "Épisodes de qualification par classe de durée (1 jour, 2 à 3 jours…)." },
 ];
@@ -2504,12 +2767,17 @@ function creerBloc(cle) {
   else {
     const date = columns.find(c => isDate(c.id)), choix = columns.find(c => /^Choice/.test(c.type)) || columns.find(c => !isDate(c.id) && !isNumCol(c.id)) || columns[0] || {};
     const geo = columns.find(c => /^(departement|academie)$/i.test(c.id)), etab = columns.find(c => /^uai$/i.test(c.id)) || columns.find(c => /^Ref:/.test(c.type));
-    const col = cle === "line" || cle === "barv" ? (date || choix).id : cle === "map" ? (geo || choix).id : cle === "points" ? (etab || choix).id : choix.id;
+    const col = cle === "line" || cle === "barv" ? (date || choix).id : cle === "map" || cle === "eleves" ? (geo || choix).id : cle === "points" ? (etab || choix).id : choix.id;
     const b = { id, type: "cross", title: "Nouveau bloc", measure: { agg: "count" }, rows: { col: col || "", grain: "jour" }, cols: { col: "", grain: "jour" }, conds: [],
-      view: cle === "table" ? "table" : ["map", "points", "pie"].includes(cle) ? "chart" : "both", sort: cle === "line" || cle === "barv" ? "label" : "value", top: cle === "pie" ? 6 : 20 };
+      view: cle === "table" ? "table" : ["map", "points", "pie", "eleves"].includes(cle) ? "chart" : "both", sort: cle === "line" || cle === "barv" ? "label" : "value", top: cle === "pie" ? 6 : 20 };
     if (cle !== "table") b.chart = cle;
     if (cle === "map" && geo) b.rows.grain = /acad/i.test(geo.id) ? "aca_norm" : "dep_norm";
-    if (cle === "map" || cle === "points") b.top = 0;
+    if (cle === "eleves") {                                          // lignes : l'académie ; colonnes : la date des faits, par jour
+      const ce = colonnesEpisodes(), aca = columns.find(c => /^academie$/i.test(c.id)) || geo;
+      b.rows = { col: aca ? aca.id : "", grain: aca && !/acad/i.test(aca.id) ? "dep_norm" : "aca_norm" };
+      b.cols = { col: ce.faits || ce.cree || (date || {}).id || "", grain: "jour" }; b.view = "chart"; b.top = 0;
+    }
+    if (cle === "map" || cle === "points" || cle === "eleves") b.top = 0;
     b.title = `${(MODELES.find(m => m.cle === cle) || {}).nom || "Bloc"}${col ? ` — ${plain(labelOf(col))}` : ""}`;
     config.blocks.push(b);
   }
@@ -2757,6 +3025,11 @@ function triggerDownload(blob, name) {
 
 // Graphique SVG (+ légende) -> PNG, en couleurs claires, à 2x pour une impression nette
 function chartToPng(card) {
+  const el = card && card.querySelector(".chart.eleves [data-anim]");
+  if (el) {                                                         // élèves concernés : compteur, carte, carrés et histogramme
+    const X = animCache.get(el.dataset.anim); if (!X) return Promise.resolve(null);
+    return imageEleves(el.closest(".chart"), X, X.pos, 1520).then(c => new Promise((ok, ko) => c.toBlob(b => b ? ok({ blob: b, w: c.width / 2, h: c.height / 2 }) : ko(new Error("conversion impossible")), "image/png")));
+  }
   const svg = card && card.querySelector(".chart svg"); if (!svg) return Promise.resolve(null);
   const W = Number(svg.getAttribute("width")), H0 = Number(svg.getAttribute("height"));
   const legendItems = [...card.querySelectorAll(".chart .legend span")].map(s => ({
@@ -3160,7 +3433,7 @@ async function exportWord(onlyIndex = null) {
       if (!b.hideDesc) body.push(wP(blockDesc(b), { size: 20, keep: true }));
       const t = blockTable(b);
       if (!t || t.empty) { body.push(wP("Aucune donnée pour ces conditions.", { size: 20 })); continue; }
-      if ((b.view || "both") !== "table" && (b.wordChart || "native") === "native" && b.chart !== "map" && b.chart !== "points") {
+      if ((b.view || "both") !== "table" && (b.wordChart || "native") === "native" && b.chart !== "map" && b.chart !== "points" && b.chart !== "eleves") {
         const d = crossData(b, base), spec = b.chart === "gantt" ? friseSpec(b, d) : chartSpec(b, d, d.rowKeys.slice(0, topOf(b)));
         if (spec.error) body.push(wP(spec.error, { size: 20 }));
         else {
@@ -3374,6 +3647,10 @@ RACINE.addEventListener("change", e => {
       const c = pop.querySelector('input[name=qpreset][value="custom"]'); if (c) c.checked = true;
     }
   }
+});
+RACINE.addEventListener("click", e => {                            // clic sur une zone de la carte des élèves concernés
+  const z = e.target.closest && e.target.closest("[data-zsel]"); if (!z) return;
+  const l = z.closest(".chart") && z.closest(".chart").querySelector("[data-anim]"); if (l) choisirZone(l.dataset.anim, z.dataset.zsel);
 });
 RACINE.addEventListener("click", e => {                            // clic sur une date de l'histogramme d'une carte animée
   const r = e.target.closest && e.target.closest("[data-anim-p]"); if (!r) return;
