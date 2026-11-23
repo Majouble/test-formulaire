@@ -43,7 +43,8 @@ const BLOCS = [
 ];
 const API = doc => `window.__DOC__=${JSON.stringify(doc)};window.__OPTS__={};` + fs.readFileSync('mock.js') + fs.readFileSync('fakeapi.js') + fs.readFileSync('mock-saisie.js');
 
-(async () => {
+module.exports = { docAnim, ACADEMIES };
+if (require.main === module) (async () => {
   const browser = await chromium.launch({ executablePath: __C.chromium });
   const page = await browser.newPage({ viewport: { width: 1300, height: 1400 }, acceptDownloads: true });
   page.on('pageerror', e => console.log('PAGEERROR', e.message)); page.on('dialog', d => d.accept());
