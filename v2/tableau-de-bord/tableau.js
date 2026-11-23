@@ -2017,11 +2017,11 @@ async function imageAnimation(chart, A, p, largeurCible) {
     <text x="${M}" y="${fy + 22}" fill="#555555" style="font-size:11px">${esc(dateLabel(A.frames[0].date, A.grain))}</text>
     <text x="${W - M}" y="${fy + 22}" text-anchor="end" fill="#555555" style="font-size:11px">${esc(dateLabel(A.frames[n - 1].date, A.grain))}</text>
     <text x="${W / 2}" y="${fy + 22}" text-anchor="middle" fill="#898781" style="font-size:11px">PRISME · tableau de bord · ${esc(stamp())}</text>`;
-  const H = fy + 34;
-  const src = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+  const H = fy + 34, k = largeurCible / W, pair = x => 2 * Math.round(x * k / 2);
+  // dessin à la taille finale (et non agrandi après coup) : traits et chiffres nets
+  const src = `<svg xmlns="http://www.w3.org/2000/svg" width="${pair(W)}" height="${pair(H)}" viewBox="0 0 ${W} ${H}">
     <style>text{font-family:Marianne,Arial,Helvetica,sans-serif;font-size:12px}</style>
     <rect width="100%" height="100%" fill="#ffffff"/>${haut}<g transform="translate(${M},${y})">${carte}</g>${leg}${frise}</svg>`;
-  const k = largeurCible / W, pair = x => 2 * Math.round(x * k / 2);
   return dessinerSvg(src, pair(W), pair(H));
 }
 async function exporterAnimation(b, i, format, bouton) {
@@ -2035,7 +2035,7 @@ async function exporterAnimation(b, i, format, bouton) {
     const images = [];
     for (let p = 0; p < A.frames.length; p++) {
       bouton.textContent = `Images ${p + 1}/${A.frames.length}`;
-      const canvas = await imageAnimation(chart, A, p, format === "mp4" ? 1280 : 800);
+      const canvas = await imageAnimation(chart, A, p, format === "mp4" ? 1920 : 800);   // MP4 : ramené à 1 280 px si l'encodeur refuse
       images.push({ canvas, duree: vitesse + (p === 0 ? 1000 : 0) + (p === A.frames.length - 1 ? 2500 : 0) });   // début et fin tenus plus longtemps
     }
     bouton.textContent = "Encodage…";
