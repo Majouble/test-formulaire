@@ -655,45 +655,100 @@
     }
     return { bilan, creees };
   }
-  /* Colonnes formules (créées si absentes, jamais modifiées si elles existent) : effectifs de la dernière année et noms des sites */
-  async function poserFormules(a, tSites) {
-    const meta = await S.lireMeta(), acts = [], noms = [], E = a.table, tmE = meta[E], tmS = tSites ? meta[tSites] : null;
-    const ajout = (t, id, label, type, formula) => { if (!meta[t] || meta[t].colonnes[id]) return; acts.push(["AddColumn", t, id, { type, label, isFormula: true, formula, untieColIdFromLabel: true }]); noms.push(`${t}.${id}`); };
-    const colE = id => { const l = a.plan.lignes.find(x => x.id === id && x.col); return l && tmE.colonnes[l.col] ? l.col : (tmE.colonnes[id] ? id : null); };
-    const colS = id => { if (!tmS) return null; const l = a.sites && a.sites.plan.lignes.find(x => x.id === id && x.col); return l && tmS.colonnes[l.col] ? l.col : (tmS.colonnes[id] ? id : null); };
-    if (meta.Unites_Atlas && meta.Effectifs)
-      ajout("Unites_Atlas", "Effectif", "Effectif (dernière année)", "Int", "r = Effectifs.lookupRecords(UAI=$UAI)\nreturn max(r, key=lambda x: x.Annee or 0).Effectif if r else None");
-    const effU = !!(meta.Unites_Atlas && (meta.Unites_Atlas.colonnes.Effectif || noms.includes("Unites_Atlas.Effectif")));
+  /* Colonnes formules du référentiel : effectifs de la dernière année et noms des sites. Créées si absentes à l'import ;
+     réécrites seulement sur demande (bouton « Mettre à jour les formules », sans classeur). Les colonnes sont trouvées
+     par le plan de l'import s'il y en a un, sinon par leur identifiant ou leur libellé (comme l'import). */
+  function descripteurFormules(meta, E, tSites, a) {
+    const tmE = meta[E], tmS = tSites ? meta[tSites] : null;
+    const parNom = (tm, champs, id) => { if (!tm) return null; const ch = champs.find(c => c.id === id); const c = ch ? colonneDe(tm, ch, {}, new Set()) : null; return c ? c.colId : (tm.colonnes[id] ? id : null); };
+    const colE = id => { const l = a && a.plan.lignes.find(x => x.id === id && x.col); return l && tmE.colonnes[l.col] ? l.col : parNom(tmE, CHAMPS_ETAB, id); };
+    const colS = id => {
+      if (!tmS) return null;
+      const l = a && a.sites && a.sites.plan.lignes.find(x => x.id === id && x.col); if (l && tmS.colonnes[l.col]) return l.col;
+      if (id === "Etablissement" || id === "Composante") {   // références vers les établissements : composante si l'identifiant le dit
+        const c = Object.values(tmS.colonnes).find(x => x.type === `Ref:${E}` && (id === "Composante") === /compos/i.test(x.colId)); return c ? c.colId : null; }
+      return parNom(tmS, CHAMPS_SITES, id);
+    };
+    return { meta, E, tSites, tmE, tmS, colE, colS };
+  }
+  // formules attendues : [{ t, id, label, type, formula }] (seulement celles dont les colonnes sources existent)
+  function formulesAttendues(d) {
+    const { meta, E, tSites, tmS, colE, colS } = d, out = [];
+    const f = (t, id, label, type, formula) => out.push({ t, id, label, type, formula });
+    const unites = !!meta.Unites_Atlas, effU = unites && !!meta.Effectifs;
+    if (effU) f("Unites_Atlas", "Effectif", "Effectif (dernière année)", "Int", "r = Effectifs.lookupRecords(UAI=$UAI)\nreturn max(r, key=lambda x: x.Annee or 0).Effectif if r else None");
     const niv = colE("Niveau");
     if (effU) {
-      ajout(E, "Effectif_Atlas", "Effectif (Atlas, dernière année)", "Int", (niv ? `if $${niv} == "Composante interne":\n  return sum(u.Effectif or 0 for u in Unites_Atlas.lookupRecords(Composante=$id))\n` : "")
+      f(E, "Effectif_Atlas", "Effectif (Atlas, dernière année)", "Int", (niv ? `if $${niv} == "Composante interne":\n  return sum(u.Effectif or 0 for u in Unites_Atlas.lookupRecords(Composante=$id))\n` : "")
         + "return sum(u.Effectif or 0 for u in Unites_Atlas.lookupRecords(Etablissement=$id))");
-      if (tmS) ajout(tSites, "Etudiants_Atlas", "Étudiants (Atlas, dernière année)", "Int", "return sum(u.Effectif or 0 for u in Unites_Atlas.lookupRecords(Site=$id))");
+      if (tmS) f(tSites, "Etudiants_Atlas", "Étudiants (Atlas, dernière année)", "Int", "return sum(u.Effectif or 0 for u in Unites_Atlas.lookupRecords(Site=$id))");
     }
-    if (tmS) {
-      const cE = colS("Etablissement"), cC = colS("Composante"), cO = colS("Occupants"), cCo = colS("Commune"), cU = colS("Nom_usage"), cV = colS("Voie"), cA = colS("Actif");
-      const court = colE("Nom_court"), nom = colE("Nom"), sigle = colE("Sigle");
-      if (cCo && cU && cV) {   // colonnes du format v8 : la formule n'est posée qu'une fois toutes présentes
-        const monosite = cE && court ? `if not u and $${cE}${cC ? ` and not $${cC}` : ""}${cO ? ` and not $${cO}` : ""}:\n`
-          + `  if len([s for s in ${tSites}.lookupRecords(${cE}=$${cE}.id)${cA ? ` if s.${cA}` : ""}]) == 1:\n    u = ($${cE}.${court} or "").strip()\n` : "";
-        ajout(tSites, "Nom_calcule", "Nom calculé", "Text", [
-          "import re", `c = ($${cCo} or "").strip()`,
-          "if not c:\n  base = \"Site\"", "elif c.startswith(\"Le \"):\n  base = \"Site du \" + c[3:]", "elif c.startswith(\"Les \"):\n  base = \"Site des \" + c[4:]",
-          "elif c[:2] in (\"L'\", u\"L\u2019\"):\n  base = \"Site de l'\" + c[2:]", "elif re.match(u\"[AEIOUYÀÂÄÉÈÊËÎÏÔÖÙÛÜ]\", c[0].upper()):\n  base = \"Site d'\" + c", "else:\n  base = \"Site de \" + c",
-          `u = (${cU ? `$${cU}` : "\"\""} or "").strip()`, monosite.trimEnd(), cV ? `if not u:\n  u = ($${cV} or "").strip()` : "", "return base + (u\" \u2013 \" + u if u else \"\")"].filter(Boolean).join("\n"));
-      }
-      if (meta.Liaisons_sites && cE) {
-        const nc = [court, sigle, nom].filter(Boolean).map(c => `c.${c}`).join(" or ") || "\"\"";
-        ajout(tSites, "Libelle", "Libellé", "Text", [
-          (tmS.colonnes.Nom_calcule || noms.includes(`${tSites}.Nom_calcule`)) ? "n = $Nom_calcule or \"\"" : `n = $${colS("Nom") || "Nom"} or ""`, "vus = set()", "parts = []",
-          "for l in Liaisons_sites.lookupRecords(Site=$id):", "  c = l.Composante", "  if not c or c.id in vus:\n    continue", "  vus.add(c.id)",
-          effU ? "  eff = sum(u.Effectif or 0 for u in Unites_Atlas.lookupRecords(Site=$id, Composante=c.id))" : "  eff = 0", "  parts.append((eff, c))",
-          court ? `ec = ($${cE}.${court} or "").strip() if $${cE} else ""` : "ec = \"\"", "noms = []",
-          "for eff, c in sorted(parts, key=lambda x: -x[0])[:4]:", `  x = (${nc} or "").strip()`, "  if x and x != ec and x not in noms:\n    noms.append(x)",
-          "return n + (\" (\" + \" - \".join(noms) + \")\" if noms else \"\")"].join("\n"));
-      }
+    if (!tmS) return out;
+    const cE = colS("Etablissement"), cC = colS("Composante"), cO = colS("Occupants"), cCo = colS("Commune"), cU = colS("Nom_usage"), cV = colS("Voie"), cA = colS("Actif");
+    const court = colE("Nom_court"), nom = colE("Nom"), sigle = colE("Sigle");
+    const nc = v => [court, sigle, nom].filter(Boolean).map(c => `${v}.${c}`).join(" or ") || "\"\"";
+    const liaisons = !!meta.Liaisons_sites;
+    if (cCo && cU && cV) {   // colonnes du format v8 : la formule n'est posée qu'une fois toutes présentes
+      const actif = cA ? ` if s.${cA}` : "";
+      f(tSites, "Nom_calcule", "Nom calculé", "Text", [
+        "# Nom du site : « Site de <Commune> – <complément> ». Complément, dans l'ordre :",
+        "# 1. nom d'usage ; 2. nom court de l'établissement s'il n'a que ce site (sans autre occupant) ;",
+        "# 3. rien si c'est le seul site de l'établissement dans la commune ; 4. nom court de la composante si elle est seule sur le site ;",
+        "# 5. la voie (sans numéro).",
+        "import re", `c = ($${cCo} or "").strip()`,
+        "if not c:\n  base = \"Site\"", "elif c.startswith(\"Le \"):\n  base = \"Site du \" + c[3:]", "elif c.startswith(\"Les \"):\n  base = \"Site des \" + c[4:]",
+        "elif c[:2] in (\"L'\", u\"L\u2019\"):\n  base = \"Site de l'\" + c[2:]", "elif re.match(u\"[AEIOUYÀÂÄÉÈÊËÎÏÔÖÙÛÜ]\", c[0].upper()):\n  base = \"Site d'\" + c", "else:\n  base = \"Site de \" + c",
+        `u = ($${cU} or "").strip()`,
+        cE ? `e = $${cE}\nfreres = [s for s in ${tSites}.lookupRecords(${cE}=e.id)${actif}] if e else []` : "e = None\nfreres = []",
+        cE && court ? `if not u and e and len(freres) == 1${cC ? ` and not $${cC}` : ""}${cO ? ` and not $${cO}` : ""}:\n  u = (e.${court} or "").strip()` : "",
+        `seul = bool(e) and c != "" and len([s for s in freres if (s.${cCo} or "").strip() == c]) == 1`,
+        "if not u and not seul:", "  comps = {}",
+        cC ? `  if $${cC}:\n    comps[$${cC}.id] = $${cC}` : "",
+        liaisons ? "  for l in Liaisons_sites.lookupRecords(Site=$id):\n    k = l.Composante\n    if k and (not e or k.id != e.id)" + (niv ? ` and k.${niv} == "Composante interne"` : "") + ":\n      comps[k.id] = k" : "",
+        "  if len(comps) == 1:", `    k = list(comps.values())[0]\n    u = (${nc("k")} or "").strip()`,
+        `if not u and not seul:\n  u = ($${cV} or "").strip()`,
+        "return base + (u\" \u2013 \" + u if u else \"\")"].filter(Boolean).join("\n"));
     }
+    if (liaisons && cE) {
+      const avecNC = !!(tmS.colonnes.Nom_calcule || out.some(x => x.t === tSites && x.id === "Nom_calcule"));
+      f(tSites, "Libelle", "Libellé", "Text", [
+        avecNC ? "n = $Nom_calcule or \"\"" : `n = $${colS("Nom") || "Nom"} or ""`, "vus = set()", "parts = []",
+        "for l in Liaisons_sites.lookupRecords(Site=$id):", "  c = l.Composante", "  if not c or c.id in vus:\n    continue", "  vus.add(c.id)",
+        effU ? "  eff = sum(u.Effectif or 0 for u in Unites_Atlas.lookupRecords(Site=$id, Composante=c.id))" : "  eff = 0", "  parts.append((eff, c))",
+        court ? `ec = ($${cE}.${court} or "").strip() if $${cE} else ""` : "ec = \"\"", "noms = []",
+        "for eff, c in sorted(parts, key=lambda x: -x[0])[:4]:", `  x = (${nc("c")} or "").strip()`,
+        "  # pas de répétition : composante déjà dans le nom du site (« Site de Blagnac – IUT »)",
+        "  if x and x != ec and x not in noms and not n.endswith(u\" \u2013 \" + x):\n    noms.append(x)",
+        "return n + (\" (\" + \" - \".join(noms) + \")\" if noms else \"\")"].join("\n"));
+    }
+    return out;
+  }
+  // état des formules dans le document : à créer (colonne absente), à mettre à jour (formule différente), à jour
+  function etatFormules(d) {
+    const r = { creer: [], maj: [], aJour: [] };
+    for (const x of formulesAttendues(d)) {
+      const c = d.meta[x.t] && d.meta[x.t].colonnes[x.id];
+      if (!c) r.creer.push(x); else if (!c.isFormula) continue;   // colonne de données du même nom : laissée telle quelle
+      else if (String(c.formula || "").trim() !== x.formula.trim()) r.maj.push(x); else r.aJour.push(x);
+    }
+    return r;
+  }
+  // à l'import : formules créées si absentes, jamais réécrites ; mettre à jour = aussi les formules différentes (bouton)
+  async function poserFormules(a, tSites, mettreAJour) {
+    const meta = await S.lireMeta(), d = descripteurFormules(meta, a ? a.table : null, tSites, a);
+    if (!d.tmE) return [];
+    const e1 = etatFormules(d);
+    const acts = e1.creer.map(x => ["AddColumn", x.t, x.id, { type: x.type, label: x.label, isFormula: true, formula: x.formula, untieColIdFromLabel: true }]);
+    if (mettreAJour) e1.maj.forEach(x => acts.push(["ModifyColumn", x.t, x.id, { formula: x.formula }]));
     if (acts.length) await actions(acts);
+    // second passage : le libellé et le nom calculé dépendent de colonnes créées au premier (Nom_calcule, Unites_Atlas.Effectif)
+    let noms = [...e1.creer, ...(mettreAJour ? e1.maj : [])].map(x => `${x.t}.${x.id}`);
+    if (acts.length) {
+      const d2 = descripteurFormules(await S.lireMeta(), d.E, tSites, a), e2 = etatFormules(d2);
+      const a2 = [...e2.creer.map(x => ["AddColumn", x.t, x.id, { type: x.type, label: x.label, isFormula: true, formula: x.formula, untieColIdFromLabel: true }]),
+        ...(mettreAJour ? e2.maj.map(x => ["ModifyColumn", x.t, x.id, { formula: x.formula }]) : [])];
+      if (a2.length) { await actions(a2); noms = [...new Set([...noms, ...[...e2.creer, ...(mettreAJour ? e2.maj : [])].map(x => `${x.t}.${x.id}`)])]; }
+    }
     return noms;
   }
   async function importer() {
@@ -888,6 +943,28 @@
     if (r && r.derniere_mise_a_jour) info = `Dernier import : ${new Date(r.derniere_mise_a_jour * 1000).toLocaleString("fr-FR")}, ${r.fichier ? `« ${r.fichier} », ` : ""}${nf(r.etablissements)} ligne(s) dans ${r.table}.`;
     dessiner();
     if (info) racine.querySelector(".esr-outils").insertAdjacentHTML("afterend", `<p class="aide">${esc(info)}</p>`);
+    await afficherFormules(ctx);
   }
-  window.OngletReferentielESR = { afficher, lireClasseur, analyse: () => analyse };
+  // Formules du référentiel (sans classeur) : mise à jour des formules créées par un import précédent
+  async function afficherFormules(ctx) {
+    const E = ctx.parDefaut; if (!E || !racine) return;
+    const tS = tableSitesDe(ctx, E), d = descripteurFormules(ctx.meta, E, tS, null), e1 = etatFormules(d);
+    if (!e1.creer.length && !e1.maj.length && !e1.aJour.length) return;
+    const liste = l => l.map(x => `<code>${esc(x.t)}.${esc(x.id)}</code>`).join(" ");
+    const html = `<div id="esr-formules"><h3 class="esr-titre">Formules du référentiel</h3>
+      <p class="aide">Effectifs de la dernière année, « Nom calculé » des sites (nom d'usage ; nom court de l'établissement s'il n'a qu'un site ; rien si c'est son seul site dans la commune ;
+        composante seule sur le site ; à défaut la voie) et « Libellé » (composantes présentes, sans répéter celle déjà dans le nom).</p>
+      ${e1.maj.length || e1.creer.length ? `<p>${e1.maj.length ? `À mettre à jour : ${liste(e1.maj)}. ` : ""}${e1.creer.length ? `À créer : ${liste(e1.creer)}. ` : ""}${e1.aJour.length ? `<span class="aide">À jour : ${liste(e1.aJour)}.</span>` : ""}</p>
+        <button type="button" id="esr-formules-maj">Mettre à jour les formules</button>` : `<p class="aide">Toutes à jour : ${liste(e1.aJour)}.</p>`}
+      <p class="statut" id="esr-formules-statut"></p></div>`;
+    const avant = $("esr-formules"); if (avant) avant.remove();
+    racine.insertAdjacentHTML("beforeend", html);
+    const b = $("esr-formules-maj");
+    if (b) b.addEventListener("click", async () => {
+      b.disabled = true; const st = $("esr-formules-statut");
+      try { const n = await poserFormules({ table: E, plan: { lignes: [] }, sites: null }, tS, true); st.className = "statut ok"; st.textContent = n.length ? `Formules écrites : ${n.join(", ")}.` : "Rien à changer."; }
+      catch (e) { st.className = "statut err"; st.textContent = `Refusé par Grist (${e.message || e}).`; b.disabled = false; }
+    });
+  }
+  window.OngletReferentielESR = { afficher, lireClasseur, analyse: () => analyse, formules: async () => afficherFormules(await contexte()) };
 })();
