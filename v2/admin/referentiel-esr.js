@@ -133,64 +133,8 @@
   const optionsCochees = { etab: null, sites: null };   // en-têtes facultatifs cochés (null : colonnes déjà présentes)
   let reporter = true, reporterSites = true;
 
-  /* ---------- Lecture du classeur (.xlsx = zip de XML) ---------- */
-  let chargementZip = null;
-  function chargerJSZip() {
-    if (window.JSZip) return Promise.resolve(window.JSZip);
-    if (!chargementZip) chargementZip = new Promise((res, rej) => {
-      const s = document.createElement("script");
-      s.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
-      s.onload = () => window.JSZip ? res(window.JSZip) : rej(new Error("bibliothèque absente"));
-      s.onerror = () => { chargementZip = null; rej(new Error("impossible de charger la bibliothèque de lecture des classeurs (réseau bloqué ?)")); };
-      document.head.appendChild(s);
-    });
-    return chargementZip;
-  }
-  const colonneLettres = r => { let n = 0; for (const ch of String(r).replace(/\d+$/, "")) n = n * 26 + (ch.charCodeAt(0) - 64); return n - 1; };
-  async function lireClasseur(fichier) {
-    const JSZip = await chargerJSZip();
-    let zip;
-    try { zip = await JSZip.loadAsync(await fichier.arrayBuffer()); } catch (_) { throw new Error("Ce fichier n'est pas un classeur Excel (.xlsx)."); }
-    const xml = async p => { const f = zip.file(p.replace(/^\//, "")); return f ? new DOMParser().parseFromString(await f.async("string"), "application/xml") : null; };
-    const wb = await xml("xl/workbook.xml"), rels = await xml("xl/_rels/workbook.xml.rels");
-    if (!wb || !rels) throw new Error("Ce fichier n'est pas un classeur Excel (.xlsx).");
-    const cibles = {};
-    [...rels.getElementsByTagName("Relationship")].forEach(r => { cibles[r.getAttribute("Id")] = r.getAttribute("Target"); });
-    const partages = [], ss = await xml("xl/sharedStrings.xml");
-    if (ss) [...ss.getElementsByTagName("si")].forEach(si => partages.push([...si.childNodes].filter(n => n.nodeName === "t" || n.nodeName === "r")
-      .map(n => n.nodeName === "t" ? n.textContent : [...n.getElementsByTagName("t")].map(t => t.textContent).join("")).join("")));
-    const feuilles = {};
-    [...wb.getElementsByTagName("sheet")].forEach(s => {
-      const rid = s.getAttribute("r:id") || [...s.attributes].find(a => /:id$/.test(a.name)).value, t = cibles[rid] || "";
-      feuilles[s.getAttribute("name")] = t.startsWith("/") ? t.slice(1) : `xl/${t.replace(/^\.\//, "")}`;
-    });
-    const lues = {};
-    async function lire(nom) {
-      if (lues[nom]) return lues[nom];
-      if (!feuilles[nom]) return null;
-      const doc = await xml(feuilles[nom]); if (!doc) return null;
-      const lignes = [];
-      for (const row of doc.getElementsByTagName("row")) {
-        const l = [];
-        for (const c of row.getElementsByTagName("c")) {
-          const t = c.getAttribute("t"), v = c.getElementsByTagName("v")[0], x = v ? v.textContent : null;
-          let val = null;
-          if (t === "s") val = x == null ? null : partages[+x];
-          else if (t === "inlineStr") val = [...c.getElementsByTagName("t")].map(e => e.textContent).join("");
-          else if (t === "b") val = x === "1";
-          else if (t === "str" || t === "e") val = x;
-          else val = x == null || x === "" ? null : Number(x);
-          l[colonneLettres(c.getAttribute("r"))] = val;
-        }
-        lignes.push(l);
-      }
-      const entetes = (lignes[0] || []).map(h => String(h ?? "").trim());
-      const objets = lignes.slice(1).filter(l => l.some(v => !vide(v))).map(l => Object.fromEntries(entetes.map((h, i) => [h, l[i] ?? null]).filter(([h]) => h)));
-      return (lues[nom] = { entetes: entetes.filter(Boolean), lignes: objets });
-    }
-    const lireUne = async noms => { for (const n of noms) { const r = await lire(n); if (r) return { ...r, nom: n }; } return null; };
-    return { noms: Object.keys(feuilles), lire, lireUne };
-  }
+  /* ---------- Lecture du classeur : commun/tableur.js ---------- */
+  const lireClasseur = fichier => window.Tableur.lireClasseur(fichier);
 
   /* ---------- Contexte Grist ---------- */
   async function contexte() {

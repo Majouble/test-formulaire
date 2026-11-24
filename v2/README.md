@@ -38,10 +38,11 @@ v2/                      développement (prod/ = copie figée, voir « Mise en p
 ├── commun/marque.js     logo PRISME en haut à gauche de tous les widgets (variantes bloc, compact, spectre, centre)
 ├── commun/menu-deroulant.js  menu déroulant des champs à valeurs proposées (<input list> + <datalist>), dans tous les widgets
 ├── commun/filtres-colonnes.js  moteur des filtres de colonnes (condition, portée ou comptage avec seuil, versions, combinaison), pour les Extractions et la Fiche établissement
+├── commun/tableur.js    lecture des fichiers de données dans le navigateur (classeur .xlsx, CSV ou texte tabulé, dates de tableur), pour les imports de l'administration
 ├── commun/geo.js        fond de carte commun : départements et académies (Lambert-93, encarts), placement d'un point latitude / longitude
 ├── commun/video.js      vidéo MP4 (H.264 encodé par le navigateur, fichier MP4 non fragmenté) et GIF animé à partir d'images, sans bibliothèque (cartes animées du tableau de bord)
 ├── saisie/              formulaire de saisie
-├── admin/               administration : installation.js, configuration.js, referentiel.js, equipe.js, planning.js, pages-agents.js (onglet Équipe, Pages de saisie), actions.js, acces.js, liens.js, campagnes.js (onglet Établissements, carte Campagnes), effectifs.js (onglet Référentiel, carte Effectifs), structurel.js (onglet Référentiel, carte « Données demandées aux services »), partenaires.js (onglet Accès, carte « Partenaires : DSDEN, rectorats… »), veille.js (onglet Veille), validation.js (onglet Validation), repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css), secours.js (carte « Mode secours » : kit, relais, page de réintégration)
+├── admin/               administration : installation.js, configuration.js, referentiel.js, equipe.js, planning.js, pages-agents.js (onglet Équipe, Pages de saisie), actions.js, acces.js, liens.js, campagnes.js (onglet Établissements, carte Campagnes), effectifs.js (onglet Référentiel, carte Effectifs), structurel.js (onglet Référentiel, carte « Données demandées aux services »), partenaires.js (onglet Accès, carte « Partenaires : DSDEN, rectorats… »), veille.js (onglet Veille), validation.js (onglet Validation), repartition.js (partagé Équipe / Formulaires), formulaires.js (+ formulaires.css), secours.js (carte « Mode secours » : kit, relais, page de réintégration), fermetures.js (onglet Établissements, carte « Import de la base des fermetures »)
 ├── point-situation/     production du point de situation
 ├── cartographie/        carte et export cartographique (reprise du widget « Export cartographique ») ; atlas/ : projet QGIS de l'atlas par académie et contours
 ├── tableau-de-bord/     tableau de bord : tableau.js (module partagé, édition dans l'administration, lecture dans le widget) ; episodes.js : calcul des épisodes de qualification, sans affichage
@@ -112,6 +113,7 @@ Les widgets sont des pages statiques (HTML et JavaScript, sans serveur propre) a
 | `qualite` | À vérifier | Statuts des anomalies (vérifiée, corrigée) |
 | `secours` | Réintégration | Saisies hors ligne déjà réintégrées, correspondances de numéros |
 | `fiche` | Fiche établissement | Modèles de sélection partagés avec tout le document (`modeles` : nom et filtres) ; la présentation de la fiche reste dans les options de chaque page |
+| `fermetures` | Établissements (carte « Import de la base des fermetures ») | Table des réponses choisie (`table`) ; trace des imports (`imports` : date, fichier, table, jours, dossiers créés, versions, écarts, UAI inconnus…, 50 derniers) |
 
 ### Accès
 
