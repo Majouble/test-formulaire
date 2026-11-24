@@ -22,7 +22,7 @@ const actions = {
   // comme Grist : pas de valeur écrite dans une colonne formule (variable FORMULES_STRICTES pour les essais qui le vérifient)
   _verifFormules:(tid,f)=>{ if(!window.__FORMULES_STRICTES__) return; const r=tref(tid); for(const k of Object.keys(f)){ const i=C.id.findIndex((_,j)=>C.parentId[j]===r&&C.colId[j]===k); if(i>=0&&C.isFormula[i]&&C.formula[i]) throw new Error(`[Sandbox] ValueError Can't save value to formula column ${k}`); } },
   AddRecord:(tid,_,f)=>{ actions._verifFormules(tid,f); const t=data[tid]; if(!t) throw new Error('no table '+tid); const id=(t.id.length?Math.max(...t.id):0)+1; t.id.push(id); for(const [k,v] of Object.entries(f)){ (t[k]=t[k]||[])[t.id.length-1]=v; } return id; },
-  BulkAddRecord:(tid,ids,cols)=>{ const n=ids.length; for(let k=0;k<n;k++){ const f={}; for(const [c,v] of Object.entries(cols)) f[c]=v[k]; actions.AddRecord(tid,null,f);} },
+  BulkAddRecord:(tid,ids,cols)=>{ const n=ids.length, r=[]; for(let k=0;k<n;k++){ const f={}; for(const [c,v] of Object.entries(cols)) f[c]=v[k]; r.push(actions.AddRecord(tid,null,f));} return r; },
   BulkRemoveRecord:(tid,ids)=>{ ids.forEach(id=>actions.RemoveRecord(tid,id)); },
   RemoveRecord:(tid,id)=>{ const t=data[tid]; const i=t.id.indexOf(id); if(i<0) throw new Error('no rec'); for(const k of Object.keys(t)) if(Array.isArray(t[k])) t[k].splice(i,1); },
   BulkUpdateRecord:(tid,ids,cols)=>{ ids.forEach((id,k)=>{ const f={}; for(const [c,v] of Object.entries(cols)) f[c]=v[k]; actions.UpdateRecord(tid,id,f); }); },

@@ -5,19 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Administration des signalements</title>
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="../commun/theme.js?v=2.62.0-alpha.61"></script>
-<script src="../commun/marque.js?v=2.62.0-alpha.61"></script>
-<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.61"></script>
-<script src="../commun/socle.js?v=2.62.0-alpha.61"></script>
+<script src="../commun/theme.js?v=2.62.0-alpha.62"></script>
+<script src="../commun/marque.js?v=2.62.0-alpha.62"></script>
+<script src="../commun/menu-deroulant.js?v=2.62.0-alpha.62"></script>
+<script src="../commun/socle.js?v=2.62.0-alpha.62"></script>
 <script>window.Socle.activerCacheLecture();
   // ce qui est fait directement dans Grist (page supprimée, colonne ajoutée…) n'est pas signalé au widget : la structure
   // du document est relue quand on revient dans l'administration ou qu'on change d'onglet
   window.addEventListener("focus", () => window.Socle.oublierStructure());
   document.addEventListener("visibilitychange", () => { if (!document.hidden) window.Socle.oublierStructure(); });</script>
-<script src="../commun/geo.js?v=2.62.0-alpha.61"></script>
-<script src="../commun/point-moteur.js?v=2.62.0-alpha.61"></script>
-<link rel="stylesheet" href="formulaires.css?v=2.62.0-alpha.61">
-<link rel="stylesheet" href="../tableau-de-bord/tableau.css?v=2.62.0-alpha.61">
+<script src="../commun/geo.js?v=2.62.0-alpha.62"></script>
+<script src="../commun/point-moteur.js?v=2.62.0-alpha.62"></script>
+<script src="../commun/tableur.js?v=2.62.0-alpha.62"></script>
+<link rel="stylesheet" href="formulaires.css?v=2.62.0-alpha.62">
+<link rel="stylesheet" href="../tableau-de-bord/tableau.css?v=2.62.0-alpha.62">
 <style>
   :root {
     --fond: #f6f6f6; --carte: #fff; --texte: #1e1e1e; --doux: #666; --trait: #ddd;
@@ -438,6 +439,14 @@
   #liens .lien-btn { background: none; border: 0; padding: 0 4px; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; font-size: 12.5px; }
   #liens #li-sortie { width: 100%; margin-top: 8px; font-family: monospace; font-size: 12px; }
   #liens .avert { color: var(--alerte); }
+  /* carte « Import de la base des fermetures » de l'onglet Établissements (2.62.0-alpha.62) */
+  #fermetures select { width: auto; max-width: 360px; }
+  #fermetures .ok { color: var(--ok); }
+  #fermetures .note { color: var(--doux); font-size: 12.5px; }
+  #fermetures details { margin: 8px 0; } #fermetures details summary { cursor: pointer; }
+  #fermetures .fm-detail { max-height: 340px; overflow: auto; font-size: 12.5px; }
+  #fermetures .fm-compte { width: auto; margin: 8px 0; } #fermetures .fm-compte td.n { font-variant-numeric: tabular-nums; text-align: right; font-weight: 600; }
+  #fermetures progress { width: 260px; vertical-align: middle; }
   #equipe .eq-invites-reglage { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 12px; padding: 10px 12px; background: var(--x-f5f5fe); border-radius: 6px; font-size: 13.5px; }
   #equipe .eq-invites-reglage .aide { flex-basis: 100%; margin: 0; }
   #equipe .lien-btn { background: none; border: 0; padding: 0 4px; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; font-size: 12.5px; }
@@ -729,7 +738,7 @@
 </main>
 <main id="onglet-actions" hidden></main>
 <main id="acces" hidden></main>
-<main id="liens" hidden><div id="liens-contenu"></div><div id="campagnes"></div><div id="demandes"></div></main>
+<main id="liens" hidden><div id="liens-contenu"></div><div id="campagnes"></div><div id="demandes"></div><div id="fermetures"></div></main>
 <main id="validation" hidden></main>
 <main id="veille" hidden></main>
 <main id="formulaires" hidden>
@@ -776,37 +785,38 @@
 <main id="point-situation" hidden></main>
 <main id="onglet-tdb" hidden></main>
 <main id="qualite" hidden></main>
-<script src="repartition.js?v=2.62.0-alpha.61"></script>
-<script src="installation.js?v=2.62.0-alpha.61"></script>
-<script src="configuration.js?v=2.62.0-alpha.61"></script>
-<script src="secours.js?v=2.62.0-alpha.61"></script>
-<script src="point-situation.js?v=2.62.0-alpha.61"></script>
-<script src="../tableau-de-bord/episodes.js?v=2.62.0-alpha.61"></script>
-<script src="../tableau-de-bord/tableau.js?v=2.62.0-alpha.61"></script>
-<script src="tableau-de-bord.js?v=2.62.0-alpha.61"></script>
-<script src="formulaires.js?v=2.62.0-alpha.61"></script>
-<script src="referentiel.js?v=2.62.0-alpha.61"></script>
-<script src="equipe.js?v=2.62.0-alpha.61"></script>
-<script src="planning.js?v=2.62.0-alpha.61"></script>
-<script src="pages-agents.js?v=2.62.0-alpha.61"></script>
-<script src="acces.js?v=2.62.0-alpha.61"></script>
-<script src="actions.js?v=2.62.0-alpha.61"></script>
-<script src="liens.js?v=2.62.0-alpha.61"></script>
-<script src="campagnes.js?v=2.62.0-alpha.61"></script>
-<script src="../commun/demandes.js?v=2.62.0-alpha.61"></script>
-<script src="demandes.js?v=2.62.0-alpha.61"></script>
-<script src="validation.js?v=2.62.0-alpha.61"></script>
-<script src="veille.js?v=2.62.0-alpha.61"></script>
-<script src="../commun/qualite-moteur.js?v=2.62.0-alpha.61"></script>
-<script src="../commun/qualite-edition.js?v=2.62.0-alpha.61"></script>
-<script src="qualite.js?v=2.62.0-alpha.61"></script>
-<script src="../commun/fiche-etab.js?v=2.62.0-alpha.61"></script>
-<script src="../commun/references.js?v=2.62.0-alpha.61"></script>
-<script src="referentiel-esr.js?v=2.62.0-alpha.61"></script>
-<script src="sites.js?v=2.62.0-alpha.61"></script>
-<script src="effectifs.js?v=2.62.0-alpha.61"></script>
-<script src="structurel.js?v=2.62.0-alpha.61"></script>
-<script src="partenaires.js?v=2.62.0-alpha.61"></script>
+<script src="repartition.js?v=2.62.0-alpha.62"></script>
+<script src="installation.js?v=2.62.0-alpha.62"></script>
+<script src="configuration.js?v=2.62.0-alpha.62"></script>
+<script src="secours.js?v=2.62.0-alpha.62"></script>
+<script src="point-situation.js?v=2.62.0-alpha.62"></script>
+<script src="../tableau-de-bord/episodes.js?v=2.62.0-alpha.62"></script>
+<script src="../tableau-de-bord/tableau.js?v=2.62.0-alpha.62"></script>
+<script src="tableau-de-bord.js?v=2.62.0-alpha.62"></script>
+<script src="formulaires.js?v=2.62.0-alpha.62"></script>
+<script src="referentiel.js?v=2.62.0-alpha.62"></script>
+<script src="equipe.js?v=2.62.0-alpha.62"></script>
+<script src="planning.js?v=2.62.0-alpha.62"></script>
+<script src="pages-agents.js?v=2.62.0-alpha.62"></script>
+<script src="acces.js?v=2.62.0-alpha.62"></script>
+<script src="actions.js?v=2.62.0-alpha.62"></script>
+<script src="liens.js?v=2.62.0-alpha.62"></script>
+<script src="campagnes.js?v=2.62.0-alpha.62"></script>
+<script src="../commun/demandes.js?v=2.62.0-alpha.62"></script>
+<script src="demandes.js?v=2.62.0-alpha.62"></script>
+<script src="fermetures.js?v=2.62.0-alpha.62"></script>
+<script src="validation.js?v=2.62.0-alpha.62"></script>
+<script src="veille.js?v=2.62.0-alpha.62"></script>
+<script src="../commun/qualite-moteur.js?v=2.62.0-alpha.62"></script>
+<script src="../commun/qualite-edition.js?v=2.62.0-alpha.62"></script>
+<script src="qualite.js?v=2.62.0-alpha.62"></script>
+<script src="../commun/fiche-etab.js?v=2.62.0-alpha.62"></script>
+<script src="../commun/references.js?v=2.62.0-alpha.62"></script>
+<script src="referentiel-esr.js?v=2.62.0-alpha.62"></script>
+<script src="sites.js?v=2.62.0-alpha.62"></script>
+<script src="effectifs.js?v=2.62.0-alpha.62"></script>
+<script src="structurel.js?v=2.62.0-alpha.62"></script>
+<script src="partenaires.js?v=2.62.0-alpha.62"></script>
 <script>if (window.SocleTheme) window.SocleTheme.bouton(document.getElementById("theme-bouton"));</script>
 <script>
   // Onglets
@@ -817,7 +827,7 @@
     if (b.dataset.onglet === "referentiel") { window.OngletReferentiel.afficher(); if (window.OngletReferentielESR) window.OngletReferentielESR.afficher(); if (window.OngletSitesESR) window.OngletSitesESR.afficher(); if (window.OngletEffectifs) window.OngletEffectifs.afficher(); if (window.OngletStructurel) window.OngletStructurel.afficher(); }
     if (b.dataset.onglet === "onglet-equipe") window.OngletEquipeGroupe.afficher();
     if (b.dataset.onglet === "acces") window.OngletAcces.afficher();
-    if (b.dataset.onglet === "liens") { window.OngletLiens.afficher(); if (window.OngletCampagnes) window.OngletCampagnes.afficher(); if (window.OngletDemandes) window.OngletDemandes.afficher(); }
+    if (b.dataset.onglet === "liens") { window.OngletLiens.afficher(); if (window.OngletCampagnes) window.OngletCampagnes.afficher(); if (window.OngletDemandes) window.OngletDemandes.afficher(); if (window.OngletFermetures) window.OngletFermetures.afficher(); }
     if (b.dataset.onglet === "validation") window.OngletValidation.afficher();
     if (b.dataset.onglet === "veille") window.OngletVeille.afficher();
     if (b.dataset.onglet === "onglet-actions") window.OngletActions.afficher();
