@@ -854,16 +854,22 @@
       const config = await S.lireConfig();
       await actions([S.actionConfig(config, "referentiel_esr", { fichier: nomFichier, table, sites: a.sites ? a.sites.table : null, derniere_mise_a_jour: Date.now() / 1000,
         etablissements: a.stats.etab, ajoutes: a.ajouts.length, sites_importes: a.sites ? a.sites.ajouts.length + a.sites.majs.length : 0 })]);
-      let acces = "";
-      if (tablesCreees && window.OngletAcces && window.OngletAcces.reappliquerSiBesoin) {
-        try { const r = await window.OngletAcces.reappliquerSiBesoin(); if (r && ["incomplet", "refusees", "illisibles"].includes(r.etat)) acces = ` Règles d'accès : ${r.texte}`; } catch (e) { acces = ` Règles d'accès non appliquées (${e.message || e}).`; }
+      // Règles d'accès vérifiées après chaque import (tables et colonnes ajoutées), puis copie des colonnes lue par les
+      // liens (établissements, agents invités) et les partenaires : sans elle, ces comptes travaillaient sur l'ancienne
+      // structure du référentiel (2.62.0-alpha.61)
+      let acces = "", accesErr = false;
+      if (window.OngletAcces && window.OngletAcces.reappliquerSiBesoin) {
+        try { const r = await window.OngletAcces.reappliquerSiBesoin(); if (r && ["incomplet", "refusees", "illisibles"].includes(r.etat)) { acces = ` Règles d'accès : ${r.texte}`; accesErr = true; } } catch (e) { acces = ` Règles d'accès non appliquées (${e.message || e}).`; accesErr = true; }
+      }
+      if (window.OngletAcces && window.OngletAcces.rafraichirCopies) {
+        try { if (await window.OngletAcces.rafraichirCopies()) acces += " Copie des colonnes pour les liens et les invités mise à jour."; } catch (_) { /* rien */ }
       }
       if (S.viderCacheLecture) S.viderCacheLecture();
       const bilan = `Import terminé : ${nf(a.ajouts.length)} établissement(s) ajouté(s), ${nf(champs.size)} mis à jour${reportees ? `, ${nf(reportees)} référence(s) reportée(s)` : ""}${nSieges ? `, ${nf(nSieges)} siège(s)` : ""}`
         + (a.sites ? `, ${nf(nSitesA)} site(s) ajouté(s), ${nf(nSitesM)} mis à jour` : "") + (reporteesS ? `, ${nf(reporteesS)} référence(s) de site reportée(s)` : "") + (nAlias ? `, ${nf(nAlias)} correspondance(s)` : "") + "."
         + (bilanAnnexes.length ? ` Tables annexes : ${bilanAnnexes.join(" ; ")}.` : "") + (formulesPosees.length ? ` Formules créées : ${formulesPosees.join(", ")}.` : "") + acces;
       enCours = false;
-      await relancer(bilan, acces ? "err" : "ok");
+      await relancer(bilan, accesErr ? "err" : "ok");
       if (window.OngletSitesESR) window.OngletSitesESR.afficher();
     } catch (e) {
       enCours = false;
