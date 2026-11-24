@@ -999,5 +999,15 @@
     try { await charger(); pagesDoc = await lirePagesDoc(); } catch (e) { racine.innerHTML = `<div class="bandeau alerte">Lecture impossible : ${esc(e.message || e)}</div>`; return; }
     dessiner();
   }
-  window.OngletAcces = { afficher, reappliquerSiBesoin, verifier };
+  // Après un changement de structure fait ailleurs (import du référentiel : colonnes et tables ajoutées) : copie des colonnes
+  // lue par les liens (établissements, agents invités, agents aux droits partiels) et par les partenaires, rafraîchie si
+  // elle a changé. Sans droit d'écriture ou règles illisibles : silencieux. Renvoie true si une copie a été réécrite.
+  async function rafraichirCopies() {
+    try { await charger(); } catch (_) { return false; }
+    let ecrit = false;
+    try { ecrit = !!(await R.majSchemaPublic(meta, config, general, formulaires)); } catch (_) { /* rien */ }
+    try { await majSchemaPartenaires(); } catch (_) { /* rien */ }
+    return ecrit;
+  }
+  window.OngletAcces = { afficher, reappliquerSiBesoin, verifier, rafraichirCopies };
 })();

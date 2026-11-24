@@ -197,8 +197,11 @@
       out.add(g.table);
       for (const f of g.formulaires) {
         out.add(f.table);
-        (f.blocsTableaux || f.conf.blocs || []).forEach(b => { const st = b && b.reglages && b.reglages.tableau && b.reglages.tableau.table; if (st && meta[st]) out.add(st); });
-        Object.values(meta[f.table].colonnes).forEach(c => { const x = S().cibleRef(c.type) || (/^RefList:(.+)$/.exec(c.type) || [])[1]; if (x && meta[x] && !technique.has(x)) out.add(x); });
+        const cibles = t => Object.values(meta[t].colonnes).forEach(c => { const x = S().cibleRef(c.type) || (/^RefList:(.+)$/.exec(c.type) || [])[1]; if (x && meta[x] && !technique.has(x)) out.add(x); });
+        // sous-tables (tableaux) et leurs références : le référentiel des sites, visé par le tableau des sites et non par la
+        // table des réponses, manquait à la copie (sites non filtrés par établissement pour les liens et les invités)
+        (f.blocsTableaux || f.conf.blocs || []).forEach(b => { const st = b && b.reglages && b.reglages.tableau && b.reglages.tableau.table; if (st && meta[st]) { out.add(st); cibles(st); } });
+        cibles(f.table);
       }
     }
     return [...out];
